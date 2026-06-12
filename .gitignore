@@ -3,6 +3,8 @@ bin/
 .worktrees/
 obj/
 *.db
+backend/*.slnx
 web/node_modules/
 web/dist/
-.config/
+.config/*
+!.config/dotnet-tools.json
