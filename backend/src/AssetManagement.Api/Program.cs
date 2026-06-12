@@ -1,5 +1,6 @@
 using System.Text;
 using AssetManagement.Application.Auth;
+using AssetManagement.Infrastructure.Audit;
 using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Persistence.Seed;
@@ -14,7 +15,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddScoped<AuditActionFilter>();
+builder.Services.AddControllers(o => o.Filters.Add<AuditActionFilter>());
 builder.Services.AddDbContext<AppDbContext>(o =>
     o.UseSqlite(builder.Configuration.GetConnectionString("Default")));
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
