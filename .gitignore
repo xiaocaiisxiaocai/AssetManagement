@@ -1,5 +1,6 @@
 ﻿.ace-tool/
 bin/
+.worktrees/
 obj/
 *.db
 web/node_modules/
