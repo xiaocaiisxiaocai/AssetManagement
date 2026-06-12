@@ -1,4 +1,5 @@
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Infrastructure.Persistence.Seed;
 using AssetManagement.Api.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -45,6 +46,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+    DbSeeder.Seed(db);
 }
 
 // Configure the HTTP request pipeline.
