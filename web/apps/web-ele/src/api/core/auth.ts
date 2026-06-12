@@ -1,16 +1,23 @@
 import { baseRequestClient, requestClient } from '#/api/request';
 import type { UserInfo } from '@vben/types';
+
+interface ApiResult<T> {
+  code: number;
+  data: T;
+  message: string;
+}
+
 export namespace AuthApi {
   /** 登录接口参数 */
   export interface LoginParams {
     account?: string;
+    employeeNo?: string;
     password?: string;
   }
 
   /** 登录接口返回值 */
   export interface LoginResult {
-    id: number;
-    name: string;
+    token: string;
   }
 
   /** 组织架构树节点 */
@@ -34,7 +41,14 @@ export namespace AuthApi {
  * 登录
  */
 export async function loginApi(data: AuthApi.LoginParams) {
-  return requestClient.post<AuthApi.LoginResult>('/auth/login', data);
+  const result = await requestClient.post<ApiResult<AuthApi.LoginResult>>(
+    '/auth/login',
+    {
+      employeeNo: data.employeeNo || data.account,
+      password: data.password,
+    },
+  );
+  return result.data;
 }
 
 /**
@@ -58,7 +72,27 @@ export async function getAccessCodesApi() {
  * @returns
  */
 export const getUserInfoApi = async () => {
-  return requestClient.get<UserInfo>('/auth/vben-user-info');
+  const result = await requestClient.get<
+    ApiResult<{
+      employeeNo: string;
+      id: number;
+      name: string;
+      permissions: string[];
+      roles: string[];
+    }>
+  >('/auth/user-info');
+  const data = result.data;
+  return {
+    avatar: '',
+    desc: '',
+    homePath: '/asset/list',
+    realName: data.name,
+    roles: data.roles,
+    token: '',
+    userId: String(data.id),
+    username: data.employeeNo,
+    permissions: data.permissions,
+  } as UserInfo & { permissions: string[] };
 };
 
 /** 获取组织机构 */

@@ -8,6 +8,7 @@ import { defineOverridesPreferences } from '@vben/preferences';
 export const overridesPreferences = defineOverridesPreferences({
   // overrides
   app: {
+    accessMode: 'backend',
     // 是否开启检查更新
     enableCheckUpdates: false,
     // 检查更新的时间间隔，单位为分钟
