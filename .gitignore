@@ -1,0 +1,7 @@
+﻿.ace-tool/
+bin/
+obj/
+*.db
+web/node_modules/
+web/dist/
+.config/

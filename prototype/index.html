@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="企业资产管理系统 - 专业的资产追踪和管理解决方案">
+    <title>资产管理系统 - 原型演示</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- 登录页面 -->
+    <div id="page-login" class="page active">
+        <div class="login-container">
+            <div class="login-box">
+                <div class="logo">
+                    <h1>📦 资产管理系统</h1>
+                    <p>Asset Management System</p>
+                </div>
+                <form id="loginForm" onsubmit="return handleLogin(event)" aria-label="登录表单">
+                    <div class="form-group">
+                        <label for="employeeNo">工号</label>
+                        <input
+                            type="text"
+                            id="employeeNo"
+                            name="employeeNo"
+                            placeholder="请输入工号"
+                            required
+                            aria-required="true"
+                            autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">密码</label>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            placeholder="请输入密码"
+                            required
+                            aria-required="true"
+                            autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="remember" name="remember"> 记住我
+                        </label>
+                    </div>
+                    <button type="submit" class="btn-primary">登 录</button>
+                    <p class="hint">提示：初始密码为工号后6位</p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主页面布局 -->
+    <div id="page-main" class="page">
+        <!-- 顶部导航 -->
+        <header class="header" role="banner">
+            <div class="header-left">
+                <span class="logo-small" aria-hidden="true">📦</span>
+                <span class="title">资产管理系统</span>
+            </div>
+            <div class="header-right">
+                <span class="dept-scope">
+                    <span aria-hidden="true">🏢</span>
+                    <select id="deptScopeSelect" onchange="switchDeptScope(this.value)" aria-label="切换查看的部门范围"></select>
+                </span>
+                <button
+                    class="notify"
+                    onclick="openNotificationCenter()"
+                    aria-label="查看通知">
+                    🔔
+                    <span class="badge" aria-label="2条未读通知">2</span>
+                </button>
+                <span class="user">👤 <span id="currentUser">张三</span> (仓库管理员)</span>
+                <button class="btn-logout" onclick="handleLogout()" aria-label="退出登录">退出</button>
+            </div>
+        </header>
+
+        <div class="main-container">
+            <!-- 左侧菜单 -->
+            <aside class="sidebar" id="sidebar" role="navigation" aria-label="主导航菜单">
+                <nav class="menu">
+                    <div class="menu-group">
+                        <div class="menu-title">📦 资产管理</div>
+                        <a href="#" class="menu-item active" onclick="showPage('asset-list')" aria-current="page">资产列表</a>
+                    </div>
+                    <div class="menu-group">
+                        <div class="menu-title">📝 审批管理</div>
+                        <a href="#" class="menu-item" onclick="showPage('approval-pending')">待我审批</a>
+                        <a href="#" class="menu-item" onclick="showPage('approval-mine')">我的申请</a>
+                        <a href="#" class="menu-item" onclick="showPage('approval-return')">待确认归还</a>
+                    </div>
+                    <div class="menu-group">
+                        <div class="menu-title">📊 统计报表</div>
+                        <a href="#" class="menu-item" onclick="showPage('report-summary')">资产汇总</a>
+                        <a href="#" class="menu-item" onclick="showPage('report-borrowed')">借用明细</a>
+                        <a href="#" class="menu-item" onclick="showPage('report-overdue')">逾期资产</a>
+                    </div>
+                    <div class="menu-group">
+                        <div class="menu-title">⚙ 系统管理</div>
+                        <a href="#" class="menu-item" onclick="showPage('admin-users')">用户管理</a>
+                        <a href="#" class="menu-item" onclick="showPage('admin-departments')">组织架构</a>
+                        <a href="#" class="menu-item" onclick="showPage('admin-workflows')">审批流程</a>
+                        <a href="#" class="menu-item" onclick="showPage('admin-categories')">类别管理</a>
+                        <a href="#" class="menu-item" onclick="showPage('admin-locations')">位置管理</a>
+                        <a href="#" class="menu-item" onclick="showPage('admin-settings')">系统参数</a>
+                        <a href="#" class="menu-item" onclick="showPage('admin-logs')">审计日志</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- 主内容区 -->
+            <main class="content" id="mainContent" role="main" aria-live="polite">
+                <!-- 各个页面内容将动态加载到这里 -->
+            </main>
+        </div>
+    </div>
+
+    <script src="js/data.js"></script>
+    <script src="js/pages.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
