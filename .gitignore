@@ -3,6 +3,7 @@ bin/
 .worktrees/
 obj/
 *.db
+*.db-*
 backend/*.slnx
 web/node_modules/
 web/dist/
