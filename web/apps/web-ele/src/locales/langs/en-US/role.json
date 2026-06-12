@@ -1,0 +1,30 @@
+{
+  "add": "Add Role",
+  "edit": "Edit Role",
+  "view": "View Role",
+  "columns": {
+    "name": "Role Name",
+    "description": "Description",
+    "remark": "Remarks",
+    "functions": "Functions"
+  },
+  "search": {
+    "name": "Role Name"
+  },
+  "form": {
+    "name": "Role Name",
+    "parentId": "Parent Role",
+    "description": "Description",
+    "remark": "Remarks",
+    "placeholder": {
+      "name": "Please enter role name",
+      "parentId": "Please select parent role",
+      "description": "Please enter description",
+      "remark": "Please enter remarks"
+    },
+    "validate": {
+      "name": "Please enter role name",
+      "parentId": "Please select parent role"
+    }
+  }
+}
