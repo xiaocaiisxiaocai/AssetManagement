@@ -1,9 +1,11 @@
 using System.Text;
 using AssetManagement.Application.Auth;
+using AssetManagement.Application.Rbac;
 using AssetManagement.Infrastructure.Audit;
 using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Persistence.Seed;
+using AssetManagement.Infrastructure.Rbac;
 using AssetManagement.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -21,6 +23,7 @@ builder.Services.AddDbContext<AppDbContext>(o =>
     o.UseSqlite(builder.Configuration.GetConnectionString("Default")));
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IRbacService, RbacService>();
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "AssetManagement";
