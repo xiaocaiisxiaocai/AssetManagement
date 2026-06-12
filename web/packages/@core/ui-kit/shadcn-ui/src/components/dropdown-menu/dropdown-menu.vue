@@ -5,7 +5,7 @@ import type {
 } from './interface';
 
 import {
-  DropdownMenu,
+  DropdownMenu as DropdownMenuRoot,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -26,7 +26,7 @@ function handleItemClick(menu: IDropdownMenuItem) {
 }
 </script>
 <template>
-  <DropdownMenu>
+  <DropdownMenuRoot>
     <DropdownMenuTrigger class="flex h-full items-center gap-1">
       <slot></slot>
     </DropdownMenuTrigger>
@@ -45,5 +45,5 @@ function handleItemClick(menu: IDropdownMenuItem) {
         </template>
       </DropdownMenuGroup>
     </DropdownMenuContent>
-  </DropdownMenu>
+  </DropdownMenuRoot>
 </template>

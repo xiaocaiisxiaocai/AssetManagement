@@ -16,6 +16,7 @@ import {
   nextTick,
   onMounted,
   onUnmounted,
+  type Slots,
   toRaw,
   useSlots,
   useTemplateRef,
@@ -66,7 +67,7 @@ const {
 
 const { isMobile } = usePreferences();
 
-const slots = useSlots();
+const slots: Slots = useSlots();
 
 const [Form, formApi] = useTableForm({
   compact: true,
@@ -93,8 +94,8 @@ const [Form, formApi] = useTableForm({
   wrapperClass: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3',
 });
 
-const showTableTitle = computed(() => {
-  return !!slots.tableTitle?.() || tableTitle.value;
+const showTableTitle = computed<boolean>(() => {
+  return !!slots.tableTitle?.() || !!tableTitle.value;
 });
 
 const showToolbar = computed(() => {
@@ -210,7 +211,7 @@ const events = computed(() => {
   };
 });
 
-const delegatedSlots = computed(() => {
+const delegatedSlots = computed<string[]>(() => {
   const resultSlots: string[] = [];
 
   for (const key of Object.keys(slots)) {
@@ -221,7 +222,7 @@ const delegatedSlots = computed(() => {
   return resultSlots;
 });
 
-const delegatedFormSlots = computed(() => {
+const delegatedFormSlots = computed<string[]>(() => {
   const resultSlots: string[] = [];
 
   for (const key of Object.keys(slots)) {

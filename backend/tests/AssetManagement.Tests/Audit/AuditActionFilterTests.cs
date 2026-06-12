@@ -32,20 +32,24 @@ public class AuditActionFilterTests : IClassFixture<WebApplicationFactory<Progra
     public async Task Successful_write_operation_creates_audit_log()
     {
         await Login();
+        const string probePath = "/api/test-audit/write";
         using var beforeScope = _factory.Services.CreateScope();
         var beforeDb = beforeScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var before = beforeDb.AuditLogs.Count();
+        var before = beforeDb.AuditLogs.Count(x => x.Summary.Contains(probePath));
 
-        var res = await _client.PostAsJsonAsync("/api/test-audit/write", new { name = "demo" });
+        var res = await _client.PostAsJsonAsync(probePath, new { name = "demo" });
 
         res.EnsureSuccessStatusCode();
         using var afterScope = _factory.Services.CreateScope();
         var afterDb = afterScope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var latest = afterDb.AuditLogs.OrderByDescending(x => x.Id).First();
-        afterDb.AuditLogs.Count().Should().Be(before + 1);
+        var latest = afterDb.AuditLogs
+            .Where(x => x.Summary.Contains(probePath))
+            .OrderByDescending(x => x.Id)
+            .First();
+        afterDb.AuditLogs.Count(x => x.Summary.Contains(probePath)).Should().Be(before + 1);
         latest.ActionType.Should().Be("POST");
         latest.TargetType.Should().Be("AuditProbe");
-        latest.Summary.Should().Contain("/api/test-audit/write");
+        latest.Summary.Should().Contain(probePath);
     }
 
     private async Task Login()

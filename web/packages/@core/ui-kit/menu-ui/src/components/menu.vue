@@ -73,7 +73,7 @@ const isMenuPopup = computed<MenuProvider['isMenuPopup']>(() => {
 
 const getSlot = computed(() => {
   // 更新插槽内容
-  const defaultSlots: VNodeArrayChildren = slots.default?.() ?? [];
+  const defaultSlots: VNodeArrayChildren = slots.default?.({}) ?? [];
 
   const originalSlot = flattedChildren(defaultSlots) as VNodeArrayChildren;
   const slotDefault =

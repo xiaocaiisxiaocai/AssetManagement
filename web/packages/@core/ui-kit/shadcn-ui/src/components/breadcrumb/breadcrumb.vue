@@ -4,7 +4,7 @@ import type { BreadcrumbProps } from './types';
 import { ChevronDown } from '@vben-core/icons';
 
 import {
-  Breadcrumb,
+  Breadcrumb as BreadcrumbRoot,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
@@ -34,7 +34,7 @@ function handleClick(path?: string) {
 }
 </script>
 <template>
-  <Breadcrumb>
+  <BreadcrumbRoot>
     <BreadcrumbList>
       <TransitionGroup name="breadcrumb-transition">
         <template
@@ -94,5 +94,5 @@ function handleClick(path?: string) {
         </template>
       </TransitionGroup>
     </BreadcrumbList>
-  </Breadcrumb>
+  </BreadcrumbRoot>
 </template>

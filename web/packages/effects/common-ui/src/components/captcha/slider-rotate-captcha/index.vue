@@ -6,7 +6,15 @@ import type {
   SliderRotateVerifyPassingData,
 } from '../types';
 
-import { computed, reactive, unref, useTemplateRef, watch } from 'vue';
+import {
+  computed,
+  reactive,
+  type Slots,
+  unref,
+  useSlots,
+  useTemplateRef,
+  watch,
+} from 'vue';
 
 import { $t } from '@vben/locales';
 
@@ -28,6 +36,7 @@ const emit = defineEmits<{
 }>();
 
 const slideBarRef = useTemplateRef<SliderCaptchaActionType>('slideBarRef');
+const slots: Slots = useSlots();
 
 const state = reactive({
   currentRotate: 0,
@@ -42,6 +51,7 @@ const state = reactive({
 });
 
 const modalValue = defineModel<boolean>({ default: false });
+const forwardedSlotNames = computed<string[]>((): string[] => Object.keys(slots));
 
 watch(
   () => state.isPassing,
@@ -205,7 +215,7 @@ defineExpose({
       @move="handleDragBarMove"
       @start="handleStart"
     >
-      <template v-for="(_, key) in $slots" :key="key" #[key]="slotProps">
+      <template v-for="key in forwardedSlotNames" :key="key" #[key]="slotProps">
         <slot :name="key" v-bind="slotProps"></slot>
       </template>
     </SliderCaptcha>

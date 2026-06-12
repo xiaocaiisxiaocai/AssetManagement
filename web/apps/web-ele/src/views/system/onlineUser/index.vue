@@ -85,7 +85,7 @@ const gridOptions = reactive<VxeGridProps<OnlineUser>>({
       title: $t('common.operation'),
       align: 'center',
       slots: {
-        default: ({ data, row }) => [
+        default: ({ row }) => [
           h(`p`, {}, [
             hasAccessByCodes(['system.onlineuser.logout'])
               ? h(

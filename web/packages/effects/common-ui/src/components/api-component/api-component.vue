@@ -1,7 +1,16 @@
 <script lang="ts" setup>
 import type { AnyPromiseFunction } from '@vben/types';
 
-import { type Component, computed, ref, unref, useAttrs, watch } from 'vue';
+import {
+  type Component,
+  computed,
+  ref,
+  type Slots,
+  unref,
+  useAttrs,
+  useSlots,
+  watch,
+} from 'vue';
 
 import { LoaderCircle } from '@vben/icons';
 import { get, isEqual, isFunction } from '@vben-core/shared/utils';
@@ -81,6 +90,7 @@ const emit = defineEmits<{
 const modelValue = defineModel({ default: '' });
 
 const attrs = useAttrs();
+const slots: Slots = useSlots();
 
 const refOptions = ref<OptionsItem[]>([]);
 const loading = ref(false);
@@ -126,6 +136,8 @@ const bindProps = computed(() => {
       : {}),
   };
 });
+
+const forwardedSlotNames = computed<string[]>((): string[] => Object.keys(slots));
 
 async function fetchApi() {
   let { api, beforeFetch, afterFetch, params, resultField } = props;
@@ -194,7 +206,7 @@ function emitChange() {
       v-bind="bindProps"
       :placeholder="$attrs.placeholder"
     >
-      <template v-for="item in Object.keys($slots)" #[item]="data">
+      <template v-for="item in forwardedSlotNames" #[item]="data">
         <slot :name="item" v-bind="data || {}"></slot>
       </template>
       <template v-if="loadingSlot && loading" #[loadingSlot]>

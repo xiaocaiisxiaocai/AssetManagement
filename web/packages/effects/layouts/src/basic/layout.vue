@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { MenuRecordRaw } from '@vben/types';
 
-import { computed, useSlots, watch } from 'vue';
+import { computed, type Slots, useSlots, watch } from 'vue';
 
 import { useRefresh } from '@vben/hooks';
 import { $t } from '@vben/locales';
@@ -154,8 +154,8 @@ watch(
 // 语言更新后，刷新页面
 watch(() => preferences.app.locale, refresh, { flush: 'post' });
 
-const slots = useSlots();
-const headerSlots = computed(() => {
+const slots: Slots = useSlots();
+const headerSlots = computed<string[]>(() => {
   return Object.keys(slots).filter((key) => key.startsWith('header-'));
 });
 </script>
