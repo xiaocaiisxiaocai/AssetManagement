@@ -8,11 +8,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace AssetManagement.Tests.Rbac;
 
-public class RbacManagementApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
 
-    public RbacManagementApiTests(WebApplicationFactory<Program> factory)
+    public RbacManagementApiTests(TestWebAppFactory factory)
     {
         _client = factory.CreateClient();
     }

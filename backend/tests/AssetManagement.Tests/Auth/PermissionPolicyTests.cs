@@ -11,12 +11,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Auth;
 
-public class PermissionPolicyTests : IClassFixture<WebApplicationFactory<Program>>
+public class PermissionPolicyTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
     private readonly WebApplicationFactory<Program> _factory;
 
-    public PermissionPolicyTests(WebApplicationFactory<Program> factory)
+    public PermissionPolicyTests(TestWebAppFactory factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {

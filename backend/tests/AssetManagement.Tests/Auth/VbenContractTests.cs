@@ -7,11 +7,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace AssetManagement.Tests.Auth;
 
-public class VbenContractTests : IClassFixture<WebApplicationFactory<Program>>
+public class VbenContractTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
 
-    public VbenContractTests(WebApplicationFactory<Program> factory)
+    public VbenContractTests(TestWebAppFactory factory)
     {
         _client = factory.CreateClient();
     }

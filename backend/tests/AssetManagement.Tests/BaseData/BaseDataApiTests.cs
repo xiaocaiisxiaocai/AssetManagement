@@ -8,11 +8,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace AssetManagement.Tests.BaseData;
 
-public class BaseDataApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
 
-    public BaseDataApiTests(WebApplicationFactory<Program> factory)
+    public BaseDataApiTests(TestWebAppFactory factory)
     {
         _client = factory.CreateClient();
     }

@@ -12,11 +12,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace AssetManagement.Tests.Workflow;
 
-public class ApprovalApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
 
-    public ApprovalApiTests(WebApplicationFactory<Program> factory)
+    public ApprovalApiTests(TestWebAppFactory factory)
     {
         _client = factory.CreateClient();
     }

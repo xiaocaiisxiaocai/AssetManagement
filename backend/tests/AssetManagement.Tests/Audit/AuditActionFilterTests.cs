@@ -10,12 +10,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Audit;
 
-public class AuditActionFilterTests : IClassFixture<WebApplicationFactory<Program>>
+public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
 {
     private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
 
-    public AuditActionFilterTests(WebApplicationFactory<Program> factory)
+    public AuditActionFilterTests(TestWebAppFactory factory)
     {
         _factory = factory.WithWebHostBuilder(builder =>
         {

@@ -4,11 +4,11 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
-public class HealthTests : IClassFixture<WebApplicationFactory<Program>>
+public class HealthTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _c;
 
-    public HealthTests(WebApplicationFactory<Program> f)
+    public HealthTests(TestWebAppFactory f)
     {
         _c = f.CreateClient();
     }

@@ -13,11 +13,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace AssetManagement.Tests.Assets;
 
-public class AssetApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class AssetApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
 
-    public AssetApiTests(WebApplicationFactory<Program> factory)
+    public AssetApiTests(TestWebAppFactory factory)
     {
         _client = factory.CreateClient();
     }

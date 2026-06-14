@@ -6,11 +6,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace AssetManagement.Tests.Auth;
 
-public class LoginApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class LoginApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
 
-    public LoginApiTests(WebApplicationFactory<Program> factory)
+    public LoginApiTests(TestWebAppFactory factory)
     {
         _client = factory.CreateClient();
     }

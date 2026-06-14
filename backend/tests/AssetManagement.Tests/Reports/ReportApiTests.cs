@@ -13,11 +13,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace AssetManagement.Tests.Reports;
 
-public class ReportApiTests : IClassFixture<WebApplicationFactory<Program>>
+public class ReportApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
 
-    public ReportApiTests(WebApplicationFactory<Program> factory)
+    public ReportApiTests(TestWebAppFactory factory)
     {
         _client = factory.CreateClient();
     }
