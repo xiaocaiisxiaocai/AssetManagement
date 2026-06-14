@@ -84,6 +84,36 @@ public static class DbSeeder
             MenuId = x.Id
         }));
 
+        // 非 admin 角色的默认权限与菜单（参照需求文档权限矩阵）
+        var rolePermissionMap = new Dictionary<string, string[]>
+        {
+            ["warehouse"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:delete", "approval:handle", "approval:view", "report:view", "admin:audit", "admin:setting", "workflow:design" },
+            ["supervisor"] = new[] { "asset:view", "approval:handle", "approval:view", "report:view" },
+            ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "approval:handle", "approval:view", "report:view" },
+            ["employee"] = new[] { "asset:view", "approval:view" }
+        };
+        var allMenusForSeed = db.Menus.ToList();
+        foreach (var pair in rolePermissionMap)
+        {
+            var role = db.Roles.Single(x => x.Code == pair.Key);
+            var perms = db.Permissions.Where(p => pair.Value.Contains(p.Code)).ToList();
+            db.RolePermissions.AddRange(perms.Select(p => new RolePermission { RoleId = role.Id, PermissionId = p.Id }));
+
+            // 赋予权限码匹配的菜单 + 其所有祖先菜单（否则 vben 无父路由无法渲染子菜单）
+            var menuIds = new HashSet<int>();
+            foreach (var menu in allMenusForSeed.Where(m => m.PermissionCode != null && pair.Value.Contains(m.PermissionCode)))
+            {
+                menuIds.Add(menu.Id);
+                var cursor = menu;
+                while (cursor.ParentId.HasValue)
+                {
+                    menuIds.Add(cursor.ParentId.Value);
+                    cursor = allMenusForSeed.First(x => x.Id == cursor.ParentId.Value);
+                }
+            }
+            db.RoleMenus.AddRange(menuIds.Select(id => new RoleMenu { RoleId = role.Id, MenuId = id }));
+        }
+
         var admin = new User
         {
             EmployeeNo = "1001",

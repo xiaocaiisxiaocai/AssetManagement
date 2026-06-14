@@ -49,24 +49,36 @@ public class AssetService : IAssetService
     {
         var category = await _db.AssetCategories.FindAsync(request.CategoryId)
             ?? throw new BizException(4046, "资产分类不存在");
-        var asset = new Asset
+
+        for (var attempt = 0; ; attempt++)
         {
-            AssetNo = await NextAssetNo(category),
-            Name = request.Name.Trim(),
-            CategoryId = request.CategoryId,
-            DepartmentId = request.DepartmentId,
-            LocationId = request.LocationId,
-            CustodianId = request.CustodianId,
-            Model = request.Model,
-            Brand = request.Brand,
-            Price = request.Price,
-            Quantity = Math.Max(request.Quantity, 1),
-            Status = AssetStatus.Available,
-            CreatedAt = DateTime.UtcNow
-        };
-        _db.Assets.Add(asset);
-        await _db.SaveChangesAsync();
-        return await GetAsync(asset.Id);
+            var asset = new Asset
+            {
+                AssetNo = await NextAssetNo(category),
+                Name = request.Name.Trim(),
+                CategoryId = request.CategoryId,
+                DepartmentId = request.DepartmentId,
+                LocationId = request.LocationId,
+                CustodianId = request.CustodianId,
+                Model = request.Model,
+                Brand = request.Brand,
+                Price = request.Price,
+                Quantity = Math.Max(request.Quantity, 1),
+                Status = AssetStatus.Available,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Assets.Add(asset);
+            try
+            {
+                await _db.SaveChangesAsync();
+                return await GetAsync(asset.Id);
+            }
+            catch (DbUpdateException) when (attempt < 3)
+            {
+                // 资产编号唯一索引冲突（并发取号撞号）：移除失败实体后重新取号重试
+                _db.Entry(asset).State = EntityState.Detached;
+            }
+        }
     }
 
     public async Task<AssetDto> UpdateAsync(int id, UpdateAssetRequest request)
