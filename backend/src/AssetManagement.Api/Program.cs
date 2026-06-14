@@ -1,8 +1,10 @@
 using System.Text;
+using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Infrastructure.Audit;
+using AssetManagement.Infrastructure.Assets;
 using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.BaseData;
 using AssetManagement.Infrastructure.Persistence;
@@ -27,6 +29,7 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRbacService, RbacService>();
 builder.Services.AddScoped<IBaseDataService, BaseDataService>();
+builder.Services.AddScoped<IAssetService, AssetService>();
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "AssetManagement";

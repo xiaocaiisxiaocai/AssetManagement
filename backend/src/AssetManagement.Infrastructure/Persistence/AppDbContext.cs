@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<AssetCategory> AssetCategories => Set<AssetCategory>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
+    public DbSet<Asset> Assets => Set<Asset>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
