@@ -1,4 +1,6 @@
 using AssetManagement.Domain.Entities;
+using AssetManagement.Domain.Workflow;
+using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Infrastructure.Persistence.Seed;
 
@@ -8,6 +10,7 @@ public static class DbSeeder
     {
         if (db.Users.Any())
         {
+            SeedIncremental(db);
             return;
         }
 
@@ -100,6 +103,72 @@ public static class DbSeeder
             new SystemSetting { Key = "attachment_max_mb", Value = "20", Description = "附件大小限制 MB" },
             new SystemSetting { Key = "page_size", Value = "20", Description = "默认每页记录数" }
         );
+        db.Workflows.AddRange(DefaultWorkflows());
         db.SaveChanges();
     }
+
+    private static void SeedIncremental(AppDbContext db)
+    {
+        if (!db.Workflows.Any())
+        {
+            db.Workflows.AddRange(DefaultWorkflows());
+        }
+
+        if (!db.SystemSettings.Any(x => x.Key == "audit_retention_months"))
+        {
+            db.SystemSettings.Add(new SystemSetting { Key = "audit_retention_months", Value = "12", Description = "审计日志保留月数" });
+        }
+
+        if (!db.SystemSettings.Any(x => x.Key == "attachment_max_mb"))
+        {
+            db.SystemSettings.Add(new SystemSetting { Key = "attachment_max_mb", Value = "20", Description = "附件大小限制 MB" });
+        }
+
+        if (!db.SystemSettings.Any(x => x.Key == "page_size"))
+        {
+            db.SystemSettings.Add(new SystemSetting { Key = "page_size", Value = "20", Description = "默认每页记录数" });
+        }
+
+        db.SaveChanges();
+    }
+
+    private static WorkflowEntity[] DefaultWorkflows() => new[]
+    {
+        new WorkflowEntity
+        {
+            Name = "资产借用流程",
+            BizType = "borrow",
+            Nodes = new List<WorkflowNode>
+            {
+                new() { Id = "b1", Name = "发起", Type = NodeType.Start },
+                new() { Id = "b2", Name = "直属主管审批", Type = NodeType.Approval, ApproverType = ApproverType.Supervisor, Approver = "李主管" },
+                new() { Id = "b3", Name = "资产管理员会签", Type = NodeType.Countersign, ApproverType = ApproverType.Role, Approver = "资产管理员", Signers = new List<string> { "张三", "赵敏" } },
+                new() { Id = "b4", Name = "分管副总审批", Type = NodeType.Condition, ApproverType = ApproverType.User, Approver = "王副总", Condition = "amount>5000" },
+                new() { Id = "b5", Name = "结束", Type = NodeType.End }
+            }
+        },
+        new WorkflowEntity
+        {
+            Name = "资产转让流程",
+            BizType = "transfer",
+            Nodes = new List<WorkflowNode>
+            {
+                new() { Id = "t1", Name = "发起", Type = NodeType.Start },
+                new() { Id = "t2", Name = "直属主管审批", Type = NodeType.Approval, ApproverType = ApproverType.Supervisor, Approver = "李主管" },
+                new() { Id = "t3", Name = "接收部门负责人", Type = NodeType.Approval, ApproverType = ApproverType.DeptManager, Approver = "接收部门负责人" },
+                new() { Id = "t4", Name = "结束", Type = NodeType.End }
+            }
+        },
+        new WorkflowEntity
+        {
+            Name = "资产归还流程",
+            BizType = "return",
+            Nodes = new List<WorkflowNode>
+            {
+                new() { Id = "r1", Name = "发起", Type = NodeType.Start },
+                new() { Id = "r2", Name = "资产管理员确认", Type = NodeType.Approval, ApproverType = ApproverType.Role, Approver = "资产管理员" },
+                new() { Id = "r3", Name = "结束", Type = NodeType.End }
+            }
+        }
+    };
 }

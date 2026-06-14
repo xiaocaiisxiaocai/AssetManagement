@@ -22,6 +22,9 @@ public class AppDbContext : DbContext
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
     public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<AssetManagement.Domain.Entities.Workflow> Workflows => Set<AssetManagement.Domain.Entities.Workflow>();
+    public DbSet<ApprovalFlow> ApprovalFlows => Set<ApprovalFlow>();
+    public DbSet<FlowRecord> FlowRecords => Set<FlowRecord>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
