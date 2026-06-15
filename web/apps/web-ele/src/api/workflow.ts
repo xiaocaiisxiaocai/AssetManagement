@@ -18,6 +18,8 @@ export interface WorkflowNode {
   name: string;
   signers?: null | string[];
   type: NodeType;
+  x?: null | number;
+  y?: null | number;
 }
 
 export interface FlowNode {

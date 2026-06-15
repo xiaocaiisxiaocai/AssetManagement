@@ -1,10 +1,11 @@
 <script lang="ts" setup>
 import type { ApproverType, NodeType, WorkflowItem, WorkflowNode } from '#/api/workflow';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
-import { getWorkflowsApi, saveWorkflowApi } from '#/api/workflow';
-
+import LogicFlow from '@logicflow/core';
+import { RectNode, RectNodeModel } from '@logicflow/core';
+import '@logicflow/core/dist/index.css';
 import {
   ElButton,
   ElDialog,
@@ -16,8 +17,9 @@ import {
   ElSelect,
   ElTabPane,
   ElTabs,
-  ElTag,
 } from 'element-plus';
+
+import { getWorkflowsApi, saveWorkflowApi } from '#/api/workflow';
 
 defineOptions({ name: 'AdminWorkflows' });
 
@@ -37,9 +39,8 @@ const approverTypes: Array<{ label: string; value: ApproverType }> = [
   { label: '部门负责人', value: 3 },
   { label: '发起人自选', value: 4 },
 ];
-
-type WorkflowNodeForm = Omit<WorkflowNode, 'signers'> & {
-  signers: string[];
+const TYPE_COLOR: Record<number, string> = {
+  0: '#1890ff', 1: '#52c41a', 2: '#722ed1', 3: '#fa8c16', 4: '#eb2f96', 5: '#13c2c2', 6: '#8c8c8c',
 };
 
 const loading = ref(false);
@@ -47,87 +48,192 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const activeBizType = ref('');
 const workflows = ref<WorkflowItem[]>([]);
-const editingIndex = ref(-1);
-const form = reactive<WorkflowNodeForm>({
+const containerRef = ref<HTMLDivElement>();
+let lf: LogicFlow | null = null;
+let editingNodeId = '';
+
+const form = reactive({
   approver: '',
-  approverType: 0,
+  approverType: 0 as ApproverType,
   condition: '',
-  id: '',
   name: '',
-  signers: [],
-  type: 1,
+  signers: [] as string[],
+  type: 1 as NodeType,
 });
 
-const currentWorkflow = computed(() =>
-  workflows.value.find((item) => item.bizType === activeBizType.value),
-);
+function currentWorkflow() {
+  return workflows.value.find((w) => w.bizType === activeBizType.value);
+}
+
+function typeLabel(type: NodeType) {
+  return nodeTypes.find((i) => i.value === type)?.label ?? '';
+}
+
+function registerNode(flow: LogicFlow) {
+  class AppNodeModel extends RectNodeModel {
+    override setAttributes() {
+      this.width = 180;
+      this.height = 48;
+      this.radius = 6;
+    }
+    override getNodeStyle() {
+      const style: any = super.getNodeStyle();
+      const t = (this.properties as any).nodeType ?? 1;
+      style.fill = TYPE_COLOR[t] ?? '#52c41a';
+      style.stroke = TYPE_COLOR[t] ?? '#52c41a';
+      return style;
+    }
+    override getTextStyle() {
+      const style: any = super.getTextStyle();
+      style.color = '#ffffff';
+      style.fontSize = 13;
+      return style;
+    }
+  }
+  flow.register({ type: 'app-node', view: RectNode, model: AppNodeModel });
+}
+
+function nodeText(node: WorkflowNode) {
+  return `${node.name}\n[${typeLabel(node.type)}]`;
+}
+
+function renderWorkflow(wf?: WorkflowItem) {
+  if (!lf || !wf) return;
+  const nodes = wf.nodes.map((n, i) => ({
+    id: n.id,
+    type: 'app-node',
+    x: n.x ?? 280,
+    y: n.y ?? 60 + i * 90,
+    text: nodeText(n),
+    properties: {
+      nodeType: n.type,
+      approverType: n.approverType,
+      approver: n.approver ?? '',
+      signers: n.signers ?? [],
+      condition: n.condition ?? '',
+    },
+  }));
+  const edges = wf.nodes.slice(1).map((n, i) => ({
+    type: 'polyline',
+    sourceNodeId: wf.nodes[i]!.id,
+    targetNodeId: n.id,
+    text: wf.nodes[i]!.type === 4 ? (wf.nodes[i]!.condition ?? '') : '',
+  }));
+  lf.render({ nodes, edges });
+}
 
 async function loadData() {
   loading.value = true;
   try {
     workflows.value = await getWorkflowsApi();
     activeBizType.value ||= workflows.value[0]?.bizType ?? '';
+    await nextTick();
+    renderWorkflow(currentWorkflow());
   } finally {
     loading.value = false;
   }
 }
 
-function typeLabel(type: NodeType) {
-  return nodeTypes.find((item) => item.value === type)?.label ?? '未知';
+function initLogicFlow() {
+  if (!containerRef.value) return;
+  lf = new LogicFlow({
+    container: containerRef.value,
+    grid: true,
+    edgeType: 'polyline',
+  });
+  registerNode(lf);
+  lf.render({ nodes: [], edges: [] });
+  lf.on('node:dbclick', ({ data }: any) => openEdit(data));
 }
 
-function openCreate(index: number) {
-  editingIndex.value = index;
+function openEdit(node: any) {
+  editingNodeId = node.id;
+  const p = node.properties ?? {};
+  const label =
+    typeof node.text === 'string' ? node.text : (node.text?.value ?? '');
   Object.assign(form, {
-    approver: '',
-    approverType: 0,
-    condition: '',
-    id: `node_${Date.now()}`,
-    name: '审批节点',
-    signers: [],
-    type: 1,
+    approver: p.approver ?? '',
+    approverType: p.approverType ?? 0,
+    condition: p.condition ?? '',
+    name: label.split('\n')[0] || '节点',
+    signers: [...(p.signers ?? [])],
+    type: p.nodeType ?? 1,
   });
   dialogVisible.value = true;
 }
 
-function openEdit(node: WorkflowNode, index: number) {
-  editingIndex.value = index;
-  Object.assign(form, {
-    ...node,
-    signers: node.signers ? [...node.signers] : [],
+function addNode() {
+  if (!lf) return;
+  const id = `node_${Date.now()}`;
+  lf.addNode({
+    id,
+    type: 'app-node',
+    x: 280,
+    y: 140,
+    text: `审批节点\n[${typeLabel(1)}]`,
+    properties: { nodeType: 1, approverType: 0, approver: '', signers: [], condition: '' },
   });
-  dialogVisible.value = true;
+  ElMessage.info('已添加节点：双击节点配置，拖动节点边缘可连线串联流程');
 }
 
 function saveNode() {
-  if (!currentWorkflow.value) return;
-  const node: WorkflowNode = { ...form, signers: form.signers.filter(Boolean) };
-  const nodes = currentWorkflow.value.nodes;
-  if (nodes[editingIndex.value]?.id === form.id) {
-    nodes.splice(editingIndex.value, 1, node);
-  } else {
-    nodes.splice(editingIndex.value + 1, 0, node);
-  }
+  if (!lf) return;
+  lf.setProperties(editingNodeId, {
+    nodeType: form.type,
+    approverType: form.approverType,
+    approver: form.approver,
+    signers: form.signers.filter(Boolean),
+    condition: form.condition,
+  });
+  lf.updateText(editingNodeId, `${form.name}\n[${typeLabel(form.type)}]`);
   dialogVisible.value = false;
 }
 
-function removeNode(index: number) {
-  if (!currentWorkflow.value || index === 0 || index === currentWorkflow.value.nodes.length - 1) {
-    return;
+// 按连线把图排成主干顺序（无并行网关，单链）
+function orderNodes(nodes: any[], edges: any[]) {
+  const incoming = new Map<string, number>();
+  nodes.forEach((n) => incoming.set(n.id, 0));
+  edges.forEach((e) => incoming.set(e.targetNodeId, (incoming.get(e.targetNodeId) ?? 0) + 1));
+  const nextOf = new Map<string, string>();
+  edges.forEach((e) => nextOf.set(e.sourceNodeId, e.targetNodeId));
+  const start = nodes.find((n) => (incoming.get(n.id) ?? 0) === 0) ?? nodes[0];
+  const ordered: any[] = [];
+  const seen = new Set<string>();
+  let cur: any = start;
+  while (cur && !seen.has(cur.id)) {
+    ordered.push(cur);
+    seen.add(cur.id);
+    cur = nodes.find((n) => n.id === nextOf.get(cur.id));
   }
-  currentWorkflow.value.nodes.splice(index, 1);
+  nodes.forEach((n) => {
+    if (!seen.has(n.id)) ordered.push(n);
+  });
+  return ordered;
 }
 
 async function saveWorkflow() {
-  if (!currentWorkflow.value) return;
+  const wf = currentWorkflow();
+  if (!wf || !lf) return;
+  const graph: any = lf.getGraphData();
+  const ordered = orderNodes(graph.nodes ?? [], graph.edges ?? []);
+  const nodes: WorkflowNode[] = ordered.map((n) => {
+    const p = n.properties ?? {};
+    const label = typeof n.text === 'string' ? n.text : (n.text?.value ?? '');
+    return {
+      id: n.id,
+      name: label.split('\n')[0] || '节点',
+      type: (p.nodeType ?? 1) as NodeType,
+      approverType: (p.approverType ?? 0) as ApproverType,
+      approver: p.approver || null,
+      signers: p.signers?.length ? p.signers : null,
+      condition: p.condition || null,
+      x: n.x,
+      y: n.y,
+    };
+  });
   saving.value = true;
   try {
-    const workflow = currentWorkflow.value;
-    await saveWorkflowApi(workflow.id, {
-      bizType: workflow.bizType,
-      name: workflow.name,
-      nodes: workflow.nodes,
-    });
+    await saveWorkflowApi(wf.id, { bizType: wf.bizType, name: wf.name, nodes });
     ElMessage.success('流程已保存');
     await loadData();
   } finally {
@@ -135,7 +241,19 @@ async function saveWorkflow() {
   }
 }
 
-onMounted(loadData);
+watch(activeBizType, async () => {
+  await nextTick();
+  renderWorkflow(currentWorkflow());
+});
+
+onMounted(async () => {
+  initLogicFlow();
+  await loadData();
+});
+
+onBeforeUnmount(() => {
+  lf = null;
+});
 </script>
 
 <template>
@@ -145,79 +263,43 @@ onMounted(loadData);
         <div>
           <h2 class="text-lg font-semibold">审批流程设计器</h2>
           <p class="mt-1 text-sm text-muted-foreground">
-            配置借用、转让、归还的审批节点、会签成员与条件分支。
+            拖拽节点、连线串联流程；双击节点配置审批人 / 会签成员 / 条件。支持借用、转让、归还。
           </p>
         </div>
-        <ElButton :loading="saving" type="primary" @click="saveWorkflow">保存流程</ElButton>
+        <div class="flex gap-2">
+          <ElButton @click="addNode">+ 添加节点</ElButton>
+          <ElButton :loading="saving" type="primary" @click="saveWorkflow">保存流程</ElButton>
+        </div>
       </div>
 
       <ElTabs v-model="activeBizType" v-loading="loading">
         <ElTabPane
-          v-for="workflow in workflows"
-          :key="workflow.id"
-          :label="workflow.name"
-          :name="workflow.bizType"
+          v-for="w in workflows"
+          :key="w.id"
+          :label="w.name"
+          :name="w.bizType"
         />
       </ElTabs>
 
-      <div v-if="currentWorkflow" class="space-y-3">
-        <div
-          v-for="(node, index) in currentWorkflow.nodes"
-          :key="node.id"
-          class="rounded border bg-card p-4"
-        >
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div class="flex items-center gap-2">
-                <ElTag>{{ index + 1 }}</ElTag>
-                <span class="font-medium">{{ node.name }}</span>
-                <ElTag type="info">{{ typeLabel(node.type) }}</ElTag>
-              </div>
-              <div class="mt-2 text-sm text-muted-foreground">
-                审批人：{{ node.approver || '无' }}
-                <span v-if="node.signers?.length">，会签：{{ node.signers.join('、') }}</span>
-                <span v-if="node.condition">，条件：{{ node.condition }}</span>
-              </div>
-            </div>
-            <div class="flex gap-2">
-              <ElButton size="small" @click="openCreate(index)">后加节点</ElButton>
-              <ElButton size="small" type="primary" @click="openEdit(node, index)">编辑</ElButton>
-              <ElButton
-                :disabled="index === 0 || index === currentWorkflow.nodes.length - 1"
-                size="small"
-                type="danger"
-                @click="removeNode(index)"
-              >
-                删除
-              </ElButton>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div
+        ref="containerRef"
+        class="logicflow-canvas"
+        style="width: 100%; height: 600px; border: 1px solid var(--el-border-color); border-radius: 8px;"
+      ></div>
 
-      <ElDialog v-model="dialogVisible" title="编辑节点" width="520px">
+      <ElDialog v-model="dialogVisible" title="配置节点" width="520px">
         <ElForm label-width="96px">
           <ElFormItem label="节点名称">
             <ElInput v-model="form.name" />
           </ElFormItem>
           <ElFormItem label="节点类型">
             <ElSelect v-model="form.type" style="width: 100%">
-              <ElOption
-                v-for="item in nodeTypes"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
+              <ElOption v-for="i in nodeTypes" :key="i.value" :label="i.label" :value="i.value" />
             </ElSelect>
           </ElFormItem>
           <ElFormItem label="审批人来源">
             <ElSelect v-model="form.approverType" style="width: 100%">
-              <ElOption
-                v-for="item in approverTypes"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
+              <ElOption v-for="i in approverTypes" :key="i.value" :label="i.label" :value="i.value" />
             </ElSelect>
           </ElFormItem>
           <ElFormItem label="审批人">

@@ -38,6 +38,9 @@ public class WorkflowNode
     public string? Approver { get; set; }
     public List<string>? Signers { get; set; }
     public string? Condition { get; set; }
+    // 画布坐标（仅前端 LogicFlow 设计器布局用，执行引擎忽略；旧数据为 null 时前端自动布局）
+    public double? X { get; set; }
+    public double? Y { get; set; }
 }
 
 public class FlowInstanceNode
