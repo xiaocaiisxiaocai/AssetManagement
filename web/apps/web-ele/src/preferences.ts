@@ -13,6 +13,6 @@ export const overridesPreferences = defineOverridesPreferences({
     enableCheckUpdates: false,
     // 检查更新的时间间隔，单位为分钟
     checkUpdatesInterval: 30,
-    name: import.meta.env.VITE_APP_TITLE,
+    name: '资产管理系统',
   },
 });

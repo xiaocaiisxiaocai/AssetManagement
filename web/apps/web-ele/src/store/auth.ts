@@ -52,6 +52,9 @@ export const useAuthStore = defineStore('auth', () => {
           });
         }
       }
+    } catch (error) {
+      loginLoading.value = false;
+      throw error;
     } finally {
       loginLoading.value = false;
     }

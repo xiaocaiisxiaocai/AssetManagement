@@ -29,15 +29,15 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
   qrCodeLoginPath: '/auth/qrcode-login',
   registerPath: '/auth/register',
-  showCodeLogin: true,
-  showForgetPassword: true,
-  showQrcodeLogin: true,
-  showRegister: true,
+  showCodeLogin: false,
+  showForgetPassword: false,
+  showQrcodeLogin: false,
+  showRegister: false,
   showRememberMe: true,
-  showThirdPartyLogin: true,
+  showThirdPartyLogin: false,
   submitButtonText: '',
   subTitle: '',
-  title: '',
+  title: '资产管理系统',
 });
 
 const emit = defineEmits<{

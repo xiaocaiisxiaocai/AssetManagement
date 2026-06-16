@@ -698,14 +698,6 @@ onMounted(async () => {
                       <ElButton link type="danger" @click="remove(row)">删除</ElButton>
                     </template>
                   </ElTableColumn>
-                    </template>
-                  </ElTableColumn>
-                  <ElTableColumn fixed="right" label="操作" width="150">
-                    <template #default="{ row }">
-                      <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
-                      <ElButton link type="danger" @click="remove(row)">删除</ElButton>
-                    </template>
-                  </ElTableColumn>
                 </ElTable>
               </div>
             </div>

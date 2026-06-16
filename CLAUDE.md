@@ -38,6 +38,7 @@ pnpm install
 pnpm -F @vben/web-ele dev                       # 开发服务器,端口 5777
 pnpm -F @vben/web-ele run typecheck             # 类型检查
 pnpm --filter @vben/web-ele... run build        # 构建(带 ... 以构建依赖包)
+pnpm check                                       # monorepo 全局检查(圆形依赖/类型/拼写/dep 版本)
 ```
 
 健康检查:`GET http://localhost:5000/api/health`。默认账号 `1001 / 123456`。
@@ -83,9 +84,24 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 前端约定(apps/web-ele)
 
-- 业务代码在 `apps/web-ele/src` 下:`api/`(按模块分文件,封装 `requestClient` 调用)、`views/`(`asset`/`approval`/`report`/`admin`/`system`)、`store/`(Pinia,登录逻辑在 `store/auth.ts`)。
+- 业务代码在 `apps/web-ele/src` 下:`api/`(按模块分文件,封装 `requestClient` 调用)、`views/`(各模块对应菜单路由)、`store/`(Pinia,登录逻辑在 `store/auth.ts`)。
+  - `views/asset/` — 资产管理(库存、出入库、盘点)
+  - `views/approval/` — 审批流程(申请/审核)
+  - `views/report/` — 报表统计
+  - `views/admin/` — 基础数据(部门、用户、角色、权限)
+  - `views/system/` — 系统设置(菜单、参数、操作日志)
 - 复用上游 `@vben/*`、`@core/*` 包的能力(布局、请求客户端、preferences、stores),不要重复造轮子;改动 `web/packages/` 下的核心包会影响所有 app,需谨慎。
 - 提交前跑 `pnpm -F @vben/web-ele run typecheck`;monorepo 根有 `pnpm check`(circular/dep/type/cspell)。
+
+## 常见开发场景速查
+
+| 场景 | 步骤 |
+|------|------|
+| **添加新的审批流程节点类型** | (1) Domain: `Workflow/NodeType.cs` 加枚举值 (2) Domain: `WorkflowEngine.cs` 加分支逻辑 (3) Infrastructure: `WorkflowService.cs` 实现审批人解析 (4) 测试: `WorkflowEngineTests.cs` 覆盖新逻辑 |
+| **新增资产分类** | (1) Domain: `Category` 实体(含编码生成逻辑) (2) Application: `ICategoryService` + DTO (3) Infrastructure: 实现 + EntityTypeConfiguration (4) DbSeeder: 种子数据 (5) Api: 控制器 (6) 迁移 (7) 前端页面 (`views/admin/category`) + 菜单注册 |
+| **后端新增权限** | (1) DbSeeder: `Permission` 表加行 + 角色-权限映射 (2) Api: action 标注 `[HasPermission("code")]` (3) 迁移 (4) 前端菜单由后端下发,无需改前端代码 |
+| **前端新页面映射后端菜单** | (1) 后端 DbSeeder 注册 Menu(name/path/component) + Permission (2) 前端在 `views/<module>/` 创建页面,Component 路径须与后端 menu.Component 一致 (3) 登录后菜单自动下发,无需硬编码路由 |
+| **修改审批工作流逻辑** | (1) 修改 `WorkflowEngine.cs`(纯函数) (2) 同步 `WorkflowEngineTests.cs` + `ApprovalApiTests.cs` (3) 如需新增数据表字段,加 EF 迁移 + WorkflowService 调用 |
 
 ## 编码与提交约定
 

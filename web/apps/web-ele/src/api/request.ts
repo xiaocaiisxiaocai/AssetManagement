@@ -82,6 +82,10 @@ function createRequestClient(baseURL: string) {
         return;
       }
       if (status == HttpStatusCode.Ok) {
+        if (data?.code && data.code !== 0) {
+          ElMessage.error(data.message || '请求失败');
+          throw new Error(data.message || '请求失败');
+        }
         return data;
       }
       throw Object.assign({}, response, { response });
@@ -133,6 +137,7 @@ function createRequestClient(baseURL: string) {
           ElMessage.error(data.error?.message || msg);
           break;
       }
+      throw error;
     }),
   );
 
