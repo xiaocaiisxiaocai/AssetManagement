@@ -37,6 +37,7 @@ public record ApprovalFlowDto
     public List<FlowInstanceNode> Nodes { get; init; } = new();
     public DateTime ApplyTime { get; init; }
     public DateTime Deadline { get; init; }
+    public DateTime? ConfirmedAt { get; init; }
 }
 
 public record StartApprovalRequest

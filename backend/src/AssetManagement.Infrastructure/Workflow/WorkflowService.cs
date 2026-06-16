@@ -63,7 +63,7 @@ public class WorkflowService : IWorkflowService
             Transferee = transferee?.Name,
             TransfereeDept = await DepartmentName(transferee?.DepartmentId),
             Reason = request.Reason,
-            ReturnDate = request.ReturnDate,
+            ReturnDate = workflow.BizType == "borrow" ? request.ReturnDate : null,
             Amount = asset.Price,
             Status = "pending",
             ApplyTime = DateTime.UtcNow,
@@ -139,6 +139,37 @@ public class WorkflowService : IWorkflowService
         flow.Nodes = flow.Nodes.ToList();
         await _db.SaveChangesAsync();
         await AddRecord(id, "transfer-sign", await UserName(userId), request.Who);
+        return ToFlowDto(flow);
+    }
+
+    public async Task<ApprovalFlowDto> ConfirmReturnAsync(int id)
+    {
+        var flow = await LoadFlow(id)
+            ?? throw new BizException(4050, "审批工单不存在");
+
+        if (flow.Status != "approved")
+        {
+            throw new BizException(4051, "只能确认已通过的归还申请");
+        }
+
+        if (flow.BizType != "borrow")
+        {
+            throw new BizException(4052, "只有借用申请可以确认入库");
+        }
+
+        var asset = await _db.Assets.FindAsync(flow.AssetId)
+            ?? throw new BizException(4048, "资产不存在");
+
+        asset.Status = 0;
+        asset.CustodianId = null;
+        _db.Assets.Update(asset);
+
+        flow.ConfirmedAt = DateTime.UtcNow;
+        _db.ApprovalFlows.Update(flow);
+
+        await _db.SaveChangesAsync();
+        await AddRecord(id, "confirm-return", "System", "Confirmed asset return to inventory");
+
         return ToFlowDto(flow);
     }
 
@@ -234,6 +265,7 @@ public class WorkflowService : IWorkflowService
         CurrentNodeIndex = x.CurrentNodeIndex,
         Nodes = x.Nodes,
         ApplyTime = x.ApplyTime,
-        Deadline = x.Deadline
+        Deadline = x.Deadline,
+        ConfirmedAt = x.ConfirmedAt
     };
 }

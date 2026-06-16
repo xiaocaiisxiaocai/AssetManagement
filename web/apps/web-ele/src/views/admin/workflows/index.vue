@@ -49,6 +49,7 @@ const dialogVisible = ref(false);
 const activeBizType = ref('');
 const workflows = ref<WorkflowItem[]>([]);
 const containerRef = ref<HTMLDivElement>();
+const selectedElement = ref<{ id: string; label: string; nodeType?: NodeType; type: 'edge' | 'node' } | null>(null);
 let lf: LogicFlow | null = null;
 let editingNodeId = '';
 
@@ -99,6 +100,7 @@ function nodeText(node: WorkflowNode) {
 
 function renderWorkflow(wf?: WorkflowItem) {
   if (!lf || !wf) return;
+  selectedElement.value = null;
   const nodes = wf.nodes.map((n, i) => ({
     id: n.id,
     type: 'app-node',
@@ -122,6 +124,23 @@ function renderWorkflow(wf?: WorkflowItem) {
   lf.render({ nodes, edges });
 }
 
+function selectElement(type: 'edge' | 'node', data: any) {
+  if (!lf || !data?.id) return;
+  lf.selectElementById(data.id);
+  if (type === 'edge') {
+    selectedElement.value = { id: data.id, label: '连线', type: 'edge' };
+    return;
+  }
+
+  const label = typeof data.text === 'string' ? data.text : (data.text?.value ?? '');
+  selectedElement.value = {
+    id: data.id,
+    label: label.split('\n')[0] || '节点',
+    nodeType: data.properties?.nodeType,
+    type: 'node',
+  };
+}
+
 async function loadData() {
   loading.value = true;
   try {
@@ -140,10 +159,24 @@ function initLogicFlow() {
     container: containerRef.value,
     grid: true,
     edgeType: 'polyline',
+    keyboard: { enabled: true },
   });
   registerNode(lf);
   lf.render({ nodes: [], edges: [] });
+  lf.on('node:click', ({ data }: any) => selectElement('node', data));
+  lf.on('edge:click', ({ data }: any) => selectElement('edge', data));
   lf.on('node:dbclick', ({ data }: any) => openEdit(data));
+  lf.on('blank:click', () => {
+    selectedElement.value = null;
+  });
+  lf.on('node:delete,edge:delete', () => {
+    selectedElement.value = null;
+  });
+  lf.keyboard.on(['backspace', 'delete'], (event: KeyboardEvent) => {
+    event.preventDefault();
+    deleteSelectedElement();
+    return false;
+  });
 }
 
 function openEdit(node: any) {
@@ -189,6 +222,93 @@ function saveNode() {
   dialogVisible.value = false;
 }
 
+function deleteNodeById(nodeId: string, nodeType?: NodeType) {
+  if (!lf) return;
+  const graph: any = lf.getGraphData();
+  const node = (graph.nodes ?? []).find((n: any) => n.id === nodeId);
+  const type = nodeType ?? node?.properties?.nodeType;
+  if (type === 0 || type === 6) {
+    ElMessage.warning('发起和结束节点不能删除');
+    return;
+  }
+  lf.deleteNode(nodeId);
+}
+
+function deleteSelectedElement() {
+  if (!lf) return;
+  const selected: any = lf.getSelectElements(true);
+  const selectedEdges = selected.edges ?? [];
+  const selectedNodes = selected.nodes ?? [];
+
+  if (selectedEdges.length === 0 && selectedNodes.length === 0) {
+    if (selectedElement.value?.type === 'edge') {
+      lf.deleteEdge(selectedElement.value.id);
+      selectedElement.value = null;
+      return;
+    }
+    if (selectedElement.value?.type === 'node') {
+      deleteNodeById(selectedElement.value.id, selectedElement.value.nodeType);
+      selectedElement.value = null;
+      return;
+    }
+    ElMessage.info('请先选中节点或连线');
+    return;
+  }
+
+  selectedEdges.forEach((edge: any) => {
+    if (edge.id) lf?.deleteEdge(edge.id);
+  });
+
+  selectedNodes.forEach((node: any) => {
+    if (!node.id) return;
+    deleteNodeById(node.id, node.properties?.nodeType);
+  });
+
+  selectedElement.value = null;
+}
+
+function validateLinearGraph(nodes: any[], edges: any[]) {
+  if (nodes.length < 2) return '流程至少需要发起和结束两个节点';
+  if (edges.length !== nodes.length - 1) {
+    return '当前流程存在断开的连线，请补齐为一条完整主链后再保存';
+  }
+
+  const incoming = new Map<string, number>();
+  const outgoing = new Map<string, number>();
+  nodes.forEach((n) => {
+    incoming.set(n.id, 0);
+    outgoing.set(n.id, 0);
+  });
+
+  for (const edge of edges) {
+    incoming.set(edge.targetNodeId, (incoming.get(edge.targetNodeId) ?? 0) + 1);
+    outgoing.set(edge.sourceNodeId, (outgoing.get(edge.sourceNodeId) ?? 0) + 1);
+    if ((incoming.get(edge.targetNodeId) ?? 0) > 1 || (outgoing.get(edge.sourceNodeId) ?? 0) > 1) {
+      return '当前流程暂只支持单条主链，请去掉多余分支连线';
+    }
+  }
+
+  const starts = nodes.filter((n) => (incoming.get(n.id) ?? 0) === 0);
+  const ends = nodes.filter((n) => (outgoing.get(n.id) ?? 0) === 0);
+  if (starts.length !== 1 || ends.length !== 1) {
+    return '当前流程必须只有一个起点和一个终点';
+  }
+
+  const nextOf = new Map<string, string>();
+  edges.forEach((e) => nextOf.set(e.sourceNodeId, e.targetNodeId));
+  const seen = new Set<string>();
+  let cur = starts[0];
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    cur = nodes.find((n) => n.id === nextOf.get(cur.id));
+  }
+  if (seen.size !== nodes.length) {
+    return '当前流程存在未串联节点或环形连线，请调整后再保存';
+  }
+
+  return '';
+}
+
 // 按连线把图排成主干顺序（无并行网关，单链）
 function orderNodes(nodes: any[], edges: any[]) {
   const incoming = new Map<string, number>();
@@ -215,6 +335,11 @@ async function saveWorkflow() {
   const wf = currentWorkflow();
   if (!wf || !lf) return;
   const graph: any = lf.getGraphData();
+  const validationMessage = validateLinearGraph(graph.nodes ?? [], graph.edges ?? []);
+  if (validationMessage) {
+    ElMessage.warning(validationMessage);
+    return;
+  }
   const ordered = orderNodes(graph.nodes ?? [], graph.edges ?? []);
   const nodes: WorkflowNode[] = ordered.map((n) => {
     const p = n.properties ?? {};
@@ -266,10 +391,23 @@ onBeforeUnmount(() => {
             拖拽节点、连线串联流程；双击节点配置审批人 / 会签成员 / 条件。支持借用、转让、归还。
           </p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap justify-end gap-2">
+          <ElButton
+            :disabled="!selectedElement"
+            type="danger"
+            plain
+            @click="deleteSelectedElement"
+          >
+            删除选中
+          </ElButton>
           <ElButton @click="addNode">+ 添加节点</ElButton>
           <ElButton :loading="saving" type="primary" @click="saveWorkflow">保存流程</ElButton>
         </div>
+      </div>
+
+      <div class="rounded border border-dashed border-[var(--el-border-color)] px-3 py-2 text-sm text-muted-foreground">
+        当前选中：{{ selectedElement ? `${selectedElement.label}（${selectedElement.type === 'edge' ? '连线' : '节点'}）` : '无' }}。
+        可点击节点或连线后按 Delete / Backspace 删除；发起和结束节点固定不可删除。
       </div>
 
       <ElTabs v-model="activeBizType" v-loading="loading">

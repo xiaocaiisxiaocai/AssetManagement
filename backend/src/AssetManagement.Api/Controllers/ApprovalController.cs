@@ -57,6 +57,11 @@ public class ApprovalController : ControllerBase
     public async Task<ApiResult<ApprovalFlowDto>> TransferSign(int id, TransferSignRequest request)
         => ApiResult<ApprovalFlowDto>.Ok(await _service.TransferSignAsync(id, request, CurrentUserId()));
 
+    [HttpPost("{id:int}/confirm-return")]
+    [HasPermission("asset:edit")]
+    public async Task<ApiResult<ApprovalFlowDto>> ConfirmReturn(int id)
+        => ApiResult<ApprovalFlowDto>.Ok(await _service.ConfirmReturnAsync(id));
+
     private int CurrentUserId()
         => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");
 }

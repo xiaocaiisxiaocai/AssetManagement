@@ -11,3 +11,9 @@ public record LoginResponse
     public string Token { get; init; } = "";
 }
 
+public record ChangePasswordRequest
+{
+    public string OldPassword { get; init; } = "";
+    public string NewPassword { get; init; } = "";
+}
+

@@ -1,7 +1,6 @@
 <script lang="ts" setup>
 import type { NotificationItem } from '@vben/layouts';
-import { useOnlineUserStore } from '#/store/onlineUser';
-import { computed, ref, watch, onUnmounted } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
 import { VBEN_DOC_URL, VBEN_GITHUB_URL } from '@vben/constants';
@@ -20,18 +19,9 @@ import { createIconifyIcon } from '@vben/icons';
 import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
 import LoginForm from '#/views/_core/authentication/login.vue';
-import { ElMessage } from 'element-plus';
 import Password from './password.vue';
 const passwordRef = ref<InstanceType<typeof Password>>();
 const passkeyIcon = createIconifyIcon('material-symbols:passkey-rounded');
-const onlineUserStore = useOnlineUserStore();
-const connection = onlineUserStore.createConnection();
-connection.on('logout', () => {
-  ElMessage({ type: 'error', message: $t('common.tooltip.logout') });
-  setTimeout(() => {
-    authStore.logout();
-  }, 3000);
-});
 const notifications = ref<NotificationItem[]>([
   {
     avatar: 'https://avatar.vercel.sh/vercel.svg?text=VB',
@@ -138,10 +128,6 @@ watch(
     immediate: true,
   },
 );
-//销毁
-onUnmounted(() => {
-  connection.stop();
-});
 </script>
 
 <template>

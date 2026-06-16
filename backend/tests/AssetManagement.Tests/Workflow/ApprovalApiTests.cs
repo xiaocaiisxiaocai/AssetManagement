@@ -106,6 +106,24 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         assetAfter!.Data!.Status.Should().Be(AssetStatus.Available);
     }
 
+    [Fact]
+    public async Task Transfer_start_ignores_return_date()
+    {
+        await Login();
+        var asset = await CreateAsset(price: 1800);
+
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "transfer",
+            AssetId = asset.Id,
+            Reason = "资产转让",
+            ReturnDate = "2026-06-20"
+        });
+
+        flow.Data!.BizType.Should().Be("transfer");
+        flow.Data.ReturnDate.Should().BeNull();
+    }
+
     private async Task<AssetDto> CreateAsset(decimal price)
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest

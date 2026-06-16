@@ -25,4 +25,5 @@ public class ApprovalFlow
     public List<FlowInstanceNode> Nodes { get; set; } = new();
     public DateTime ApplyTime { get; set; }
     public DateTime Deadline { get; set; }
+    public DateTime? ConfirmedAt { get; set; }
 }

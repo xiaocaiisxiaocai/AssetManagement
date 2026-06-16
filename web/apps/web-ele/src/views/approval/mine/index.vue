@@ -2,7 +2,7 @@
 import type { AssetItem } from '#/api/asset';
 import type { ApprovalFlow } from '#/api/workflow';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 import { getAssetListApi } from '#/api/asset';
 import { getMineApprovalsApi, startApprovalApi } from '#/api/workflow';
@@ -34,6 +34,7 @@ const form = reactive({
   reason: '',
   returnDate: '',
 });
+const showReturnDate = computed(() => form.bizType === 'borrow');
 
 async function loadData() {
   loading.value = true;
@@ -70,7 +71,7 @@ async function submit() {
       assetId: form.assetId,
       bizType: form.bizType,
       reason: form.reason,
-      returnDate: form.returnDate,
+      returnDate: showReturnDate.value ? form.returnDate : undefined,
     });
     ElMessage.success('申请已提交');
     dialogVisible.value = false;
@@ -148,7 +149,7 @@ onMounted(loadData);
               />
             </ElSelect>
           </ElFormItem>
-          <ElFormItem label="归还日期">
+          <ElFormItem v-if="showReturnDate" label="归还日期">
             <ElInput v-model="form.returnDate" placeholder="YYYY-MM-DD，借用时填写" />
           </ElFormItem>
           <ElFormItem label="申请事由">

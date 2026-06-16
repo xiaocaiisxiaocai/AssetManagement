@@ -107,3 +107,6 @@ export const addSignApi = (id: number, who: string) =>
 
 export const transferSignApi = (id: number, who: string) =>
   unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/transfer-sign`, { who }));
+
+export const confirmReturnApi = (id: number) =>
+  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/confirm-return`, {}));

@@ -13,6 +13,7 @@ public interface IWorkflowService
     Task<ApprovalFlowDto> RejectAsync(int id, RejectRequest request, int userId);
     Task<ApprovalFlowDto> AddSignAsync(int id, AddSignRequest request, int userId);
     Task<ApprovalFlowDto> TransferSignAsync(int id, TransferSignRequest request, int userId);
+    Task<ApprovalFlowDto> ConfirmReturnAsync(int id);
 }
 
 public interface IBizEffectApplier

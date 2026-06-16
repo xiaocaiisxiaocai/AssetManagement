@@ -107,6 +107,7 @@
       }
     },
     "overrides": {
+      "caniuse-lite": "^1.0.30001799",
       "@ast-grep/napi": "catalog:",
       "@ctrl/tinycolor": "catalog:",
       "clsx": "catalog:",

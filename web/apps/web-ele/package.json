@@ -28,7 +28,6 @@
   "dependencies": {
     "@logicflow/core": "^2.2.3",
     "@logicflow/extension": "^2.2.3",
-    "@microsoft/signalr": "^8.0.7",
     "@vben/access": "workspace:*",
     "@vben/common-ui": "workspace:*",
     "@vben/constants": "workspace:*",
