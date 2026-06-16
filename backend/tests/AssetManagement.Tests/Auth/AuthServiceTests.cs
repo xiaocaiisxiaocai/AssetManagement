@@ -34,9 +34,38 @@ public class AuthServiceTests
         res.Token.Should().NotBeNullOrWhiteSpace();
     }
 
+    [Fact]
+    public async Task ChangePassword_with_wrong_old_password_throws()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var svc = fixture.CreateService();
+        var userId = fixture.GetUserId();
+
+        var act = () => svc.ChangePasswordAsync(userId, new ChangePasswordRequest { OldPassword = "wrong", NewPassword = "newpwd123" });
+
+        await act.Should().ThrowAsync<BizException>()
+            .Where(x => x.Code == 1002);
+    }
+
+    [Fact]
+    public async Task ChangePassword_ok_updates_hash()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var svc = fixture.CreateService();
+        var userId = fixture.GetUserId();
+        var oldHash = fixture.GetUserPasswordHash();
+
+        await svc.ChangePasswordAsync(userId, new ChangePasswordRequest { OldPassword = "123456", NewPassword = "newpwd123" });
+
+        var newHash = fixture.GetUserPasswordHash();
+        newHash.Should().NotBe(oldHash);
+        BCrypt.Net.BCrypt.Verify("newpwd123", newHash).Should().BeTrue();
+    }
+
     private sealed class AuthFixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;
+        private int _userId;
 
         private AuthFixture(SqliteConnection connection, AppDbContext db)
         {
@@ -75,8 +104,13 @@ public class AuthServiceTests
             db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
             await db.SaveChangesAsync();
 
-            return new AuthFixture(connection, db);
+            var fixture = new AuthFixture(connection, db);
+            fixture._userId = user.Id;
+            return fixture;
         }
+
+        public int GetUserId() => _userId;
+        public string GetUserPasswordHash() => Db.Users.First(x => x.Id == _userId).PasswordHash;
 
         public AuthService CreateService()
         {

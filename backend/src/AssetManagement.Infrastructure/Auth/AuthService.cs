@@ -103,6 +103,21 @@ public class AuthService : IAuthService
         return BuildRoutes(null, menus, buttonPermissions);
     }
 
+    public async Task ChangePasswordAsync(int userId, ChangePasswordRequest request)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId && x.IsActive)
+            ?? throw new BizException(4041, "用户不存在或已停用");
+
+        if (!BCrypt.Net.BCrypt.Verify(request.OldPassword, user.PasswordHash))
+        {
+            throw new BizException(1002, "旧密码不正确");
+        }
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        _db.Users.Update(user);
+        await _db.SaveChangesAsync();
+    }
+
     private async Task<User?> QueryActiveUser(int userId)
         => await _db.Users
             .Include(x => x.UserRoles)
