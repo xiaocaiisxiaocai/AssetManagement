@@ -57,7 +57,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 - **Domain**(`AssetManagement.Domain`):实体(`Entities/`)、领域服务(`Services/`,如资产编号 `AssetNoGenerator`、类别编码 `CategoryCodeService`)、**纯函数审批引擎**(`Workflow/`)。
 - **Application**(`AssetManagement.Application`):服务接口(`I*Service`)、DTO、`Common/`(`ApiResult`、`BizException`、`PagedResult`)。仅定义契约与数据形状,不含实现。服务按**限界上下文**粗粒度划分(**非每实体一个**):`IAssetService`、`IAuthService`/`IJwtTokenService`、`IBaseDataService`(部门/分类/位置)、`IRbacService`(用户/角色/权限/菜单)、`IWorkflowService`(工作流 + 审批)。
-- **Infrastructure**(`AssetManagement.Infrastructure`):服务实现、`Persistence/`(`AppDbContext` + `Configurations/` 每实体一个 `IEntityTypeConfiguration` + `Seed/DbSeeder`)、`Migrations/`、`Auth/`(JWT、权限策略)、`Audit/`(操作审计过滤器)。
+- **Infrastructure**(`AssetManagement.Infrastructure`):服务实现、`Persistence/`(`AppDbContext` + `Configurations/` 每实体一个 `IEntityTypeConfiguration` + `Seed/DbSeeder`)、`Migrations/`、`Auth/`(JWT、权限策略)、`Audit/`(操作审计过滤器)、`Storage/`(文件存储服务,支持资产图片上传)。
 - **Api**(`AssetManagement.Api`):瘦控制器,每个 action 一行调用对应 `I*Service`;`Program.cs` 注册所有 DI、JWT、Swagger、自定义权限策略。
 
 新增一个后端功能模块的路径:Domain 加实体/领域逻辑 → Application 定义 `IXxxService` + DTO → Infrastructure 实现并加 `EntityTypeConfiguration` → `Program.cs` 注册 DI → Api 加瘦控制器 → 加迁移 → 在 `DbSeeder` 注册菜单/权限。
@@ -101,6 +101,8 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 | **后端新增权限** | (1) DbSeeder: `Permission` 表加行 + 角色-权限映射 (2) Api: action 标注 `[HasPermission("code")]` (3) 迁移 (4) 前端菜单由后端下发,无需改前端代码 |
 | **前端新页面映射后端菜单** | (1) 后端 DbSeeder 注册 Menu(name/path/component) + Permission (2) 前端在 `views/<module>/` 创建页面,Component 路径须与后端 menu.Component 一致 (3) 登录后菜单自动下发,无需硬编码路由 |
 | **修改审批工作流逻辑** | (1) 修改 `WorkflowEngine.cs`(纯函数) (2) 同步 `WorkflowEngineTests.cs` + `ApprovalApiTests.cs` (3) 如需新增数据表字段,加 EF 迁移 + WorkflowService 调用 |
+| **新增资产附件字段** | (1) Domain: `Asset` 实体加字段 (2) Infrastructure: `EntityTypeConfiguration` 配置长度/映射 (3) Application: DTO 加字段并在 Service 映射 (4) 迁移 (5) 前端: `api/asset.ts` 加类型,表单加上传组件 |
+| **查询流转历史或审计日志** | 流转历史: `ApprovalFlows` 表按 `AssetId` 筛选; 审计日志: `AuditLogs` 表按 `TargetType=="Asset" && TargetId==资产ID` 筛选。参考 `AssetService.GetDetailAsync` 实现 |
 
 ## 编码与提交约定
 
@@ -110,3 +112,16 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - 界面文案、文档、提交说明均用中文。提交遵循 Conventional Commits(如 `feat(web): ...`、`fix: ...`、`test: ...`)。
 - **不提交**:SQLite 库文件(`*.db`)、`web/dist/`、`dist.zip`、`bin/`、`obj/`、日志、真实员工数据、生产凭据、内网地址。
 - 生产部署必须替换 `deploy/appsettings.Production.json` 中的 `Jwt:Key` 占位符。
+
+## 项目状态与待办
+
+当前完成度约 **85%**,核心模块已打通。最新进度见 `docs/plans/M7-进度分析与待办事项.md`。
+
+已完成(2026-06-17):
+- ✅ 待办1: 确认入库接口对齐(`/api/approvals/pending-return`)
+- ✅ 待办2: 资产详情页及流转时间线(`GET /api/assets/{id}/detail`)
+- ✅ 待办3: 资产照片附件上传与回显(`Asset.ImageUrls` + 文件存储服务)
+
+待处理:
+- 🚨 待办4: 多部门数据权限隔离(部门管理员只能查看本部门资产)
+- 🚨 待办5: 清理空壳文件(`views/asset/hierarchy/index.vue`)
