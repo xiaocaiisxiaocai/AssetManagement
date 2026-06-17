@@ -94,6 +94,14 @@ public class WorkflowService : IWorkflowService
             .Select(x => ToFlowDto(x))
             .ToListAsync();
 
+    // 待入库:全局已审批通过、尚未确认入库的借用流程单(由资产管理员处理,不限发起人)
+    public async Task<List<ApprovalFlowDto>> PendingReturnsAsync()
+        => await _db.ApprovalFlows
+            .Where(x => x.Status == "approved" && x.BizType == "borrow" && x.ConfirmedAt == null)
+            .OrderByDescending(x => x.Id)
+            .Select(x => ToFlowDto(x))
+            .ToListAsync();
+
     public async Task<ApprovalFlowDto> GetFlowAsync(int id)
         => ToFlowDto(await LoadFlow(id));
 

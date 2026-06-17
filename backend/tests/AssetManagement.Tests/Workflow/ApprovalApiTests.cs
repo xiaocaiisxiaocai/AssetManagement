@@ -84,6 +84,30 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Pending_return_lists_approved_unconfirmed_borrow_flow()
+    {
+        await Login();
+        await ResetBorrowWorkflow();
+        var asset = await CreateAsset(price: 2600);
+
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "待入库测试",
+            ReturnDate = "2026-06-20"
+        });
+        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve", new ApprovalActionRequest { Opinion = "同意" });
+        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve", new ApprovalActionRequest { Signer = "张三", Opinion = "ok" });
+        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve", new ApprovalActionRequest { Signer = "赵敏", Opinion = "ok" });
+
+        var pendingReturns = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending-return");
+
+        pendingReturns!.Data!.Should().Contain(x => x.Id == flow.Data.Id);
+        pendingReturns.Data!.Should().OnlyContain(x => x.BizType == "borrow" && x.Status == "approved" && x.ConfirmedAt == null);
+    }
+
+    [Fact]
     public async Task Reject_flow_does_not_change_asset()
     {
         await Login();

@@ -51,6 +51,7 @@ export interface ApprovalFlow {
   assetName: string;
   assetNo: string;
   bizType: string;
+  confirmedAt?: null | string;
   currentNodeIndex: number;
   deadline: string;
   flowNo: string;
@@ -95,6 +96,10 @@ export const getPendingApprovalsApi = () =>
 
 export const getMineApprovalsApi = () =>
   unwrap(requestClient.get<ApiResult<ApprovalFlow[]>>('/approvals/mine'));
+
+// 待入库:全局已审批通过、尚未确认入库的借用单(资产管理员处理,需 asset:edit 权限)
+export const getPendingReturnsApi = () =>
+  unwrap(requestClient.get<ApiResult<ApprovalFlow[]>>('/approvals/pending-return'));
 
 export const approveFlowApi = (id: number, data: ApprovalActionPayload) =>
   unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/approve`, data));

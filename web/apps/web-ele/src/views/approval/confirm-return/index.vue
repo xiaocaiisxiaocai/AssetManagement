@@ -3,7 +3,7 @@ import type { ApprovalFlow } from '#/api/workflow';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
-import { getMineApprovalsApi, confirmReturnApi } from '#/api/workflow';
+import { getPendingReturnsApi, confirmReturnApi } from '#/api/workflow';
 
 import {
   ElButton,
@@ -37,7 +37,7 @@ const pendingFlows = computed(() => {
 async function loadData() {
   loading.value = true;
   try {
-    const allFlows = await getMineApprovalsApi();
+    const allFlows = await getPendingReturnsApi();
     const pending = allFlows.filter(
       (f) => f.bizType === 'borrow' && f.status === 'approved' && !f.confirmedAt
     );
@@ -146,7 +146,7 @@ onMounted(loadData);
           </ElTableColumn>
         </ElTable>
 
-        <div v-if="total > pageSize" class="flex justify-end">
+        <div v-if="total > query.pageSize" class="flex justify-end">
           <ElPagination
             v-model:current-page="query.page"
             :page-size="query.pageSize"

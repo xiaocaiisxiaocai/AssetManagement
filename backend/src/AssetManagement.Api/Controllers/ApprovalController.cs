@@ -32,6 +32,11 @@ public class ApprovalController : ControllerBase
     public async Task<ApiResult<List<ApprovalFlowDto>>> Mine()
         => ApiResult<List<ApprovalFlowDto>>.Ok(await _service.MineAsync(CurrentUserId()));
 
+    [HttpGet("pending-return")]
+    [HasPermission("asset:edit")]
+    public async Task<ApiResult<List<ApprovalFlowDto>>> PendingReturn()
+        => ApiResult<List<ApprovalFlowDto>>.Ok(await _service.PendingReturnsAsync());
+
     [HttpGet("{id:int}")]
     [HasPermission("approval:view")]
     public async Task<ApiResult<ApprovalFlowDto>> Get(int id)
