@@ -1,4 +1,5 @@
 using AssetManagement.Domain.Entities;
+using AssetManagement.Application.Audit;
 
 namespace AssetManagement.Application.Assets;
 
@@ -82,4 +83,27 @@ public record ImportConfirmResult
     public int SuccessCount { get; init; }
     public int FailedCount { get; init; }
     public List<ImportPreviewRow> Rows { get; init; } = new();
+}
+
+/// <summary>资产详情:基本信息 + 流转历史 + 最近操作日志</summary>
+public record AssetDetailDto
+{
+    public AssetDto Asset { get; init; } = new();
+    public List<AssetFlowDto> Flows { get; init; } = new();
+    public List<AuditLogDto> RecentLogs { get; init; } = new();
+}
+
+/// <summary>资产流转时间线条目(借出/归还/转让等审批单的精简视图)</summary>
+public record AssetFlowDto
+{
+    public int Id { get; init; }
+    public string FlowNo { get; init; } = "";
+    public string BizType { get; init; } = "";
+    public string Status { get; init; } = "";
+    public string Applicant { get; init; } = "";
+    public string? Transferee { get; init; }
+    public string? Reason { get; init; }
+    public string? ReturnDate { get; init; }
+    public DateTime ApplyTime { get; init; }
+    public DateTime? ConfirmedAt { get; init; }
 }

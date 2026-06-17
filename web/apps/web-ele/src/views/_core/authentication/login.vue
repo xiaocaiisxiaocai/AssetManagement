@@ -1,11 +1,10 @@
 <script lang="ts" setup>
 import type { VbenFormSchema } from '@vben/common-ui';
 
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 
 import { AuthenticationLogin, z } from '@vben/common-ui';
 import { $t } from '@vben/locales';
-import { ElMessage } from 'element-plus';
 
 import { useAuthStore } from '#/store';
 
@@ -41,8 +40,8 @@ const formSchema = computed((): VbenFormSchema[] => {
 async function handleLogin(values: any) {
   try {
     await authStore.authLogin(values);
-  } catch (error: any) {
-    ElMessage.error(error?.message || '登录失败，请重试');
+  } catch {
+    // 登录失败的错误提示已由请求拦截器(request.ts)统一弹出,此处无需重复弹框
   }
 }
 </script>

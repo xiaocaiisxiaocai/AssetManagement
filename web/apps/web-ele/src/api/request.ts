@@ -111,6 +111,11 @@ function createRequestClient(baseURL: string) {
         ElMessage.warning(msg);
         return;
       }
+      // 业务错误已在上一个响应拦截器弹过提示并 throw(普通 Error,无 response),
+      // 此处直接放行,避免重复处理与解构 undefined 再弹一个 TypeError 提示框
+      if (!error?.response) {
+        throw error;
+      }
       const {
         response: { data },
         status,

@@ -31,11 +31,14 @@ public class ExceptionMiddleware
         }
     }
 
+    // 与 MVC 管线保持一致的 camelCase 序列化,避免异常响应输出 PascalCase 导致前端拦截器读不到 code/message
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private static async Task Write(HttpContext ctx, int code, string msg)
     {
         ctx.Response.StatusCode = 200;
         ctx.Response.ContentType = "application/json; charset=utf-8";
-        var body = JsonSerializer.Serialize(new ApiResult<object?> { Code = code, Message = msg });
+        var body = JsonSerializer.Serialize(new ApiResult<object?> { Code = code, Message = msg }, JsonOptions);
         await ctx.Response.WriteAsync(body);
     }
 }

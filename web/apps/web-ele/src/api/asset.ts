@@ -83,6 +83,38 @@ export interface ImportConfirmResult {
   successCount: number;
 }
 
+export interface AssetFlow {
+  applicant: string;
+  applyTime: string;
+  bizType: string;
+  confirmedAt?: null | string;
+  flowNo: string;
+  id: number;
+  reason?: null | string;
+  returnDate?: null | string;
+  status: string;
+  transferee?: null | string;
+}
+
+export interface AssetAuditLog {
+  actionType: string;
+  detail?: null | string;
+  id: number;
+  ip?: null | string;
+  occurredAt: string;
+  summary: string;
+  targetId?: null | string;
+  targetType?: null | string;
+  userId?: null | number;
+  userName?: null | string;
+}
+
+export interface AssetDetail {
+  asset: AssetItem;
+  flows: AssetFlow[];
+  recentLogs: AssetAuditLog[];
+}
+
 async function unwrap<T>(request: Promise<ApiResult<T>>) {
   const result = await request;
   return result.data;
@@ -90,6 +122,9 @@ async function unwrap<T>(request: Promise<ApiResult<T>>) {
 
 export const getAssetListApi = (params: AssetQuery) =>
   unwrap(requestClient.get<ApiResult<PagedResult<AssetItem>>>('/assets', { params }));
+
+export const getAssetDetailApi = (id: number) =>
+  unwrap(requestClient.get<ApiResult<AssetDetail>>(`/assets/${id}/detail`));
 
 export const createAssetApi = (data: AssetPayload) =>
   unwrap(requestClient.post<ApiResult<AssetItem>>('/assets', data));

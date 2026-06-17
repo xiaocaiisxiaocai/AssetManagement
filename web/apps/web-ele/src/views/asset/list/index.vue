@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { AssetItem, AssetPayload, AssetQuery, AssetStatus, ImportPreviewRow } from '#/api/asset';
+import type { AssetDetail, AssetItem, AssetPayload, AssetQuery, AssetStatus, ImportPreviewRow } from '#/api/asset';
 import type { CategoryNode, CategoryPayload, DepartmentNode, LocationNode } from '#/api/base-data';
 import type { UserDto } from '#/api/user';
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
@@ -12,6 +12,7 @@ import {
   deleteAssetApi,
   downloadAssetTemplateApi,
   exportAssetsApi,
+  getAssetDetailApi,
   getAssetListApi,
   updateAssetApi,
   uploadAssetImageApi,
@@ -34,6 +35,7 @@ import {
   ElDialog,
   ElForm,
   ElFormItem,
+  ElImage,
   ElInput,
   ElInputNumber,
   ElMessage,
@@ -46,6 +48,8 @@ import {
   ElTable,
   ElTableColumn,
   ElTag,
+  ElTimeline,
+  ElTimelineItem,
   ElUpload,
 } from 'element-plus';
 
@@ -103,6 +107,9 @@ const users = ref<UserDto[]>([]);
 const workflows = ref<any[]>([]);
 const currentAssetForAction = ref<AssetItem | null>(null);
 const imageFileList = ref<UploadUserFile[]>([]);
+const detailVisible = ref(false);
+const detailLoading = ref(false);
+const detail = ref<AssetDetail | null>(null);
 
 const query = reactive({
   assetNo: '',
@@ -262,6 +269,42 @@ function openEdit(row: AssetItem) {
     url,
   }));
   dialogVisible.value = true;
+}
+
+async function openDetail(row: AssetItem) {
+  detailVisible.value = true;
+  detailLoading.value = true;
+  detail.value = null;
+  try {
+    detail.value = await getAssetDetailApi(row.id);
+  } finally {
+    detailLoading.value = false;
+  }
+}
+
+const bizTypeText: Record<string, string> = {
+  borrow: '借用',
+  return: '归还',
+  scrap: '报废',
+  transfer: '转让',
+};
+
+const flowStatusMeta: Record<string, { tag: 'danger' | 'info' | 'success' | 'warning'; text: string }> = {
+  approved: { tag: 'success', text: '已通过' },
+  pending: { tag: 'warning', text: '审批中' },
+  rejected: { tag: 'danger', text: '已驳回' },
+};
+
+function flowTitle(flow: AssetDetail['flows'][number]) {
+  const biz = bizTypeText[flow.bizType] ?? flow.bizType;
+  const status = flowStatusMeta[flow.status]?.text ?? flow.status;
+  return `${biz} · ${status}`;
+}
+
+function formatTime(time: null | string) {
+  if (!time) return '—';
+  const d = new Date(time);
+  return Number.isNaN(d.getTime()) ? time : d.toLocaleString('zh-CN', { hour12: false });
 }
 
 async function save() {
@@ -726,8 +769,9 @@ onMounted(async () => {
                       </ElTag>
                     </template>
                   </ElTableColumn>
-                  <ElTableColumn fixed="right" label="操作" width="200">
+                  <ElTableColumn fixed="right" label="操作" width="240">
                     <template #default="{ row }">
+                      <ElButton link type="primary" @click="openDetail(row)">详情</ElButton>
                       <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
                       <ElButton link type="primary" @click="openBorrowDialog(row)">借用</ElButton>
                       <ElButton link type="primary" @click="openTransferDialog(row)">转让</ElButton>
@@ -830,8 +874,9 @@ onMounted(async () => {
                   <ElTableColumn label="归属部门" min-width="130" prop="departmentName" />
                   <ElTableColumn label="保管人" min-width="120" prop="custodianName" />
                   <ElTableColumn label="位置" min-width="130" prop="locationName" />
-                  <ElTableColumn fixed="right" label="操作" width="200">
+                  <ElTableColumn fixed="right" label="操作" width="240">
                     <template #default="{ row }">
+                      <ElButton link type="primary" @click="openDetail(row)">详情</ElButton>
                       <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
                       <ElButton link type="primary" @click="openBorrowDialog(row)">借用</ElButton>
                       <ElButton link type="primary" @click="openTransferDialog(row)">转让</ElButton>
@@ -937,6 +982,82 @@ onMounted(async () => {
           <ElButton @click="dialogVisible = false">取消</ElButton>
           <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
         </template>
+      </ElDialog>
+
+      <ElDialog v-model="detailVisible" title="资产详情" width="720px">
+        <div v-loading="detailLoading" class="space-y-5">
+          <template v-if="detail">
+            <section>
+              <div class="mb-2 font-medium">基本信息</div>
+              <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <div>资产编号：{{ detail.asset.assetNo }}</div>
+                <div>名称：{{ detail.asset.name }}</div>
+                <div>分类：{{ detail.asset.categoryName }}</div>
+                <div>
+                  状态：
+                  <ElTag :type="statusOptions[detail.asset.status]?.tag" size="small">
+                    {{ statusOptions[detail.asset.status]?.label }}
+                  </ElTag>
+                </div>
+                <div>归属部门：{{ detail.asset.departmentName ?? '—' }}</div>
+                <div>存放位置：{{ detail.asset.locationName ?? '—' }}</div>
+                <div>保管人：{{ detail.asset.custodianName ?? '—' }}</div>
+                <div>型号品牌：{{ detail.asset.model || '—' }} / {{ detail.asset.brand || '—' }}</div>
+                <div>单价：{{ detail.asset.price }}</div>
+                <div>数量：{{ detail.asset.quantity }}</div>
+              </div>
+            </section>
+
+            <section v-if="detail.asset.images && detail.asset.images.length">
+              <div class="mb-2 font-medium">资产照片</div>
+              <div class="flex flex-wrap gap-2">
+                <ElImage
+                  v-for="(url, i) in detail.asset.images"
+                  :key="i"
+                  :initial-index="i"
+                  :preview-src-list="detail.asset.images"
+                  :src="url"
+                  class="h-20 w-20 rounded border"
+                  fit="cover"
+                />
+              </div>
+            </section>
+
+            <section>
+              <div class="mb-2 font-medium">流转时间线</div>
+              <ElTimeline v-if="detail.flows.length">
+                <ElTimelineItem
+                  v-for="flow in detail.flows"
+                  :key="flow.id"
+                  :timestamp="formatTime(flow.applyTime)"
+                  :type="flowStatusMeta[flow.status]?.tag ?? 'primary'"
+                >
+                  <div class="text-sm">
+                    <span class="font-medium">{{ flowTitle(flow) }}</span>
+                    <span class="text-gray-500"> · {{ flow.applicant }}</span>
+                    <span v-if="flow.transferee" class="text-gray-500"> → {{ flow.transferee }}</span>
+                  </div>
+                  <div v-if="flow.reason" class="text-xs text-gray-400">事由：{{ flow.reason }}</div>
+                  <div v-if="flow.returnDate" class="text-xs text-gray-400">应归还：{{ flow.returnDate }}</div>
+                </ElTimelineItem>
+              </ElTimeline>
+              <div v-else class="text-sm text-gray-400">暂无流转记录</div>
+            </section>
+
+            <section>
+              <div class="mb-2 font-medium">最近操作日志</div>
+              <ElTable v-if="detail.recentLogs.length" :data="detail.recentLogs" size="small">
+                <ElTableColumn label="时间" width="170">
+                  <template #default="{ row }">{{ formatTime(row.occurredAt) }}</template>
+                </ElTableColumn>
+                <ElTableColumn label="操作人" prop="userName" width="110" />
+                <ElTableColumn label="动作" prop="actionType" width="90" />
+                <ElTableColumn label="摘要" prop="summary" show-overflow-tooltip />
+              </ElTable>
+              <div v-else class="text-sm text-gray-400">暂无操作日志</div>
+            </section>
+          </template>
+        </div>
       </ElDialog>
 
       <ElDialog v-model="importVisible" title="批量导入资产" width="760px">

@@ -1,4 +1,5 @@
 using AssetManagement.Application.Assets;
+using AssetManagement.Application.Audit;
 using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
@@ -43,6 +44,60 @@ public class AssetService : IAssetService
         var asset = await _db.Assets.FindAsync(id)
             ?? throw new BizException(4048, "资产不存在");
         return (await ToDtos(new[] { asset })).Single();
+    }
+
+    public async Task<AssetDetailDto> GetDetailAsync(int id)
+    {
+        var asset = await GetAsync(id);
+
+        var flows = await _db.ApprovalFlows
+            .Where(x => x.AssetId == id)
+            .OrderByDescending(x => x.ApplyTime)
+            .Select(x => new AssetFlowDto
+            {
+                Id = x.Id,
+                FlowNo = x.FlowNo,
+                BizType = x.BizType,
+                Status = x.Status,
+                Applicant = x.Applicant,
+                Transferee = x.Transferee,
+                Reason = x.Reason,
+                ReturnDate = x.ReturnDate,
+                ApplyTime = x.ApplyTime,
+                ConfirmedAt = x.ConfirmedAt
+            })
+            .ToListAsync();
+
+        var idText = id.ToString();
+        var logs = await _db.AuditLogs
+            .Where(x => x.TargetType == "Asset" && x.TargetId == idText)
+            .OrderByDescending(x => x.OccurredAt)
+            .Take(5)
+            .ToListAsync();
+        var userIds = logs.Where(x => x.UserId.HasValue).Select(x => x.UserId!.Value).Distinct().ToArray();
+        var userNames = await _db.Users
+            .Where(x => userIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name);
+        var recentLogs = logs.Select(x => new AuditLogDto
+        {
+            Id = x.Id,
+            UserId = x.UserId,
+            UserName = x.UserId.HasValue && userNames.TryGetValue(x.UserId.Value, out var name) ? name : null,
+            ActionType = x.ActionType,
+            TargetType = x.TargetType,
+            TargetId = x.TargetId,
+            Summary = x.Summary,
+            Detail = x.Detail,
+            Ip = x.Ip,
+            OccurredAt = x.OccurredAt
+        }).ToList();
+
+        return new AssetDetailDto
+        {
+            Asset = asset,
+            Flows = flows,
+            RecentLogs = recentLogs
+        };
     }
 
     public async Task<AssetDto> CreateAsync(CreateAssetRequest request)

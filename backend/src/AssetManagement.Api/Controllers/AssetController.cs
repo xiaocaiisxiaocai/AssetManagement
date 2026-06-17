@@ -26,6 +26,11 @@ public class AssetController : ControllerBase
     public async Task<ApiResult<AssetDto>> Get(int id)
         => ApiResult<AssetDto>.Ok(await _service.GetAsync(id));
 
+    [HttpGet("{id:int}/detail")]
+    [HasPermission("asset:view")]
+    public async Task<ApiResult<AssetDetailDto>> Detail(int id)
+        => ApiResult<AssetDetailDto>.Ok(await _service.GetDetailAsync(id));
+
     [HttpPost]
     [HasPermission("asset:create")]
     public async Task<ApiResult<AssetDto>> Create(CreateAssetRequest request)

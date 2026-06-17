@@ -33,12 +33,17 @@ public class AuditActionFilter : IAsyncActionFilter
         var userIdText = context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
         int? userId = int.TryParse(userIdText, out var value) ? value : null;
         var controllerName = (context.ActionDescriptor as ControllerActionDescriptor)?.ControllerName;
+        // 从路由 {id} 捕获目标实体主键,便于按实体回溯其操作日志(如资产详情)
+        var targetId = context.RouteData.Values.TryGetValue("id", out var idValue)
+            ? idValue?.ToString()
+            : null;
 
         _db.AuditLogs.Add(new AuditLog
         {
             UserId = userId,
             ActionType = context.HttpContext.Request.Method,
             TargetType = controllerName,
+            TargetId = targetId,
             Summary = $"{context.HttpContext.Request.Method} {context.HttpContext.Request.Path}",
             Ip = context.HttpContext.Connection.RemoteIpAddress?.ToString(),
             OccurredAt = DateTime.UtcNow

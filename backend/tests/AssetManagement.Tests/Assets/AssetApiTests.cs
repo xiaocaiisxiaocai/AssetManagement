@@ -7,6 +7,7 @@ using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -138,6 +139,44 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
         created.Data!.Images.Should().Equal(images);
         fetched!.Data!.Images.Should().Equal(images);
+    }
+
+    [Fact]
+    public async Task Asset_detail_returns_flows_and_recent_logs()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "详情资产",
+            CategoryId = category.Id,
+            Price = 500
+        });
+        var id = created.Data!.Id;
+
+        // 触发一次更新 → 产生带 TargetId 的资产审计日志
+        await Put<ApiResult<AssetDto>>($"/api/assets/{id}", new UpdateAssetRequest
+        {
+            Name = "详情资产-改",
+            CategoryId = category.Id,
+            Price = 600,
+            Quantity = 1,
+            Status = AssetStatus.Available
+        });
+        // 发起借用 → 产生该资产的流转单
+        await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = id,
+            Reason = "详情测试借用",
+            ReturnDate = "2026-06-30"
+        });
+
+        var detail = await _client.GetFromJsonAsync<ApiResult<AssetDetailDto>>($"/api/assets/{id}/detail");
+
+        detail!.Data!.Asset.Id.Should().Be(id);
+        detail.Data.Flows.Should().Contain(f => f.BizType == "borrow" && f.Applicant.Length > 0);
+        detail.Data.RecentLogs.Should().Contain(l => l.ActionType == "PUT" && l.TargetId == id.ToString());
     }
 
     private async Task<CategoryNodeDto> CreateCategory()

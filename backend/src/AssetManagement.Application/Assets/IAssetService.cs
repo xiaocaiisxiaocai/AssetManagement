@@ -6,6 +6,7 @@ public interface IAssetService
 {
     Task<PagedResult<AssetDto>> QueryAsync(AssetQuery query);
     Task<AssetDto> GetAsync(int id);
+    Task<AssetDetailDto> GetDetailAsync(int id);
     Task<AssetDto> CreateAsync(CreateAssetRequest request);
     Task<AssetDto> UpdateAsync(int id, UpdateAssetRequest request);
     Task DeleteAsync(int id);
