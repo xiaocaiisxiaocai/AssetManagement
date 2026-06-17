@@ -50,7 +50,7 @@ public class AuthService : IAuthService
 
         return new LoginResponse
         {
-            Token = _jwt.Create(user.Id, user.EmployeeNo, permissionCodes, roleCodes)
+            Token = _jwt.Create(user.Id, user.EmployeeNo, permissionCodes, roleCodes, user.DepartmentId)
         };
     }
 

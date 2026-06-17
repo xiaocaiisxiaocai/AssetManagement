@@ -5,17 +5,21 @@ using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace AssetManagement.Infrastructure.Assets;
 
 public class AssetService : IAssetService
 {
     private readonly AppDbContext _db;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public AssetService(AppDbContext db)
+    public AssetService(AppDbContext db, IHttpContextAccessor httpContextAccessor)
     {
         _db = db;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<PagedResult<AssetDto>> QueryAsync(AssetQuery query)
@@ -248,6 +252,26 @@ public class AssetService : IAssetService
 
     private IQueryable<Asset> ApplyQuery(IQueryable<Asset> queryable, AssetQuery query)
     {
+        // 部门数据权限隔离:部门管理员只能查看本部门资产
+        var user = _httpContextAccessor.HttpContext?.User;
+        if (user != null)
+        {
+            var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+            var isDeptAdmin = roles.Contains("dept_admin");
+            var isSuperAdmin = roles.Contains("admin");
+
+            // 如果是部门管理员且不是超级管理员,强制按部门过滤
+            if (isDeptAdmin && !isSuperAdmin)
+            {
+                var deptIdClaim = user.FindFirst("departmentId")?.Value;
+                if (int.TryParse(deptIdClaim, out var userDeptId))
+                {
+                    var departmentIds = DescendantDepartmentIds(userDeptId);
+                    queryable = queryable.Where(x => x.DepartmentId.HasValue && departmentIds.Contains(x.DepartmentId.Value));
+                }
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(query.AssetNo))
         {
             var assetNo = query.AssetNo.Trim();

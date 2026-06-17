@@ -28,6 +28,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<AuditActionFilter>();
 builder.Services.AddControllers(o => o.Filters.Add<AuditActionFilter>());
 builder.Services.AddDbContext<AppDbContext>(o =>

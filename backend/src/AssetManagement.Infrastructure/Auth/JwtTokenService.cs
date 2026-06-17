@@ -16,7 +16,7 @@ public class JwtTokenService : IJwtTokenService
         _configuration = configuration;
     }
 
-    public string Create(int userId, string employeeNo, IEnumerable<string> permissionCodes, IEnumerable<string> roles)
+    public string Create(int userId, string employeeNo, IEnumerable<string> permissionCodes, IEnumerable<string> roles, int? departmentId = null)
     {
         var key = _configuration["Jwt:Key"]
             ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
@@ -33,6 +33,11 @@ public class JwtTokenService : IJwtTokenService
         };
         claims.AddRange(permissionCodes.Select(x => new Claim("perm", x)));
         claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x)));
+
+        if (departmentId.HasValue)
+        {
+            claims.Add(new Claim("departmentId", departmentId.Value.ToString()));
+        }
 
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
