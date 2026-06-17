@@ -68,6 +68,16 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - 自定义 `PermissionPolicyProvider` + `PermissionAuthorizationHandler` 动态解析策略,无需预注册每个权限。
 - 权限码、角色、角色-权限/菜单映射的种子数据集中在 `DbSeeder`;权限矩阵参照需求文档。
 
+### 多部门数据隔离(已实现)
+
+- **JWT增强**:登录时将用户的 `DepartmentId` 写入 JWT token 的 `departmentId` claim。
+- **数据隔离逻辑**(`AssetService.ApplyQuery`):
+  - 超级管理员(`admin` 角色):无限制,查看全部资产
+  - 部门管理员(`dept_admin` 角色且非 `admin`):自动过滤,只能查看本部门+子部门的资产
+  - 普通员工:无限制(共享资产池模式)
+- **实现方式**:通过 `IHttpContextAccessor` 获取当前用户的角色和部门信息,在 EF 查询条件中自动附加 `DepartmentId` 过滤。
+- 参考设计文档:`docs/多部门预留设计.md`。
+
 ### 审批工作流引擎(最复杂的子系统)
 
 - **模板**(`Workflow` 实体)由设计器配置:节点列表(开始/审批/会签/或签/条件分支/抄送/结束)、审批人类型(指定用户/角色/直属上级/部门经理/发起人指定)。节点带 `X/Y` 画布坐标,**仅供前端 LogicFlow 设计器布局,执行引擎忽略**。
@@ -103,6 +113,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 | **修改审批工作流逻辑** | (1) 修改 `WorkflowEngine.cs`(纯函数) (2) 同步 `WorkflowEngineTests.cs` + `ApprovalApiTests.cs` (3) 如需新增数据表字段,加 EF 迁移 + WorkflowService 调用 |
 | **新增资产附件字段** | (1) Domain: `Asset` 实体加字段 (2) Infrastructure: `EntityTypeConfiguration` 配置长度/映射 (3) Application: DTO 加字段并在 Service 映射 (4) 迁移 (5) 前端: `api/asset.ts` 加类型,表单加上传组件 |
 | **查询流转历史或审计日志** | 流转历史: `ApprovalFlows` 表按 `AssetId` 筛选; 审计日志: `AuditLogs` 表按 `TargetType=="Asset" && TargetId==资产ID` 筛选。参考 `AssetService.GetDetailAsync` 实现 |
+| **实现数据权限隔离** | (1) JWT: `IJwtTokenService.Create` 加参数传入用户属性(如 departmentId) (2) Service: 注入 `IHttpContextAccessor`,从 `HttpContext.User.Claims` 读取 (3) 查询方法开头检查角色并附加过滤条件 (4) 测试: 创建不同角色用户验证隔离效果 |
 
 ## 编码与提交约定
 
