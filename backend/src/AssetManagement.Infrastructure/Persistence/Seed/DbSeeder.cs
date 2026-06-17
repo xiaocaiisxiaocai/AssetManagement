@@ -36,7 +36,7 @@ public static class DbSeeder
         {
             new Menu { Id = 1, Name = "Asset", Title = "资产管理", Path = "/asset", Component = "BasicLayout", Icon = "lucide:package", Sort = 10 },
             new Menu { Id = 2, ParentId = 1, Name = "AssetList", Title = "资产列表", Path = "/asset/list", Component = "/asset/list/index", Sort = 11, PermissionCode = "asset:view" },
-            new Menu { Id = 3, ParentId = 1, Name = "AssetHierarchy", Title = "资产层级", Path = "/asset/hierarchy", Component = "/asset/hierarchy/index", Sort = 12, PermissionCode = "asset:view" },
+            // Id=3 资产层级菜单已删除,实际功能已整合到资产列表的层级视图中
             new Menu { Id = 18, ParentId = 1, Name = "AssetCategories", Title = "资产分类", Path = "/asset/categories", Component = "/asset/categories/index", Sort = 13, PermissionCode = "asset:view" },
             new Menu { Id = 19, ParentId = 1, Name = "AssetLocations", Title = "存放位置", Path = "/asset/locations", Component = "/asset/locations/index", Sort = 14, PermissionCode = "asset:view" },
             new Menu { Id = 4, Name = "Approval", Title = "审批管理", Path = "/approval", Component = "BasicLayout", Icon = "lucide:git-branch", Sort = 20 },
