@@ -115,13 +115,13 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态与待办
 
-当前完成度约 **85%**,核心模块已打通。最新进度见 `docs/plans/M7-进度分析与待办事项.md`。
+当前完成度约 **90%**,核心模块已打通,所有计划待办事项已完成。最新进度见 `docs/plans/M7-进度分析与待办事项.md`。
 
 已完成(2026-06-17):
 - ✅ 待办1: 确认入库接口对齐(`/api/approvals/pending-return`)
 - ✅ 待办2: 资产详情页及流转时间线(`GET /api/assets/{id}/detail`)
 - ✅ 待办3: 资产照片附件上传与回显(`Asset.ImageUrls` + 文件存储服务)
+- ✅ 待办4: 多部门数据权限隔离(部门管理员只能查看本部门资产,JWT加入departmentId)
+- ✅ 待办5: 清理空壳文件(`views/asset/hierarchy/index.vue` + 菜单项移除)
 
-待处理:
-- 🚨 待办4: 多部门数据权限隔离(部门管理员只能查看本部门资产)
-- 🚨 待办5: 清理空壳文件(`views/asset/hierarchy/index.vue`)
+系统已可进入生产部署准备阶段。
