@@ -14,6 +14,7 @@ public class AssetConfiguration : IEntityTypeConfiguration<Asset>
         b.Property(x => x.Name).HasMaxLength(100).IsRequired();
         b.Property(x => x.Model).HasMaxLength(100);
         b.Property(x => x.Brand).HasMaxLength(100);
+        b.Property(x => x.ImageUrls).HasMaxLength(2000);
         b.Property(x => x.Price).HasColumnType("decimal(18,2)");
         b.HasIndex(x => x.AssetNo).IsUnique();
         b.HasIndex(x => x.CategoryId);

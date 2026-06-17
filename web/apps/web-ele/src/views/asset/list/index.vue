@@ -2,6 +2,7 @@
 import type { AssetItem, AssetPayload, AssetQuery, AssetStatus, ImportPreviewRow } from '#/api/asset';
 import type { CategoryNode, CategoryPayload, DepartmentNode, LocationNode } from '#/api/base-data';
 import type { UserDto } from '#/api/user';
+import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -13,6 +14,7 @@ import {
   exportAssetsApi,
   getAssetListApi,
   updateAssetApi,
+  uploadAssetImageApi,
   validateAssetImportApi,
 } from '#/api/asset';
 import {
@@ -44,6 +46,7 @@ import {
   ElTable,
   ElTableColumn,
   ElTag,
+  ElUpload,
 } from 'element-plus';
 
 defineOptions({ name: 'AssetList' });
@@ -99,6 +102,7 @@ const locations = ref<LocationNode[]>([]);
 const users = ref<UserDto[]>([]);
 const workflows = ref<any[]>([]);
 const currentAssetForAction = ref<AssetItem | null>(null);
+const imageFileList = ref<UploadUserFile[]>([]);
 
 const query = reactive({
   assetNo: '',
@@ -234,6 +238,7 @@ function openCreate(categoryId?: number) {
     quantity: 1,
     status: 0,
   });
+  imageFileList.value = [];
   dialogVisible.value = true;
 }
 
@@ -250,6 +255,12 @@ function openEdit(row: AssetItem) {
     quantity: row.quantity,
     status: row.status,
   });
+  imageFileList.value = (row.images ?? []).map((url, index) => ({
+    name: url.split('/').pop() ?? url,
+    status: 'success',
+    uid: -(index + 1),
+    url,
+  }));
   dialogVisible.value = true;
 }
 
@@ -450,6 +461,9 @@ function buildPayload(): AssetPayload {
     brand: form.brand,
     categoryId: form.categoryId,
     departmentId: form.departmentId,
+    images: imageFileList.value
+      .map((f) => f.url ?? (f.response as { url?: string } | undefined)?.url)
+      .filter((u): u is string => !!u),
     locationId: form.locationId,
     model: form.model,
     name: form.name,
@@ -457,6 +471,28 @@ function buildPayload(): AssetPayload {
     quantity: form.quantity,
     status: form.status,
   };
+}
+
+function beforeImageUpload(file: File) {
+  const allowed = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'];
+  if (!allowed.includes(file.type)) {
+    ElMessage.warning('仅支持 jpg/png/gif/webp 格式图片');
+    return false;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.warning('单张图片大小不能超过 5MB');
+    return false;
+  }
+  return true;
+}
+
+async function customImageUpload(options: UploadRequestOptions) {
+  // 返回值会成为该文件的 response,buildPayload 据此取 url
+  return await uploadAssetImageApi(options.file);
+}
+
+function onImageExceed() {
+  ElMessage.warning('最多上传 5 张照片');
 }
 
 function statusMeta(status: AssetStatus) {
@@ -873,6 +909,19 @@ onMounted(async () => {
               <ElInputNumber v-model="form.quantity" :min="1" class="w-full" />
             </div>
           </ElFormItem>
+          <ElFormItem label="资产照片">
+            <ElUpload
+              v-model:file-list="imageFileList"
+              :before-upload="beforeImageUpload"
+              :http-request="customImageUpload"
+              :limit="5"
+              :on-exceed="onImageExceed"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              list-type="picture-card"
+            >
+              <span class="text-2xl">+</span>
+            </ElUpload>
+          </ElFormItem>
           <ElFormItem v-if="editingId" label="状态">
             <ElSelect v-model="form.status" style="width: 100%">
               <ElOption
@@ -973,7 +1022,7 @@ onMounted(async () => {
               :maxlength="200"
               clearable
               placeholder="10-200 字"
-              rows="3"
+              :rows="3"
               show-word-limit
               type="textarea"
             />
@@ -1009,7 +1058,7 @@ onMounted(async () => {
               :maxlength="200"
               clearable
               placeholder="10-200 字"
-              rows="3"
+              :rows="3"
               show-word-limit
               type="textarea"
             />

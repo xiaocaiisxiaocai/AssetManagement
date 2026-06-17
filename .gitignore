@@ -9,3 +9,7 @@ web/node_modules/
 web/dist/
 .config/*
 !.config/dotnet-tools.json
+
+# 运行期产物:上传附件与日志,不入库
+App_Data/
+*.log

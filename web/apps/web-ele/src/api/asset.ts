@@ -27,6 +27,7 @@ export interface AssetItem {
   departmentId?: null | number;
   departmentName?: null | string;
   id: number;
+  images?: null | string[];
   locationId?: null | number;
   locationName?: null | string;
   model?: null | string;
@@ -51,12 +52,18 @@ export interface AssetPayload {
   categoryId: number;
   custodianId?: null | number;
   departmentId?: null | number;
+  images?: string[];
   locationId?: null | number;
   model?: null | string;
   name: string;
   price: number;
   quantity?: number;
   status?: AssetStatus;
+}
+
+export interface FileUploadResult {
+  name: string;
+  url: string;
 }
 
 export interface ImportPreviewRow {
@@ -114,3 +121,12 @@ export const downloadAssetTemplateApi = () =>
 
 export const exportAssetsApi = (params: AssetQuery) =>
   requestClient.get('/assets/export', { params, responseType: 'blob' });
+
+// 上传资产照片,返回 { name, url };url 形如 /api/files/{guid}.ext,可直接用于 <img src>
+export const uploadAssetImageApi = (file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return unwrap(
+    requestClient.post<ApiResult<FileUploadResult>>('/files/upload', form),
+  );
+};

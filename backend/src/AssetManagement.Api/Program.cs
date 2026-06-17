@@ -3,6 +3,7 @@ using System.Text;
 using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
+using AssetManagement.Application.Files;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Reports;
 using AssetManagement.Application.Workflow;
@@ -10,6 +11,7 @@ using AssetManagement.Infrastructure.Audit;
 using AssetManagement.Infrastructure.Assets;
 using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.BaseData;
+using AssetManagement.Infrastructure.Files;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Persistence.Seed;
 using AssetManagement.Infrastructure.Reports;
@@ -35,6 +37,10 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRbacService, RbacService>();
 builder.Services.AddScoped<IBaseDataService, BaseDataService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
+builder.Services.AddSingleton<IFileStorageService>(_ =>
+    new FileStorageService(
+        builder.Configuration["Attachment:Path"] ?? "App_Data/uploads",
+        builder.Environment.ContentRootPath));
 builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 builder.Services.AddScoped<IBizEffectApplier, BizEffectApplier>();
 builder.Services.AddScoped<IReportService, ReportService>();

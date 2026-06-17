@@ -120,6 +120,26 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         list!.Data!.Items.Should().ContainSingle(x => x.Name == "万用表");
     }
 
+    [Fact]
+    public async Task Create_asset_persists_image_urls()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var images = new List<string> { "/api/files/a1.png", "/api/files/b2.jpg" };
+
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "带照片的资产",
+            CategoryId = category.Id,
+            Price = 800,
+            Images = images
+        });
+        var fetched = await _client.GetFromJsonAsync<ApiResult<AssetDto>>($"/api/assets/{created.Data!.Id}");
+
+        created.Data!.Images.Should().Equal(images);
+        fetched!.Data!.Images.Should().Equal(images);
+    }
+
     private async Task<CategoryNodeDto> CreateCategory()
     {
         var rootSeg = Unique("CAT");

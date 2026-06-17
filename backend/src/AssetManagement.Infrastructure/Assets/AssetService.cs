@@ -65,6 +65,7 @@ public class AssetService : IAssetService
                 Price = request.Price,
                 Quantity = Math.Max(request.Quantity, 1),
                 Status = AssetStatus.Available,
+                ImageUrls = JoinImages(request.Images),
                 CreatedAt = DateTime.UtcNow
             };
             _db.Assets.Add(asset);
@@ -100,6 +101,10 @@ public class AssetService : IAssetService
         asset.Price = request.Price;
         asset.Quantity = Math.Max(request.Quantity, 1);
         asset.Status = request.Status;
+        if (request.Images is not null)
+        {
+            asset.ImageUrls = JoinImages(request.Images);
+        }
         await _db.SaveChangesAsync();
         return await GetAsync(id);
     }
@@ -276,10 +281,39 @@ public class AssetService : IAssetService
                 Price = x.Price,
                 Quantity = x.Quantity,
                 Status = x.Status,
-                CreatedAt = x.CreatedAt
+                CreatedAt = x.CreatedAt,
+                Images = SplitImages(x.ImageUrls)
             };
         }).ToList();
     }
+
+    // 图片 URL 以逗号分隔持久化(URL 形如 /api/files/{guid}.ext,不含逗号);最多 5 张
+    private static string? JoinImages(IEnumerable<string>? images)
+    {
+        if (images is null)
+        {
+            return null;
+        }
+        var list = images
+            .Select(x => x?.Trim())
+            .Where(x => !string.IsNullOrEmpty(x))
+            .Select(x => x!)
+            .ToList();
+        if (list.Count == 0)
+        {
+            return null;
+        }
+        if (list.Count > 5)
+        {
+            throw new BizException(4152, "最多上传 5 张照片");
+        }
+        return string.Join(',', list);
+    }
+
+    private static List<string> SplitImages(string? imageUrls)
+        => string.IsNullOrWhiteSpace(imageUrls)
+            ? new List<string>()
+            : imageUrls.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     private static ImportPreviewRow ValidateRow(int rowNumber, IReadOnlyList<string> cells, Dictionary<string, AssetCategory> categories)
     {

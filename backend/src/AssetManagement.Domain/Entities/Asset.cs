@@ -23,4 +23,7 @@ public class Asset
     public int Quantity { get; set; } = 1;
     public AssetStatus Status { get; set; } = AssetStatus.Available;
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>资产照片附件 URL,逗号分隔(最多 5 张),由 /api/files 上传得到</summary>
+    public string? ImageUrls { get; set; }
 }

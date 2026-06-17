@@ -22,6 +22,7 @@ public record AssetDto
     public int Quantity { get; init; }
     public AssetStatus Status { get; init; }
     public DateTime CreatedAt { get; init; }
+    public List<string> Images { get; init; } = new();
 }
 
 public record AssetQuery
@@ -46,6 +47,7 @@ public record CreateAssetRequest
     public string? Brand { get; init; }
     public decimal Price { get; init; }
     public int Quantity { get; init; } = 1;
+    public List<string>? Images { get; init; }
 }
 
 public record UpdateAssetRequest
@@ -60,6 +62,7 @@ public record UpdateAssetRequest
     public decimal Price { get; init; }
     public int Quantity { get; init; } = 1;
     public AssetStatus Status { get; init; } = AssetStatus.Available;
+    public List<string>? Images { get; init; }
 }
 
 public record ImportPreviewRow
