@@ -1,21 +1,15 @@
 <script lang="ts" setup>
-import type { AssetDetail, AssetItem, AssetPayload, AssetQuery, AssetStatus } from '#/api/asset';
+import type { AssetDetail, AssetItem, AssetQuery, AssetStatus } from '#/api/asset';
 import type { CategoryNode, CategoryPayload, DepartmentNode, LocationNode } from '#/api/base-data';
 import type { UserDto } from '#/api/user';
-import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import {
-  assetImageUrl,
-  createAssetApi,
   deleteAssetApi,
   exportAssetsApi,
   getAssetDetailApi,
   getAssetListApi,
-  stripImageToken,
-  updateAssetApi,
-  uploadAssetImageApi,
 } from '#/api/asset';
 import {
   createCategoryApi,
@@ -34,7 +28,6 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
-  ElInputNumber,
   ElMessage,
   ElMessageBox,
   ElOption,
@@ -45,11 +38,11 @@ import {
   ElTable,
   ElTableColumn,
   ElTag,
-  ElUpload,
 } from 'element-plus';
 
 import AssetBorrowDialog from './components/AssetBorrowDialog.vue';
 import AssetDetailDialog from './components/AssetDetailDialog.vue';
+import AssetFormDialog from './components/AssetFormDialog.vue';
 import AssetImportDialog from './components/AssetImportDialog.vue';
 import AssetTransferDialog from './components/AssetTransferDialog.vue';
 
@@ -61,18 +54,6 @@ type FlatOption = {
   label: string;
 };
 
-type AssetFormState = {
-  brand?: string;
-  categoryId: number;
-  departmentId?: number;
-  locationId?: number;
-  model?: string;
-  name: string;
-  price: number;
-  quantity: number;
-  status: AssetStatus;
-};
-
 const statusOptions: Array<{ label: string; tag: 'danger' | 'info' | 'success' | 'warning'; value: AssetStatus }> = [
   { label: '在库', tag: 'success', value: 0 },
   { label: '借出', tag: 'warning', value: 1 },
@@ -82,14 +63,14 @@ const statusOptions: Array<{ label: string; tag: 'danger' | 'info' | 'success' |
 
 const activeView = ref<'hierarchy' | 'list'>('hierarchy');
 const loading = ref(false);
-const saving = ref(false);
 const categorySaving = ref(false);
 const dialogVisible = ref(false);
 const categoryDialogVisible = ref(false);
 const importVisible = ref(false);
 const borrowDialogVisible = ref(false);
 const transferDialogVisible = ref(false);
-const editingId = ref<null | number>(null);
+const editingAsset = ref<AssetItem | null>(null);
+const formDefaultCategoryId = ref(0);
 const categoryEditingId = ref<null | number>(null);
 const selectedCategoryId = ref<null | number>(null);
 const assets = ref<AssetItem[]>([]);
@@ -103,7 +84,6 @@ const locations = ref<LocationNode[]>([]);
 const users = ref<UserDto[]>([]);
 const workflows = ref<any[]>([]);
 const currentAssetForAction = ref<AssetItem | null>(null);
-const imageFileList = ref<UploadUserFile[]>([]);
 const detailVisible = ref(false);
 const detailLoading = ref(false);
 const detail = ref<AssetDetail | null>(null);
@@ -118,17 +98,6 @@ const query = reactive({
   status: undefined as AssetStatus | undefined,
 });
 
-const form = reactive<AssetFormState>({
-  brand: '',
-  categoryId: 0,
-  departmentId: undefined,
-  locationId: undefined,
-  model: '',
-  name: '',
-  price: 0,
-  quantity: 1,
-  status: 0,
-});
 const categoryForm = reactive<CategoryPayload>({
   codeSeg: '',
   name: '',
@@ -147,12 +116,6 @@ const hierarchyAssets = computed(() => {
   const ids = collectCategoryIds(hierarchyParent.value);
   return allAssets.value.filter((asset) => ids.includes(asset.categoryId));
 });
-const selectedCategory = computed(() =>
-  categoryOptions.value.find((item) => item.id === form.categoryId),
-);
-const assetNoPreview = computed(() =>
-  selectedCategory.value?.code ? `${selectedCategory.value.code}-自动流水` : '选择分类后生成',
-);
 const categoryPreviewCode = computed(() =>
   categoryParentCode.value ? `${categoryParentCode.value}-${categoryForm.codeSeg}` : categoryForm.codeSeg,
 );
@@ -220,41 +183,14 @@ function search() {
 }
 
 function openCreate(categoryId?: number) {
-  editingId.value = null;
-  Object.assign(form, {
-    brand: '',
-    categoryId: categoryId ?? selectedCategoryId.value ?? query.categoryId ?? 0,
-    departmentId: undefined,
-    locationId: undefined,
-    model: '',
-    name: '',
-    price: 0,
-    quantity: 1,
-    status: 0,
-  });
-  imageFileList.value = [];
+  editingAsset.value = null;
+  formDefaultCategoryId.value =
+    categoryId ?? selectedCategoryId.value ?? query.categoryId ?? 0;
   dialogVisible.value = true;
 }
 
 function openEdit(row: AssetItem) {
-  editingId.value = row.id;
-  Object.assign(form, {
-    brand: row.brand ?? '',
-    categoryId: row.categoryId,
-    departmentId: row.departmentId ?? undefined,
-    locationId: row.locationId ?? undefined,
-    model: row.model ?? '',
-    name: row.name,
-    price: row.price,
-    quantity: row.quantity,
-    status: row.status,
-  });
-  imageFileList.value = (row.images ?? []).map((url, index) => ({
-    name: url.split('/').pop() ?? url,
-    status: 'success',
-    uid: -(index + 1),
-    url: assetImageUrl(url),
-  }));
+  editingAsset.value = row;
   dialogVisible.value = true;
 }
 
@@ -269,24 +205,8 @@ async function openDetail(row: AssetItem) {
   }
 }
 
-async function save() {
-  if (!form.name.trim() || !form.categoryId) {
-    ElMessage.warning('请填写资产名称并选择分类');
-    return;
-  }
-  saving.value = true;
-  try {
-    if (editingId.value) {
-      await updateAssetApi(editingId.value, buildPayload());
-    } else {
-      await createAssetApi(buildPayload());
-    }
-    ElMessage.success('保存成功');
-    dialogVisible.value = false;
-    await Promise.all([loadData(), loadHierarchyAssets()]);
-  } finally {
-    saving.value = false;
-  }
+function onSaved() {
+  void Promise.all([loadData(), loadHierarchyAssets()]);
 }
 
 async function remove(row: AssetItem) {
@@ -421,46 +341,6 @@ function openImport() {
 
 function onImported() {
   void Promise.all([loadData(), loadHierarchyAssets()]);
-}
-
-function buildPayload(): AssetPayload {
-  return {
-    brand: form.brand,
-    categoryId: form.categoryId,
-    departmentId: form.departmentId,
-    images: imageFileList.value
-      .map((f) => f.url ?? (f.response as { url?: string } | undefined)?.url)
-      .filter((u): u is string => !!u)
-      .map((u) => stripImageToken(u)),
-    locationId: form.locationId,
-    model: form.model,
-    name: form.name,
-    price: form.price,
-    quantity: form.quantity,
-    status: form.status,
-  };
-}
-
-function beforeImageUpload(file: File) {
-  const allowed = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'];
-  if (!allowed.includes(file.type)) {
-    ElMessage.warning('仅支持 jpg/png/gif/webp 格式图片');
-    return false;
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    ElMessage.warning('单张图片大小不能超过 5MB');
-    return false;
-  }
-  return true;
-}
-
-async function customImageUpload(options: UploadRequestOptions) {
-  // 返回值会成为该文件的 response,buildPayload 据此取 url
-  return await uploadAssetImageApi(options.file);
-}
-
-function onImageExceed() {
-  ElMessage.warning('最多上传 5 张照片');
 }
 
 function statusMeta(status: AssetStatus) {
@@ -764,89 +644,15 @@ onMounted(async () => {
         </ElTabs>
       </div>
 
-      <ElDialog
-        v-model="dialogVisible"
-        :title="editingId ? '编辑资产' : '新增资产'"
-        width="560px"
-      >
-        <ElForm label-width="88px">
-          <ElFormItem label="资产名称">
-            <ElInput v-model="form.name" />
-          </ElFormItem>
-          <ElFormItem label="资产分类">
-            <ElSelect v-model="form.categoryId" filterable placeholder="选择末级分类" style="width: 100%">
-              <ElOption
-                v-for="item in categoryOptions"
-                :key="item.id"
-                :label="item.label"
-                :value="item.id"
-              />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem label="编号预览">
-            <ElTag>{{ assetNoPreview }}</ElTag>
-          </ElFormItem>
-          <ElFormItem label="归属部门">
-            <ElSelect v-model="form.departmentId" clearable filterable placeholder="选择部门" style="width: 100%">
-              <ElOption
-                v-for="item in departmentOptions"
-                :key="item.id"
-                :label="item.label"
-                :value="item.id"
-              />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem label="存放位置">
-            <ElSelect v-model="form.locationId" clearable filterable placeholder="选择位置" style="width: 100%">
-              <ElOption
-                v-for="item in locationOptions"
-                :key="item.id"
-                :label="item.label"
-                :value="item.id"
-              />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem label="型号品牌">
-            <div class="grid w-full grid-cols-2 gap-2">
-              <ElInput v-model="form.model" placeholder="型号" />
-              <ElInput v-model="form.brand" placeholder="品牌" />
-            </div>
-          </ElFormItem>
-          <ElFormItem label="价格数量">
-            <div class="grid w-full grid-cols-2 gap-2">
-              <ElInputNumber v-model="form.price" :min="0" :precision="2" class="w-full" />
-              <ElInputNumber v-model="form.quantity" :min="1" class="w-full" />
-            </div>
-          </ElFormItem>
-          <ElFormItem label="资产照片">
-            <ElUpload
-              v-model:file-list="imageFileList"
-              :before-upload="beforeImageUpload"
-              :http-request="customImageUpload"
-              :limit="5"
-              :on-exceed="onImageExceed"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              list-type="picture-card"
-            >
-              <span class="text-2xl">+</span>
-            </ElUpload>
-          </ElFormItem>
-          <ElFormItem v-if="editingId" label="状态">
-            <ElSelect v-model="form.status" style="width: 100%">
-              <ElOption
-                v-for="item in statusOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </ElSelect>
-          </ElFormItem>
-        </ElForm>
-        <template #footer>
-          <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
-        </template>
-      </ElDialog>
+      <AssetFormDialog
+        v-model:visible="dialogVisible"
+        :asset="editingAsset"
+        :category-options="categoryOptions"
+        :default-category-id="formDefaultCategoryId"
+        :department-options="departmentOptions"
+        :location-options="locationOptions"
+        @saved="onSaved"
+      />
 
       <AssetDetailDialog
         v-model:visible="detailVisible"
