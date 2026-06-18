@@ -6,7 +6,7 @@ import type {
   WorkbenchTrendItem,
 } from '@vben/common-ui';
 
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import {
@@ -20,7 +20,10 @@ import {
 import { preferences } from '@vben/preferences';
 import { useUserStore } from '@vben/stores';
 import { openWindow } from '@vben/utils';
+import { ElCard, ElStatistic, ElRow, ElCol } from 'element-plus';
 
+import { getAssetSummaryApi, getOverdueReportApi } from '#/api/report';
+import type { AssetSummary, OverdueReportRow } from '#/api/report';
 import AnalyticsVisitsSource from '../analytics/analytics-visits-source.vue';
 
 const userStore = useUserStore();
@@ -216,6 +219,31 @@ const trendItems: WorkbenchTrendItem[] = [
 
 const router = useRouter();
 
+// 业务数据：资产概览
+const assetSummary = ref<AssetSummary | null>(null);
+const overdueAssets = ref<OverdueReportRow[]>([]);
+const metricsLoading = ref(false);
+
+async function loadDashboardMetrics() {
+  metricsLoading.value = true;
+  try {
+    const [summary, overdue] = await Promise.all([
+      getAssetSummaryApi(),
+      getOverdueReportApi(),
+    ]);
+    assetSummary.value = summary;
+    overdueAssets.value = overdue;
+  } catch (e) {
+    console.error('Failed to load dashboard metrics:', e);
+  } finally {
+    metricsLoading.value = false;
+  }
+}
+
+onMounted(() => {
+  loadDashboardMetrics();
+});
+
 // 这是一个示例方法，实际项目中需要根据实际情况进行调整
 // This is a sample method, adjust according to the actual project requirements
 function navTo(nav: WorkbenchProjectItem | WorkbenchQuickNavItem) {
@@ -243,6 +271,43 @@ function navTo(nav: WorkbenchProjectItem | WorkbenchQuickNavItem) {
       </template>
       <template #description> 今日晴，20℃ - 32℃！ </template>
     </WorkbenchHeader>
+
+    <!-- 资产概览 -->
+    <div class="mt-5">
+      <div class="mb-3 text-lg font-semibold">资产概览</div>
+      <ElRow :gutter="16">
+        <ElCol :xs="24" :sm="12" :md="8" :lg="4" class="mb-4">
+          <ElCard shadow="hover" class="text-center">
+            <ElStatistic title="资产总数" :value="assetSummary?.total || 0" />
+          </ElCard>
+        </ElCol>
+        <ElCol :xs="24" :sm="12" :md="8" :lg="4" class="mb-4">
+          <ElCard shadow="hover" class="text-center">
+            <ElStatistic title="在库数" :value="assetSummary?.available || 0" value-style="color: var(--el-color-success)" />
+          </ElCard>
+        </ElCol>
+        <ElCol :xs="24" :sm="12" :md="8" :lg="4" class="mb-4">
+          <ElCard shadow="hover" class="text-center">
+            <ElStatistic title="借出数" :value="assetSummary?.borrowed || 0" value-style="color: var(--el-color-warning)" />
+          </ElCard>
+        </ElCol>
+        <ElCol :xs="24" :sm="12" :md="8" :lg="4" class="mb-4">
+          <ElCard shadow="hover" class="text-center">
+            <ElStatistic title="资产原值(万元)" :value="((assetSummary?.totalValue || 0) / 10000)" :precision="2" />
+          </ElCard>
+        </ElCol>
+        <ElCol :xs="24" :sm="12" :md="8" :lg="4" class="mb-4">
+          <ElCard shadow="hover" class="text-center">
+            <ElStatistic title="逾期数" :value="overdueAssets.length" :value-style="overdueAssets.length > 0 ? 'color: var(--el-color-danger)' : ''" />
+          </ElCard>
+        </ElCol>
+        <ElCol :xs="24" :sm="12" :md="8" :lg="4" class="mb-4">
+          <ElCard shadow="hover" class="text-center">
+            <ElStatistic title="严重逾期" :value="overdueAssets.filter(x => x.isSerious).length" :value-style="overdueAssets.filter(x => x.isSerious).length > 0 ? 'color: var(--el-color-danger); font-weight: bold;' : ''" />
+          </ElCard>
+        </ElCol>
+      </ElRow>
+    </div>
 
     <div class="mt-5 flex flex-col lg:flex-row">
       <div class="mr-4 w-full lg:w-3/5">

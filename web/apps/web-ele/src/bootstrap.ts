@@ -56,6 +56,11 @@ async function bootstrap(namespace: string) {
   // 配置路由及路由守卫
   app.use(router);
 
+  // 暴露给E2E测试以便进行零刷新路由跳转
+  if (import.meta.env.DEV || (window as any).__playwright_active__) {
+    (window as any).$router = router;
+  }
+
   const preference = usePreferences();
   const localMap = {
     'zh-CN': zhCN,

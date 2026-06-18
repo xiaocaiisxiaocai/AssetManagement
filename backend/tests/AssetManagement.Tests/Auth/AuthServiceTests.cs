@@ -127,7 +127,7 @@ public class AuthServiceTests
 
     private sealed class FakeJwtTokenService : IJwtTokenService
     {
-        public string Create(int userId, string employeeNo, IEnumerable<string> permissionCodes, IEnumerable<string> roles)
-            => $"token:{userId}:{employeeNo}:{string.Join(",", permissionCodes)}:{string.Join(",", roles)}";
+        public string Create(int userId, string employeeNo, IEnumerable<string> permissionCodes, IEnumerable<string> roles, int? departmentId = null)
+            => $"token:{userId}:{employeeNo}:{string.Join(",", permissionCodes)}:{string.Join(",", roles)}:{departmentId}";
     }
 }
