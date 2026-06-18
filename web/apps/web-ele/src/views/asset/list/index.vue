@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { AssetDetail, AssetItem, AssetPayload, AssetQuery, AssetStatus, ImportPreviewRow } from '#/api/asset';
+import type { AssetDetail, AssetItem, AssetPayload, AssetQuery, AssetStatus } from '#/api/asset';
 import type { CategoryNode, CategoryPayload, DepartmentNode, LocationNode } from '#/api/base-data';
 import type { UserDto } from '#/api/user';
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
@@ -8,17 +8,14 @@ import { computed, onMounted, reactive, ref } from 'vue';
 
 import {
   assetImageUrl,
-  confirmAssetImportApi,
   createAssetApi,
   deleteAssetApi,
-  downloadAssetTemplateApi,
   exportAssetsApi,
   getAssetDetailApi,
   getAssetListApi,
   stripImageToken,
   updateAssetApi,
   uploadAssetImageApi,
-  validateAssetImportApi,
 } from '#/api/asset';
 import {
   createCategoryApi,
@@ -28,16 +25,14 @@ import {
   getLocationTreeApi,
   updateCategoryApi,
 } from '#/api/base-data';
-import { startApprovalApi, getWorkflowsApi } from '#/api/workflow';
+import { getWorkflowsApi } from '#/api/workflow';
 import { getUserListApi } from '#/api/user';
 
 import {
   ElButton,
-  ElDatePicker,
   ElDialog,
   ElForm,
   ElFormItem,
-  ElImage,
   ElInput,
   ElInputNumber,
   ElMessage,
@@ -50,10 +45,13 @@ import {
   ElTable,
   ElTableColumn,
   ElTag,
-  ElTimeline,
-  ElTimelineItem,
   ElUpload,
 } from 'element-plus';
+
+import AssetBorrowDialog from './components/AssetBorrowDialog.vue';
+import AssetDetailDialog from './components/AssetDetailDialog.vue';
+import AssetImportDialog from './components/AssetImportDialog.vue';
+import AssetTransferDialog from './components/AssetTransferDialog.vue';
 
 defineOptions({ name: 'AssetList' });
 
@@ -86,7 +84,6 @@ const activeView = ref<'hierarchy' | 'list'>('hierarchy');
 const loading = ref(false);
 const saving = ref(false);
 const categorySaving = ref(false);
-const importing = ref(false);
 const dialogVisible = ref(false);
 const categoryDialogVisible = ref(false);
 const importVisible = ref(false);
@@ -95,8 +92,6 @@ const transferDialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const categoryEditingId = ref<null | number>(null);
 const selectedCategoryId = ref<null | number>(null);
-const selectedFile = ref<File | null>(null);
-const importPreview = ref<ImportPreviewRow[]>([]);
 const assets = ref<AssetItem[]>([]);
 const allAssets = ref<AssetItem[]>([]);
 const total = ref(0);
@@ -138,16 +133,6 @@ const categoryForm = reactive<CategoryPayload>({
   codeSeg: '',
   name: '',
   parentId: null,
-});
-
-const borrowForm = reactive({
-  returnDate: '' as string | Date,
-  reason: '',
-});
-
-const transferForm = reactive({
-  transfereeId: undefined as number | undefined,
-  reason: '',
 });
 
 const categoryOptions = computed(() => flattenCategories(categories.value));
@@ -282,31 +267,6 @@ async function openDetail(row: AssetItem) {
   } finally {
     detailLoading.value = false;
   }
-}
-
-const bizTypeText: Record<string, string> = {
-  borrow: '借用',
-  return: '归还',
-  scrap: '报废',
-  transfer: '转让',
-};
-
-const flowStatusMeta: Record<string, { tag: 'danger' | 'info' | 'success' | 'warning'; text: string }> = {
-  approved: { tag: 'success', text: '已通过' },
-  pending: { tag: 'warning', text: '审批中' },
-  rejected: { tag: 'danger', text: '已驳回' },
-};
-
-function flowTitle(flow: AssetDetail['flows'][number]) {
-  const biz = bizTypeText[flow.bizType] ?? flow.bizType;
-  const status = flowStatusMeta[flow.status]?.text ?? flow.status;
-  return `${biz} · ${status}`;
-}
-
-function formatTime(time: null | string) {
-  if (!time) return '—';
-  const d = new Date(time);
-  return Number.isNaN(d.getTime()) ? time : d.toLocaleString('zh-CN', { hour12: false });
 }
 
 async function save() {
@@ -450,55 +410,17 @@ function findCategoryNode(nodes: CategoryNode[], id?: null | number): CategoryNo
   return null;
 }
 
-async function downloadTemplate() {
-  const response = await downloadAssetTemplateApi();
-  downloadBlob(response.data, 'asset-import-template.xlsx');
-}
-
 async function exportAssets() {
   const response = await exportAssetsApi(buildQuery());
   downloadBlob(response.data, 'assets.xlsx');
 }
 
-function onFileChange(event: Event) {
-  const input = event.target as HTMLInputElement;
-  selectedFile.value = input.files?.[0] ?? null;
-  importPreview.value = [];
-}
-
-async function validateImport() {
-  if (!selectedFile.value) {
-    ElMessage.warning('请先选择 Excel 文件');
-    return;
-  }
-  importing.value = true;
-  try {
-    importPreview.value = await validateAssetImportApi(selectedFile.value);
-  } finally {
-    importing.value = false;
-  }
-}
-
-async function confirmImport() {
-  if (!selectedFile.value) {
-    ElMessage.warning('请先选择 Excel 文件');
-    return;
-  }
-  importing.value = true;
-  try {
-    const result = await confirmAssetImportApi(selectedFile.value);
-    importPreview.value = result.rows;
-    ElMessage.success(`导入成功 ${result.successCount} 条，失败 ${result.failedCount} 条`);
-    await Promise.all([loadData(), loadHierarchyAssets()]);
-  } finally {
-    importing.value = false;
-  }
-}
-
 function openImport() {
-  selectedFile.value = null;
-  importPreview.value = [];
   importVisible.value = true;
+}
+
+function onImported() {
+  void Promise.all([loadData(), loadHierarchyAssets()]);
 }
 
 function buildPayload(): AssetPayload {
@@ -583,70 +505,12 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function openBorrowDialog(row: AssetItem) {
   currentAssetForAction.value = row;
-  borrowForm.returnDate = '';
-  borrowForm.reason = '';
   borrowDialogVisible.value = true;
 }
 
 function openTransferDialog(row: AssetItem) {
   currentAssetForAction.value = row;
-  transferForm.transfereeId = undefined;
-  transferForm.reason = '';
   transferDialogVisible.value = true;
-}
-
-async function submitBorrow() {
-  if (!currentAssetForAction.value) return;
-  if (!borrowForm.returnDate) {
-    ElMessage.warning('请选择归还日期');
-    return;
-  }
-  if (!borrowForm.reason || borrowForm.reason.length < 10 || borrowForm.reason.length > 200) {
-    ElMessage.warning('借用原因需要 10-200 字');
-    return;
-  }
-
-  try {
-    saving.value = true;
-    await startApprovalApi({
-      bizType: 'borrow',
-      assetId: currentAssetForAction.value.id,
-      returnDate: borrowForm.returnDate as string,
-      reason: borrowForm.reason,
-    });
-    ElMessage.success('借用申请已提交');
-    borrowDialogVisible.value = false;
-    window.location.href = '/#/approval/mine';
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function submitTransfer() {
-  if (!currentAssetForAction.value) return;
-  if (!transferForm.transfereeId) {
-    ElMessage.warning('请选择受让人');
-    return;
-  }
-  if (!transferForm.reason || transferForm.reason.length < 10 || transferForm.reason.length > 200) {
-    ElMessage.warning('转让原因需要 10-200 字');
-    return;
-  }
-
-  try {
-    saving.value = true;
-    await startApprovalApi({
-      bizType: 'transfer',
-      assetId: currentAssetForAction.value.id,
-      transfereeId: transferForm.transfereeId,
-      reason: transferForm.reason,
-    });
-    ElMessage.success('转让申请已提交');
-    transferDialogVisible.value = false;
-    window.location.href = '/#/approval/mine';
-  } finally {
-    saving.value = false;
-  }
 }
 
 onMounted(async () => {
@@ -984,113 +848,13 @@ onMounted(async () => {
         </template>
       </ElDialog>
 
-      <ElDialog v-model="detailVisible" title="资产详情" width="720px">
-        <div v-loading="detailLoading" class="space-y-5">
-          <template v-if="detail">
-            <section>
-              <div class="mb-2 font-medium">基本信息</div>
-              <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-                <div>资产编号：{{ detail.asset.assetNo }}</div>
-                <div>名称：{{ detail.asset.name }}</div>
-                <div>分类：{{ detail.asset.categoryName }}</div>
-                <div>
-                  状态：
-                  <ElTag :type="statusOptions[detail.asset.status]?.tag" size="small">
-                    {{ statusOptions[detail.asset.status]?.label }}
-                  </ElTag>
-                </div>
-                <div>归属部门：{{ detail.asset.departmentName ?? '—' }}</div>
-                <div>存放位置：{{ detail.asset.locationName ?? '—' }}</div>
-                <div>保管人：{{ detail.asset.custodianName ?? '—' }}</div>
-                <div>型号品牌：{{ detail.asset.model || '—' }} / {{ detail.asset.brand || '—' }}</div>
-                <div>单价：{{ detail.asset.price }}</div>
-                <div>数量：{{ detail.asset.quantity }}</div>
-              </div>
-            </section>
+      <AssetDetailDialog
+        v-model:visible="detailVisible"
+        :detail="detail"
+        :loading="detailLoading"
+      />
 
-            <section v-if="detail.asset.images && detail.asset.images.length">
-              <div class="mb-2 font-medium">资产照片</div>
-              <div class="flex flex-wrap gap-2">
-                <ElImage
-                  v-for="(url, i) in detail.asset.images"
-                  :key="i"
-                  :initial-index="i"
-                  :preview-src-list="(detail.asset.images || []).map(assetImageUrl)"
-                  :src="assetImageUrl(url)"
-                  class="h-20 w-20 rounded border"
-                  fit="cover"
-                />
-              </div>
-            </section>
-
-            <section>
-              <div class="mb-2 font-medium">流转时间线</div>
-              <ElTimeline v-if="detail.flows.length">
-                <ElTimelineItem
-                  v-for="flow in detail.flows"
-                  :key="flow.id"
-                  :timestamp="formatTime(flow.applyTime)"
-                  :type="flowStatusMeta[flow.status]?.tag ?? 'primary'"
-                >
-                  <div class="text-sm">
-                    <span class="font-medium">{{ flowTitle(flow) }}</span>
-                    <span class="text-gray-500"> · {{ flow.applicant }}</span>
-                    <span v-if="flow.transferee" class="text-gray-500"> → {{ flow.transferee }}</span>
-                  </div>
-                  <div v-if="flow.reason" class="text-xs text-gray-400">事由：{{ flow.reason }}</div>
-                  <div v-if="flow.returnDate" class="text-xs text-gray-400">应归还：{{ flow.returnDate }}</div>
-                </ElTimelineItem>
-              </ElTimeline>
-              <div v-else class="text-sm text-gray-400">暂无流转记录</div>
-            </section>
-
-            <section>
-              <div class="mb-2 font-medium">最近操作日志</div>
-              <ElTable v-if="detail.recentLogs.length" :data="detail.recentLogs" size="small">
-                <ElTableColumn label="时间" width="170">
-                  <template #default="{ row }">{{ formatTime(row.occurredAt) }}</template>
-                </ElTableColumn>
-                <ElTableColumn label="操作人" prop="userName" width="110" />
-                <ElTableColumn label="动作" prop="actionType" width="90" />
-                <ElTableColumn label="摘要" prop="summary" show-overflow-tooltip />
-              </ElTable>
-              <div v-else class="text-sm text-gray-400">暂无操作日志</div>
-            </section>
-          </template>
-        </div>
-      </ElDialog>
-
-      <ElDialog v-model="importVisible" title="批量导入资产" width="760px">
-        <div class="space-y-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <ElButton @click="downloadTemplate">下载模板</ElButton>
-            <input accept=".xlsx" type="file" @change="onFileChange" />
-            <ElButton :loading="importing" @click="validateImport">预校验</ElButton>
-            <ElButton
-              :disabled="!importPreview.some((row) => row.isValid)"
-              :loading="importing"
-              type="primary"
-              @click="confirmImport"
-            >
-              确认导入
-            </ElButton>
-          </div>
-          <ElTable :data="importPreview" border max-height="360">
-            <ElTableColumn label="行号" prop="row" width="80" />
-            <ElTableColumn label="名称" prop="name" />
-            <ElTableColumn label="分类编码" prop="categoryCode" />
-            <ElTableColumn label="单价" prop="price" width="100" />
-            <ElTableColumn label="状态" width="90">
-              <template #default="{ row }">
-                <ElTag :type="row.isValid ? 'success' : 'danger'">
-                  {{ row.isValid ? '有效' : '无效' }}
-                </ElTag>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="错误" min-width="180" prop="error" />
-          </ElTable>
-        </div>
-      </ElDialog>
+      <AssetImportDialog v-model:visible="importVisible" @imported="onImported" />
 
       <ElDialog
         v-model="categoryDialogVisible"
@@ -1119,77 +883,16 @@ onMounted(async () => {
         </template>
       </ElDialog>
 
-      <ElDialog v-model="borrowDialogVisible" title="资产借用申请" width="560px">
-        <ElForm v-if="currentAssetForAction" label-width="88px">
-          <ElFormItem label="资产编号">
-            <ElInput v-model="currentAssetForAction.assetNo" disabled />
-          </ElFormItem>
-          <ElFormItem label="资产名称">
-            <ElInput v-model="currentAssetForAction.name" disabled />
-          </ElFormItem>
-          <ElFormItem label="归还日期">
-            <ElDatePicker
-              v-model="borrowForm.returnDate"
-              clearable
-              format="YYYY-MM-DD"
-              placeholder="选择归还日期"
-              style="width: 100%"
-              type="date"
-            />
-          </ElFormItem>
-          <ElFormItem label="借用原因">
-            <ElInput
-              v-model="borrowForm.reason"
-              :maxlength="200"
-              clearable
-              placeholder="10-200 字"
-              :rows="3"
-              show-word-limit
-              type="textarea"
-            />
-          </ElFormItem>
-        </ElForm>
-        <template #footer>
-          <ElButton @click="borrowDialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="submitBorrow">提交</ElButton>
-        </template>
-      </ElDialog>
+      <AssetBorrowDialog
+        v-model:visible="borrowDialogVisible"
+        :asset="currentAssetForAction"
+      />
 
-      <ElDialog v-model="transferDialogVisible" title="资产转让申请" width="560px">
-        <ElForm v-if="currentAssetForAction" label-width="88px">
-          <ElFormItem label="资产编号">
-            <ElInput v-model="currentAssetForAction.assetNo" disabled />
-          </ElFormItem>
-          <ElFormItem label="资产名称">
-            <ElInput v-model="currentAssetForAction.name" disabled />
-          </ElFormItem>
-          <ElFormItem label="受让人">
-            <ElSelect v-model="transferForm.transfereeId" filterable placeholder="选择受让人" style="width: 100%">
-              <ElOption
-                v-for="item in users"
-                :key="item.id"
-                :label="`${item.name}(${item.employeeNo})`"
-                :value="item.id"
-              />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem label="转让原因">
-            <ElInput
-              v-model="transferForm.reason"
-              :maxlength="200"
-              clearable
-              placeholder="10-200 字"
-              :rows="3"
-              show-word-limit
-              type="textarea"
-            />
-          </ElFormItem>
-        </ElForm>
-        <template #footer>
-          <ElButton @click="transferDialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="submitTransfer">提交</ElButton>
-        </template>
-      </ElDialog>
+      <AssetTransferDialog
+        v-model:visible="transferDialogVisible"
+        :asset="currentAssetForAction"
+        :users="users"
+      />
     </div>
   </re-page>
 </template>
