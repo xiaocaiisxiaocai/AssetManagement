@@ -39,13 +39,19 @@ public class RbacService : IRbacService
 
     public async Task<UserDto> CreateUserAsync(CreateUserRequest request)
     {
+        var password = !string.IsNullOrWhiteSpace(request.Password)
+            ? request.Password
+            : DefaultPassword(request.EmployeeNo);
+
         var user = new User
         {
             EmployeeNo = request.EmployeeNo.Trim(),
             Name = request.Name.Trim(),
             Email = request.Email,
             Phone = request.Phone,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultPassword(request.EmployeeNo)),
+            DepartmentId = request.DepartmentId,
+            SupervisorId = request.SupervisorId,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             IsActive = true
         };
         _db.Users.Add(user);
@@ -61,6 +67,8 @@ public class RbacService : IRbacService
         user.Name = request.Name.Trim();
         user.Email = request.Email;
         user.Phone = request.Phone;
+        user.DepartmentId = request.DepartmentId;
+        user.SupervisorId = request.SupervisorId;
         await RewriteUserRoles(id, request.RoleIds);
         await _db.SaveChangesAsync();
         return await LoadUserDto(id);
@@ -284,6 +292,8 @@ public class RbacService : IRbacService
         Email = x.Email,
         Phone = x.Phone,
         IsActive = x.IsActive,
+        DepartmentId = x.DepartmentId,
+        SupervisorId = x.SupervisorId,
         RoleIds = x.UserRoles.Select(r => r.RoleId).ToArray()
     };
 

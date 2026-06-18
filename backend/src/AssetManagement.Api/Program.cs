@@ -48,6 +48,12 @@ builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
+// 生产环境纵深防御:禁止以占位符或弱密钥(<32 字符)启动,密钥应通过环境变量 Jwt__Key 注入
+if (!builder.Environment.IsDevelopment()
+    && (jwtKey.Length < 32 || jwtKey.StartsWith("REPLACE_WITH", StringComparison.Ordinal)))
+{
+    throw new InvalidOperationException("生产环境必须配置强随机 Jwt:Key(至少 32 字符),请通过环境变量 Jwt__Key 注入");
+}
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "AssetManagement";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
@@ -61,6 +67,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1)
+        };
+        // 资产图片用 <img>/el-image 加载无法携带 Authorization 头,仅对 /api/files 路径允许从 query 读取 token
+        o.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                if (string.IsNullOrEmpty(ctx.Token)
+                    && ctx.HttpContext.Request.Path.StartsWithSegments("/api/files")
+                    && ctx.Request.Query.TryGetValue("token", out var queryToken))
+                {
+                    ctx.Token = queryToken;
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 builder.Services.AddAuthorization();
@@ -95,6 +115,14 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// CORS:仅当配置了 Cors:AllowedOrigins 时启用(前后端分离部署场景);默认同源不启用
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+if (corsOrigins is { Length: > 0 })
+{
+    builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
+        p.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("accesstoken")));
+}
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -113,7 +141,13 @@ if (app.Environment.IsDevelopment())
 
 app.UseMiddleware<ExceptionMiddleware>();
 
+if (corsOrigins is { Length: > 0 })
+{
+    app.UseCors();
+}
+
 app.UseAuthentication();
+app.UseMiddleware<SlidingTokenMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();

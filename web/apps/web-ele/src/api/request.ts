@@ -122,10 +122,11 @@ function createRequestClient(baseURL: string) {
       } = error;
       const { validationErrors } = error;
       switch (status) {
-        case HttpStatusCode.Unauthorized:
+        case HttpStatusCode.Unauthorized: {
           const authStore = useAuthStore();
           authStore.logout();
           break;
+        }
         case HttpStatusCode.BadRequest:
           if (Array.isArray(validationErrors)) {
             validationErrors.forEach((element) => {

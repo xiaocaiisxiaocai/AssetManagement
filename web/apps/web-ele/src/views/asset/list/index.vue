@@ -7,6 +7,7 @@ import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import {
+  assetImageUrl,
   confirmAssetImportApi,
   createAssetApi,
   deleteAssetApi,
@@ -14,6 +15,7 @@ import {
   exportAssetsApi,
   getAssetDetailApi,
   getAssetListApi,
+  stripImageToken,
   updateAssetApi,
   uploadAssetImageApi,
   validateAssetImportApi,
@@ -266,7 +268,7 @@ function openEdit(row: AssetItem) {
     name: url.split('/').pop() ?? url,
     status: 'success',
     uid: -(index + 1),
-    url,
+    url: assetImageUrl(url),
   }));
   dialogVisible.value = true;
 }
@@ -506,7 +508,8 @@ function buildPayload(): AssetPayload {
     departmentId: form.departmentId,
     images: imageFileList.value
       .map((f) => f.url ?? (f.response as { url?: string } | undefined)?.url)
-      .filter((u): u is string => !!u),
+      .filter((u): u is string => !!u)
+      .map((u) => stripImageToken(u)),
     locationId: form.locationId,
     model: form.model,
     name: form.name,
@@ -854,9 +857,6 @@ onMounted(async () => {
                   </div>
                   <div class="flex flex-wrap justify-end gap-2">
                     <ElButton @click="exportAssets">批量导出</ElButton>
-                    <ElButton @click="ElMessage.info('打印标签功能待接入打印服务')">
-                      批量打印标签
-                    </ElButton>
                   </div>
                 </div>
                 <ElTable v-loading="loading" :data="assets" border>
@@ -1015,8 +1015,8 @@ onMounted(async () => {
                   v-for="(url, i) in detail.asset.images"
                   :key="i"
                   :initial-index="i"
-                  :preview-src-list="detail.asset.images"
-                  :src="url"
+                  :preview-src-list="(detail.asset.images || []).map(assetImageUrl)"
+                  :src="assetImageUrl(url)"
                   class="h-20 w-20 rounded border"
                   fit="cover"
                 />

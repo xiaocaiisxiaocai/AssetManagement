@@ -1,7 +1,6 @@
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Files;
 using AssetManagement.Infrastructure.Auth;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AssetManagement.Api.Controllers;
@@ -26,7 +25,7 @@ public class FileController : ControllerBase
     }
 
     [HttpGet("{name}")]
-    [AllowAnonymous]
+    [HasPermission("asset:view")]
     public IActionResult Get(string name)
     {
         var stored = _storage.Open(name);

@@ -42,11 +42,28 @@ public class WorkflowService : IWorkflowService
             ?? throw new BizException(4049, "流程不存在");
         var asset = await _db.Assets.FindAsync(request.AssetId)
             ?? throw new BizException(4048, "资产不存在");
+        // 发起前校验资产状态,避免对借出中/不可用资产重复发起借用或转让
+        if (workflow.BizType is "borrow" or "transfer" && asset.Status != AssetStatus.Available)
+        {
+            throw new BizException(4055, "资产当前不可用,无法发起该流程");
+        }
+        // 同一资产存在进行中的审批时拒绝重复发起,防止并发借用竞态
+        if (await _db.ApprovalFlows.AnyAsync(x => x.AssetId == asset.Id && x.Status == "pending"))
+        {
+            throw new BizException(4056, "该资产已有进行中的审批,请勿重复发起");
+        }
         var applicant = await _db.Users.FindAsync(applicantId)
             ?? throw new BizException(4041, "用户不存在");
         var transferee = request.TransfereeId.HasValue
             ? await _db.Users.FindAsync(request.TransfereeId.Value)
             : null;
+
+        // 解析每个节点的实际审批人(直属上级/部门经理等动态类型)
+        var instanceNodes = new List<FlowInstanceNode>();
+        foreach (var node in workflow.Nodes)
+        {
+            instanceNodes.Add(ToInstanceNode(node, await ResolveApproverAsync(node, applicant)));
+        }
 
         var flow = new ApprovalFlow
         {
@@ -68,7 +85,7 @@ public class WorkflowService : IWorkflowService
             Status = "pending",
             ApplyTime = DateTime.UtcNow,
             Deadline = DateTime.UtcNow.AddDays(2),
-            Nodes = workflow.Nodes.Select(ToInstanceNode).ToList()
+            Nodes = instanceNodes
         };
         WorkflowEngine.Start(flow);
         _db.ApprovalFlows.Add(flow);
@@ -79,10 +96,11 @@ public class WorkflowService : IWorkflowService
 
     public async Task<List<ApprovalFlowDto>> PendingAsync(int userId)
     {
-        var user = await _db.Users.FindAsync(userId);
+        var user = await LoadUser(userId);
+        var isAdmin = IsAdmin(user);
         var flows = await _db.ApprovalFlows.Where(x => x.Status == "pending").OrderByDescending(x => x.Id).ToListAsync();
         return flows
-            .Where(x => IsPendingForUser(x, user))
+            .Where(x => isAdmin || IsNodeApprover(CurrentNodeOrNull(x), user))
             .Select(ToFlowDto)
             .ToList();
     }
@@ -108,7 +126,14 @@ public class WorkflowService : IWorkflowService
     public async Task<ApprovalFlowDto> ApproveAsync(int id, ApprovalActionRequest request, int userId)
     {
         var flow = await LoadFlow(id);
-        WorkflowEngine.Approve(flow, request.Signer, request.Opinion);
+        EnsureActive(flow);
+        var user = await LoadUser(userId);
+        EnsureCanHandle(flow, user);
+
+        // 流程推进、业务副作用、流转记录三者同一事务,任一失败整体回滚,避免状态不一致
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        // 会签/或签未显式指定签署人时,默认以当前审批人身份签署(EnsureCanHandle 已确保其为合法审批人)
+        WorkflowEngine.Approve(flow, request.Signer ?? user.Name, request.Opinion);
         flow.Nodes = flow.Nodes.ToList();
         if (WorkflowEngine.IsFinished(flow))
         {
@@ -116,37 +141,47 @@ public class WorkflowService : IWorkflowService
         }
 
         await _db.SaveChangesAsync();
-        await AddRecord(id, "approve", await UserName(userId), request.Opinion);
+        await AddRecord(id, "approve", user.Name, request.Opinion);
+        await tx.CommitAsync();
         return ToFlowDto(flow);
     }
 
     public async Task<ApprovalFlowDto> RejectAsync(int id, RejectRequest request, int userId)
     {
         var flow = await LoadFlow(id);
+        EnsureActive(flow);
+        var user = await LoadUser(userId);
+        EnsureCanHandle(flow, user);
         WorkflowEngine.Reject(flow, request.Reason);
         flow.Nodes = flow.Nodes.ToList();
         await _db.SaveChangesAsync();
-        await AddRecord(id, "reject", await UserName(userId), request.Reason);
+        await AddRecord(id, "reject", user.Name, request.Reason);
         return ToFlowDto(flow);
     }
 
     public async Task<ApprovalFlowDto> AddSignAsync(int id, AddSignRequest request, int userId)
     {
         var flow = await LoadFlow(id);
+        EnsureActive(flow);
+        var user = await LoadUser(userId);
+        EnsureCanHandle(flow, user);
         WorkflowEngine.AddSign(flow, request.Who);
         flow.Nodes = flow.Nodes.ToList();
         await _db.SaveChangesAsync();
-        await AddRecord(id, "add-sign", await UserName(userId), request.Who);
+        await AddRecord(id, "add-sign", user.Name, request.Who);
         return ToFlowDto(flow);
     }
 
     public async Task<ApprovalFlowDto> TransferSignAsync(int id, TransferSignRequest request, int userId)
     {
         var flow = await LoadFlow(id);
+        EnsureActive(flow);
+        var user = await LoadUser(userId);
+        EnsureCanHandle(flow, user);
         WorkflowEngine.Transfer(flow, request.Who);
         flow.Nodes = flow.Nodes.ToList();
         await _db.SaveChangesAsync();
-        await AddRecord(id, "transfer-sign", await UserName(userId), request.Who);
+        await AddRecord(id, "transfer-sign", user.Name, request.Who);
         return ToFlowDto(flow);
     }
 
@@ -202,35 +237,80 @@ public class WorkflowService : IWorkflowService
         await _db.SaveChangesAsync();
     }
 
-    private async Task<string> UserName(int userId)
-        => (await _db.Users.FindAsync(userId))?.Name ?? "";
-
     private async Task<string?> DepartmentName(int? id)
         => id.HasValue ? (await _db.Departments.FindAsync(id.Value))?.Name : null;
 
-    private static FlowInstanceNode ToInstanceNode(WorkflowNode node) => new()
+    private async Task<User> LoadUser(int userId)
+        => await _db.Users
+            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId)
+            ?? throw new BizException(4041, "用户不存在");
+
+    private static bool IsAdmin(User user)
+        => user.UserRoles.Any(ur => ur.Role.IsActive && ur.Role.Code == "admin");
+
+    private static FlowInstanceNode? CurrentNodeOrNull(ApprovalFlow flow)
+        => flow.Nodes.ElementAtOrDefault(flow.CurrentNodeIndex);
+
+    private static bool IsNodeApprover(FlowInstanceNode? node, User user)
+        => node is not null
+           && (node.Approver == user.Name
+               || node.Signers?.Contains(user.Name) == true
+               || node.AddedSigners?.Contains(user.Name) == true);
+
+    // 超级管理员(admin 角色)可处理任意工单;其余必须是当前节点的指定审批人/会签人
+    private static void EnsureCanHandle(ApprovalFlow flow, User user)
+    {
+        if (IsAdmin(user))
+        {
+            return;
+        }
+        if (!IsNodeApprover(CurrentNodeOrNull(flow), user))
+        {
+            throw new BizException(4053, "无权处理该审批工单");
+        }
+    }
+
+    // 终态保护:已通过/已驳回的流程不允许再次推进或驳回
+    private static void EnsureActive(ApprovalFlow flow)
+    {
+        if (flow.Status is "approved" or "rejected")
+        {
+            throw new BizException(4054, "审批流程已结束,无法继续操作");
+        }
+    }
+
+    private static FlowInstanceNode ToInstanceNode(WorkflowNode node, string? resolvedApprover) => new()
     {
         Name = node.Name,
         Type = node.Type,
-        Approver = node.Approver,
+        Approver = resolvedApprover,
         Signers = node.Signers?.ToList(),
         SignStates = node.Signers?.ToDictionary(x => x, _ => false),
         Condition = node.Condition,
         Status = node.Type == NodeType.Start ? NodeStatus.Done : NodeStatus.Pending
     };
 
-    private static bool IsPendingForUser(ApprovalFlow flow, User? user)
-    {
-        var node = flow.Nodes.ElementAtOrDefault(flow.CurrentNodeIndex);
-        if (node is null || user is null)
+    // 按审批人类型解析实际审批人姓名;动态类型解析不到时回退节点配置值,避免流程卡死
+    private async Task<string?> ResolveApproverAsync(WorkflowNode node, User applicant)
+        => node.ApproverType switch
         {
-            return false;
-        }
+            ApproverType.Supervisor => await UserNameById(applicant.SupervisorId) ?? node.Approver,
+            ApproverType.DeptManager => await DeptManagerName(applicant.DepartmentId) ?? node.Approver,
+            _ => node.Approver
+        };
 
-        return node.Approver == user.Name
-            || node.Signers?.Contains(user.Name) == true
-            || node.AddedSigners?.Contains(user.Name) == true
-            || user.EmployeeNo == "1001";
+    private async Task<string?> UserNameById(int? userId)
+        => userId.HasValue ? (await _db.Users.FindAsync(userId.Value))?.Name : null;
+
+    private async Task<string?> DeptManagerName(int? deptId)
+    {
+        if (!deptId.HasValue)
+        {
+            return null;
+        }
+        var dept = await _db.Departments.FindAsync(deptId.Value);
+        return dept?.ManagerId is { } managerId ? await UserNameById(managerId) : null;
     }
 
     private static void ValidateNodes(List<WorkflowNode> nodes)

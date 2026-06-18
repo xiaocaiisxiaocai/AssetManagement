@@ -115,11 +115,17 @@ public static class DbSeeder
             db.RoleMenus.AddRange(menuIds.Select(id => new RoleMenu { RoleId = role.Id, MenuId = id }));
         }
 
+        // 初始管理员密码:优先取环境变量 ASSET_ADMIN_PASSWORD(生产部署应设置强密码),未设置时回退默认(仅供本地开发)
+        var adminPassword = Environment.GetEnvironmentVariable("ASSET_ADMIN_PASSWORD");
+        if (string.IsNullOrWhiteSpace(adminPassword))
+        {
+            adminPassword = "123456";
+        }
         var admin = new User
         {
             EmployeeNo = "1001",
             Name = "系统管理员",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
             IsActive = true
         };
         db.Users.Add(admin);
@@ -132,7 +138,7 @@ public static class DbSeeder
         });
         db.SystemSettings.AddRange(
             new SystemSetting { Key = "audit_retention_months", Value = "12", Description = "审计日志保留月数" },
-            new SystemSetting { Key = "attachment_max_mb", Value = "20", Description = "附件大小限制 MB" },
+            new SystemSetting { Key = "attachment_max_mb", Value = "5", Description = "附件大小限制 MB" },
             new SystemSetting { Key = "page_size", Value = "20", Description = "默认每页记录数" }
         );
         db.Workflows.AddRange(DefaultWorkflows());
@@ -153,7 +159,7 @@ public static class DbSeeder
 
         if (!db.SystemSettings.Any(x => x.Key == "attachment_max_mb"))
         {
-            db.SystemSettings.Add(new SystemSetting { Key = "attachment_max_mb", Value = "20", Description = "附件大小限制 MB" });
+            db.SystemSettings.Add(new SystemSetting { Key = "attachment_max_mb", Value = "5", Description = "附件大小限制 MB" });
         }
 
         if (!db.SystemSettings.Any(x => x.Key == "page_size"))

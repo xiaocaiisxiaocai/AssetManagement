@@ -8,6 +8,8 @@ public record UserDto
     public string? Email { get; init; }
     public string? Phone { get; init; }
     public bool IsActive { get; init; }
+    public int? DepartmentId { get; init; }
+    public int? SupervisorId { get; init; }
     public int[] RoleIds { get; init; } = Array.Empty<int>();
 }
 
@@ -17,6 +19,9 @@ public record CreateUserRequest
     public string Name { get; init; } = "";
     public string? Email { get; init; }
     public string? Phone { get; init; }
+    public string? Password { get; init; }
+    public int? DepartmentId { get; init; }
+    public int? SupervisorId { get; init; }
     public int[] RoleIds { get; init; } = Array.Empty<int>();
 }
 
@@ -25,6 +30,8 @@ public record UpdateUserRequest
     public string Name { get; init; } = "";
     public string? Email { get; init; }
     public string? Phone { get; init; }
+    public int? DepartmentId { get; init; }
+    public int? SupervisorId { get; init; }
     public int[] RoleIds { get; init; } = Array.Empty<int>();
 }
 

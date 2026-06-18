@@ -1,3 +1,5 @@
+import { useAccessStore } from '@vben/stores';
+
 import { requestClient } from '#/api/request';
 
 interface ApiResult<T> {
@@ -165,3 +167,21 @@ export const uploadAssetImageApi = (file: File) => {
     requestClient.post<ApiResult<FileUploadResult>>('/files/upload', form),
   );
 };
+
+// 资产图片受 asset:view 鉴权保护,<img>/el-image 无法携带 Authorization 头,
+// 经 /api/files 的 query token 通道附加当前 access token。提交前需用 stripImageToken 还原。
+export function assetImageUrl(url?: string): string {
+  if (!url) {
+    return '';
+  }
+  const token = useAccessStore().accessToken;
+  if (!token) {
+    return url;
+  }
+  return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+}
+
+// 去除显示用的 token query,得到可持久化的原始 url
+export function stripImageToken(url?: string): string {
+  return url ? (url.split('?')[0] ?? url) : '';
+}

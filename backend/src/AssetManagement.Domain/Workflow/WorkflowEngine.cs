@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using AssetManagement.Domain.Entities;
 
@@ -11,6 +12,15 @@ public static class WorkflowEngine
     public static bool IsFinished(ApprovalFlow flow)
         => flow.Status == "approved";
 
+    // 终态纵深防御:已通过/已驳回的流程不能再推进或驳回(编排层已先行校验,此处防止直接误用)
+    private static void EnsureNotFinished(ApprovalFlow flow)
+    {
+        if (flow.Status is "approved" or "rejected")
+        {
+            throw new InvalidOperationException("流程已结束,不能继续处理");
+        }
+    }
+
     public static void Start(ApprovalFlow flow)
     {
         flow.CurrentNodeIndex = 0;
@@ -19,15 +29,17 @@ public static class WorkflowEngine
 
     public static void Approve(ApprovalFlow flow, string? signer, string opinion)
     {
+        EnsureNotFinished(flow);
         var node = Current(flow);
         if (node.Type is NodeType.Countersign or NodeType.Orsign)
         {
             node.SignStates ??= new Dictionary<string, bool>();
             var who = signer ?? node.Approver ?? "";
-            if (!string.IsNullOrWhiteSpace(who))
+            if (string.IsNullOrWhiteSpace(who))
             {
-                node.SignStates[who] = true;
+                throw new InvalidOperationException("会签/或签节点必须指定签署人");
             }
+            node.SignStates[who] = true;
 
             var signers = (node.Signers ?? new()).Concat(node.AddedSigners ?? new()).Distinct().ToList();
             if (node.Type == NodeType.Countersign && signers.Any(x => !node.SignStates.GetValueOrDefault(x)))
@@ -44,6 +56,7 @@ public static class WorkflowEngine
 
     public static void Reject(ApprovalFlow flow, string reason)
     {
+        EnsureNotFinished(flow);
         var node = Current(flow);
         node.Status = NodeStatus.Rejected;
         node.Opinion = reason;
@@ -117,7 +130,22 @@ public static class WorkflowEngine
             return true;
         }
 
-        var match = Regex.Match(condition, @"amount\s*>\s*(\d+)");
-        return !match.Success || flow.Amount > decimal.Parse(match.Groups[1].Value);
+        // 支持 amount 与常见比较运算符(>、>=、<、<=、==),无法识别的条件默认放行
+        var match = Regex.Match(condition, @"amount\s*(>=|<=|==|>|<)\s*(\d+(?:\.\d+)?)");
+        if (!match.Success)
+        {
+            return true;
+        }
+
+        var value = decimal.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+        return match.Groups[1].Value switch
+        {
+            ">" => flow.Amount > value,
+            ">=" => flow.Amount >= value,
+            "<" => flow.Amount < value,
+            "<=" => flow.Amount <= value,
+            "==" => flow.Amount == value,
+            _ => true
+        };
     }
 }

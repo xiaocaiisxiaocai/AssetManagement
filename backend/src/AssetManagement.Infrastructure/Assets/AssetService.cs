@@ -47,6 +47,7 @@ public class AssetService : IAssetService
     {
         var asset = await _db.Assets.FindAsync(id)
             ?? throw new BizException(4048, "资产不存在");
+        EnsureCanAccess(asset);
         return (await ToDtos(new[] { asset })).Single();
     }
 
@@ -106,6 +107,7 @@ public class AssetService : IAssetService
 
     public async Task<AssetDto> CreateAsync(CreateAssetRequest request)
     {
+        EnsureCanAssignDepartment(request.DepartmentId);
         var category = await _db.AssetCategories.FindAsync(request.CategoryId)
             ?? throw new BizException(4046, "资产分类不存在");
 
@@ -145,6 +147,8 @@ public class AssetService : IAssetService
     {
         var asset = await _db.Assets.FindAsync(id)
             ?? throw new BizException(4048, "资产不存在");
+        EnsureCanAccess(asset);
+        EnsureCanAssignDepartment(request.DepartmentId);
         if (!await _db.AssetCategories.AnyAsync(x => x.Id == request.CategoryId))
         {
             throw new BizException(4046, "资产分类不存在");
@@ -172,6 +176,7 @@ public class AssetService : IAssetService
     {
         var asset = await _db.Assets.FindAsync(id)
             ?? throw new BizException(4048, "资产不存在");
+        EnsureCanAccess(asset);
         if (asset.Status == AssetStatus.Borrowed)
         {
             throw new BizException(4092, "借出中资产不能删除");
@@ -216,6 +221,10 @@ public class AssetService : IAssetService
     public async Task<List<ImportPreviewRow>> ValidateImportAsync(Stream file)
     {
         var rows = XlsxTable.Read(file).Skip(1).ToList();
+        if (rows.Count > 1000)
+        {
+            throw new BizException(4153, "单次导入不能超过 1000 行");
+        }
         var categories = await _db.AssetCategories.ToDictionaryAsync(x => x.Code, x => x);
         return rows.Select((cells, index) => ValidateRow(index + 2, cells, categories)).ToList();
     }
@@ -224,14 +233,32 @@ public class AssetService : IAssetService
     {
         var rows = await ValidateImportAsync(file);
         var validRows = rows.Where(x => x.IsValid).ToList();
+        var departmentId = CurrentUserDepartmentId();
+        var categoryCache = new Dictionary<string, AssetCategory>();
+        var seq = new Dictionary<int, int>();
+
+        // 整批一个事务,任一失败整体回滚,避免逐条提交产生半残数据
+        await using var tx = await _db.Database.BeginTransactionAsync();
         foreach (var row in validRows)
         {
-            var category = await _db.AssetCategories.SingleAsync(x => x.Code == row.CategoryCode);
+            if (!categoryCache.TryGetValue(row.CategoryCode, out var category))
+            {
+                category = await _db.AssetCategories.SingleAsync(x => x.Code == row.CategoryCode);
+                categoryCache[row.CategoryCode] = category;
+            }
+            // 同分类多行在内存中递增取号:批量提交前 Count 不变,直接用会撞唯一索引
+            if (!seq.TryGetValue(category.Id, out var used))
+            {
+                used = await _db.Assets.CountAsync(x => x.CategoryId == category.Id);
+            }
+            seq[category.Id] = used + 1;
+
             _db.Assets.Add(new Asset
             {
-                AssetNo = await NextAssetNo(category),
+                AssetNo = AssetNoGenerator.Next(category.Code, used),
                 Name = row.Name,
                 CategoryId = category.Id,
+                DepartmentId = departmentId,
                 Model = row.Model,
                 Brand = row.Brand,
                 Price = row.Price,
@@ -239,8 +266,9 @@ public class AssetService : IAssetService
                 Status = AssetStatus.Available,
                 CreatedAt = DateTime.UtcNow
             });
-            await _db.SaveChangesAsync();
         }
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         return new ImportConfirmResult
         {
@@ -252,24 +280,11 @@ public class AssetService : IAssetService
 
     private IQueryable<Asset> ApplyQuery(IQueryable<Asset> queryable, AssetQuery query)
     {
-        // 部门数据权限隔离:部门管理员只能查看本部门资产
-        var user = _httpContextAccessor.HttpContext?.User;
-        if (user != null)
+        // 部门数据权限隔离:部门管理员只能查看本部门及子部门资产(超级管理员/普通员工不受限)
+        var allowedDepartments = AllowedDepartmentIds();
+        if (allowedDepartments != null)
         {
-            var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
-            var isDeptAdmin = roles.Contains("dept_admin");
-            var isSuperAdmin = roles.Contains("admin");
-
-            // 如果是部门管理员且不是超级管理员,强制按部门过滤
-            if (isDeptAdmin && !isSuperAdmin)
-            {
-                var deptIdClaim = user.FindFirst("departmentId")?.Value;
-                if (int.TryParse(deptIdClaim, out var userDeptId))
-                {
-                    var departmentIds = DescendantDepartmentIds(userDeptId);
-                    queryable = queryable.Where(x => x.DepartmentId.HasValue && departmentIds.Contains(x.DepartmentId.Value));
-                }
-            }
+            queryable = queryable.Where(x => x.DepartmentId.HasValue && allowedDepartments.Contains(x.DepartmentId.Value));
         }
 
         if (!string.IsNullOrWhiteSpace(query.AssetNo))
@@ -305,7 +320,7 @@ public class AssetService : IAssetService
 
     private int[] DescendantDepartmentIds(int rootId)
     {
-        var departments = _db.Departments.ToList();
+        var departments = _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToList();
         var ids = new List<int> { rootId };
         void Walk(int parentId)
         {
@@ -318,6 +333,57 @@ public class AssetService : IAssetService
 
         Walk(rootId);
         return ids.ToArray();
+    }
+
+    // 返回当前用户允许访问的部门 ID 集合;null 表示不受限(超级管理员或普通员工共享池)
+    private int[]? AllowedDepartmentIds()
+    {
+        var user = _httpContextAccessor.HttpContext?.User;
+        if (user is null)
+        {
+            return null;
+        }
+        var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+        if (roles.Contains("admin"))
+        {
+            return null;
+        }
+        if (roles.Contains("dept_admin"))
+        {
+            var deptIdClaim = user.FindFirst("departmentId")?.Value;
+            if (int.TryParse(deptIdClaim, out var userDeptId))
+            {
+                return DescendantDepartmentIds(userDeptId);
+            }
+        }
+        return null;
+    }
+
+    // 校验当前用户是否有权访问指定资产(部门管理员越权访问其他部门资产时抛出)
+    private void EnsureCanAccess(Asset asset)
+    {
+        var allowed = AllowedDepartmentIds();
+        if (allowed != null && (!asset.DepartmentId.HasValue || !allowed.Contains(asset.DepartmentId.Value)))
+        {
+            throw new BizException(4047, "无权访问该资产");
+        }
+    }
+
+    // 校验当前用户是否有权将资产归属到目标部门(防止部门管理员把资产划入/划出无权部门)
+    private void EnsureCanAssignDepartment(int? departmentId)
+    {
+        var allowed = AllowedDepartmentIds();
+        if (allowed != null && (!departmentId.HasValue || !allowed.Contains(departmentId.Value)))
+        {
+            throw new BizException(4047, "无权将资产归属到该部门");
+        }
+    }
+
+    // 当前用户所属部门(用于导入资产的部门归属)
+    private int? CurrentUserDepartmentId()
+    {
+        var claim = _httpContextAccessor.HttpContext?.User.FindFirst("departmentId")?.Value;
+        return int.TryParse(claim, out var id) ? id : null;
     }
 
     private async Task<string> NextAssetNo(AssetCategory category)

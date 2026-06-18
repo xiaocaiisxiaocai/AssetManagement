@@ -89,7 +89,9 @@ export const useAuthStore = defineStore('auth', () => {
     userInfo = await getUserInfoApi();
     userStore.setUserInfo(userInfo);
     accessStore.setAccessCodes(
-      (userInfo as any).permissions || userInfo.roles || [],
+      (userInfo as UserInfo & { permissions?: string[] }).permissions ||
+        userInfo.roles ||
+        [],
     );
     return userInfo;
   }

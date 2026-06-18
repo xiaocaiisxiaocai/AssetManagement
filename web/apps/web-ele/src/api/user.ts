@@ -22,6 +22,7 @@ export interface UserDto {
   isActive: boolean;
   roleIds: number[];
   roleNames?: string[];
+  supervisorId?: null | number;
 }
 
 export type UserPayload = {
@@ -30,6 +31,7 @@ export type UserPayload = {
   email?: string | null;
   phone?: string | null;
   roleIds: number[];
+  supervisorId?: null | number;
 };
 
 async function unwrap<T>(request: Promise<ApiResult<T>>) {

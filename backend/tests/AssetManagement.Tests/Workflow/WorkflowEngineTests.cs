@@ -92,6 +92,28 @@ public class WorkflowEngineTests
         flow.Nodes[1].Signers.Should().Contain("王五");
     }
 
+    [Fact]
+    public void Countersign_without_signer_throws()
+    {
+        var flow = Flow(N("发起", NodeStatus.Done), Sign("会签", NodeType.Countersign, "张三", "赵敏"), N("结束", NodeStatus.Pending, NodeType.End));
+
+        var act = () => WorkflowEngine.Approve(flow, signer: null, opinion: "ok");
+
+        act.Should().Throw<InvalidOperationException>("会签节点签署人为空会导致流程永远无法集齐而卡死");
+    }
+
+    [Fact]
+    public void Approve_on_finished_flow_throws()
+    {
+        var flow = Flow(N("发起", NodeStatus.Done), N("结束", NodeStatus.Done, NodeType.End));
+        flow.Status = "approved";
+        flow.CurrentNodeIndex = 1;
+
+        var act = () => WorkflowEngine.Approve(flow, "张三", "ok");
+
+        act.Should().Throw<InvalidOperationException>("已结束流程不应允许再次推进");
+    }
+
     private static ApprovalFlow Flow(params FlowInstanceNode[] nodes) => new()
     {
         CurrentNodeIndex = Array.FindIndex(nodes, x => x.Status == NodeStatus.Current),
