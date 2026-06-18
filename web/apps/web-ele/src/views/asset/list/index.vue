@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { AssetDetail, AssetItem, AssetQuery, AssetStatus } from '#/api/asset';
-import type { CategoryNode, CategoryPayload, DepartmentNode, LocationNode } from '#/api/base-data';
+import type { CategoryNode, DepartmentNode, LocationNode } from '#/api/base-data';
 import type { UserDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
@@ -12,19 +12,16 @@ import {
   getAssetListApi,
 } from '#/api/asset';
 import {
-  createCategoryApi,
   deleteCategoryApi,
   getCategoryTreeApi,
   getDepartmentTreeApi,
   getLocationTreeApi,
-  updateCategoryApi,
 } from '#/api/base-data';
 import { getWorkflowsApi } from '#/api/workflow';
 import { getUserListApi } from '#/api/user';
 
 import {
   ElButton,
-  ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
@@ -41,6 +38,7 @@ import {
 } from 'element-plus';
 
 import AssetBorrowDialog from './components/AssetBorrowDialog.vue';
+import AssetCategoryDialog from './components/AssetCategoryDialog.vue';
 import AssetDetailDialog from './components/AssetDetailDialog.vue';
 import AssetFormDialog from './components/AssetFormDialog.vue';
 import AssetImportDialog from './components/AssetImportDialog.vue';
@@ -63,7 +61,6 @@ const statusOptions: Array<{ label: string; tag: 'danger' | 'info' | 'success' |
 
 const activeView = ref<'hierarchy' | 'list'>('hierarchy');
 const loading = ref(false);
-const categorySaving = ref(false);
 const dialogVisible = ref(false);
 const categoryDialogVisible = ref(false);
 const importVisible = ref(false);
@@ -71,7 +68,8 @@ const borrowDialogVisible = ref(false);
 const transferDialogVisible = ref(false);
 const editingAsset = ref<AssetItem | null>(null);
 const formDefaultCategoryId = ref(0);
-const categoryEditingId = ref<null | number>(null);
+const editingCategory = ref<CategoryNode | null>(null);
+const categoryDefaultParentId = ref<null | number>(null);
 const selectedCategoryId = ref<null | number>(null);
 const assets = ref<AssetItem[]>([]);
 const allAssets = ref<AssetItem[]>([]);
@@ -98,12 +96,6 @@ const query = reactive({
   status: undefined as AssetStatus | undefined,
 });
 
-const categoryForm = reactive<CategoryPayload>({
-  codeSeg: '',
-  name: '',
-  parentId: null,
-});
-
 const categoryOptions = computed(() => flattenCategories(categories.value));
 const departmentOptions = computed(() => flattenDepartments(departments.value));
 const locationOptions = computed(() => flattenLocations(locations.value));
@@ -116,10 +108,6 @@ const hierarchyAssets = computed(() => {
   const ids = collectCategoryIds(hierarchyParent.value);
   return allAssets.value.filter((asset) => ids.includes(asset.categoryId));
 });
-const categoryPreviewCode = computed(() =>
-  categoryParentCode.value ? `${categoryParentCode.value}-${categoryForm.codeSeg}` : categoryForm.codeSeg,
-);
-
 async function loadDictionaries() {
   const [categoryTree, departmentTree, locationTree, userList, workflowList] = await Promise.all([
     getCategoryTreeApi(),
@@ -260,46 +248,21 @@ function drillToCategoryPath(index: number) {
 
 function openCategoryCreate(parent?: CategoryNode | null) {
   const realParent = parent ?? hierarchyParent.value;
-  categoryEditingId.value = null;
+  editingCategory.value = null;
   categoryParentCode.value = realParent?.code ?? '';
-  Object.assign(categoryForm, {
-    codeSeg: '',
-    name: '',
-    parentId: realParent?.id ?? null,
-  });
+  categoryDefaultParentId.value = realParent?.id ?? null;
   categoryDialogVisible.value = true;
 }
 
 function openCategoryEdit(row: CategoryNode) {
-  categoryEditingId.value = row.id;
+  editingCategory.value = row;
   const parent = findCategoryNode(categories.value, row.parentId);
   categoryParentCode.value = parent?.code ?? '';
-  Object.assign(categoryForm, {
-    codeSeg: row.codeSeg,
-    name: row.name,
-    parentId: row.parentId ?? null,
-  });
   categoryDialogVisible.value = true;
 }
 
-async function saveCategory() {
-  if (!categoryForm.name.trim() || !categoryForm.codeSeg.trim()) {
-    ElMessage.warning('请填写分类名称和编码段');
-    return;
-  }
-  categorySaving.value = true;
-  try {
-    if (categoryEditingId.value) {
-      await updateCategoryApi(categoryEditingId.value, categoryForm);
-    } else {
-      await createCategoryApi(categoryForm);
-    }
-    ElMessage.success('分类已保存');
-    categoryDialogVisible.value = false;
-    await loadDictionaries();
-  } finally {
-    categorySaving.value = false;
-  }
+function onCategorySaved() {
+  void loadDictionaries();
 }
 
 async function removeCategory(row: CategoryNode) {
@@ -662,32 +625,13 @@ onMounted(async () => {
 
       <AssetImportDialog v-model:visible="importVisible" @imported="onImported" />
 
-      <ElDialog
-        v-model="categoryDialogVisible"
-        :title="categoryEditingId ? '编辑分类' : '新增分类'"
-        width="460px"
-      >
-        <ElForm label-width="88px">
-          <ElFormItem label="上级 ID">
-            <ElInput v-model.number="categoryForm.parentId" clearable placeholder="留空为顶级" />
-          </ElFormItem>
-          <ElFormItem label="分类名称">
-            <ElInput v-model="categoryForm.name" />
-          </ElFormItem>
-          <ElFormItem label="编码段">
-            <ElInput v-model="categoryForm.codeSeg" />
-          </ElFormItem>
-          <ElFormItem label="完整编码">
-            <ElTag>{{ categoryPreviewCode || '待输入' }}</ElTag>
-          </ElFormItem>
-        </ElForm>
-        <template #footer>
-          <ElButton @click="categoryDialogVisible = false">取消</ElButton>
-          <ElButton :loading="categorySaving" type="primary" @click="saveCategory">
-            保存
-          </ElButton>
-        </template>
-      </ElDialog>
+      <AssetCategoryDialog
+        v-model:visible="categoryDialogVisible"
+        :category="editingCategory"
+        :default-parent-id="categoryDefaultParentId"
+        :parent-code="categoryParentCode"
+        @saved="onCategorySaved"
+      />
 
       <AssetBorrowDialog
         v-model:visible="borrowDialogVisible"
