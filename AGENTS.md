@@ -1,54 +1,47 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+> 本文件为各类 AI 代理(Codex / Copilot / Cursor 等)的快速入口。**完整的架构说明、开发场景速查与约定以 `CLAUDE.md` 为单一信息源**,本文件仅摘录最常用部分,避免双份维护漂移。
 
-This repository contains documentation and a static prototype for the department asset management system.
+## 仓库结构
 
-- `docs/`: requirements, architecture, design notes, and prototype specification documents.
-- `prototype/index.html`: single-page prototype entry point.
-- `prototype/css/style.css`: global styling for layout, forms, tables, dialogs, and responsive behavior.
-- `prototype/js/data.js`: mock data used by the prototype.
-- `prototype/js/pages.js`: page template generators.
-- `prototype/js/app.js`: navigation, modal, filtering, and interaction logic.
+部门资产管理系统的**全栈**仓库(非静态原型):
 
-Keep product decisions in `docs/` and runnable prototype changes in `prototype/`.
+- `backend/` — 正式后端:ASP.NET Core 8 + EF Core + SQLite,DDD 四层架构(Api → Infrastructure → Application → Domain),JWT + 权限码鉴权,可配置审批工作流引擎。**当前活跃开发对象**。
+- `web/` — 正式前端:基于 vue-vben-admin 5.x 的 monorepo(pnpm + turbo)。实际开发的应用是 `apps/web-ele`(Vue 3 + Element Plus);`web-antd`、`web-naive` 为上游模板自带,**不使用**。
+- `docs/` — 需求/设计/实施规划文档(`.md` 与 `.pdf` 并存,**修改以 `.md` 为准**)。
+- `prototype/` — 早期纯静态 HTML 原型,**仅作参考,新功能不在此实现**。
+- `deploy/` — 内网部署说明、生产配置样例、SQLite 备份脚本。
 
-## Build, Test, and Development Commands
+## 常用命令
 
-There is no package manager or build pipeline in the current repo. Run the prototype as static files.
+后端(仓库根目录执行):
 
-- `cd prototype && python -m http.server 8080`: serve the prototype locally.
-- Open `http://localhost:8080/`: view and manually test the app.
-- `Start-Process .\prototype\index.html`: quick Windows-only direct browser preview.
+```powershell
+dotnet build .\backend\AssetManagement.sln
+dotnet run --project backend\src\AssetManagement.Api      # 启动 API,默认 http://localhost:5000
+dotnet test .\backend\tests\AssetManagement.Tests --no-build
+```
 
-Use the local server for normal checks because browser security rules can differ for direct file access.
+前端(`web/` 目录执行,**必须用 pnpm**):
 
-## Coding Style & Naming Conventions
+```powershell
+pnpm install
+pnpm -F @vben/web-ele dev                       # 开发服务器,端口 5777
+pnpm -F @vben/web-ele run typecheck             # 类型检查
+pnpm check                                       # monorepo 全局检查
+```
 
-Use plain HTML, CSS, and vanilla JavaScript. Match the existing 4-space indentation in HTML/CSS/JS files. Prefer clear, direct functions over new abstractions unless repeated logic justifies extraction.
+本地开发须**先起后端再起前端**(前端 `/api` 代理到 `http://localhost:5000`)。健康检查 `GET http://localhost:5000/api/health`;默认账号 `1001 / 123456`。
 
-- JavaScript functions and variables: `camelCase`, e.g. `handleLogin`, `currentFilters`.
-- Page keys: kebab-case strings, e.g. `asset-list`, `approval-pending`.
-- CSS classes and IDs: kebab-case, e.g. `.login-container`, `#page-main`.
-- Keep mock records in `data.js`; avoid hard-coding shared sample data inside templates.
+## 编码与提交约定
 
-## Testing Guidelines
+- **路径分隔符**:Windows 环境下文件路径用反斜杠 `\`。
+- 后端 C#:`Nullable` + `ImplicitUsings` 开启;控制器保持瘦,逻辑下沉到 service。
+- 前端:TypeScript + Vue 3 `<script setup>`;遵循上游 Vben 的 ESLint/Prettier/Stylelint 配置。
+- 界面文案、文档、提交说明均用**中文**;提交遵循 Conventional Commits(如 `feat(web): ...`、`fix: ...`、`test: ...`)。
+- PR 应包含变更目的、受影响页面/文档、手动测试说明,可见 UI 变更附截图。
 
-No automated test framework is configured. Before submitting changes, perform a browser smoke test:
+## 安全与配置
 
-- Login flow from `page-login` to `page-main`.
-- Main navigation across asset, approval, report, and admin pages.
-- Filters, reset buttons, pagination controls, dialogs, and batch action alerts.
-- Responsive layout at desktop and mobile widths.
-
-Document any untested area in the pull request.
-
-## Commit & Pull Request Guidelines
-
-This directory is not currently a Git repository, so no local commit history is available. Use concise Conventional Commits when version control is added, for example `feat: add asset import modal` or `fix: correct overdue report filter`.
-
-Pull requests should include the change purpose, affected screens or documents, manual test notes, and screenshots or screen recordings for visible UI changes.
-
-## Security & Configuration Tips
-
-Do not commit real employee data, production credentials, or internal system endpoints. Keep prototype-only sample data clearly synthetic and localized to `prototype/js/data.js`.
+- **不提交**:SQLite 库文件(`*.db`)、`web/dist/`、`bin/`、`obj/`、日志、真实员工数据、生产凭据、内网地址。
+- 生产部署必须替换 `deploy/appsettings.Production.json` 中的 `Jwt:Key` 占位符。
