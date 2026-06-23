@@ -31,9 +31,6 @@ public class ReportService : IReportService
             Total = total,
             Available = assets.Count(x => x.Status == AssetStatus.Available),
             Borrowed = assets.Count(x => x.Status == AssetStatus.Borrowed),
-            Maintenance = assets.Count(x => x.Status == AssetStatus.Maintenance),
-            Scrapped = assets.Count(x => x.Status == AssetStatus.Scrapped),
-            TotalValue = assets.Sum(AssetValue),
             ByCategory = assets
                 .Where(x => categoryById.ContainsKey(x.CategoryId))
                 .GroupBy(x => categoryById[x.CategoryId])
@@ -54,29 +51,27 @@ public class ReportService : IReportService
         var summary = await GetSummaryAsync();
         var rows = new List<string[]>
         {
-            new[] { "统计项", "总数", "可用", "借出", "金额" },
-            new[] { "全部资产", summary.Total.ToString(), summary.Available.ToString(), summary.Borrowed.ToString(), Money(summary.TotalValue) },
+            new[] { "统计项", "总数", "可用", "借出" },
+            new[] { "全部资产", summary.Total.ToString(), summary.Available.ToString(), summary.Borrowed.ToString() },
             Array.Empty<string>(),
-            new[] { "按分类", "总数", "可用", "借出", "金额", "占比" }
+            new[] { "按分类", "总数", "可用", "借出", "占比" }
         };
         rows.AddRange(summary.ByCategory.Select(x => new[]
         {
-            $"{x.CategoryCode} {x.CategoryName}",
+            x.CategoryCode,
             x.Total.ToString(),
             x.Available.ToString(),
             x.Borrowed.ToString(),
-            Money(x.TotalValue),
             $"{x.Percent:0.##}%"
         }));
         rows.Add(Array.Empty<string>());
-        rows.Add(new[] { "按部门", "总数", "可用", "借出", "金额", "占比" });
+        rows.Add(new[] { "按部门", "总数", "可用", "借出", "占比" });
         rows.AddRange(summary.ByDept.Select(x => new[]
         {
-            $"{x.DepartmentCode} {x.DepartmentName}",
+            x.DepartmentName,
             x.Total.ToString(),
             x.Available.ToString(),
             x.Borrowed.ToString(),
-            Money(x.TotalValue),
             $"{x.Percent:0.##}%"
         }));
         return XlsxTable.Write(rows);
@@ -107,7 +102,7 @@ public class ReportService : IReportService
     {
         var rows = new List<string[]>
         {
-            new[] { "流程号", "资产编号", "资产名称", "分类", "借用人", "部门", "申请时间", "预计归还", "状态", "金额" }
+            new[] { "流程号", "资产编号", "资产名称", "分类", "借用人", "部门", "申请时间", "预计归还", "状态" }
         };
         var flows = await ApplyBorrowQuery(_db.ApprovalFlows.AsNoTracking(), query)
             .OrderByDescending(x => x.ApplyTime)
@@ -117,13 +112,12 @@ public class ReportService : IReportService
             x.FlowNo,
             x.AssetNo,
             x.AssetName,
-            $"{x.CategoryCode} {x.CategoryName}",
+            x.CategoryCode,
             x.Borrower,
             x.BorrowerDept ?? "",
             x.ApplyTime.ToString("yyyy-MM-dd HH:mm"),
             x.ReturnDate ?? "",
-            x.Status,
-            Money(x.Amount)
+            x.Status
         }));
         return XlsxTable.Write(rows);
     }
@@ -159,7 +153,7 @@ public class ReportService : IReportService
         {
             x.AssetNo,
             x.AssetName,
-            $"{x.CategoryCode} {x.CategoryName}",
+            x.CategoryCode,
             x.Borrower,
             x.BorrowerDept ?? "",
             x.ReturnDate,
@@ -254,14 +248,12 @@ public class ReportService : IReportService
                 AssetNo = x.AssetNo,
                 AssetName = x.AssetName,
                 CategoryCode = category?.Code ?? "",
-                CategoryName = category?.Name ?? "",
                 BorrowerId = x.ApplicantId,
                 Borrower = x.Applicant,
                 BorrowerDept = x.ApplicantDept,
                 ReturnDate = x.ReturnDate,
                 ApplyTime = x.ApplyTime,
-                Status = asset?.Status == AssetStatus.Available ? "returned" : "borrowed",
-                Amount = x.Amount
+                Status = asset?.Status == AssetStatus.Available ? "returned" : "borrowed"
             };
         }).ToList();
     }
@@ -284,7 +276,6 @@ public class ReportService : IReportService
                 AssetNo = x.Flow.AssetNo,
                 AssetName = x.Flow.AssetName,
                 CategoryCode = category?.Code ?? "",
-                CategoryName = category?.Name ?? "",
                 BorrowerId = x.Flow.ApplicantId,
                 Borrower = x.Flow.Applicant,
                 BorrowerDept = x.Flow.ApplicantDept,
@@ -302,11 +293,9 @@ public class ReportService : IReportService
         {
             CategoryId = category.Id,
             CategoryCode = category.Code,
-            CategoryName = category.Name,
             Total = list.Count,
             Available = list.Count(x => x.Status == AssetStatus.Available),
             Borrowed = list.Count(x => x.Status == AssetStatus.Borrowed),
-            TotalValue = list.Sum(AssetValue),
             Percent = Percent(list.Count, total)
         };
     }
@@ -317,12 +306,10 @@ public class ReportService : IReportService
         return new DeptStatRow
         {
             DepartmentId = department.Id,
-            DepartmentCode = department.Code,
             DepartmentName = department.Name,
             Total = list.Count,
             Available = list.Count(x => x.Status == AssetStatus.Available),
             Borrowed = list.Count(x => x.Status == AssetStatus.Borrowed),
-            TotalValue = list.Sum(AssetValue),
             Percent = Percent(list.Count, total)
         };
     }
@@ -347,12 +334,6 @@ public class ReportService : IReportService
     private static DateTime? ParseDate(string? text)
         => DateTime.TryParse(text, CultureInfo.InvariantCulture, out var date) ? date.Date : null;
 
-    private static decimal AssetValue(Asset asset)
-        => asset.Price * asset.Quantity;
-
     private static decimal Percent(int count, int total)
         => total == 0 ? 0 : decimal.Round(count * 100m / total, 2);
-
-    private static string Money(decimal value)
-        => value.ToString("0.##", CultureInfo.InvariantCulture);
 }

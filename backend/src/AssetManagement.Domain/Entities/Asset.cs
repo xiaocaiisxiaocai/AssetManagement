@@ -19,7 +19,6 @@ public class Asset
     public int? CustodianId { get; set; }
     public string? Model { get; set; }
     public string? Brand { get; set; }
-    public decimal Price { get; set; }
     public int Quantity { get; set; } = 1;
     public AssetStatus Status { get; set; } = AssetStatus.Available;
     public DateTime CreatedAt { get; set; }

@@ -123,7 +123,6 @@ public class AssetService : IAssetService
                 CustodianId = request.CustodianId,
                 Model = request.Model,
                 Brand = request.Brand,
-                Price = request.Price,
                 Quantity = Math.Max(request.Quantity, 1),
                 Status = AssetStatus.Available,
                 ImageUrls = JoinImages(request.Images),
@@ -161,7 +160,6 @@ public class AssetService : IAssetService
         asset.CustodianId = request.CustodianId;
         asset.Model = request.Model;
         asset.Brand = request.Brand;
-        asset.Price = request.Price;
         asset.Quantity = Math.Max(request.Quantity, 1);
         asset.Status = request.Status;
         if (request.Images is not null)
@@ -190,7 +188,7 @@ public class AssetService : IAssetService
     {
         var rows = new List<string[]>
         {
-            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "型号", "品牌", "单价", "数量", "状态" }
+            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "型号", "品牌", "数量", "状态" }
         };
         var assets = await ApplyQuery(_db.Assets.AsQueryable(), query)
             .OrderBy(x => x.AssetNo)
@@ -205,7 +203,6 @@ public class AssetService : IAssetService
             x.LocationName ?? "",
             x.Model ?? "",
             x.Brand ?? "",
-            x.Price.ToString("0.##"),
             x.Quantity.ToString(),
             x.Status.ToString()
         }));
@@ -215,7 +212,7 @@ public class AssetService : IAssetService
     public byte[] BuildImportTemplate()
         => XlsxTable.Write(new[]
         {
-            new[] { "名称", "分类编码", "型号", "品牌", "单价" }
+            new[] { "名称", "分类编码", "型号", "品牌" }
         });
 
     public async Task<List<ImportPreviewRow>> ValidateImportAsync(Stream file)
@@ -261,7 +258,6 @@ public class AssetService : IAssetService
                 DepartmentId = departmentId,
                 Model = row.Model,
                 Brand = row.Brand,
-                Price = row.Price,
                 Quantity = 1,
                 Status = AssetStatus.Available,
                 CreatedAt = DateTime.UtcNow
@@ -414,7 +410,6 @@ public class AssetService : IAssetService
                 Name = x.Name,
                 CategoryId = x.CategoryId,
                 CategoryCode = category?.Code ?? "",
-                CategoryName = category?.Name ?? "",
                 DepartmentId = x.DepartmentId,
                 DepartmentName = x.DepartmentId.HasValue && departments.TryGetValue(x.DepartmentId.Value, out var dept) ? dept : null,
                 LocationId = x.LocationId,
@@ -423,7 +418,6 @@ public class AssetService : IAssetService
                 CustodianName = x.CustodianId.HasValue && custodians.TryGetValue(x.CustodianId.Value, out var custodian) ? custodian : null,
                 Model = x.Model,
                 Brand = x.Brand,
-                Price = x.Price,
                 Quantity = x.Quantity,
                 Status = x.Status,
                 CreatedAt = x.CreatedAt,
@@ -466,11 +460,9 @@ public class AssetService : IAssetService
         var categoryCode = Cell(cells, 1);
         var model = Cell(cells, 2);
         var brand = Cell(cells, 3);
-        var priceText = Cell(cells, 4);
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(name)) errors.Add("名称必填");
         if (string.IsNullOrWhiteSpace(categoryCode) || !categories.ContainsKey(categoryCode)) errors.Add("分类编码不存在");
-        if (!decimal.TryParse(priceText, out var price)) errors.Add("单价必须为数字");
 
         return new ImportPreviewRow
         {
@@ -479,7 +471,6 @@ public class AssetService : IAssetService
             CategoryCode = categoryCode,
             Model = model,
             Brand = brand,
-            Price = price,
             IsValid = errors.Count == 0,
             Error = string.Join("；", errors)
         };

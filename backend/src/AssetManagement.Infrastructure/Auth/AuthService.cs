@@ -147,6 +147,8 @@ public class AuthService : IAuthService
                     Title = menu.Title,
                     Icon = menu.Icon,
                     Order = menu.Sort,
+                    HideChildrenInMenu = menu.Name == "Home",
+                    HideInMenu = menu.Name == "HomeWorkspace",
                     Permissions = buttonPermissions
                         .Where(x => x.ParentId == menu.Id)
                         .Select(x => x.PermissionCode!)

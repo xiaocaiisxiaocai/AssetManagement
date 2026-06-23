@@ -14,6 +14,8 @@ public record RouteMetaDto
     public string Title { get; init; } = "";
     public string? Icon { get; init; }
     public int Order { get; init; }
+    public bool HideChildrenInMenu { get; init; }
+    public bool HideInMenu { get; init; }
     public string[]? Permissions { get; init; }
 }
 

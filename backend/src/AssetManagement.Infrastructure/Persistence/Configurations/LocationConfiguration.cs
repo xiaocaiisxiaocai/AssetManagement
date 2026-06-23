@@ -11,7 +11,5 @@ public class LocationConfiguration : IEntityTypeConfiguration<Location>
         b.ToTable("locations");
         b.HasKey(x => x.Id);
         b.Property(x => x.Name).HasMaxLength(100).IsRequired();
-        b.Property(x => x.QrCode).HasMaxLength(200);
-        b.HasIndex(x => x.ParentId);
     }
 }

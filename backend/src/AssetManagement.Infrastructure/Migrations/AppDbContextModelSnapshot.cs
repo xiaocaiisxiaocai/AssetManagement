@@ -23,9 +23,6 @@ namespace AssetManagement.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<string>("Applicant")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -59,11 +56,16 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("BpmnTokens")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("CurrentNodeIndex")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("CurrentNodeIds")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("Deadline")
                         .HasColumnType("TEXT");
@@ -71,10 +73,6 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.Property<string>("FlowNo")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Nodes")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Reason")
@@ -161,9 +159,6 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<int>("Quantity")
                         .HasColumnType("INTEGER");
 
@@ -200,13 +195,12 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
                     b.Property<int?>("ParentId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -344,16 +338,7 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("ParentId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("QrCode")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("ParentId");
 
                     b.ToTable("locations", (string)null);
                 });
@@ -595,13 +580,12 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("BpmnXml")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Nodes")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

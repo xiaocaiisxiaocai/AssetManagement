@@ -9,6 +9,8 @@ namespace AssetManagement.Infrastructure.BaseData;
 
 public class BaseDataService : IBaseDataService
 {
+    private const int MaxCategoryDepth = 3;
+
     private readonly AppDbContext _db;
 
     public BaseDataService(AppDbContext db)
@@ -36,7 +38,7 @@ public class BaseDataService : IBaseDataService
         {
             ParentId = request.ParentId,
             Name = request.Name.Trim(),
-            Code = request.Code.Trim(),
+            Code = await NextDepartmentCodeAsync(),
             ManagerId = request.ManagerId,
             IsActive = true
         };
@@ -51,7 +53,6 @@ public class BaseDataService : IBaseDataService
             ?? throw new BizException(4045, "部门不存在");
         department.ParentId = request.ParentId;
         department.Name = request.Name.Trim();
-        department.Code = request.Code.Trim();
         department.ManagerId = request.ManagerId;
         department.IsActive = request.IsActive;
         await _db.SaveChangesAsync();
@@ -82,17 +83,17 @@ public class BaseDataService : IBaseDataService
 
     public async Task<CategoryNodeDto> CreateCategoryAsync(CreateCategoryRequest request)
     {
-        var parentCode = request.ParentId.HasValue
-            ? (await _db.AssetCategories.FindAsync(request.ParentId.Value)
-                ?? throw new BizException(4046, "资产分类不存在")).Code
-            : null;
+        var all = await _db.AssetCategories.ToListAsync();
+        var parent = FindCategory(request.ParentId, all);
+        var newDepth = parent is null ? 1 : CategoryDepth(parent, all) + 1;
+        EnsureCategoryMaxDepth(newDepth);
 
         var category = new AssetCategory
         {
             ParentId = request.ParentId,
-            Name = request.Name.Trim(),
             CodeSeg = request.CodeSeg.Trim(),
-            Code = CategoryCodeService.Compose(parentCode, request.CodeSeg)
+            Code = CategoryCodeService.Compose(parent?.Code, request.CodeSeg),
+            Remark = CategoryRemark(request.ParentId, request.Remark)
         };
         _db.AssetCategories.Add(category);
         await _db.SaveChangesAsync();
@@ -104,15 +105,22 @@ public class BaseDataService : IBaseDataService
         var all = await _db.AssetCategories.ToListAsync();
         var category = all.SingleOrDefault(x => x.Id == id)
             ?? throw new BizException(4046, "资产分类不存在");
-        category.ParentId = request.ParentId;
-        category.Name = request.Name.Trim();
-        category.CodeSeg = request.CodeSeg.Trim();
+        var parent = FindCategory(request.ParentId, all);
+        if (request.ParentId == id || DescendantCategoryIds(id, all).Contains(request.ParentId ?? 0))
+        {
+            throw new BizException(4095, "不能将分类移动到自身或子分类下");
+        }
 
-        var parentCode = request.ParentId.HasValue
-            ? all.Single(x => x.Id == request.ParentId.Value).Code
-            : null;
+        var targetDepth = parent is null ? 1 : CategoryDepth(parent, all) + 1;
+        var subtreeDepth = CategorySubtreeDepth(id, all);
+        EnsureCategoryMaxDepth(targetDepth + subtreeDepth - 1);
+
+        category.ParentId = request.ParentId;
+        category.CodeSeg = request.CodeSeg.Trim();
+        category.Remark = CategoryRemark(request.ParentId, request.Remark);
+
         var subtree = BuildCategoryEntityTree(category, all);
-        CategoryCodeService.Recalc(subtree, parentCode);
+        CategoryCodeService.Recalc(subtree, parent?.Code);
         await _db.SaveChangesAsync();
         return ToCategoryDto(category);
     }
@@ -128,20 +136,16 @@ public class BaseDataService : IBaseDataService
     }
 
     public async Task<List<LocationNodeDto>> GetLocationTreeAsync()
-    {
-        var locations = await _db.Locations
+        => await _db.Locations
             .OrderBy(x => x.Id)
+            .Select(x => ToLocationDto(x))
             .ToListAsync();
-        return BuildLocationTree(null, locations);
-    }
 
     public async Task<LocationNodeDto> CreateLocationAsync(CreateLocationRequest request)
     {
         var location = new Location
         {
-            ParentId = request.ParentId,
-            Name = request.Name.Trim(),
-            QrCode = request.QrCode
+            Name = request.Name.Trim()
         };
         _db.Locations.Add(location);
         await _db.SaveChangesAsync();
@@ -152,20 +156,13 @@ public class BaseDataService : IBaseDataService
     {
         var location = await _db.Locations.FindAsync(id)
             ?? throw new BizException(4047, "位置不存在");
-        location.ParentId = request.ParentId;
         location.Name = request.Name.Trim();
-        location.QrCode = request.QrCode;
         await _db.SaveChangesAsync();
         return ToLocationDto(location);
     }
 
     public async Task DeleteLocationAsync(int id)
     {
-        if (await _db.Locations.AnyAsync(x => x.ParentId == id))
-        {
-            throw new BizException(4091, "请先删除子位置");
-        }
-
         var location = await _db.Locations.FindAsync(id)
             ?? throw new BizException(4047, "位置不存在");
         _db.Locations.Remove(location);
@@ -222,17 +219,6 @@ public class BaseDataService : IBaseDataService
             })
             .ToList();
 
-    private static List<LocationNodeDto> BuildLocationTree(int? parentId, List<Location> locations)
-        => locations
-            .Where(x => x.ParentId == parentId)
-            .OrderBy(x => x.Id)
-            .Select(x =>
-            {
-                var dto = ToLocationDto(x);
-                return dto with { Children = BuildLocationTree(x.Id, locations) };
-            })
-            .ToList();
-
     private static AssetCategory BuildCategoryEntityTree(AssetCategory node, List<AssetCategory> all)
     {
         node.Children = all.Where(x => x.ParentId == node.Id).ToList();
@@ -256,12 +242,54 @@ public class BaseDataService : IBaseDataService
         }
     }
 
+    private static AssetCategory? FindCategory(int? id, List<AssetCategory> all)
+    {
+        if (!id.HasValue)
+        {
+            return null;
+        }
+
+        return all.SingleOrDefault(x => x.Id == id.Value)
+            ?? throw new BizException(4046, "资产分类不存在");
+    }
+
+    private static int CategoryDepth(AssetCategory category, List<AssetCategory> all)
+    {
+        var depth = 1;
+        var parentId = category.ParentId;
+        while (parentId.HasValue)
+        {
+            var parent = all.SingleOrDefault(x => x.Id == parentId.Value)
+                ?? throw new BizException(4046, "资产分类不存在");
+            depth++;
+            parentId = parent.ParentId;
+        }
+
+        return depth;
+    }
+
+    private static int CategorySubtreeDepth(int categoryId, List<AssetCategory> all)
+    {
+        var childDepths = all
+            .Where(x => x.ParentId == categoryId)
+            .Select(x => CategorySubtreeDepth(x.Id, all))
+            .ToList();
+        return childDepths.Count == 0 ? 1 : childDepths.Max() + 1;
+    }
+
+    private static void EnsureCategoryMaxDepth(int depth)
+    {
+        if (depth > MaxCategoryDepth)
+        {
+            throw new BizException(4096, "资产分类最多维护三级");
+        }
+    }
+
     private static DepartmentNodeDto ToDepartmentDto(Department x, string? managerName) => new()
     {
         Id = x.Id,
         ParentId = x.ParentId,
         Name = x.Name,
-        Code = x.Code,
         ManagerName = managerName,
         AssetCount = 0,
         IsActive = x.IsActive
@@ -271,18 +299,40 @@ public class BaseDataService : IBaseDataService
     {
         Id = x.Id,
         ParentId = x.ParentId,
-        Name = x.Name,
         CodeSeg = x.CodeSeg,
-        Code = x.Code
+        Code = x.Code,
+        Remark = x.ParentId.HasValue ? x.Remark : null
     };
+
+    private static string? CategoryRemark(int? parentId, string? remark)
+        => parentId.HasValue ? EmptyToNull(remark) : null;
+
+    private static string? EmptyToNull(string? value)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
 
     private static LocationNodeDto ToLocationDto(Location x) => new()
     {
         Id = x.Id,
-        ParentId = x.ParentId,
-        Name = x.Name,
-        QrCode = x.QrCode
+        Name = x.Name
     };
+
+    private async Task<string> NextDepartmentCodeAsync()
+    {
+        var next = await _db.Departments.AnyAsync()
+            ? await _db.Departments.MaxAsync(x => x.Id) + 1
+            : 1;
+        string code;
+        do
+        {
+            code = $"D{next:0000}";
+            next++;
+        } while (await _db.Departments.AnyAsync(x => x.Code == code));
+
+        return code;
+    }
 
     private static SystemSettingDto ToSettingDto(SystemSetting x) => new()
     {

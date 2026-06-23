@@ -34,6 +34,8 @@ public static class DbSeeder
 
         var menus = new[]
         {
+            new Menu { Id = 24, Name = "Home", Title = "首页", Path = "/home-root", Component = "BasicLayout", Icon = "lucide:house", Sort = 1 },
+            new Menu { Id = 25, ParentId = 24, Name = "HomeWorkspace", Title = "首页", Path = "/home", Component = "/dashboard/workspace/index", Sort = 1 },
             new Menu { Id = 1, Name = "Asset", Title = "资产管理", Path = "/asset", Component = "BasicLayout", Icon = "lucide:package", Sort = 10 },
             new Menu { Id = 2, ParentId = 1, Name = "AssetList", Title = "资产列表", Path = "/asset/list", Component = "/asset/list/index", Sort = 11, PermissionCode = "asset:view" },
             // Id=3 资产层级菜单已删除,实际功能已整合到资产列表的层级视图中
@@ -94,6 +96,8 @@ public static class DbSeeder
             ["employee"] = new[] { "asset:view", "approval:view" }
         };
         var allMenusForSeed = db.Menus.ToList();
+        var homeMenu = allMenusForSeed.Single(x => x.Name == "Home");
+        var homeWorkspaceMenu = allMenusForSeed.Single(x => x.Name == "HomeWorkspace");
         foreach (var pair in rolePermissionMap)
         {
             var role = db.Roles.Single(x => x.Code == pair.Key);
@@ -101,7 +105,7 @@ public static class DbSeeder
             db.RolePermissions.AddRange(perms.Select(p => new RolePermission { RoleId = role.Id, PermissionId = p.Id }));
 
             // 赋予权限码匹配的菜单 + 其所有祖先菜单（否则 vben 无父路由无法渲染子菜单）
-            var menuIds = new HashSet<int>();
+            var menuIds = new HashSet<int> { homeMenu.Id, homeWorkspaceMenu.Id };
             foreach (var menu in allMenusForSeed.Where(m => m.PermissionCode != null && pair.Value.Contains(m.PermissionCode)))
             {
                 menuIds.Add(menu.Id);
@@ -147,9 +151,20 @@ public static class DbSeeder
 
     private static void SeedIncremental(AppDbContext db)
     {
+        var defaultWorkflows = DefaultWorkflows();
         if (!db.Workflows.Any())
         {
-            db.Workflows.AddRange(DefaultWorkflows());
+            db.Workflows.AddRange(defaultWorkflows);
+        }
+        else
+        {
+            var defaultBorrowWorkflow = defaultWorkflows.Single(x => x.BizType == "borrow");
+            var borrowWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "borrow");
+            if (borrowWorkflow is not null)
+            {
+                borrowWorkflow.Name = defaultBorrowWorkflow.Name;
+                borrowWorkflow.BpmnXml = defaultBorrowWorkflow.BpmnXml;
+            }
         }
 
         if (!db.SystemSettings.Any(x => x.Key == "audit_retention_months"))
@@ -178,6 +193,64 @@ public static class DbSeeder
             }
         }
 
+        var nextMenuId = db.Menus.Any() ? db.Menus.Max(x => x.Id) + 1 : 1;
+        var existingHome = db.Menus.SingleOrDefault(x => x.Name == "Home");
+        if (existingHome is null)
+        {
+            existingHome = new Menu
+            {
+                Id = nextMenuId++,
+                Name = "Home",
+                Title = "首页",
+                Path = "/home-root",
+                Component = "BasicLayout",
+                Icon = "lucide:house",
+                Sort = 1
+            };
+            db.Menus.Add(existingHome);
+            foreach (var role in db.Roles.ToList())
+            {
+                db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHome.Id });
+            }
+        }
+        else
+        {
+            existingHome.Title = "首页";
+            existingHome.Path = "/home-root";
+            existingHome.Component = "BasicLayout";
+            existingHome.Icon = "lucide:house";
+            existingHome.Sort = 1;
+            existingHome.ParentId = null;
+        }
+
+        var existingHomeWorkspace = db.Menus.SingleOrDefault(x => x.Name == "HomeWorkspace");
+        if (existingHomeWorkspace is null)
+        {
+            existingHomeWorkspace = new Menu
+            {
+                Id = nextMenuId++,
+                ParentId = existingHome.Id,
+                Name = "HomeWorkspace",
+                Title = "首页",
+                Path = "/home",
+                Component = "/dashboard/workspace/index",
+                Sort = 1
+            };
+            db.Menus.Add(existingHomeWorkspace);
+            foreach (var role in db.Roles.ToList())
+            {
+                db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHomeWorkspace.Id });
+            }
+        }
+        else
+        {
+            existingHomeWorkspace.ParentId = existingHome.Id;
+            existingHomeWorkspace.Title = "首页";
+            existingHomeWorkspace.Path = "/home";
+            existingHomeWorkspace.Component = "/dashboard/workspace/index";
+            existingHomeWorkspace.Sort = 1;
+        }
+
         db.SaveChanges();
     }
 
@@ -187,37 +260,157 @@ public static class DbSeeder
         {
             Name = "资产借用流程",
             BizType = "borrow",
-            Nodes = new List<WorkflowNode>
-            {
-                new() { Id = "b1", Name = "发起", Type = NodeType.Start },
-                new() { Id = "b2", Name = "直属主管审批", Type = NodeType.Approval, ApproverType = ApproverType.Supervisor, Approver = "李主管" },
-                new() { Id = "b3", Name = "资产管理员会签", Type = NodeType.Countersign, ApproverType = ApproverType.Role, Approver = "资产管理员", Signers = new List<string> { "张三", "赵敏" } },
-                new() { Id = "b4", Name = "分管副总审批", Type = NodeType.Condition, ApproverType = ApproverType.User, Approver = "王副总", Condition = "amount>5000" },
-                new() { Id = "b5", Name = "结束", Type = NodeType.End }
-            }
+            BpmnXml = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+<bpmn:definitions xmlns:bpmn=""http://www.omg.org/spec/BPMN/20100524/MODEL""
+                  xmlns:bpmndi=""http://www.omg.org/spec/BPMN/20100524/DI""
+                  xmlns:dc=""http://www.omg.org/spec/DD/20100524/DC""
+                  xmlns:di=""http://www.omg.org/spec/DD/20100524/DI""
+                  xmlns:camunda=""http://camunda.org/schema/1.0/bpmn""
+                  id=""Definitions_borrow"">
+  <bpmn:process id=""Process_borrow"" isExecutable=""true"">
+    <bpmn:startEvent id=""StartEvent_1"" name=""发起借用申请"">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id=""Task_supervisor"" name=""直属主管审批"" camunda:assignee=""supervisor"">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id=""EndEvent_1"" name=""流程结束"">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Task_supervisor"" />
+    <bpmn:sequenceFlow id=""Flow_2"" sourceRef=""Task_supervisor"" targetRef=""EndEvent_1"" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
+    <bpmndi:BPMNPlane id=""BPMNPlane_1"" bpmnElement=""Process_borrow"">
+      <bpmndi:BPMNShape id=""StartEvent_1_di"" bpmnElement=""StartEvent_1"">
+        <dc:Bounds x=""152"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Task_supervisor_di"" bpmnElement=""Task_supervisor"">
+        <dc:Bounds x=""240"" y=""80"" width=""100"" height=""80"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""EndEvent_1_di"" bpmnElement=""EndEvent_1"">
+        <dc:Bounds x=""392"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id=""Flow_1_di"" bpmnElement=""Flow_1"">
+        <di:waypoint x=""188"" y=""120"" />
+        <di:waypoint x=""240"" y=""120"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_2_di"" bpmnElement=""Flow_2"">
+        <di:waypoint x=""340"" y=""120"" />
+        <di:waypoint x=""392"" y=""120"" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>"
         },
         new WorkflowEntity
         {
             Name = "资产转让流程",
             BizType = "transfer",
-            Nodes = new List<WorkflowNode>
-            {
-                new() { Id = "t1", Name = "发起", Type = NodeType.Start },
-                new() { Id = "t2", Name = "直属主管审批", Type = NodeType.Approval, ApproverType = ApproverType.Supervisor, Approver = "李主管" },
-                new() { Id = "t3", Name = "接收部门负责人", Type = NodeType.Approval, ApproverType = ApproverType.DeptManager, Approver = "接收部门负责人" },
-                new() { Id = "t4", Name = "结束", Type = NodeType.End }
-            }
+            BpmnXml = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+<bpmn:definitions xmlns:bpmn=""http://www.omg.org/spec/BPMN/20100524/MODEL""
+                  xmlns:bpmndi=""http://www.omg.org/spec/BPMN/20100524/DI""
+                  xmlns:dc=""http://www.omg.org/spec/DD/20100524/DC""
+                  xmlns:di=""http://www.omg.org/spec/DD/20100524/DI""
+                  xmlns:camunda=""http://camunda.org/schema/1.0/bpmn""
+                  id=""Definitions_transfer"">
+  <bpmn:process id=""Process_transfer"" isExecutable=""true"">
+    <bpmn:startEvent id=""StartEvent_1"" name=""发起转让申请"">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id=""Task_supervisor"" name=""直属主管审批"" camunda:assignee=""supervisor"">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id=""Task_receiver"" name=""接收部门负责人审批"" camunda:assignee=""deptManager"">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id=""EndEvent_1"" name=""流程结束"">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Task_supervisor"" />
+    <bpmn:sequenceFlow id=""Flow_2"" sourceRef=""Task_supervisor"" targetRef=""Task_receiver"" />
+    <bpmn:sequenceFlow id=""Flow_3"" sourceRef=""Task_receiver"" targetRef=""EndEvent_1"" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
+    <bpmndi:BPMNPlane id=""BPMNPlane_1"" bpmnElement=""Process_transfer"">
+      <bpmndi:BPMNShape id=""StartEvent_1_di"" bpmnElement=""StartEvent_1"">
+        <dc:Bounds x=""152"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Task_supervisor_di"" bpmnElement=""Task_supervisor"">
+        <dc:Bounds x=""240"" y=""80"" width=""100"" height=""80"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Task_receiver_di"" bpmnElement=""Task_receiver"">
+        <dc:Bounds x=""400"" y=""80"" width=""100"" height=""80"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""EndEvent_1_di"" bpmnElement=""EndEvent_1"">
+        <dc:Bounds x=""552"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id=""Flow_1_di"" bpmnElement=""Flow_1"">
+        <di:waypoint x=""188"" y=""120"" />
+        <di:waypoint x=""240"" y=""120"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_2_di"" bpmnElement=""Flow_2"">
+        <di:waypoint x=""340"" y=""120"" />
+        <di:waypoint x=""400"" y=""120"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_3_di"" bpmnElement=""Flow_3"">
+        <di:waypoint x=""500"" y=""120"" />
+        <di:waypoint x=""552"" y=""120"" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>"
         },
         new WorkflowEntity
         {
             Name = "资产归还流程",
             BizType = "return",
-            Nodes = new List<WorkflowNode>
-            {
-                new() { Id = "r1", Name = "发起", Type = NodeType.Start },
-                new() { Id = "r2", Name = "资产管理员确认", Type = NodeType.Approval, ApproverType = ApproverType.Role, Approver = "资产管理员" },
-                new() { Id = "r3", Name = "结束", Type = NodeType.End }
-            }
+            BpmnXml = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+<bpmn:definitions xmlns:bpmn=""http://www.omg.org/spec/BPMN/20100524/MODEL""
+                  xmlns:bpmndi=""http://www.omg.org/spec/BPMN/20100524/DI""
+                  xmlns:dc=""http://www.omg.org/spec/DD/20100524/DC""
+                  xmlns:di=""http://www.omg.org/spec/DD/20100524/DI""
+                  xmlns:camunda=""http://camunda.org/schema/1.0/bpmn""
+                  id=""Definitions_return"">
+  <bpmn:process id=""Process_return"" isExecutable=""true"">
+    <bpmn:startEvent id=""StartEvent_1"" name=""发起归还申请"">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id=""Task_warehouse"" name=""资产管理员确认"" camunda:candidateGroups=""warehouse"">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id=""EndEvent_1"" name=""流程结束"">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Task_warehouse"" />
+    <bpmn:sequenceFlow id=""Flow_2"" sourceRef=""Task_warehouse"" targetRef=""EndEvent_1"" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
+    <bpmndi:BPMNPlane id=""BPMNPlane_1"" bpmnElement=""Process_return"">
+      <bpmndi:BPMNShape id=""StartEvent_1_di"" bpmnElement=""StartEvent_1"">
+        <dc:Bounds x=""152"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Task_warehouse_di"" bpmnElement=""Task_warehouse"">
+        <dc:Bounds x=""240"" y=""80"" width=""100"" height=""80"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""EndEvent_1_di"" bpmnElement=""EndEvent_1"">
+        <dc:Bounds x=""392"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id=""Flow_1_di"" bpmnElement=""Flow_1"">
+        <di:waypoint x=""188"" y=""120"" />
+        <di:waypoint x=""240"" y=""120"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_2_di"" bpmnElement=""Flow_2"">
+        <di:waypoint x=""340"" y=""120"" />
+        <di:waypoint x=""392"" y=""120"" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>"
         }
     };
 }
