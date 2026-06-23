@@ -26,19 +26,31 @@ public class ApprovalFlowConfiguration : IEntityTypeConfiguration<ApprovalFlow>
         b.Property(x => x.Reason).HasMaxLength(500);
         b.Property(x => x.ReturnDate).HasMaxLength(50);
         b.Property(x => x.Status).HasMaxLength(50).IsRequired();
-        b.Property(x => x.Amount).HasColumnType("decimal(18,2)");
         b.HasIndex(x => x.FlowNo).IsUnique();
         b.HasIndex(x => x.AssetId);
         b.HasIndex(x => x.ApplicantId);
         b.HasIndex(x => x.Status);
-        b.Property(x => x.Nodes)
+
+        // BPMN 当前活跃节点列表（JSON 序列化）
+        b.Property(x => x.CurrentNodeIds)
             .HasConversion(
                 v => JsonSerializer.Serialize(v, JsonOptions),
-                v => JsonSerializer.Deserialize<List<FlowInstanceNode>>(v, JsonOptions) ?? new())
+                v => JsonSerializer.Deserialize<List<string>>(v, JsonOptions) ?? new())
             .HasColumnType("TEXT")
-            .Metadata.SetValueComparer(new ValueComparer<List<FlowInstanceNode>>(
+            .Metadata.SetValueComparer(new ValueComparer<List<string>>(
                 (l, r) => JsonSerializer.Serialize(l, JsonOptions) == JsonSerializer.Serialize(r, JsonOptions),
                 v => JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
-                v => JsonSerializer.Deserialize<List<FlowInstanceNode>>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions) ?? new()));
+                v => JsonSerializer.Deserialize<List<string>>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions) ?? new()));
+
+        // BPMN Token 状态字典（JSON 序列化）
+        b.Property(x => x.BpmnTokens)
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, JsonOptions),
+                v => JsonSerializer.Deserialize<Dictionary<string, BpmnToken>>(v, JsonOptions) ?? new())
+            .HasColumnType("TEXT")
+            .Metadata.SetValueComparer(new ValueComparer<Dictionary<string, BpmnToken>>(
+                (l, r) => JsonSerializer.Serialize(l, JsonOptions) == JsonSerializer.Serialize(r, JsonOptions),
+                v => JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
+                v => JsonSerializer.Deserialize<Dictionary<string, BpmnToken>>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions) ?? new()));
     }
 }

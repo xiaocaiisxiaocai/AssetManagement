@@ -7,14 +7,14 @@ public record WorkflowDto
     public int Id { get; init; }
     public string Name { get; init; } = "";
     public string BizType { get; init; } = "";
-    public List<WorkflowNode> Nodes { get; init; } = new();
+    public string? BpmnXml { get; init; }
 }
 
 public record SaveWorkflowRequest
 {
     public string Name { get; init; } = "";
     public string BizType { get; init; } = "";
-    public List<WorkflowNode> Nodes { get; init; } = new();
+    public string? BpmnXml { get; init; }
 }
 
 public record ApprovalFlowDto
@@ -31,10 +31,9 @@ public record ApprovalFlowDto
     public string? TransfereeDept { get; init; }
     public string? Reason { get; init; }
     public string? ReturnDate { get; init; }
-    public decimal Amount { get; init; }
     public string Status { get; init; } = "";
-    public int CurrentNodeIndex { get; init; }
-    public List<FlowInstanceNode> Nodes { get; init; } = new();
+    public List<string> CurrentNodeIds { get; init; } = new();
+    public Dictionary<string, BpmnToken> BpmnTokens { get; init; } = new();
     public DateTime ApplyTime { get; init; }
     public DateTime Deadline { get; init; }
     public DateTime? ConfirmedAt { get; init; }
@@ -51,17 +50,19 @@ public record StartApprovalRequest
 
 public record ApprovalActionRequest
 {
-    public string? Signer { get; init; }
+    public string? NodeId { get; init; }  // BPMN 模式下需要指定节点 ID
     public string Opinion { get; init; } = "";
 }
 
 public record RejectRequest
 {
+    public string? NodeId { get; init; }  // BPMN 模式下需要指定节点 ID
     public string Reason { get; init; } = "";
 }
 
 public record AddSignRequest
 {
+    public string? NodeId { get; init; }
     public string Who { get; init; } = "";
 }
 

@@ -65,7 +65,7 @@ public class ApprovalController : ControllerBase
     [HttpPost("{id:int}/confirm-return")]
     [HasPermission("asset:edit")]
     public async Task<ApiResult<ApprovalFlowDto>> ConfirmReturn(int id)
-        => ApiResult<ApprovalFlowDto>.Ok(await _service.ConfirmReturnAsync(id));
+        => ApiResult<ApprovalFlowDto>.Ok(await _service.ConfirmReturnAsync(id, CurrentUserId()));
 
     private int CurrentUserId()
         => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");

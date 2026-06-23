@@ -26,8 +26,21 @@ public class WorkflowController : ControllerBase
     public async Task<ApiResult<WorkflowDto>> Get(int id)
         => ApiResult<WorkflowDto>.Ok(await _service.GetWorkflowAsync(id));
 
+    [HttpPost]
+    [HasPermission("workflow:design")]
+    public async Task<ApiResult<WorkflowDto>> Create(SaveWorkflowRequest request)
+        => ApiResult<WorkflowDto>.Ok(await _service.CreateWorkflowAsync(request));
+
     [HttpPut("{id:int}")]
     [HasPermission("workflow:design")]
     public async Task<ApiResult<WorkflowDto>> Save(int id, SaveWorkflowRequest request)
         => ApiResult<WorkflowDto>.Ok(await _service.SaveWorkflowAsync(id, request));
+
+    [HttpDelete("{id:int}")]
+    [HasPermission("workflow:design")]
+    public async Task<ApiResult<bool>> Delete(int id)
+    {
+        await _service.DeleteWorkflowAsync(id);
+        return ApiResult<bool>.Ok(true);
+    }
 }
