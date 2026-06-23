@@ -18,3 +18,10 @@ logs/
 # e2e 测试运行产物(截图),不入库
 e2e-final-state.png
 debug-*.png
+
+# 调试和输出文件
+output/
+backend/docs/
+web/output-*.png
+web/output-*.json
+web/perf-flow.cjs
