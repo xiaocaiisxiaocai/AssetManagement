@@ -39,6 +39,11 @@ public class VbenContractTests : IClassFixture<TestWebAppFactory>
         body!.Code.Should().Be(0);
         var routes = body.Data!;
         var topNames = routes.Select(x => x.Name);
+        routes.First().Name.Should().Be("Home");
+        routes.First().Path.Should().Be("/home-root");
+        routes.First().Meta.Title.Should().Be("首页");
+        routes.First().Meta.HideChildrenInMenu.Should().BeTrue();
+        routes.First().Children.Should().ContainSingle(x => x.Name == "HomeWorkspace" && x.Path == "/home");
         topNames.Should().Contain("Asset");
         topNames.Should().Contain("Approval");
         topNames.Should().Contain("Report");

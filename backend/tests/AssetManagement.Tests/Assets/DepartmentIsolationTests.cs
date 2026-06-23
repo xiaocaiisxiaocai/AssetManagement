@@ -33,13 +33,11 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
         var dept1 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            Name = "研发部",
-            Code = $"RD_{Guid.NewGuid():N}"[..10]
+            Name = "研发部"
         });
         var dept2 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            Name = "市场部",
-            Code = $"MK_{Guid.NewGuid():N}"[..10]
+            Name = "市场部"
         });
 
         // 创建两个部门管理员用户，直接传入 RoleIds
@@ -68,14 +66,12 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         {
             Name = "研发部服务器",
             CategoryId = category.Id,
-            Price = 10000,
             DepartmentId = dept1.Data.Id
         });
         var asset2 = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
             Name = "市场部投影仪",
             CategoryId = category.Id,
-            Price = 5000,
             DepartmentId = dept2.Data.Id
         });
 
@@ -118,13 +114,11 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
         var dept1 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            Name = "研发部",
-            Code = $"RD_{Guid.NewGuid():N}"[..10]
+            Name = "研发部"
         });
         var dept2 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            Name = "市场部",
-            Code = $"MK_{Guid.NewGuid():N}"[..10]
+            Name = "市场部"
         });
 
         var deptAdmin1 = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -141,7 +135,6 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         {
             Name = "市场部资产X",
             CategoryId = category.Id,
-            Price = 5000,
             DepartmentId = dept2.Data!.Id
         });
 
@@ -157,7 +150,6 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
             Name = "被越权修改",
             CategoryId = category.Id,
             DepartmentId = dept2.Data.Id,
-            Price = 1,
             Quantity = 1,
             Status = AssetStatus.Available
         });
@@ -174,13 +166,11 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         var rootSeg = Unique("CAT");
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            Name = "测试分类",
             CodeSeg = rootSeg
         });
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            Name = "末级分类",
             CodeSeg = Unique("LEAF")
         });
         return child.Data!;

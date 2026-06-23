@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AssetManagement.Application.Audit;
 using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
@@ -29,11 +30,10 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         var category = await CreateCategory();
         var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            Name = "报表部门",
-            Code = Unique("RD")
+            Name = "报表部门"
         });
-        await CreateAsset(category.Id, department.Data!.Id, "报表资产A", 100, AssetStatus.Available);
-        await CreateAsset(category.Id, department.Data.Id, "报表资产B", 200, AssetStatus.Maintenance);
+        await CreateAsset(category.Id, department.Data!.Id, "报表资产A", AssetStatus.Available);
+        await CreateAsset(category.Id, department.Data.Id, "报表资产B", AssetStatus.Borrowed);
 
         var summary = await _client.GetFromJsonAsync<ApiResult<AssetSummaryDto>>("/api/reports/summary");
 
@@ -43,11 +43,24 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Summary_does_not_expose_maintenance_or_scrapped_counts()
+    {
+        await Login();
+
+        var json = await _client.GetStringAsync("/api/reports/summary");
+        using var doc = JsonDocument.Parse(json);
+        var data = doc.RootElement.GetProperty("data");
+
+        data.TryGetProperty("maintenance", out _).Should().BeFalse();
+        data.TryGetProperty("scrapped", out _).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Borrowed_report_reads_approved_borrow_flow()
     {
         await Login();
         var category = await CreateCategory();
-        var asset = await CreateAsset(category.Id, null, "借用报表资产", 300, AssetStatus.Available);
+        var asset = await CreateAsset(category.Id, null, "借用报表资产", AssetStatus.Available);
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
@@ -55,9 +68,15 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             Reason = "报表验证",
             ReturnDate = "2026-06-20"
         });
-        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve", new ApprovalActionRequest { Opinion = "同意" });
-        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve", new ApprovalActionRequest { Signer = "张三", Opinion = "同意" });
-        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve", new ApprovalActionRequest { Signer = "赵敏", Opinion = "同意" });
+
+        // 确保流程启动成功
+        flow.Should().NotBeNull();
+        flow.Data.Should().NotBeNull();
+
+        // 审批（BPMN 模式下，一次审批应该完成流程，默认流程）
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve", new ApprovalActionRequest { Opinion = "同意" });
+        approved.Data.Should().NotBeNull();
+        approved.Data!.Status.Should().Be("approved", "流程应该已完成");
 
         var borrowed = await _client.GetFromJsonAsync<ApiResult<PagedResult<BorrowReportRow>>>("/api/reports/borrowed");
 
@@ -69,7 +88,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var category = await CreateCategory();
-        var asset = await CreateAsset(category.Id, null, "逾期资产", 120, AssetStatus.Available);
+        var asset = await CreateAsset(category.Id, null, "逾期资产", AssetStatus.Available);
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
@@ -77,9 +96,15 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             Reason = "逾期验证",
             ReturnDate = "2020-01-01"
         });
-        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve", new ApprovalActionRequest { Opinion = "同意" });
-        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve", new ApprovalActionRequest { Signer = "张三", Opinion = "同意" });
-        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve", new ApprovalActionRequest { Signer = "赵敏", Opinion = "同意" });
+
+        // 确保流程启动成功
+        flow.Should().NotBeNull();
+        flow.Data.Should().NotBeNull();
+
+        // 审批完成流程
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve", new ApprovalActionRequest { Opinion = "同意" });
+        approved.Data.Should().NotBeNull();
+        approved.Data!.Status.Should().Be("approved", "流程应该已完成");
 
         var overdue = await _client.GetFromJsonAsync<ApiResult<List<OverdueReportRow>>>("/api/reports/overdue");
         await Post<ApiResult<object?>>($"/api/reports/overdue/{asset.Id}/remind", new { });
@@ -93,26 +118,23 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            Name = "报表分类",
             CodeSeg = Unique("RP")
         });
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            Name = "报表末级",
             CodeSeg = Unique("LEAF")
         });
         return child.Data!;
     }
 
-    private async Task<AssetDto> CreateAsset(int categoryId, int? departmentId, string name, decimal price, AssetStatus status)
+    private async Task<AssetDto> CreateAsset(int categoryId, int? departmentId, string name, AssetStatus status)
     {
         var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
             Name = name,
             CategoryId = categoryId,
             DepartmentId = departmentId,
-            Price = price
         });
         if (status == AssetStatus.Available)
         {
@@ -124,7 +146,6 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             Name = created.Data.Name,
             CategoryId = categoryId,
             DepartmentId = departmentId,
-            Price = price,
             Quantity = 1,
             Status = status
         });

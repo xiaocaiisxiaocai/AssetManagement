@@ -78,13 +78,56 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **实现方式**:通过 `IHttpContextAccessor` 获取当前用户的角色和部门信息,在 EF 查询条件中自动附加 `DepartmentId` 过滤。
 - 参考设计文档:`docs/多部门预留设计.md`。
 
-### 审批工作流引擎(最复杂的子系统)
+### 审批工作流引擎（BPMN 2.0）
 
-- **模板**(`Workflow` 实体)由设计器配置:节点列表(开始/审批/会签/或签/条件分支/抄送/结束)、审批人类型(指定用户/角色/直属上级/部门经理/发起人指定)。节点带 `X/Y` 画布坐标,**仅供前端 LogicFlow 设计器布局,执行引擎忽略**。
-- **实例**(`ApprovalFlow` 实体)持有 `List<FlowInstanceNode>` 与 `CurrentNodeIndex`,记录每个节点的实时状态、会签 `SignStates`、加签 `AddedSigners`。
-- **引擎**(`Domain/Workflow/WorkflowEngine.cs`)是**静态纯函数**(`Start`/`Approve`/`Reject`/`AddSign`/`Advance`):只推进内存中的流程状态,不碰数据库。
-- **编排**(`Infrastructure/Workflow/WorkflowService.cs`)负责加载/持久化实例、调用引擎、并通过 `BizEffectApplier` 在流程通过时落地业务副作用(如资产状态变更)。
-- 审批通过即推进到下一节点;会签需全部签署才前进,或签任一签署即可。改动引擎逻辑务必同步 `Workflow/WorkflowEngineTests.cs` 与 `Workflow/ApprovalApiTests.cs`。
+**2026-06-22 重大升级**: 从简单线性引擎升级到标准 BPMN 2.0 工作流引擎。
+
+#### 核心架构
+
+- **模板**(`Workflow` 实体)：存储标准 BPMN 2.0 XML（`BpmnXml` 字段），由 bpmn-js 设计器可视化编辑。
+- **解析器**(`Domain/Workflow/BpmnParser.cs`)：完整解析 BPMN XML，支持 UserTask、ServiceTask、StartEvent、EndEvent、ExclusiveGateway、ParallelGateway、InclusiveGateway 等标准元素。
+- **执行引擎**(`Domain/Workflow/BpmnEngine.cs`)：Token 驱动的纯函数引擎，支持并行流程执行。
+- **实例**(`ApprovalFlow` 实体)：实现 `IBpmnFlowInstance` 接口，持有 `CurrentNodeIds`（活跃节点列表）和 `BpmnTokens`（Token 状态字典）。
+- **编排**(`Infrastructure/Workflow/WorkflowService.cs`)：加载 BPMN 定义、解析、执行、持久化，并在流程完成时落地业务副作用。
+
+#### 支持的 BPMN 元素
+
+- **UserTask**: 审批节点，使用 `camunda:assignee` 配置审批人（支持 `supervisor`、`deptManager`、用户 ID、角色代码）
+- **ExclusiveGateway**: 排他网关，根据条件选择一条分支（条件表达式：`${amount} > 5000`）
+- **ParallelGateway**: 并行网关，所有分支同时执行
+- **InclusiveGateway**: 包容网关，执行所有满足条件的分支
+- **SequenceFlow**: 连线，可配置条件表达式
+
+#### 前端设计器
+
+- **位置**: `web/apps/web-ele/src/views/admin/workflows/`
+- **设计器**: bpmn-modeler.vue（bpmn-js，CDN 加载）
+- **属性面板**: bpmn-properties.vue（配置审批人、条件表达式）
+- **列表页**: index.vue（管理工作流定义）
+
+#### 审批流程
+
+1. 用户发起审批 → 后端调用 `BpmnEngine.Start()` → Token 推进到第一个 UserTask
+2. 审批人审批 → 后端调用 `BpmnEngine.Approve()` → Token 根据流程定义推进
+3. 遇到网关 → 自动评估条件表达式，选择分支或并行执行
+4. 到达 EndEvent → 流程完成，触发业务副作用（如资产状态变更）
+
+#### 关键设计
+
+- **Token 驱动**: 每个活跃节点有一个 Token，支持并行执行
+- **接口解耦**: `IBpmnFlowInstance` 避免 Domain 层依赖 Entities
+- **标准兼容**: 使用 Camunda 扩展属性存储审批人配置
+- **纯函数引擎**: `BpmnEngine` 只操作内存状态，不访问数据库
+
+#### 迁移说明
+
+从旧引擎迁移到 BPMN 的关键变更：
+- `Workflow.Nodes` → `Workflow.BpmnXml`
+- `ApprovalFlow.CurrentNodeIndex` → `ApprovalFlow.CurrentNodeIds` (支持并行)
+- `ApprovalFlow.Nodes` → `ApprovalFlow.BpmnTokens`
+- 种子数据已转换为 BPMN XML
+
+参考文档: `docs/BPMN-*.md`（6 份详细文档）
 
 ## 后端测试
 
@@ -107,17 +150,62 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 | 场景 | 步骤 |
 |------|------|
-| **添加新的审批流程节点类型** | (1) Domain: `Workflow/WorkflowModels.cs` 的 `NodeType` 枚举加值 (2) Domain: `WorkflowEngine.cs` 加分支逻辑 (3) Infrastructure: `WorkflowService.cs` 实现审批人解析 (4) 测试: `WorkflowEngineTests.cs` 覆盖新逻辑 |
+| **修改 BPMN 工作流定义** | (1) 前端: `views/admin/workflows/bpmn-modeler.vue` 可视化设计器调整流程 (2) 保存后 `Workflow.BpmnXml` 字段自动更新 (3) 测试: `BpmnEngineTests.cs` 覆盖新场景 (4) 如需扩展网关类型,修改 `Domain/Workflow/BpmnParser.cs` + `BpmnEngine.cs` |
 | **扩展基础数据(分类/部门/位置)** | (1) Domain: `AssetCategory`/`Department`/`Location` 实体(分类编码生成在 `Services/CategoryCodeService`) (2) Application: 复用 `IBaseDataService`(三类基础数据共用同一粗粒度服务)+ DTO (3) Infrastructure: 实现 + EntityTypeConfiguration (4) DbSeeder: 种子数据 (5) Api: 对应控制器(如 `AssetCategoryController`) (6) 迁移 (7) 前端页面(如 `views/admin/categories`)+ 菜单注册 |
 | **后端新增权限** | (1) DbSeeder: `Permission` 表加行 + 角色-权限映射 (2) Api: action 标注 `[HasPermission("code")]` (3) 迁移 (4) 前端菜单由后端下发,无需改前端代码 |
 | **前端新页面映射后端菜单** | (1) 后端 DbSeeder 注册 Menu(name/path/component) + Permission (2) 前端在 `views/<module>/` 创建页面,Component 路径须与后端 menu.Component 一致 (3) 登录后菜单自动下发,无需硬编码路由 |
-| **修改审批工作流逻辑** | (1) 修改 `WorkflowEngine.cs`(纯函数) (2) 同步 `WorkflowEngineTests.cs` + `ApprovalApiTests.cs` (3) 如需新增数据表字段,加 EF 迁移 + WorkflowService 调用 |
+| **修改 BPMN 工作流定义** | (1) 前端: `views/admin/workflows/bpmn-modeler.vue` 可视化设计器调整流程 (2) 保存后 `Workflow.BpmnXml` 字段自动更新 (3) 测试: `BpmnEngineTests.cs` 覆盖新场景 (4) 如需扩展网关类型,修改 `Domain/Workflow/BpmnParser.cs` + `BpmnEngine.cs` |
+| **查看工作流执行状态** | `ApprovalFlow.CurrentNodeIds`(活跃节点列表) + `BpmnTokens`(Token 状态字典,JSON 存储);调试时可在数据库直接查看或通过 `ApprovalController` 返回的流程详情分析执行路径 |
 | **新增资产附件字段** | (1) Domain: `Asset` 实体加字段 (2) Infrastructure: `EntityTypeConfiguration` 配置长度/映射 (3) Application: DTO 加字段并在 Service 映射 (4) 迁移 (5) 前端: `api/asset.ts` 加类型,表单加上传组件 |
 | **资产批量导入(Excel)** | `AssetImportController`(路由 `api/assets/import`)三段式:`GET .../template` 下模板 → `POST .../validate` 上传预览校验 → `POST .../confirm` 确认落库;实现在 `IAssetService.BuildImportTemplate`/`ValidateImportAsync`/`ConfirmImportAsync`。模板下载用 `asset:view`,校验/确认用 `asset:create` |
 | **查询流转历史或审计日志** | 流转历史: `ApprovalFlows` 表按 `AssetId` 筛选; 审计日志: `AuditLogs` 表按 `TargetType=="Asset" && TargetId==资产ID` 筛选。参考 `AssetService.GetDetailAsync` 实现 |
 | **实现数据权限隔离** | (1) JWT: `IJwtTokenService.Create` 加参数传入用户属性(如 departmentId) (2) Service: 注入 `IHttpContextAccessor`,从 `HttpContext.User.Claims` 读取 (3) 查询方法开头检查角色并附加过滤条件 (4) 测试: 创建不同角色用户验证隔离效果 |
 
-## 编码与提交约定
+## 调试与故障排查
+
+**常见问题快速定位:**
+
+1. **JWT 认证失败(401)**
+   - 检查: `appsettings.json` 的 `Jwt:Key` 是否配置(生产环境必须替换占位符)
+   - 检查: 前端 token 是否过期(`Jwt:ExpireMinutes` 默认 1440 分钟)
+   - 检查: 请求头 `Authorization: Bearer <token>` 格式是否正确
+
+2. **权限不足(403)**
+   - 检查: 用户角色是否关联了目标权限码(`DbSeeder` 的 `RolePermission` 映射)
+   - 检查: 控制器 action 的 `[HasPermission("code")]` 与数据库 `Permissions` 表是否一致
+   - 调试: 在 `PermissionAuthorizationHandler.HandleRequirementAsync` 打断点查看当前用户的 claims
+
+3. **EF 迁移冲突**
+   - 现象: `dotnet ef migrations add` 报错或 `Migrate()` 失败
+   - 解决: 删除 `Migrations/` 下冲突的迁移文件 → 重新 `add` → 删除旧 `.db` 文件让 `Program.cs` 重建
+
+4. **前端请求 404**
+   - 检查: 后端是否启动在 5000 端口(`dotnet run` 输出确认)
+   - 检查: `apps/web-ele/vite.config.mts` 的代理配置 `/api -> http://localhost:5000`
+   - 检查: 后端路由是否注册(`Program.cs` 的 `app.MapControllers()`)
+
+5. **BPMN 工作流执行异常**
+   - 检查: `Workflow.BpmnXml` 字段是否为合法 XML(可在设计器中验证)
+   - 检查: 条件表达式语法(如 `${amount} > 5000`)是否正确
+   - 调试: `BpmnEngine.cs` 的 `EvaluateCondition` 方法,查看上下文变量
+   - 日志: `ApprovalFlow.BpmnTokens` JSON 字段记录了每个 Token 的完整执行路径
+
+6. **文件上传失败**
+   - 检查: `Attachment:Path` 配置的目录是否存在且有写权限(默认 `App_Data/uploads`)
+   - 检查: 文件大小是否超过 5MB 或格式不在白名单(jpg/png/gif/webp)
+   - 检查: `FileStorageService` 是否注册为 Singleton(`Program.cs`)
+
+7. **测试失败(Flaky)**
+   - 确认: 每个测试类使用独立的 in-memory SQLite(见 `TestWebAppFactory`)
+   - 确认: 测试间没有共享状态(避免 `static` 字段或单例服务污染)
+   - 重现: `dotnet test --filter "Name=<test_name>"` 单独运行失败的测试
+
+**日志位置:**
+- 后端: 控制台输出(开发环境) + `logs/` 目录(生产环境,需配置 Serilog)
+- 前端: 浏览器 DevTools Console + Network 面板
+- 审计: `AuditLogs` 表记录所有 CUD 操作,可通过 `views/admin/audit` 查询
+
+
 
 - **路径分隔符**:Windows 环境下文件路径用反斜杠 `\`。
 - 后端 C#:`Nullable` + `ImplicitUsings` 开启;控制器保持瘦,逻辑下沉到 service。
@@ -126,15 +214,15 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **不提交**:SQLite 库文件(`*.db`)、`web/dist/`、`dist.zip`、`bin/`、`obj/`、日志、真实员工数据、生产凭据、内网地址。
 - 生产部署必须替换 `deploy/appsettings.Production.json` 中的 `Jwt:Key` 占位符。
 
-## 项目状态与待办
+## 项目状态
 
-当前完成度约 **90%**,核心模块已打通,所有计划待办事项已完成。最新进度见 `docs/plans/M7-进度分析与待办事项.md`。
+当前完成度约 **90%**,四大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据)已全面打通,所有计划待办事项已完成。
 
-已完成(2026-06-17):
-- ✅ 待办1: 确认入库接口对齐(`/api/approvals/pending-return`)
-- ✅ 待办2: 资产详情页及流转时间线(`GET /api/assets/{id}/detail`)
-- ✅ 待办3: 资产照片附件上传与回显(`Asset.ImageUrls` + 文件存储服务)
-- ✅ 待办4: 多部门数据权限隔离(部门管理员只能查看本部门资产,JWT加入departmentId)
-- ✅ 待办5: 清理空壳文件(`views/asset/hierarchy/index.vue` + 菜单项移除)
+最新里程碑(2026-06-17 ~ 2026-06-22):
+- ✅ 确认入库接口对齐(`/api/approvals/pending-return`)
+- ✅ 资产详情页及流转时间线(`GET /api/assets/{id}/detail`)
+- ✅ 资产照片附件上传与回显(`Asset.ImageUrls` + `FileStorageService`)
+- ✅ 多部门数据权限隔离(部门管理员仅看本部门资产,JWT 携带 `departmentId`)
+- ✅ **BPMN 2.0 工作流引擎升级**(从简单线性引擎升级到标准 BPMN,支持并行网关/包容网关/排他网关)
 
-系统已可进入生产部署准备阶段。
+系统已进入生产部署准备阶段。详见 `docs/plans/M7-进度分析与待办事项.md` 与 `docs/BPMN-*.md`。

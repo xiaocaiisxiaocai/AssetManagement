@@ -35,7 +35,6 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             CategoryId = category.Id,
             Model = "TBS1102C",
             Brand = "Tektronix",
-            Price = 3000
         });
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?categoryId={category.Id}");
 
@@ -50,14 +49,12 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var category = await CreateCategory();
         var parent = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            Name = "制造中心",
-            Code = Unique("D")
+            Name = "制造中心"
         });
         var child = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
             ParentId = parent.Data!.Id,
-            Name = "装配组",
-            Code = Unique("D-C")
+            Name = "装配组"
         });
 
         var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
@@ -65,7 +62,6 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             Name = "电动螺丝刀",
             CategoryId = category.Id,
             DepartmentId = child.Data!.Id,
-            Price = 500
         });
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?departmentId={parent.Data.Id}");
 
@@ -81,13 +77,11 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "借用中的资产",
             CategoryId = category.Id,
-            Price = 120
         });
         await Put<ApiResult<AssetDto>>($"/api/assets/{created.Data!.Id}", new UpdateAssetRequest
         {
             Name = created.Data.Name,
             CategoryId = category.Id,
-            Price = created.Data.Price,
             Quantity = 1,
             Status = AssetStatus.Borrowed
         });
@@ -105,9 +99,9 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var category = await CreateCategory();
         var bytes = BuildXlsx(new[]
         {
-            new[] { "名称", "分类编码", "型号", "品牌", "单价" },
-            new[] { "万用表", category.Code, "UT61E", "UNI-T", "199.50" },
-            new[] { "无效资产", "NO-SUCH-CAT", "X", "Demo", "20" }
+            new[] { "名称", "分类编码", "型号", "品牌" },
+            new[] { "万用表", category.Code, "UT61E", "UNI-T" },
+            new[] { "无效资产", "NO-SUCH-CAT", "X", "Demo" }
         });
 
         var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
@@ -132,7 +126,6 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "带照片的资产",
             CategoryId = category.Id,
-            Price = 800,
             Images = images
         });
         var fetched = await _client.GetFromJsonAsync<ApiResult<AssetDto>>($"/api/assets/{created.Data!.Id}");
@@ -150,7 +143,6 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "详情资产",
             CategoryId = category.Id,
-            Price = 500
         });
         var id = created.Data!.Id;
 
@@ -159,7 +151,6 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "详情资产-改",
             CategoryId = category.Id,
-            Price = 600,
             Quantity = 1,
             Status = AssetStatus.Available
         });
@@ -184,13 +175,11 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var rootSeg = Unique("CAT");
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            Name = "测试分类",
             CodeSeg = rootSeg
         });
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            Name = "末级分类",
             CodeSeg = Unique("LEAF")
         });
         return child.Data!;
