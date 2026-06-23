@@ -3,6 +3,7 @@ import type { AssetItem, AssetPayload, AssetStatus } from '#/api/asset';
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
 
 import { computed, reactive, ref, watch } from 'vue';
+import { useDebounceFn } from '@vueuse/core';
 
 import {
   ElButton,
@@ -10,7 +11,6 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
-  ElInputNumber,
   ElMessage,
   ElOption,
   ElSelect,
@@ -45,8 +45,6 @@ const statusOptions: Array<{
 }> = [
   { label: '在库', tag: 'success', value: 0 },
   { label: '借出', tag: 'warning', value: 1 },
-  { label: '维修', tag: 'info', value: 2 },
-  { label: '报废', tag: 'danger', value: 3 },
 ];
 
 const saving = ref(false);
@@ -58,7 +56,6 @@ const form = reactive({
   locationId: undefined as number | undefined,
   model: '',
   name: '',
-  price: 0,
   quantity: 1,
   status: 0 as AssetStatus,
 });
@@ -82,7 +79,6 @@ watch(visible, (opened) => {
       locationId: props.asset.locationId ?? undefined,
       model: props.asset.model ?? '',
       name: props.asset.name,
-      price: props.asset.price,
       quantity: props.asset.quantity,
       status: props.asset.status,
     });
@@ -100,7 +96,6 @@ watch(visible, (opened) => {
       locationId: undefined,
       model: '',
       name: '',
-      price: 0,
       quantity: 1,
       status: 0,
     });
@@ -120,7 +115,6 @@ function buildPayload(): AssetPayload {
     locationId: form.locationId,
     model: form.model,
     name: form.name,
-    price: form.price,
     quantity: form.quantity,
     status: form.status,
   };
@@ -167,6 +161,9 @@ async function save() {
     saving.value = false;
   }
 }
+
+// 防抖版本的保存方法,防止用户快速点击导致重复提交
+const debouncedSave = useDebounceFn(save, 300);
 </script>
 
 <template>
@@ -235,11 +232,8 @@ async function save() {
           <ElInput v-model="form.brand" placeholder="品牌" />
         </div>
       </ElFormItem>
-      <ElFormItem label="价格数量">
-        <div class="grid w-full grid-cols-2 gap-2">
-          <ElInputNumber v-model="form.price" :min="0" :precision="2" class="w-full" />
-          <ElInputNumber v-model="form.quantity" :min="1" class="w-full" />
-        </div>
+      <ElFormItem label="数量">
+        <ElInput v-model.number="form.quantity" />
       </ElFormItem>
       <ElFormItem label="资产照片">
         <ElUpload
@@ -267,7 +261,7 @@ async function save() {
     </ElForm>
     <template #footer>
       <ElButton @click="visible = false">取消</ElButton>
-      <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
+      <ElButton :loading="saving" type="primary" @click="debouncedSave">保存</ElButton>
     </template>
   </ElDialog>
 </template>

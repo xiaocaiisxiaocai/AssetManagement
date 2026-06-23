@@ -4,6 +4,7 @@ import type { CategoryNode, DepartmentNode, LocationNode } from '#/api/base-data
 import type { UserDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useDebounceFn } from '@vueuse/core';
 
 import {
   deleteAssetApi,
@@ -22,16 +23,12 @@ import { getUserListApi } from '#/api/user';
 
 import {
   ElButton,
-  ElForm,
-  ElFormItem,
   ElInput,
   ElMessage,
   ElMessageBox,
   ElOption,
   ElPagination,
   ElSelect,
-  ElTabPane,
-  ElTabs,
   ElTable,
   ElTableColumn,
   ElTag,
@@ -55,11 +52,10 @@ type FlatOption = {
 const statusOptions: Array<{ label: string; tag: 'danger' | 'info' | 'success' | 'warning'; value: AssetStatus }> = [
   { label: '在库', tag: 'success', value: 0 },
   { label: '借出', tag: 'warning', value: 1 },
-  { label: '维修', tag: 'info', value: 2 },
-  { label: '报废', tag: 'danger', value: 3 },
 ];
 
-const activeView = ref<'hierarchy' | 'list'>('hierarchy');
+const MAX_CATEGORY_LEVEL = 3;
+
 const loading = ref(false);
 const dialogVisible = ref(false);
 const categoryDialogVisible = ref(false);
@@ -75,7 +71,10 @@ const assets = ref<AssetItem[]>([]);
 const allAssets = ref<AssetItem[]>([]);
 const total = ref(0);
 const categoryPath = ref<number[]>([]);
+const categoryPage = ref(1);
+const categoryPageSize = ref(100);
 const categoryParentCode = ref('');
+const hierarchyKeyword = ref('');
 const categories = ref<CategoryNode[]>([]);
 const departments = ref<DepartmentNode[]>([]);
 const locations = ref<LocationNode[]>([]);
@@ -103,11 +102,35 @@ const hierarchyContext = computed(() => getHierarchyContext());
 const hierarchyNodes = computed(() => hierarchyContext.value.nodes);
 const hierarchyParent = computed(() => hierarchyContext.value.parent);
 const hierarchyTrail = computed(() => hierarchyContext.value.trail);
-const hierarchyAssets = computed(() => {
-  if (!hierarchyParent.value) return [];
-  const ids = collectCategoryIds(hierarchyParent.value);
-  return allAssets.value.filter((asset) => ids.includes(asset.categoryId));
+const currentCategoryLevel = computed(() => categoryPath.value.length);
+const isAssetStage = computed(() =>
+  currentCategoryLevel.value === MAX_CATEGORY_LEVEL && !!hierarchyParent.value,
+);
+const isCategoryStage = computed(() => currentCategoryLevel.value < MAX_CATEGORY_LEVEL);
+const currentLevelTitle = computed(() => {
+  if (currentCategoryLevel.value === 0) return '一级分类';
+  if (currentCategoryLevel.value === 1) return `二级分类 - ${hierarchyParent.value?.code ?? ''}`;
+  if (currentCategoryLevel.value === 2) return `三级分类 - ${hierarchyParent.value?.code ?? ''}`;
+  return `资产清单 - ${hierarchyParent.value?.code ?? ''}`;
 });
+const nextLevelName = computed(() => {
+  const nextLevel = currentCategoryLevel.value + 1;
+  return nextLevel === 1 ? '一级分类' : nextLevel === 2 ? '二级分类' : '三级分类';
+});
+const filteredHierarchyNodes = computed(() => {
+  const keyword = hierarchyKeyword.value.trim().toLowerCase();
+  if (!keyword) return hierarchyNodes.value;
+  return hierarchyNodes.value.filter((node) =>
+    `${node.code} ${node.remark ?? ''}`.toLowerCase().includes(keyword),
+  );
+});
+const pagedHierarchyNodes = computed(() => {
+  const start = (categoryPage.value - 1) * categoryPageSize.value;
+  return filteredHierarchyNodes.value.slice(start, start + categoryPageSize.value);
+});
+const selectedCategoryAssetCount = computed(() =>
+  hierarchyParent.value ? countCategoryAssets(hierarchyParent.value) : 0,
+);
 async function loadDictionaries() {
   const [categoryTree, departmentTree, locationTree, userList, workflowList] = await Promise.all([
     getCategoryTreeApi(),
@@ -135,7 +158,7 @@ async function loadData() {
 }
 
 async function loadHierarchyAssets() {
-  const result = await getAssetListApi({ page: 1, pageSize: 200 });
+  const result = await getAssetListApi({ page: 1, pageSize: 1000 });
   allAssets.value = result.items;
 }
 
@@ -154,14 +177,14 @@ function buildQuery(): AssetQuery {
 function resetQuery() {
   Object.assign(query, {
     assetNo: '',
-    categoryId: undefined,
+    categoryId: isAssetStage.value ? hierarchyParent.value?.id : undefined,
     departmentId: undefined,
     name: '',
     page: 1,
     pageSize: 20,
     status: undefined,
   });
-  selectedCategoryId.value = null;
+  selectedCategoryId.value = isAssetStage.value ? hierarchyParent.value?.id ?? null : null;
   void loadData();
 }
 
@@ -206,6 +229,9 @@ async function remove(row: AssetItem) {
   await Promise.all([loadData(), loadHierarchyAssets()]);
 }
 
+// 防抖版本的删除方法,防止用户快速点击导致重复删除
+const debouncedRemove = useDebounceFn(remove, 300);
+
 function getHierarchyContext() {
   let nodes = categories.value;
   let parent: CategoryNode | null = null;
@@ -230,23 +256,39 @@ function countCategoryAssets(node: CategoryNode) {
 }
 
 function drillIntoCategory(node: CategoryNode) {
-  categoryPath.value = [...categoryPath.value, node.id];
+  if (categoryPath.value.length >= MAX_CATEGORY_LEVEL) {
+    return;
+  }
+  const nextPath = [...categoryPath.value, node.id];
+  categoryPath.value = nextPath;
   selectedCategoryId.value = node.id;
-  query.categoryId = node.id;
+  query.categoryId = nextPath.length === MAX_CATEGORY_LEVEL ? node.id : undefined;
   query.page = 1;
-  void loadData();
+  hierarchyKeyword.value = '';
+  categoryPage.value = 1;
+  if (nextPath.length === MAX_CATEGORY_LEVEL) {
+    void loadData();
+  }
 }
 
 function drillToCategoryPath(index: number) {
   categoryPath.value = index < 0 ? [] : categoryPath.value.slice(0, index + 1);
   const parent = getHierarchyContext().parent;
   selectedCategoryId.value = parent?.id ?? null;
-  query.categoryId = parent?.id;
+  query.categoryId = categoryPath.value.length === MAX_CATEGORY_LEVEL ? parent?.id : undefined;
   query.page = 1;
-  void loadData();
+  hierarchyKeyword.value = '';
+  categoryPage.value = 1;
+  if (categoryPath.value.length === MAX_CATEGORY_LEVEL) {
+    void loadData();
+  }
 }
 
 function openCategoryCreate(parent?: CategoryNode | null) {
+  if (currentCategoryLevel.value >= MAX_CATEGORY_LEVEL) {
+    ElMessage.warning('资产分类只维护三层，请在当前分类下新增资产');
+    return;
+  }
   const realParent = parent ?? hierarchyParent.value;
   editingCategory.value = null;
   categoryParentCode.value = realParent?.code ?? '';
@@ -262,12 +304,12 @@ function openCategoryEdit(row: CategoryNode) {
 }
 
 function onCategorySaved() {
-  void loadDictionaries();
+  void Promise.all([loadDictionaries(), loadHierarchyAssets()]);
 }
 
 async function removeCategory(row: CategoryNode) {
   await ElMessageBox.confirm(
-    `确认删除分类「${row.name}」？子分类会一并删除。`,
+    `确认删除分类「${row.code}」？子分类会一并删除。`,
     '删除确认',
     { type: 'warning' },
   );
@@ -306,6 +348,18 @@ function onImported() {
   void Promise.all([loadData(), loadHierarchyAssets()]);
 }
 
+function categoryChildLabel() {
+  const level = currentCategoryLevel.value + 2;
+  if (level === 2) return '二级分类';
+  if (level === 3) return '三级分类';
+  return '下级分类';
+}
+
+function resetCategorySearch() {
+  hierarchyKeyword.value = '';
+  categoryPage.value = 1;
+}
+
 function statusMeta(status: AssetStatus) {
   return (
     statusOptions.find((item) => item.value === status) ?? {
@@ -318,7 +372,7 @@ function statusMeta(status: AssetStatus) {
 
 function flattenCategories(nodes: CategoryNode[], level = 0): FlatOption[] {
   return nodes.flatMap((node) => [
-    { code: node.code, id: node.id, label: `${'　'.repeat(level)}${node.name}（${node.code}）` },
+    { code: node.code, id: node.id, label: `${'　'.repeat(level)}${node.code}` },
     ...flattenCategories(node.children, level + 1),
   ]);
 }
@@ -330,11 +384,8 @@ function flattenDepartments(nodes: DepartmentNode[], level = 0): FlatOption[] {
   ]);
 }
 
-function flattenLocations(nodes: LocationNode[], level = 0): FlatOption[] {
-  return nodes.flatMap((node) => [
-    { id: node.id, label: `${'　'.repeat(level)}${node.name}` },
-    ...flattenLocations(node.children, level + 1),
-  ]);
+function flattenLocations(nodes: LocationNode[]): FlatOption[] {
+  return nodes.map((node) => ({ id: node.id, label: node.name }));
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -357,255 +408,261 @@ function openTransferDialog(row: AssetItem) {
 }
 
 onMounted(async () => {
-  await loadDictionaries();
-  await Promise.all([loadData(), loadHierarchyAssets()]);
+  await Promise.all([loadDictionaries(), loadData(), loadHierarchyAssets()]);
 });
 </script>
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="asset-list-page p-5">
+      <div class="asset-page-header">
         <div>
           <h2 class="text-lg font-semibold">资产列表</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            管理资产档案、分类层级、导入导出和编号生成。
-          </p>
         </div>
         <div class="flex flex-wrap justify-end gap-2">
           <ElButton @click="openImport">批量导入</ElButton>
           <ElButton @click="exportAssets">导出</ElButton>
-          <ElButton type="primary" @click="openCreate()">新增资产</ElButton>
         </div>
       </div>
 
-      <div class="rounded border bg-card p-4">
-        <ElTabs v-model="activeView" class="asset-view-tabs">
-          <ElTabPane label="层级视图" name="hierarchy">
-            <div class="space-y-4">
-              <div class="flex flex-wrap items-center justify-between gap-3 rounded border border-dashed border-[var(--el-border-color)] px-3 py-2">
-                <div class="asset-path">
-                  <a href="#" @click.prevent="drillToCategoryPath(-1)">全部分类</a>
-                  <template v-for="(node, index) in hierarchyTrail" :key="node.id">
-                    <span class="text-muted-foreground">/</span>
-                    <a href="#" @click.prevent="drillToCategoryPath(index)">
-                      {{ node.name }}
-                      <ElTag class="ml-1" size="small">{{ node.code }}</ElTag>
-                    </a>
-                  </template>
-                </div>
-                <div class="flex flex-wrap justify-end gap-2">
-                  <ElButton
-                    v-if="hierarchyParent"
-                    @click="drillToCategoryPath(categoryPath.length - 2)"
-                  >
-                    返回上一层
-                  </ElButton>
-                  <ElButton type="primary" @click="openCategoryCreate(hierarchyParent)">
-                    新增{{ hierarchyParent ? '子分类' : '分类' }}
-                  </ElButton>
-                  <ElButton
-                    v-if="hierarchyParent"
-                    plain
-                    type="primary"
-                    @click="openCreate(hierarchyParent.id)"
-                  >
-                    新增资产
-                  </ElButton>
-                </div>
-              </div>
+      <section class="asset-workspace">
+        <div class="asset-workspace-head">
+          <div>
+            <div class="asset-section-title">{{ currentLevelTitle }}</div>
+            <div class="asset-path">
+              <a href="#" @click.prevent="drillToCategoryPath(-1)">全部分类</a>
+              <template v-for="(node, index) in hierarchyTrail" :key="node.id">
+                <span class="text-muted-foreground">›</span>
+                <a href="#" @click.prevent="drillToCategoryPath(index)">
+                  {{ node.code }}
+                </a>
+              </template>
+            </div>
+          </div>
+          <div class="asset-head-actions">
+            <ElButton
+              v-if="hierarchyParent"
+              @click="drillToCategoryPath(categoryPath.length - 2)"
+            >
+              返回上一层
+            </ElButton>
+            <ElButton
+              v-if="isCategoryStage"
+              type="primary"
+              @click="openCategoryCreate(hierarchyParent)"
+            >
+              新增{{ nextLevelName }}
+            </ElButton>
+            <ElButton
+              v-else
+              type="primary"
+              @click="openCreate(hierarchyParent?.id)"
+            >
+              新增资产
+            </ElButton>
+          </div>
+        </div>
 
-              <div v-if="hierarchyNodes.length" class="asset-hierarchy-grid">
-                <article
-                  v-for="node in hierarchyNodes"
-                  :key="node.id"
-                  class="asset-category-card"
-                  tabindex="0"
-                  @click="drillIntoCategory(node)"
-                  @keydown.enter.prevent="drillIntoCategory(node)"
+        <template v-if="currentCategoryLevel === 0">
+          <div v-if="hierarchyNodes.length" class="asset-root-grid">
+            <article
+              v-for="node in hierarchyNodes"
+              :key="node.id"
+              class="asset-root-card"
+              tabindex="0"
+              @click="drillIntoCategory(node)"
+              @keydown.enter.prevent="drillIntoCategory(node)"
+            >
+              <div class="asset-root-card-code">
+                <span>{{ node.codeSeg || node.code }}</span>
+              </div>
+              <div class="asset-root-card-body">
+                <div class="asset-root-actions" @click.stop>
+                  <ElButton size="small" type="warning" @click="openCategoryEdit(node)">编辑</ElButton>
+                  <ElButton size="small" type="danger" @click="removeCategory(node)">删除</ElButton>
+                </div>
+                <div class="asset-row-warning">
+                  有 {{ node.children.length }} 个二级分类
+                </div>
+                <div class="asset-enter-link">进入 →</div>
+              </div>
+            </article>
+          </div>
+          <div v-else class="asset-empty">
+            暂无一级分类，可点击右上角新增。
+          </div>
+        </template>
+
+        <template v-else-if="isCategoryStage">
+          <div class="asset-filter-strip">
+            <label>关键字搜索</label>
+            <ElInput
+              v-model="hierarchyKeyword"
+              clearable
+              placeholder="按编码/备注搜索"
+              @input="categoryPage = 1"
+            />
+            <ElButton @click="resetCategorySearch">重置</ElButton>
+          </div>
+
+          <div v-if="filteredHierarchyNodes.length" class="asset-class-list">
+            <article
+              v-for="node in pagedHierarchyNodes"
+              :key="node.id"
+              class="asset-class-row"
+              tabindex="0"
+              @click="drillIntoCategory(node)"
+              @keydown.enter.prevent="drillIntoCategory(node)"
+            >
+              <div class="asset-class-code">
+                <span>{{ node.codeSeg || node.code }}</span>
+              </div>
+              <div class="asset-class-main">
+                <div class="asset-class-name">{{ node.remark || '无备注' }}</div>
+              </div>
+              <div class="asset-class-actions" @click.stop>
+                <span
+                  v-if="currentCategoryLevel === MAX_CATEGORY_LEVEL - 1"
+                  class="asset-row-warning"
                 >
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                      <h3 class="truncate text-base font-semibold">{{ node.name }}</h3>
-                      <ElTag class="mt-2" size="small">{{ node.code }}</ElTag>
-                    </div>
-                    <span class="text-sm text-[var(--el-color-primary)]">进入</span>
-                  </div>
-
-                  <div class="mt-4 grid grid-cols-2 gap-3">
-                    <div class="asset-category-stat">
-                      <div class="text-xs text-muted-foreground">子分类</div>
-                      <div class="mt-1 text-lg font-semibold">{{ node.children.length }}</div>
-                    </div>
-                    <div class="asset-category-stat">
-                      <div class="text-xs text-muted-foreground">资产数</div>
-                      <div class="mt-1 text-lg font-semibold">{{ countCategoryAssets(node) }}</div>
-                    </div>
-                  </div>
-
-                  <div class="mt-4 flex justify-end gap-2 border-t border-[var(--el-border-color)] pt-3" @click.stop>
-                    <ElButton link type="primary" @click="openCategoryEdit(node)">编辑</ElButton>
-                    <ElButton link type="danger" @click="removeCategory(node)">删除</ElButton>
-                  </div>
-                </article>
+                  有 {{ countCategoryAssets(node) }} 条资产记录
+                </span>
+                <span v-else class="asset-row-warning">
+                  有 {{ node.children.length }} 个{{ categoryChildLabel() }}
+                </span>
+                <ElButton size="small" type="warning" @click="openCategoryEdit(node)">编辑</ElButton>
+                <ElButton size="small" type="danger" @click="removeCategory(node)">删除</ElButton>
+                <button class="asset-enter-button" type="button" @click="drillIntoCategory(node)">
+                  进入 →
+                </button>
               </div>
+            </article>
+          </div>
+          <div v-else class="asset-empty">
+            当前分类下暂无{{ nextLevelName }}，可点击右上角新增。
+          </div>
 
-              <div v-else class="rounded border border-dashed bg-card p-10 text-center text-muted-foreground">
-                该分类下暂无子分类，可点击上方按钮新增。
-              </div>
-
-              <div v-if="hierarchyParent && hierarchyAssets.length" class="rounded border bg-card p-4">
-                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div class="font-medium">{{ hierarchyParent.name }} 下的资产</div>
-                    <div class="mt-1 text-sm text-muted-foreground">
-                      {{ hierarchyParent.code }}，共 {{ hierarchyAssets.length }} 件
-                    </div>
-                  </div>
-                  <ElButton size="small" type="primary" @click="openCreate(hierarchyParent.id)">
-                    新增资产
-                  </ElButton>
-                </div>
-                <ElTable :data="hierarchyAssets" border>
-                  <ElTableColumn label="资产编号" min-width="180" prop="assetNo" />
-                  <ElTableColumn label="名称" min-width="160" prop="name" />
-                  <ElTableColumn label="规格型号" min-width="130" prop="model" />
-                  <ElTableColumn label="归属部门" min-width="120" prop="departmentName" />
-                  <ElTableColumn label="存放位置" min-width="120" prop="locationName" />
-                  <ElTableColumn label="状态" width="100">
-                    <template #default="{ row }">
-                      <ElTag :type="statusMeta(row.status).tag">
-                        {{ statusMeta(row.status).label }}
-                      </ElTag>
-                    </template>
-                  </ElTableColumn>
-                  <ElTableColumn fixed="right" label="操作" width="240">
-                    <template #default="{ row }">
-                      <ElButton link type="primary" @click="openDetail(row)">详情</ElButton>
-                      <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
-                      <ElButton link type="primary" @click="openBorrowDialog(row)">借用</ElButton>
-                      <ElButton link type="primary" @click="openTransferDialog(row)">转让</ElButton>
-                      <ElButton link type="danger" @click="remove(row)">删除</ElButton>
-                    </template>
-                  </ElTableColumn>
-                </ElTable>
-              </div>
+          <div v-if="filteredHierarchyNodes.length" class="asset-pager">
+            <div class="asset-pager-left">
+              <span>共 {{ filteredHierarchyNodes.length }} 条记录</span>
+              <span class="asset-pager-divider">|</span>
+              <span>每页</span>
+              <ElSelect v-model="categoryPageSize" style="width: 92px" @change="categoryPage = 1">
+                <ElOption :value="10" label="10" />
+                <ElOption :value="20" label="20" />
+                <ElOption :value="50" label="50" />
+                <ElOption :value="100" label="100" />
+              </ElSelect>
             </div>
-          </ElTabPane>
+            <ElPagination
+              v-model:current-page="categoryPage"
+              :page-size="categoryPageSize"
+              :total="filteredHierarchyNodes.length"
+              background
+              layout="prev, pager, next"
+            />
+          </div>
+        </template>
 
-          <ElTabPane label="列表视图" name="list">
-            <div class="space-y-4">
-              <div class="rounded border bg-card p-4">
-                <ElForm class="asset-filter-form" inline>
-                  <ElFormItem label="资产编号">
-                    <ElInput v-model="query.assetNo" clearable placeholder="请输入" />
-                  </ElFormItem>
-                  <ElFormItem label="资产名称">
-                    <ElInput v-model="query.name" clearable placeholder="请输入" />
-                  </ElFormItem>
-                  <ElFormItem label="类别">
-                    <ElSelect
-                      v-model="query.categoryId"
-                      clearable
-                      filterable
-                      placeholder="全部"
-                      style="width: 200px"
-                    >
-                      <ElOption
-                        v-for="item in categoryOptions"
-                        :key="item.id"
-                        :label="item.label"
-                        :value="item.id"
-                      />
-                    </ElSelect>
-                  </ElFormItem>
-                  <ElFormItem label="状态">
-                    <ElSelect v-model="query.status" clearable placeholder="全部" style="width: 140px">
-                      <ElOption
-                        v-for="item in statusOptions"
-                        :key="item.value"
-                        :label="item.label"
-                        :value="item.value"
-                      />
-                    </ElSelect>
-                  </ElFormItem>
-                  <ElFormItem label="归属部门">
-                    <ElSelect
-                      v-model="query.departmentId"
-                      clearable
-                      filterable
-                      placeholder="全部"
-                      style="width: 180px"
-                    >
-                      <ElOption
-                        v-for="item in departmentOptions"
-                        :key="item.id"
-                        :label="item.label"
-                        :value="item.id"
-                      />
-                    </ElSelect>
-                  </ElFormItem>
-                  <ElFormItem>
-                    <ElButton type="primary" @click="search">查询</ElButton>
-                    <ElButton @click="resetQuery">重置</ElButton>
-                  </ElFormItem>
-                </ElForm>
-              </div>
+        <template v-else>
+          <div class="asset-filter-strip asset-filter-strip-final">
+            <ElInput
+              v-model="query.assetNo"
+              clearable
+              placeholder="搜索资产编号..."
+              @keyup.enter="search"
+            />
+            <ElInput
+              v-model="query.name"
+              clearable
+              placeholder="搜索资产名称..."
+              @keyup.enter="search"
+            />
+            <ElSelect v-model="query.status" clearable placeholder="状态" style="width: 140px">
+              <ElOption
+                v-for="item in statusOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </ElSelect>
+            <ElSelect
+              v-model="query.departmentId"
+              clearable
+              filterable
+              placeholder="归属部门"
+              style="width: 180px"
+            >
+              <ElOption
+                v-for="item in departmentOptions"
+                :key="item.id"
+                :label="item.label"
+                :value="item.id"
+              />
+            </ElSelect>
+            <ElButton type="primary" @click="search">查询</ElButton>
+            <ElButton @click="resetQuery">重置</ElButton>
+            <ElButton type="primary" @click="openCreate(hierarchyParent?.id)">新增资产</ElButton>
+          </div>
 
-              <div class="space-y-3">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <div class="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                    <span>共 {{ total }} 条</span>
-                    <ElSelect v-model="query.pageSize" style="width: 120px" @change="search">
-                      <ElOption :value="20" label="每页 20 条" />
-                      <ElOption :value="50" label="每页 50 条" />
-                      <ElOption :value="100" label="每页 100 条" />
-                    </ElSelect>
-                  </div>
-                  <div class="flex flex-wrap justify-end gap-2">
-                    <ElButton @click="exportAssets">批量导出</ElButton>
-                  </div>
-                </div>
-                <ElTable v-loading="loading" :data="assets" border>
-                  <ElTableColumn type="selection" width="48" />
-                  <ElTableColumn label="编号" min-width="170" prop="assetNo" sortable />
-                  <ElTableColumn label="名称" min-width="150" prop="name" sortable />
-                  <ElTableColumn label="类别" min-width="150" prop="categoryName" />
-                  <ElTableColumn label="状态" width="100">
-                    <template #default="{ row }">
-                      <ElTag :type="statusMeta(row.status).tag">
-                        {{ statusMeta(row.status).label }}
-                      </ElTag>
-                    </template>
-                  </ElTableColumn>
-                  <ElTableColumn label="归属部门" min-width="130" prop="departmentName" />
-                  <ElTableColumn label="保管人" min-width="120" prop="custodianName" />
-                  <ElTableColumn label="位置" min-width="130" prop="locationName" />
-                  <ElTableColumn fixed="right" label="操作" width="240">
-                    <template #default="{ row }">
-                      <ElButton link type="primary" @click="openDetail(row)">详情</ElButton>
-                      <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
-                      <ElButton link type="primary" @click="openBorrowDialog(row)">借用</ElButton>
-                      <ElButton link type="primary" @click="openTransferDialog(row)">转让</ElButton>
-                      <ElButton link type="danger" @click="remove(row)">删除</ElButton>
-                    </template>
-                  </ElTableColumn>
-                </ElTable>
-                <div class="flex justify-end">
-                  <ElPagination
-                    v-model:current-page="query.page"
-                    :page-size="query.pageSize"
-                    :total="total"
-                    background
-                    layout="prev, pager, next, jumper"
-                    @current-change="loadData"
-                  />
+          <div class="asset-table-panel">
+            <div class="asset-table-summary">
+              <div>
+                <div class="font-medium">{{ hierarchyParent?.code }}</div>
+                <div class="mt-1 text-sm text-muted-foreground">
+                  {{ hierarchyParent?.code }}，当前分类共 {{ selectedCategoryAssetCount }} 件资产
                 </div>
               </div>
             </div>
-          </ElTabPane>
-        </ElTabs>
-      </div>
+            <ElTable v-loading="loading" :data="assets" border>
+              <ElTableColumn type="selection" width="48" />
+              <ElTableColumn label="编号" min-width="170" prop="assetNo" sortable />
+              <ElTableColumn label="名称" min-width="150" prop="name" sortable />
+              <ElTableColumn label="类别" min-width="150" prop="categoryCode" />
+              <ElTableColumn label="状态" width="100">
+                <template #default="{ row }">
+                  <ElTag :type="statusMeta(row.status).tag">
+                    {{ statusMeta(row.status).label }}
+                  </ElTag>
+                </template>
+              </ElTableColumn>
+              <ElTableColumn label="归属部门" min-width="130" prop="departmentName" />
+              <ElTableColumn label="保管人" min-width="120" prop="custodianName" />
+              <ElTableColumn label="位置" min-width="130" prop="locationName" />
+              <ElTableColumn fixed="right" label="操作" width="240">
+                <template #default="{ row }">
+                  <ElButton link type="primary" @click="openDetail(row)">详情</ElButton>
+                  <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
+                  <ElButton link type="primary" @click="openBorrowDialog(row)">借用</ElButton>
+                  <ElButton link type="primary" @click="openTransferDialog(row)">转让</ElButton>
+                  <ElButton link type="danger" @click="debouncedRemove(row)">删除</ElButton>
+                </template>
+              </ElTableColumn>
+            </ElTable>
+            <div class="asset-pager">
+              <div class="asset-pager-left">
+                <span>共 {{ total }} 条记录</span>
+                <span class="asset-pager-divider">|</span>
+                <span>每页</span>
+                <ElSelect v-model="query.pageSize" style="width: 92px" @change="search">
+                  <ElOption :value="10" label="10" />
+                  <ElOption :value="20" label="20" />
+                  <ElOption :value="50" label="50" />
+                  <ElOption :value="100" label="100" />
+                </ElSelect>
+              </div>
+              <ElPagination
+                v-model:current-page="query.page"
+                :page-size="query.pageSize"
+                :total="total"
+                background
+                layout="prev, pager, next"
+                @current-change="loadData"
+              />
+            </div>
+          </div>
+        </template>
+      </section>
 
       <AssetFormDialog
         v-model:visible="dialogVisible"
@@ -648,8 +705,55 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.asset-view-tabs :deep(.el-tabs__header) {
-  margin-bottom: 16px;
+.asset-list-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: calc(100vh - 112px);
+}
+
+.asset-page-header,
+.asset-workspace-head,
+.asset-pager,
+.asset-filter-strip {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.asset-page-header,
+.asset-workspace {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-bg-color);
+}
+
+.asset-page-header {
+  padding: 16px;
+}
+
+.asset-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 560px;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.asset-workspace-head {
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.asset-section-title {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
 
 .asset-path {
@@ -666,42 +770,282 @@ onMounted(async () => {
   text-decoration: none;
 }
 
-.asset-hierarchy-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+.asset-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
-.asset-category-card {
-  padding: 16px;
+.asset-root-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 320px);
+  gap: 16px;
+  padding: 4px 0 12px;
+}
+
+.asset-root-card {
+  overflow: hidden;
   cursor: pointer;
   border-radius: 8px;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid var(--el-border-color-lighter);
+  background: var(--el-bg-color);
+  box-shadow: var(--el-box-shadow-lighter);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.asset-category-card:hover,
-.asset-category-card:focus-visible {
+.asset-root-card:hover,
+.asset-root-card:focus-visible,
+.asset-class-row:hover,
+.asset-class-row:focus-visible {
   border-color: var(--el-color-primary);
   box-shadow: var(--el-box-shadow-light);
   outline: none;
   transform: translateY(-1px);
 }
 
-.asset-category-stat {
-  padding: 10px 12px;
-  border: 1px solid var(--el-border-color-lighter);
+.asset-root-card-code {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
+  color: #fff;
+  background: linear-gradient(135deg, #00448f, #0b63bd);
+}
+
+.asset-root-card-code span {
+  max-width: calc(100% - 48px);
+  padding: 6px 14px;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgb(255 255 255 / 18%);
+  border: 1px solid rgb(255 255 255 / 24%);
   border-radius: 6px;
+}
+
+.asset-root-card-body {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: center;
+  min-height: 118px;
+  padding: 16px;
+}
+
+.asset-root-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  grid-column: 1 / -1;
+}
+
+.asset-row-warning {
+  font-size: 13px;
+  color: #d97706;
+  white-space: nowrap;
+}
+
+.asset-row-warning::before {
+  margin-right: 4px;
+  content: "⚠";
+}
+
+.asset-enter-link,
+.asset-enter-button {
+  color: var(--el-color-primary);
+  white-space: nowrap;
+}
+
+.asset-enter-button {
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+
+.asset-filter-strip {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  box-shadow: var(--el-box-shadow-lighter);
+}
+
+.asset-filter-strip label {
+  font-weight: 500;
+  color: var(--el-text-color-regular);
+}
+
+.asset-filter-strip :deep(.el-input) {
+  max-width: 100%;
+}
+
+.asset-filter-strip > :deep(.el-input) {
+  flex: 1;
+  min-width: 260px;
+}
+
+.asset-filter-strip-final > :deep(.el-input) {
+  flex: 1 1 180px;
+  min-width: 180px;
+}
+
+.asset-class-list {
+  display: grid;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.asset-class-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 24%) 1fr auto;
+  min-height: 82px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-bg-color);
+  box-shadow: var(--el-box-shadow-lighter);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.asset-class-code {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 8px 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #00448f, #0b63bd);
+}
+
+.asset-class-code span {
+  max-width: 100%;
+  padding: 5px 13px;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgb(255 255 255 / 18%);
+  border-radius: 999px;
+}
+
+.asset-class-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 20px;
+}
+
+.asset-class-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.asset-class-desc {
+  margin-top: 6px;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-class-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 360px;
+  padding: 12px 18px;
+}
+
+.asset-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  color: var(--el-text-color-secondary);
+  border: 1px dashed var(--el-border-color);
+  border-radius: 8px;
   background: var(--el-fill-color-lighter);
 }
 
-.asset-filter-form :deep(.el-form-item) {
-  margin-bottom: 12px;
+.asset-table-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+}
+
+.asset-table-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.asset-table-panel :deep(.el-table) {
+  flex: 1;
+}
+
+.asset-pager {
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  background: var(--el-bg-color);
+}
+
+.asset-pager-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--el-text-color-secondary);
+}
+
+.asset-pager-divider {
+  color: var(--el-border-color);
 }
 
 @media (max-width: 768px) {
-  .asset-hierarchy-grid {
+  .asset-page-header,
+  .asset-workspace-head,
+  .asset-pager {
+    align-items: stretch;
+  }
+
+  .asset-root-grid {
     grid-template-columns: 1fr;
+  }
+
+  .asset-class-row {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-class-code {
+    min-height: 72px;
+  }
+
+  .asset-class-actions {
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    padding-top: 0;
   }
 }
 </style>

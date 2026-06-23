@@ -2,6 +2,7 @@
 import type { ApprovalFlow } from '#/api/workflow';
 
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useDebounceFn } from '@vueuse/core';
 
 import { getPendingReturnsApi, confirmReturnApi } from '#/api/workflow';
 
@@ -72,6 +73,9 @@ async function confirmReturn(row: ApprovalFlow) {
   }
 }
 
+// 防抖版本的确认入库方法,防止用户快速点击导致重复确认
+const debouncedConfirmReturn = useDebounceFn(confirmReturn, 300);
+
 function formatTime(time: string | Date) {
   const date = new Date(time);
   return date.toLocaleString('zh-CN', {
@@ -96,9 +100,6 @@ onMounted(loadData);
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-semibold">待确认入库</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            确认已归还的资产，将其状态改回在库。仅显示已通过的借用申请。
-          </p>
         </div>
         <div class="text-sm font-medium">
           共 <span class="text-lg text-primary">{{ total }}</span> 件待确认
@@ -138,7 +139,7 @@ onMounted(loadData);
                 :loading="confirming"
                 link
                 type="primary"
-                @click="confirmReturn(row)"
+                @click="debouncedConfirmReturn(row)"
               >
                 确认入库
               </ElButton>
@@ -165,4 +166,3 @@ onMounted(loadData);
   font-size: 14px;
 }
 </style>
-

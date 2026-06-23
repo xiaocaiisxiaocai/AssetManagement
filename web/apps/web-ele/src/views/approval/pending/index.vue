@@ -1,44 +1,56 @@
 <script lang="ts" setup>
-import type { ApprovalFlow, FlowNode } from '#/api/workflow';
-
-import { onMounted, ref } from 'vue';
-
+import type { ApprovalFlow } from '#/api/workflow';
+import type { UserDto } from '#/api/user';
+import { onMounted, ref, computed } from 'vue';
+import { useDebounceFn } from '@vueuse/core';
 import {
-  addSignApi,
+  addSignFlowApi,
   approveFlowApi,
+  BpmnTokenStatus,
   getPendingApprovalsApi,
   rejectFlowApi,
-  transferSignApi,
 } from '#/api/workflow';
-
+import { getUserListApi } from '#/api/user';
 import {
   ElButton,
   ElDialog,
   ElInput,
   ElMessage,
   ElTag,
-  ElTimeline,
-  ElTimelineItem,
+  ElTable,
+  ElTableColumn,
+  ElCard,
+  ElDescriptions,
+  ElDescriptionsItem,
+  ElOption,
+  ElSelect,
 } from 'element-plus';
 
 defineOptions({ name: 'ApprovalPending' });
 
 const loading = ref(false);
 const actionLoading = ref(false);
+const addSignLoading = ref(false);
 const detailVisible = ref(false);
+const addSignVisible = ref(false);
 const selected = ref<ApprovalFlow | null>(null);
 const flows = ref<ApprovalFlow[]>([]);
+const users = ref<UserDto[]>([]);
 const opinion = ref('同意');
-const signer = ref('');
-const extraUser = ref('');
-
-const nodeStatusText = ['待办', '当前', '已办', '跳过', '驳回'];
-const nodeTypeText = ['发起', '审批', '会签', '或签', '条件', '抄送', '结束'];
+const addSignUser = ref('');
+const selectedNodeId = ref('');
 
 async function loadData() {
   loading.value = true;
   try {
-    flows.value = await getPendingApprovalsApi();
+    const [pending, userPage] = await Promise.all([
+      getPendingApprovalsApi(),
+      getUserListApi('', 1, 200),
+    ]);
+    flows.value = pending;
+    users.value = userPage.items.filter((user) => user.isActive);
+  } catch (error: any) {
+    ElMessage.error(error.message || '加载失败');
   } finally {
     loading.value = false;
   }
@@ -46,28 +58,131 @@ async function loadData() {
 
 function openDetail(flow: ApprovalFlow) {
   selected.value = flow;
-  const node = currentNode(flow);
-  signer.value = node?.signers?.[0] ?? '';
   opinion.value = '同意';
-  extraUser.value = '';
+  addSignUser.value = '';
+  selectedNodeId.value = flow.currentNodeIds[0] || '';
   detailVisible.value = true;
 }
 
-function currentNode(flow: ApprovalFlow): FlowNode | undefined {
-  return flow.nodes[flow.currentNodeIndex];
+// 获取当前活跃节点信息
+const currentNodeInfo = computed(() => {
+  if (!selected.value) return null;
+  const nodeIds = selected.value.currentNodeIds;
+  if (nodeIds.length === 0) return null;
+
+  const tokens = selected.value.bpmnTokens;
+  const activeTokens = nodeIds
+    .map((id) => tokens[id])
+    .filter((t): t is NonNullable<typeof t> => t !== undefined && t.status === BpmnTokenStatus.Active);
+
+  return {
+    count: activeTokens.length,
+    names: activeTokens.map(t => t.nodeName).join(', '),
+    nodeIds: nodeIds,
+  };
+});
+
+const activeNodeOptions = computed(() => {
+  if (!selected.value) return [];
+
+  return selected.value.currentNodeIds
+    .map((nodeId) => {
+      const token = selected.value?.bpmnTokens[nodeId];
+      return {
+        nodeId,
+        nodeName: token?.nodeName || nodeId,
+      };
+    })
+    .filter((item) => selected.value?.bpmnTokens[item.nodeId]?.status === BpmnTokenStatus.Active);
+});
+
+const currentSignStates = computed(() => {
+  if (!selected.value) return [];
+
+  return selected.value.currentNodeIds.flatMap((nodeId) => {
+    const token = selected.value?.bpmnTokens[nodeId];
+    if (!token?.signStates) return [];
+
+    return Object.entries(token.signStates).map(([name, signed]) => ({
+      name,
+      nodeId,
+      nodeName: token.nodeName,
+      signed,
+    }));
+  });
+});
+
+function resolveNodeId() {
+  if (!selected.value) return undefined;
+  if (selected.value.currentNodeIds.length <= 1) {
+    return selected.value.currentNodeIds[0];
+  }
+
+  return selectedNodeId.value || undefined;
+}
+
+function ensureNodeSelected() {
+  if (selected.value && selected.value.currentNodeIds.length > 1 && !selectedNodeId.value) {
+    ElMessage.warning('请选择要处理的并行节点');
+    return false;
+  }
+
+  return true;
+}
+
+function openAddSign() {
+  if (!selected.value) return;
+  if (!ensureNodeSelected()) return;
+  addSignUser.value = '';
+  addSignVisible.value = true;
+}
+
+async function addSign() {
+  if (!selected.value) return;
+  if (!addSignUser.value) {
+    ElMessage.warning('请选择加签人');
+    return;
+  }
+  if (!ensureNodeSelected()) return;
+
+  addSignLoading.value = true;
+  try {
+    const updated = await addSignFlowApi(selected.value.id, {
+      nodeId: resolveNodeId(),
+      who: addSignUser.value,
+    });
+    selected.value = updated;
+    const index = flows.value.findIndex((item) => item.id === updated.id);
+    if (index >= 0) flows.value[index] = updated;
+    ElMessage.success('已加签');
+    addSignVisible.value = false;
+  } catch (error: any) {
+    ElMessage.error(error.message || '加签失败');
+  } finally {
+    addSignLoading.value = false;
+  }
 }
 
 async function approve() {
   if (!selected.value) return;
   actionLoading.value = true;
   try {
-    await approveFlowApi(selected.value.id, {
-      opinion: opinion.value,
-      signer: signer.value || undefined,
-    });
+    const payload: any = { opinion: opinion.value };
+    const nodeId = resolveNodeId();
+
+    if (selected.value.currentNodeIds.length > 1 && nodeId) {
+      payload.nodeId = nodeId;
+    } else if (selected.value.currentNodeIds.length > 1) {
+      ElMessage.warning('请选择要处理的并行节点');
+      return;
+    }
+
+    await approveFlowApi(selected.value.id, payload);
     ElMessage.success('已通过');
     detailVisible.value = false;
     await loadData();
+  } catch (error: any) {
+    ElMessage.error(error.message || '审批失败');
   } finally {
     actionLoading.value = false;
   }
@@ -78,118 +193,219 @@ async function reject() {
     ElMessage.warning('请填写驳回理由');
     return;
   }
+  if (!ensureNodeSelected()) return;
   actionLoading.value = true;
   try {
-    await rejectFlowApi(selected.value.id, opinion.value);
+    await rejectFlowApi(selected.value.id, { nodeId: resolveNodeId(), reason: opinion.value });
     ElMessage.success('已驳回');
     detailVisible.value = false;
     await loadData();
+  } catch (error: any) {
+    ElMessage.error(error.message || '驳回失败');
   } finally {
     actionLoading.value = false;
   }
 }
 
-async function addSign() {
-  if (!selected.value || !extraUser.value.trim()) return;
-  await addSignApi(selected.value.id, extraUser.value.trim());
-  ElMessage.success('已加签');
-  await loadData();
+// 防抖版本的审批/驳回方法,防止用户快速点击导致重复提交
+const debouncedApprove = useDebounceFn(approve, 300);
+const debouncedReject = useDebounceFn(reject, 300);
+
+function getBizTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    borrow: '借用',
+    transfer: '转让',
+    return: '归还',
+  };
+  return map[type] || type;
 }
 
-async function transferSign() {
-  if (!selected.value || !extraUser.value.trim()) return;
-  await transferSignApi(selected.value.id, extraUser.value.trim());
-  ElMessage.success('已转签');
-  await loadData();
-}
-
-function bizText(type: string) {
-  return { borrow: '借用', return: '归还', transfer: '转让' }[type] ?? type;
-}
-
-onMounted(loadData);
+onMounted(() => {
+  loadData();
+});
 </script>
 
 <template>
-  <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-lg font-semibold">待我审批</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            处理资产借用、转让和归还流程。
-          </p>
+  <div class="pending-container">
+    <ElCard>
+      <template #header>
+        <div class="card-header">
+          <span class="title">待我审批</span>
+          <ElButton type="primary" @click="loadData" :loading="loading">
+            刷新
+          </ElButton>
         </div>
-        <ElButton @click="loadData">刷新</ElButton>
-      </div>
+      </template>
 
-      <div v-loading="loading" class="grid gap-3">
-        <div
-          v-for="flow in flows"
-          :key="flow.id"
-          class="rounded border bg-card p-4"
-        >
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div class="flex items-center gap-2">
-                <ElTag>{{ bizText(flow.bizType) }}</ElTag>
-                <span class="font-medium">{{ flow.assetName }}</span>
-                <span class="text-sm text-muted-foreground">{{ flow.flowNo }}</span>
-              </div>
-              <div class="mt-2 text-sm text-muted-foreground">
-                发起人：{{ flow.applicant }}，当前节点：{{ currentNode(flow)?.name }}
-              </div>
-              <div class="mt-1 text-sm text-muted-foreground">
-                事由：{{ flow.reason || '无' }}
-              </div>
-            </div>
-            <ElButton type="primary" @click="openDetail(flow)">处理</ElButton>
-          </div>
-        </div>
-        <div v-if="!flows.length" class="rounded border bg-card p-10 text-center text-muted-foreground">
-          暂无待审批工单
-        </div>
-      </div>
+      <ElTable :data="flows" v-loading="loading" stripe>
+        <ElTableColumn prop="flowNo" label="流程单号" width="180" />
+        <ElTableColumn prop="bizType" label="业务类型" width="100">
+          <template #default="{ row }">
+            <ElTag v-if="row.bizType === 'borrow'" type="success">
+              {{ getBizTypeLabel(row.bizType) }}
+            </ElTag>
+            <ElTag v-else-if="row.bizType === 'transfer'" type="warning">
+              {{ getBizTypeLabel(row.bizType) }}
+            </ElTag>
+            <ElTag v-else type="info">
+              {{ getBizTypeLabel(row.bizType) }}
+            </ElTag>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn prop="assetName" label="资产名称" min-width="150" />
+        <ElTableColumn prop="applicant" label="申请人" width="100" />
+        <ElTableColumn prop="applyTime" label="申请时间" width="160" />
+        <ElTableColumn label="当前节点" width="150">
+          <template #default="{ row }">
+            <span v-if="row.currentNodeIds.length === 1">
+              {{ row.bpmnTokens[row.currentNodeIds[0]]?.nodeName || '-' }}
+            </span>
+            <span v-else>
+              {{ row.currentNodeIds.length }} 个并行节点
+            </span>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn label="操作" width="120" fixed="right">
+          <template #default="{ row }">
+            <ElButton type="primary" link @click="openDetail(row)">
+              审批
+            </ElButton>
+          </template>
+        </ElTableColumn>
+      </ElTable>
+    </ElCard>
 
-      <ElDialog v-model="detailVisible" title="审批详情" width="760px">
-        <template v-if="selected">
-          <div class="mb-4 rounded border p-3 text-sm">
-            <div class="font-medium">{{ selected.assetName }}（{{ selected.assetNo }}）</div>
-            <div class="mt-1 text-muted-foreground">
-              {{ bizText(selected.bizType) }} / {{ selected.status }} / 金额 {{ selected.amount }}
-            </div>
-          </div>
-          <ElTimeline>
-            <ElTimelineItem
-              v-for="(node, index) in selected.nodes"
-              :key="`${node.name}-${index}`"
-              :timestamp="node.time || nodeStatusText[node.status]"
+    <!-- 审批对话框 -->
+    <ElDialog
+      v-model="detailVisible"
+      title="审批"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <ElDescriptions v-if="selected" :column="2" border>
+        <ElDescriptionsItem label="流程单号">{{ selected.flowNo }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="业务类型">
+          {{ getBizTypeLabel(selected.bizType) }}
+        </ElDescriptionsItem>
+        <ElDescriptionsItem label="资产编号">{{ selected.assetNo }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="资产名称">{{ selected.assetName }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="申请人">{{ selected.applicant }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="申请部门">{{ selected.applicantDept || '-' }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="申请时间" :span="2">
+          {{ selected.applyTime }}
+        </ElDescriptionsItem>
+        <ElDescriptionsItem label="申请理由" :span="2">
+          {{ selected.reason || '-' }}
+        </ElDescriptionsItem>
+        <ElDescriptionsItem v-if="selected.bizType === 'borrow'" label="归还日期" :span="2">
+          {{ selected.returnDate || '-' }}
+        </ElDescriptionsItem>
+        <ElDescriptionsItem v-if="currentNodeInfo" label="当前节点" :span="2">
+          {{ currentNodeInfo.names }}
+          <span v-if="currentNodeInfo.count > 1" style="color: #999">
+            ({{ currentNodeInfo.count }} 个并行节点)
+          </span>
+        </ElDescriptionsItem>
+        <ElDescriptionsItem v-if="activeNodeOptions.length > 1" label="处理节点" :span="2">
+          <ElSelect
+            v-model="selectedNodeId"
+            placeholder="请选择要处理的节点"
+            style="width: 100%"
+          >
+            <ElOption
+              v-for="item in activeNodeOptions"
+              :key="item.nodeId"
+              :label="item.nodeName"
+              :value="item.nodeId"
+            />
+          </ElSelect>
+        </ElDescriptionsItem>
+        <ElDescriptionsItem v-if="currentSignStates.length > 0" label="签核状态" :span="2">
+          <div class="sign-state-list">
+            <ElTag
+              v-for="item in currentSignStates"
+              :key="`${item.nodeId}-${item.name}`"
+              :type="item.signed ? 'success' : 'warning'"
+              size="small"
             >
-              <div class="font-medium">
-                {{ node.name }}
-                <ElTag class="ml-2" size="small">{{ nodeTypeText[node.type] }}</ElTag>
-              </div>
-              <div class="mt-1 text-sm text-muted-foreground">
-                审批人：{{ node.approver || node.signers?.join('、') || '无' }}
-                <span v-if="node.opinion">，意见：{{ node.opinion }}</span>
-              </div>
-            </ElTimelineItem>
-          </ElTimeline>
-          <div class="mt-4 grid gap-3">
-            <ElInput v-model="signer" placeholder="会签/或签时填写签署人，可留空" />
-            <ElInput v-model="opinion" placeholder="审批意见或驳回理由" />
-            <div class="flex flex-wrap gap-2">
-              <ElButton :loading="actionLoading" type="primary" @click="approve">通过</ElButton>
-              <ElButton :loading="actionLoading" type="danger" @click="reject">驳回</ElButton>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <ElInput v-model="extraUser" placeholder="加签/转签人员" style="width: 220px" />
-              <ElButton @click="addSign">加签</ElButton>
-              <ElButton @click="transferSign">转签</ElButton>
-            </div>
+              {{ item.name }} {{ item.signed ? '已签' : '待签' }}
+            </ElTag>
           </div>
-        </template>
-      </ElDialog>
-    </div>
-  </re-page>
+        </ElDescriptionsItem>
+      </ElDescriptions>
+
+      <div style="margin-top: 20px">
+        <ElInput
+          v-model="opinion"
+          type="textarea"
+          :rows="3"
+          placeholder="请输入审批意见"
+        />
+      </div>
+
+      <template #footer>
+        <ElButton @click="detailVisible = false">取消</ElButton>
+        <ElButton @click="openAddSign" :loading="addSignLoading">
+          加签
+        </ElButton>
+        <ElButton type="danger" @click="debouncedReject" :loading="actionLoading">
+          驳回
+        </ElButton>
+        <ElButton type="primary" @click="debouncedApprove" :loading="actionLoading">
+          通过
+        </ElButton>
+      </template>
+    </ElDialog>
+
+    <ElDialog
+      v-model="addSignVisible"
+      title="加签"
+      width="420px"
+      :close-on-click-modal="false"
+    >
+      <ElSelect
+        v-model="addSignUser"
+        filterable
+        placeholder="选择加签人"
+        style="width: 100%"
+      >
+        <ElOption
+          v-for="user in users"
+          :key="user.id"
+          :label="`${user.name}（${user.employeeNo}）`"
+          :value="user.name"
+        />
+      </ElSelect>
+
+      <template #footer>
+        <ElButton @click="addSignVisible = false">取消</ElButton>
+        <ElButton type="primary" :loading="addSignLoading" @click="addSign">
+          确认加签
+        </ElButton>
+      </template>
+    </ElDialog>
+  </div>
 </template>
+
+<style scoped>
+.pending-container {
+  padding: 20px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.sign-state-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+</style>
