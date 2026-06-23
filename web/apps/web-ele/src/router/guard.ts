@@ -5,7 +5,11 @@ import { preferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
 import { startProgress, stopProgress } from '@vben/utils';
 
-import { accessRoutes, coreRouteNames } from '#/router/routes';
+import {
+  accessRoutes,
+  coreRouteNames,
+  fallbackNotFoundRoute,
+} from '#/router/routes';
 import { useAuthStore } from '#/store';
 
 import { generateAccess } from './access';
@@ -107,6 +111,9 @@ function setupAccessGuard(router: Router) {
     accessStore.setAccessMenus(accessibleMenus);
     accessStore.setAccessRoutes(accessibleRoutes);
     accessStore.setIsAccessChecked(true);
+    if (!router.hasRoute(fallbackNotFoundRoute.name!)) {
+      router.addRoute(fallbackNotFoundRoute);
+    }
     const redirectPath = (from.query.redirect ??
       (to.path === DEFAULT_HOME_PATH
         ? userInfo.homePath || DEFAULT_HOME_PATH

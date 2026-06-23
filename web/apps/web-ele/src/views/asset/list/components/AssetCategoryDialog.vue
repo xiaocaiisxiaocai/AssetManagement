@@ -26,13 +26,14 @@ const visible = defineModel<boolean>('visible', { default: false });
 const saving = ref(false);
 const form = reactive<CategoryPayload>({
   codeSeg: '',
-  name: '',
   parentId: null,
+  remark: '',
 });
 
 const previewCode = computed(() =>
   props.parentCode ? `${props.parentCode}-${form.codeSeg}` : form.codeSeg,
 );
+const isRootCategory = computed(() => !form.parentId);
 
 watch(visible, (opened) => {
   if (!opened) {
@@ -41,29 +42,35 @@ watch(visible, (opened) => {
   if (props.category) {
     Object.assign(form, {
       codeSeg: props.category.codeSeg,
-      name: props.category.name,
       parentId: props.category.parentId ?? null,
+      remark: props.category.remark ?? '',
     });
   } else {
     Object.assign(form, {
       codeSeg: '',
-      name: '',
       parentId: props.defaultParentId,
+      remark: '',
     });
   }
 });
 
 async function save() {
-  if (!form.name.trim() || !form.codeSeg.trim()) {
-    ElMessage.warning('请填写分类名称和编码段');
+  const codeSeg = form.codeSeg.trim();
+  if (!codeSeg) {
+    ElMessage.warning('请填写编码段');
     return;
   }
+  const payload = {
+    codeSeg,
+    parentId: form.parentId,
+    remark: isRootCategory.value ? null : form.remark?.trim() || null,
+  };
   saving.value = true;
   try {
     if (props.category) {
-      await updateCategoryApi(props.category.id, form);
+      await updateCategoryApi(props.category.id, payload);
     } else {
-      await createCategoryApi(form);
+      await createCategoryApi(payload);
     }
     ElMessage.success('分类已保存');
     visible.value = false;
@@ -88,11 +95,11 @@ async function save() {
           placeholder="留空为顶级"
         />
       </ElFormItem>
-      <ElFormItem label="分类名称">
-        <ElInput v-model="form.name" />
-      </ElFormItem>
       <ElFormItem label="编码段">
         <ElInput v-model="form.codeSeg" />
+      </ElFormItem>
+      <ElFormItem v-if="!isRootCategory" label="备注">
+        <ElInput v-model="form.remark" :rows="3" type="textarea" />
       </ElFormItem>
       <ElFormItem label="完整编码">
         <ElTag>{{ previewCode || '待输入' }}</ElTag>

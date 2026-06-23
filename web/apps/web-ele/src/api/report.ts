@@ -18,21 +18,17 @@ export interface CategoryStatRow {
   borrowed: number;
   categoryCode: string;
   categoryId: number;
-  categoryName: string;
   percent: number;
   total: number;
-  totalValue: number;
 }
 
 export interface DeptStatRow {
   available: number;
   borrowed: number;
-  departmentCode: string;
   departmentId: number;
   departmentName: string;
   percent: number;
   total: number;
-  totalValue: number;
 }
 
 export interface AssetSummary {
@@ -40,10 +36,7 @@ export interface AssetSummary {
   borrowed: number;
   byCategory: CategoryStatRow[];
   byDept: DeptStatRow[];
-  maintenance: number;
-  scrapped: number;
   total: number;
-  totalValue: number;
 }
 
 export interface BorrowReportQuery {
@@ -57,7 +50,6 @@ export interface BorrowReportQuery {
 }
 
 export interface BorrowReportRow {
-  amount: number;
   applyTime: string;
   assetId: number;
   assetName: string;
@@ -66,7 +58,6 @@ export interface BorrowReportRow {
   borrowerDept?: null | string;
   borrowerId: number;
   categoryCode: string;
-  categoryName: string;
   flowId: number;
   flowNo: string;
   returnDate?: null | string;
@@ -81,7 +72,6 @@ export interface OverdueReportRow {
   borrowerDept?: null | string;
   borrowerId: number;
   categoryCode: string;
-  categoryName: string;
   flowId: number;
   isSerious: boolean;
   overdueDays: number;

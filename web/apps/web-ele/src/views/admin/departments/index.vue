@@ -31,7 +31,6 @@ const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const departments = ref<DepartmentNode[]>([]);
 const form = reactive<DepartmentPayload>({
-  code: '',
   isActive: true,
   name: '',
   parentId: null,
@@ -49,7 +48,6 @@ async function loadData() {
 function openCreate(parent?: DepartmentNode) {
   editingId.value = null;
   Object.assign(form, {
-    code: '',
     isActive: true,
     name: '',
     parentId: parent?.id ?? null,
@@ -60,7 +58,6 @@ function openCreate(parent?: DepartmentNode) {
 function openEdit(row: DepartmentNode) {
   editingId.value = row.id;
   Object.assign(form, {
-    code: row.code,
     isActive: row.isActive,
     name: row.name,
     parentId: row.parentId ?? null,
@@ -69,8 +66,8 @@ function openEdit(row: DepartmentNode) {
 }
 
 async function save() {
-  if (!form.name.trim() || !form.code.trim()) {
-    ElMessage.warning('请填写部门名称和编码');
+  if (!form.name.trim()) {
+    ElMessage.warning('请填写部门名称');
     return;
   }
   saving.value = true;
@@ -106,9 +103,6 @@ onMounted(loadData);
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-semibold">组织架构</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            维护多级部门树，部门资产数量会在资产模块落地后自动回填。
-          </p>
         </div>
         <ElButton type="primary" @click="openCreate()">新增部门</ElButton>
       </div>
@@ -121,7 +115,6 @@ onMounted(loadData);
         default-expand-all
       >
         <ElTableColumn label="部门名称" min-width="180" prop="name" />
-        <ElTableColumn label="编码" min-width="160" prop="code" />
         <ElTableColumn label="负责人" min-width="120" prop="managerName" />
         <ElTableColumn label="资产数" min-width="90" prop="assetCount" />
         <ElTableColumn label="状态" min-width="90">
@@ -151,9 +144,6 @@ onMounted(loadData);
           </ElFormItem>
           <ElFormItem label="部门名称">
             <ElInput v-model="form.name" />
-          </ElFormItem>
-          <ElFormItem label="部门编码">
-            <ElInput v-model="form.code" />
           </ElFormItem>
           <ElFormItem label="启用状态">
             <ElSwitch v-model="form.isActive" />

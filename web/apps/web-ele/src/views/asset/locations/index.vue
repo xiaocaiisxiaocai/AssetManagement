@@ -31,8 +31,6 @@ const editingId = ref<null | number>(null);
 const locations = ref<LocationNode[]>([]);
 const form = reactive<LocationPayload>({
   name: '',
-  parentId: null,
-  qrCode: '',
 });
 
 async function loadData() {
@@ -44,12 +42,10 @@ async function loadData() {
   }
 }
 
-function openCreate(parent?: LocationNode) {
+function openCreate() {
   editingId.value = null;
   Object.assign(form, {
     name: '',
-    parentId: parent?.id ?? null,
-    qrCode: '',
   });
   dialogVisible.value = true;
 }
@@ -58,8 +54,6 @@ function openEdit(row: LocationNode) {
   editingId.value = row.id;
   Object.assign(form, {
     name: row.name,
-    parentId: row.parentId ?? null,
-    qrCode: row.qrCode ?? '',
   });
   dialogVisible.value = true;
 }
@@ -102,9 +96,6 @@ onMounted(loadData);
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-semibold">存放位置</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            按仓库、区域、货架维护存放位置。
-          </p>
         </div>
         <ElButton type="primary" @click="openCreate()">新增位置</ElButton>
       </div>
@@ -114,15 +105,10 @@ onMounted(loadData);
         :data="locations"
         row-key="id"
         border
-        default-expand-all
       >
         <ElTableColumn label="位置名称" min-width="180" prop="name" />
-        <ElTableColumn label="二维码" min-width="160" prop="qrCode" />
         <ElTableColumn fixed="right" label="操作" width="220">
           <template #default="{ row }">
-            <ElButton link type="primary" @click="openCreate(row)">
-              新增下级
-            </ElButton>
             <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
             <ElButton link type="danger" @click="remove(row)">删除</ElButton>
           </template>
@@ -135,14 +121,8 @@ onMounted(loadData);
         width="460px"
       >
         <ElForm label-width="88px">
-          <ElFormItem label="上级 ID">
-            <ElInput v-model.number="form.parentId" clearable placeholder="留空为顶级" />
-          </ElFormItem>
           <ElFormItem label="位置名称">
             <ElInput v-model="form.name" />
-          </ElFormItem>
-          <ElFormItem label="二维码">
-            <ElInput v-model="form.qrCode" />
           </ElFormItem>
         </ElForm>
         <template #footer>

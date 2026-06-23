@@ -80,9 +80,6 @@ onMounted(loadData);
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">逾期资产</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            实时查看借出且超过预计归还日期的资产，并记录站内催办。
-          </p>
         </div>
         <div class="flex flex-wrap gap-2">
           <ElButton @click="loadData">刷新</ElButton>
@@ -122,8 +119,8 @@ onMounted(loadData);
         </ElTableColumn>
         <ElTableColumn label="分类" min-width="170">
           <template #default="{ row }">
-            <div>{{ row.categoryName || '-' }}</div>
             <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
+            <span v-else>-</span>
           </template>
         </ElTableColumn>
         <ElTableColumn label="借用人" min-width="120" prop="borrower" />

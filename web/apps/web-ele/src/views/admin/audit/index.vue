@@ -110,9 +110,6 @@ onMounted(loadData);
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">审计日志</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            查询关键写操作、逾期催办和目标对象。
-          </p>
         </div>
         <ElButton type="primary" @click="exportReport">导出</ElButton>
       </div>

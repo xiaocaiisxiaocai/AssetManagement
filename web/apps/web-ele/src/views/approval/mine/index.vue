@@ -45,6 +45,8 @@ async function loadData() {
     ]);
     flows.value = mine;
     assets.value = assetPage.items;
+  } catch (error: any) {
+    ElMessage.error(error.message || '加载我的申请失败');
   } finally {
     loading.value = false;
   }
@@ -76,6 +78,8 @@ async function submit() {
     ElMessage.success('申请已提交');
     dialogVisible.value = false;
     await loadData();
+  } catch (error: any) {
+    ElMessage.error(error.message || '提交申请失败');
   } finally {
     saving.value = false;
   }
@@ -98,9 +102,6 @@ onMounted(loadData);
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">我的申请</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            发起并跟踪本人提交的资产流程。
-          </p>
         </div>
         <div class="flex gap-2">
           <ElButton type="success" @click="openStart('borrow')">发起借用</ElButton>
@@ -119,7 +120,13 @@ onMounted(loadData);
         <ElTableColumn label="资产" min-width="180" prop="assetName" />
         <ElTableColumn label="当前节点" min-width="140">
           <template #default="{ row }">
-            {{ row.nodes[row.currentNodeIndex]?.name || '-' }}
+            <span v-if="row.currentNodeIds?.length === 1">
+              {{ row.bpmnTokens?.[row.currentNodeIds[0]]?.nodeName || '-' }}
+            </span>
+            <span v-else-if="row.currentNodeIds?.length > 1">
+              {{ row.currentNodeIds.length }} 个并行节点
+            </span>
+            <span v-else>-</span>
           </template>
         </ElTableColumn>
         <ElTableColumn label="状态" width="100">

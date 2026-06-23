@@ -86,13 +86,6 @@ function statusType(status: string) {
   return status === 'returned' ? 'success' : 'warning';
 }
 
-function money(value: number) {
-  return value.toLocaleString('zh-CN', {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 0,
-  });
-}
-
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -111,9 +104,6 @@ onMounted(loadData);
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">借用明细</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            查看已通过借用流程形成的资产借用记录。
-          </p>
         </div>
         <ElButton type="primary" @click="exportReport">导出</ElButton>
       </div>
@@ -160,8 +150,8 @@ onMounted(loadData);
         </ElTableColumn>
         <ElTableColumn label="分类" min-width="170">
           <template #default="{ row }">
-            <div>{{ row.categoryName || '-' }}</div>
             <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
+            <span v-else>-</span>
           </template>
         </ElTableColumn>
         <ElTableColumn label="借用人" min-width="120" prop="borrower" />
@@ -170,9 +160,6 @@ onMounted(loadData);
           <template #default="{ row }">{{ row.applyTime?.replace('T', ' ').slice(0, 16) }}</template>
         </ElTableColumn>
         <ElTableColumn label="预计归还" min-width="120" prop="returnDate" />
-        <ElTableColumn label="金额" min-width="100">
-          <template #default="{ row }">{{ money(row.amount) }}</template>
-        </ElTableColumn>
         <ElTableColumn label="状态" width="100">
           <template #default="{ row }">
             <ElTag :type="statusType(row.status)">{{ statusText(row.status) }}</ElTag>

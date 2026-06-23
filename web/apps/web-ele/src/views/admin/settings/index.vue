@@ -65,9 +65,6 @@ onMounted(loadData);
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-semibold">系统参数</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            管理审计保留、附件大小、默认分页等基础参数。
-          </p>
         </div>
         <div class="flex gap-2">
           <ElButton @click="addRow">新增参数</ElButton>

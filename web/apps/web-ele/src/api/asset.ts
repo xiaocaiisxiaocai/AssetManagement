@@ -15,14 +15,13 @@ export interface PagedResult<T> {
   total: number;
 }
 
-export type AssetStatus = 0 | 1 | 2 | 3;
+export type AssetStatus = 0 | 1;
 
 export interface AssetItem {
   assetNo: string;
   brand?: null | string;
   categoryCode: string;
   categoryId: number;
-  categoryName: string;
   createdAt: string;
   custodianId?: null | number;
   custodianName?: null | string;
@@ -34,7 +33,6 @@ export interface AssetItem {
   locationName?: null | string;
   model?: null | string;
   name: string;
-  price: number;
   quantity: number;
   status: AssetStatus;
 }
@@ -58,7 +56,6 @@ export interface AssetPayload {
   locationId?: null | number;
   model?: null | string;
   name: string;
-  price: number;
   quantity?: number;
   status?: AssetStatus;
 }
@@ -75,7 +72,6 @@ export interface ImportPreviewRow {
   isValid: boolean;
   model?: null | string;
   name: string;
-  price: number;
   row: number;
 }
 

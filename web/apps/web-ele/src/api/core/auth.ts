@@ -85,7 +85,7 @@ export const getUserInfoApi = async () => {
   return {
     avatar: '',
     desc: '',
-    homePath: '/asset/list',
+    homePath: '/home',
     realName: data.name,
     roles: data.roles,
     token: '',

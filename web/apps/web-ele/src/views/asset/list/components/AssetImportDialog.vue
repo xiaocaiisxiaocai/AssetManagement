@@ -106,7 +106,6 @@ async function confirmImport() {
         <ElTableColumn label="行号" prop="row" width="80" />
         <ElTableColumn label="名称" prop="name" />
         <ElTableColumn label="分类编码" prop="categoryCode" />
-        <ElTableColumn label="单价" prop="price" width="100" />
         <ElTableColumn label="状态" width="90">
           <template #default="{ row }">
             <ElTag :type="row.isValid ? 'success' : 'danger'">

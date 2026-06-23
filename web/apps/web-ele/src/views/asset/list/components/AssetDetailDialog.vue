@@ -27,14 +27,11 @@ const statusOptions: Array<{
 }> = [
   { label: '在库', tag: 'success', value: 0 },
   { label: '借出', tag: 'warning', value: 1 },
-  { label: '维修', tag: 'info', value: 2 },
-  { label: '报废', tag: 'danger', value: 3 },
 ];
 
 const bizTypeText: Record<string, string> = {
   borrow: '借用',
   return: '归还',
-  scrap: '报废',
   transfer: '转让',
 };
 
@@ -51,6 +48,16 @@ function flowTitle(flow: AssetDetail['flows'][number]) {
   const biz = bizTypeText[flow.bizType] ?? flow.bizType;
   const status = flowStatusMeta[flow.status]?.text ?? flow.status;
   return `${biz} · ${status}`;
+}
+
+function statusMeta(status: AssetStatus) {
+  return (
+    statusOptions.find((item) => item.value === status) ?? {
+      label: '未知',
+      tag: 'info' as const,
+      value: status,
+    }
+  );
 }
 
 function formatTime(time: null | string) {
@@ -73,11 +80,11 @@ function formatTime(time: null | string) {
           <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
             <div>资产编号：{{ detail.asset.assetNo }}</div>
             <div>名称：{{ detail.asset.name }}</div>
-            <div>分类：{{ detail.asset.categoryName }}</div>
+            <div>分类：{{ detail.asset.categoryCode }}</div>
             <div>
               状态：
-              <ElTag :type="statusOptions[detail.asset.status]?.tag" size="small">
-                {{ statusOptions[detail.asset.status]?.label }}
+              <ElTag :type="statusMeta(detail.asset.status).tag" size="small">
+                {{ statusMeta(detail.asset.status).label }}
               </ElTag>
             </div>
             <div>归属部门：{{ detail.asset.departmentName ?? '—' }}</div>
@@ -87,7 +94,6 @@ function formatTime(time: null | string) {
               型号品牌：{{ detail.asset.model || '—' }} /
               {{ detail.asset.brand || '—' }}
             </div>
-            <div>单价：{{ detail.asset.price }}</div>
             <div>数量：{{ detail.asset.quantity }}</div>
           </div>
         </section>

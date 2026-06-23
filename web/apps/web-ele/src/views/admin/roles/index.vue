@@ -223,9 +223,6 @@ onMounted(async () => {
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-semibold">角色管理</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            维护角色、权限码和菜单授权。
-          </p>
         </div>
         <ElButton type="primary" @click="openCreate">新增角色</ElButton>
       </div>

@@ -6,44 +6,40 @@ interface ApiResult<T> {
   message: string;
 }
 
-export type NodeType = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-export type ApproverType = 0 | 1 | 2 | 3 | 4;
-export type NodeStatus = 0 | 1 | 2 | 3 | 4;
-
-export interface WorkflowNode {
-  approver?: null | string;
-  approverType: ApproverType;
-  condition?: null | string;
-  id: string;
-  name: string;
-  signers?: null | string[];
-  type: NodeType;
-  x?: null | number;
-  y?: null | number;
+// BPMN Token 状态
+export enum BpmnTokenStatus {
+  Active = 0,
+  Completed = 1,
+  Skipped = 2,
+  Waiting = 3,
 }
 
-export interface FlowNode {
-  addedSigners?: null | string[];
-  approver?: null | string;
-  condition?: null | string;
-  name: string;
-  opinion?: null | string;
-  signers?: null | string[];
-  signStates?: null | Record<string, boolean>;
-  status: NodeStatus;
-  time?: null | string;
-  type: NodeType;
+// BPMN Token
+export interface BpmnToken {
+  nodeId: string;
+  nodeName: string;
+  status: BpmnTokenStatus;
+  createdAt?: string;
+  completedAt?: string;
+  signStates?: Record<string, boolean> | null;
 }
 
+// 工作流定义（BPMN 模式）
 export interface WorkflowItem {
   bizType: string;
   id: number;
   name: string;
-  nodes: WorkflowNode[];
+  bpmnXml?: string | null; // BPMN 2.0 XML
 }
 
+export interface SaveWorkflowPayload {
+  bizType: string;
+  bpmnXml?: null | string;
+  name: string;
+}
+
+// 审批流程实例
 export interface ApprovalFlow {
-  amount: number;
   applicant: string;
   applicantDept?: null | string;
   applyTime: string;
@@ -52,11 +48,11 @@ export interface ApprovalFlow {
   assetNo: string;
   bizType: string;
   confirmedAt?: null | string;
-  currentNodeIndex: number;
+  currentNodeIds: string[]; // BPMN: 当前活跃的节点 ID 列表
+  bpmnTokens: Record<string, BpmnToken>; // BPMN: Token 状态字典
   deadline: string;
   flowNo: string;
   id: number;
-  nodes: FlowNode[];
   reason?: null | string;
   returnDate?: null | string;
   status: string;
@@ -73,8 +69,18 @@ export interface StartApprovalPayload {
 }
 
 export interface ApprovalActionPayload {
+  nodeId?: string; // BPMN: 指定要审批的节点 ID（可选，单节点时自动推断）
   opinion: string;
-  signer?: string;
+}
+
+export interface RejectPayload {
+  nodeId?: string; // BPMN: 指定要驳回的节点 ID（可选）
+  reason: string;
+}
+
+export interface AddSignPayload {
+  nodeId?: string;
+  who: string;
 }
 
 async function unwrap<T>(request: Promise<ApiResult<T>>) {
@@ -85,8 +91,17 @@ async function unwrap<T>(request: Promise<ApiResult<T>>) {
 export const getWorkflowsApi = () =>
   unwrap(requestClient.get<ApiResult<WorkflowItem[]>>('/workflows'));
 
-export const saveWorkflowApi = (id: number, data: Omit<WorkflowItem, 'id'>) =>
+export const getWorkflowApi = (id: number) =>
+  unwrap(requestClient.get<ApiResult<WorkflowItem>>(`/workflows/${id}`));
+
+export const createWorkflowApi = (data: SaveWorkflowPayload) =>
+  unwrap(requestClient.post<ApiResult<WorkflowItem>>('/workflows', data));
+
+export const saveWorkflowApi = (id: number, data: SaveWorkflowPayload) =>
   unwrap(requestClient.put<ApiResult<WorkflowItem>>(`/workflows/${id}`, data));
+
+export const deleteWorkflowApi = (id: number) =>
+  unwrap(requestClient.delete<ApiResult<boolean>>(`/workflows/${id}`));
 
 export const startApprovalApi = (data: StartApprovalPayload) =>
   unwrap(requestClient.post<ApiResult<ApprovalFlow>>('/approvals', data));
@@ -101,17 +116,17 @@ export const getMineApprovalsApi = () =>
 export const getPendingReturnsApi = () =>
   unwrap(requestClient.get<ApiResult<ApprovalFlow[]>>('/approvals/pending-return'));
 
+export const getFlowDetailApi = (id: number) =>
+  unwrap(requestClient.get<ApiResult<ApprovalFlow>>(`/approvals/${id}`));
+
 export const approveFlowApi = (id: number, data: ApprovalActionPayload) =>
   unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/approve`, data));
 
-export const rejectFlowApi = (id: number, reason: string) =>
-  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/reject`, { reason }));
+export const rejectFlowApi = (id: number, data: RejectPayload) =>
+  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/reject`, data));
 
-export const addSignApi = (id: number, who: string) =>
-  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/add-sign`, { who }));
-
-export const transferSignApi = (id: number, who: string) =>
-  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/transfer-sign`, { who }));
+export const addSignFlowApi = (id: number, data: AddSignPayload) =>
+  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/add-sign`, data));
 
 export const confirmReturnApi = (id: number) =>
   unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/confirm-return`, {}));

@@ -9,7 +9,7 @@ import { resetAllStores, useAccessStore, useUserStore } from '@vben/stores';
 import { ElNotification } from 'element-plus';
 import { defineStore } from 'pinia';
 
-import { getUserInfoApi, loginApi, logoutApi } from '#/api';
+import { getUserInfoApi, loginApi, logoutApi } from '#/api/core/auth';
 import { $t } from '#/locales';
 
 export const useAuthStore = defineStore('auth', () => {
@@ -65,11 +65,9 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout(redirect: boolean = true) {
-    try {
-      await logoutApi();
-    } catch {
-      // 不做任何处理
-    }
+    void logoutApi().catch(() => {
+      // JWT 模式下退出以清理本地状态为准，后端通知失败不阻塞界面跳转。
+    });
     resetAllStores();
     accessStore.setLoginExpired(false);
 

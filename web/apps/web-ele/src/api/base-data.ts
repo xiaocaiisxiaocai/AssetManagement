@@ -15,21 +15,23 @@ export interface TreeNodeBase {
 
 export interface DepartmentNode extends TreeNodeBase {
   assetCount: number;
-  code: string;
   isActive: boolean;
   managerName?: null | string;
   children: DepartmentNode[];
 }
 
-export interface CategoryNode extends TreeNodeBase {
+export interface CategoryNode {
+  children: CategoryNode[];
   code: string;
   codeSeg: string;
-  children: CategoryNode[];
+  id: number;
+  parentId?: null | number;
+  remark?: null | string;
 }
 
-export interface LocationNode extends TreeNodeBase {
-  qrCode?: null | string;
-  children: LocationNode[];
+export interface LocationNode {
+  id: number;
+  name: string;
 }
 
 export interface SystemSetting {
@@ -40,7 +42,6 @@ export interface SystemSetting {
 }
 
 export type DepartmentPayload = {
-  code: string;
   isActive?: boolean;
   managerId?: null | number;
   name: string;
@@ -49,14 +50,12 @@ export type DepartmentPayload = {
 
 export type CategoryPayload = {
   codeSeg: string;
-  name: string;
   parentId?: null | number;
+  remark?: null | string;
 };
 
 export type LocationPayload = {
   name: string;
-  parentId?: null | number;
-  qrCode?: null | string;
 };
 
 export type SettingPayload = {

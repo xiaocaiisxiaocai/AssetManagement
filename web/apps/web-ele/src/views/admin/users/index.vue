@@ -195,9 +195,6 @@ onMounted(async () => {
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-semibold">用户管理</h2>
-          <p class="mt-1 text-sm text-muted-foreground">
-            管理用户账号、角色分配和状态控制。
-          </p>
         </div>
         <ElButton type="primary" @click="openCreate">新增用户</ElButton>
       </div>
