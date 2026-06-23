@@ -115,7 +115,10 @@ public class AuthServiceTests
         public AuthService CreateService()
         {
             var jwt = new FakeJwtTokenService();
-            return new AuthService(Db, jwt);
+            var cache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+                new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions());
+            var httpContextAccessor = new FakeHttpContextAccessor();
+            return new AuthService(Db, jwt, cache, httpContextAccessor);
         }
 
         public async ValueTask DisposeAsync()
@@ -129,5 +132,17 @@ public class AuthServiceTests
     {
         public string Create(int userId, string employeeNo, IEnumerable<string> permissionCodes, IEnumerable<string> roles, int? departmentId = null)
             => $"token:{userId}:{employeeNo}:{string.Join(",", permissionCodes)}:{string.Join(",", roles)}:{departmentId}";
+    }
+
+    private sealed class FakeHttpContextAccessor : Microsoft.AspNetCore.Http.IHttpContextAccessor
+    {
+        public Microsoft.AspNetCore.Http.HttpContext? HttpContext { get; set; }
+
+        public FakeHttpContextAccessor()
+        {
+            var context = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+            context.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("127.0.0.1");
+            HttpContext = context;
+        }
     }
 }

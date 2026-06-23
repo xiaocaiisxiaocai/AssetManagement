@@ -7,6 +7,7 @@ using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System.Security.Claims;
 
 namespace AssetManagement.Infrastructure.Assets;
@@ -15,17 +16,22 @@ public class AssetService : IAssetService
 {
     private readonly AppDbContext _db;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IMemoryCache _cache;
 
-    public AssetService(AppDbContext db, IHttpContextAccessor httpContextAccessor)
+    // 部门树缓存键
+    private const string DepartmentTreeCacheKey = "department_tree";
+
+    public AssetService(AppDbContext db, IHttpContextAccessor httpContextAccessor, IMemoryCache cache)
     {
         _db = db;
         _httpContextAccessor = httpContextAccessor;
+        _cache = cache;
     }
 
     public async Task<PagedResult<AssetDto>> QueryAsync(AssetQuery query)
     {
         var page = Math.Max(query.Page, 1);
-        var pageSize = Math.Clamp(query.PageSize, 1, 200);
+        var pageSize = Math.Clamp(query.PageSize, 1, AppConstants.MaxPageSize);
         var assets = ApplyQuery(_db.Assets.AsQueryable(), query);
         var total = await assets.CountAsync();
         var pageItems = await assets
@@ -218,9 +224,9 @@ public class AssetService : IAssetService
     public async Task<List<ImportPreviewRow>> ValidateImportAsync(Stream file)
     {
         var rows = XlsxTable.Read(file).Skip(1).ToList();
-        if (rows.Count > 1000)
+        if (rows.Count > AppConstants.MaxImportRows)
         {
-            throw new BizException(4153, "单次导入不能超过 1000 行");
+            throw new BizException(4153, $"单次导入不能超过 {AppConstants.MaxImportRows} 行");
         }
         var categories = await _db.AssetCategories.ToDictionaryAsync(x => x.Code, x => x);
         return rows.Select((cells, index) => ValidateRow(index + 2, cells, categories)).ToList();
@@ -316,7 +322,13 @@ public class AssetService : IAssetService
 
     private int[] DescendantDepartmentIds(int rootId)
     {
-        var departments = _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToList();
+        // 从缓存获取部门树
+        var departments = _cache.GetOrCreate(DepartmentTreeCacheKey, entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(AppConstants.DepartmentTreeCacheMinutes);
+            return _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToList();
+        })!;
+
         var ids = new List<int> { rootId };
         void Walk(int parentId)
         {

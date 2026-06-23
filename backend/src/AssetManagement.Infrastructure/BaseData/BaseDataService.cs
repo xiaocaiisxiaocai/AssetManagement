@@ -4,6 +4,7 @@ using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace AssetManagement.Infrastructure.BaseData;
 
@@ -12,10 +13,15 @@ public class BaseDataService : IBaseDataService
     private const int MaxCategoryDepth = 3;
 
     private readonly AppDbContext _db;
+    private readonly IMemoryCache _cache;
 
-    public BaseDataService(AppDbContext db)
+    // 缓存键
+    private const string CategoryTreeCacheKey = "category_tree";
+
+    public BaseDataService(AppDbContext db, IMemoryCache cache)
     {
         _db = db;
+        _cache = cache;
     }
 
     public async Task<List<DepartmentNodeDto>> GetDepartmentTreeAsync()
@@ -44,6 +50,10 @@ public class BaseDataService : IBaseDataService
         };
         _db.Departments.Add(department);
         await _db.SaveChangesAsync();
+
+        // 清除部门树缓存
+        _cache.Remove("department_tree");
+
         return ToDepartmentDto(department, null);
     }
 
@@ -56,6 +66,10 @@ public class BaseDataService : IBaseDataService
         department.ManagerId = request.ManagerId;
         department.IsActive = request.IsActive;
         await _db.SaveChangesAsync();
+
+        // 清除部门树缓存
+        _cache.Remove("department_tree");
+
         return ToDepartmentDto(department, null);
     }
 
@@ -70,15 +84,23 @@ public class BaseDataService : IBaseDataService
             ?? throw new BizException(4045, "部门不存在");
         _db.Departments.Remove(department);
         await _db.SaveChangesAsync();
+
+        // 清除部门树缓存
+        _cache.Remove("department_tree");
     }
 
     public async Task<List<CategoryNodeDto>> GetCategoryTreeAsync()
     {
-        var categories = await _db.AssetCategories
-            .OrderBy(x => x.Code)
-            .ThenBy(x => x.Id)
-            .ToListAsync();
-        return BuildCategoryTree(null, categories);
+        // 从缓存获取分类树
+        return await _cache.GetOrCreateAsync(CategoryTreeCacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(AppConstants.CategoryTreeCacheMinutes);
+            var categories = await _db.AssetCategories
+                .OrderBy(x => x.Code)
+                .ThenBy(x => x.Id)
+                .ToListAsync();
+            return BuildCategoryTree(null, categories);
+        }) ?? new List<CategoryNodeDto>();
     }
 
     public async Task<CategoryNodeDto> CreateCategoryAsync(CreateCategoryRequest request)
@@ -97,6 +119,10 @@ public class BaseDataService : IBaseDataService
         };
         _db.AssetCategories.Add(category);
         await _db.SaveChangesAsync();
+
+        // 清除分类树缓存
+        _cache.Remove(CategoryTreeCacheKey);
+
         return ToCategoryDto(category);
     }
 
@@ -122,6 +148,10 @@ public class BaseDataService : IBaseDataService
         var subtree = BuildCategoryEntityTree(category, all);
         CategoryCodeService.Recalc(subtree, parent?.Code);
         await _db.SaveChangesAsync();
+
+        // 清除分类树缓存
+        _cache.Remove(CategoryTreeCacheKey);
+
         return ToCategoryDto(category);
     }
 
@@ -133,6 +163,9 @@ public class BaseDataService : IBaseDataService
         var ids = DescendantCategoryIds(id, all).Append(id).ToArray();
         _db.AssetCategories.RemoveRange(all.Where(x => ids.Contains(x.Id)));
         await _db.SaveChangesAsync();
+
+        // 清除分类树缓存
+        _cache.Remove(CategoryTreeCacheKey);
     }
 
     public async Task<List<LocationNodeDto>> GetLocationTreeAsync()

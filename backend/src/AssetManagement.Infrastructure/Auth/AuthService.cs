@@ -3,6 +3,8 @@ using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.AspNetCore.Http;
 
 namespace AssetManagement.Infrastructure.Auth;
 
@@ -10,16 +12,36 @@ public class AuthService : IAuthService
 {
     private readonly AppDbContext _db;
     private readonly IJwtTokenService _jwt;
+    private readonly IMemoryCache _cache;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public AuthService(AppDbContext db, IJwtTokenService jwt)
+    public AuthService(AppDbContext db, IJwtTokenService jwt, IMemoryCache cache, IHttpContextAccessor httpContextAccessor)
     {
         _db = db;
         _jwt = jwt;
+        _cache = cache;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request)
     {
         var employeeNo = request.EmployeeNo.Trim();
+        var clientIp = GetClientIp();
+
+        // 检查账号锁定（工号维度）
+        var accountKey = $"login_fail_account:{employeeNo}";
+        if (_cache.TryGetValue(accountKey, out int accountFailCount) && accountFailCount >= AppConstants.MaxLoginAttempts)
+        {
+            throw new BizException(4291, $"账号已被锁定 {AppConstants.LoginLockoutMinutes} 分钟，请稍后再试");
+        }
+
+        // 检查 IP 锁定（IP 维度）
+        var ipKey = $"login_fail_ip:{clientIp}";
+        if (_cache.TryGetValue(ipKey, out int ipFailCount) && ipFailCount >= AppConstants.MaxLoginAttempts)
+        {
+            throw new BizException(4292, $"IP 地址已被锁定 {AppConstants.LoginLockoutMinutes} 分钟，请稍后再试");
+        }
+
         var user = await _db.Users
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
@@ -29,8 +51,14 @@ public class AuthService : IAuthService
 
         if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
+            // 登录失败，记录失败次数
+            RecordLoginFailure(accountKey, ipKey);
             throw new BizException(4011, "工号或密码错误");
         }
+
+        // 登录成功，清除失败计数
+        _cache.Remove(accountKey);
+        _cache.Remove(ipKey);
 
         var activeRoles = user.UserRoles
             .Select(x => x.Role)
@@ -52,6 +80,51 @@ public class AuthService : IAuthService
         {
             Token = _jwt.Create(user.Id, user.EmployeeNo, permissionCodes, roleCodes, user.DepartmentId)
         };
+    }
+
+    private void RecordLoginFailure(string accountKey, string ipKey)
+    {
+        var cacheOptions = new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(AppConstants.LoginLockoutMinutes)
+        };
+
+        // 增加账号失败次数
+        var accountCount = _cache.GetOrCreate(accountKey, entry =>
+        {
+            entry.SetOptions(cacheOptions);
+            return 0;
+        });
+        _cache.Set(accountKey, accountCount + 1, cacheOptions);
+
+        // 增加 IP 失败次数
+        var ipCount = _cache.GetOrCreate(ipKey, entry =>
+        {
+            entry.SetOptions(cacheOptions);
+            return 0;
+        });
+        _cache.Set(ipKey, ipCount + 1, cacheOptions);
+    }
+
+    private string GetClientIp()
+    {
+        var context = _httpContextAccessor.HttpContext;
+        if (context == null) return "unknown";
+
+        // 优先从代理头获取真实 IP
+        var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(forwardedFor))
+        {
+            return forwardedFor.Split(',')[0].Trim();
+        }
+
+        var realIp = context.Request.Headers["X-Real-IP"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(realIp))
+        {
+            return realIp;
+        }
+
+        return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
 
     public async Task<UserInfoDto> GetUserInfoAsync(int userId)

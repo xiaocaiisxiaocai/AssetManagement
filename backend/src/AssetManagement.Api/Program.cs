@@ -3,6 +3,7 @@ using System.Text;
 using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
+using AssetManagement.Application.Common;
 using AssetManagement.Application.Files;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Reports;
@@ -33,6 +34,9 @@ Log.Logger = new LoggerConfiguration()
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 30,
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .Enrich.WithProperty("Application", "AssetManagement")
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", Serilog.Events.LogEventLevel.Warning)
     .CreateLogger();
 
 try
@@ -47,10 +51,34 @@ builder.Host.UseSerilog();
 // Add services to the container.
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddMemoryCache();
 builder.Services.AddScoped<AuditActionFilter>();
 builder.Services.AddControllers(o => o.Filters.Add<AuditActionFilter>());
 builder.Services.AddDbContext<AppDbContext>(o =>
-    o.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+{
+    o.UseSqlite(builder.Configuration.GetConnectionString("Default"));
+
+    // 默认不跟踪查询，提升只读查询性能
+    o.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+
+    // 生产环境启用敏感数据日志和命令日志（监控慢查询）
+    if (!builder.Environment.IsDevelopment())
+    {
+        o.EnableSensitiveDataLogging(false);
+        o.LogTo(msg =>
+        {
+            // 记录执行时间超过阈值的慢查询
+            if (msg.Contains("Executed DbCommand") && msg.Contains("ms"))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(msg, @"(\d+)ms");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var ms) && ms > AppConstants.SlowQueryThresholdMs)
+                {
+                    Log.Warning("慢查询检测 ({Duration}ms): {Query}", ms, msg);
+                }
+            }
+        }, Microsoft.Extensions.Logging.LogLevel.Information);
+    }
+});
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRbacService, RbacService>();
@@ -68,9 +96,9 @@ var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
 // 生产环境纵深防御:禁止以占位符或弱密钥(<32 字符)启动,密钥应通过环境变量 Jwt__Key 注入
 if (!builder.Environment.IsDevelopment()
-    && (jwtKey.Length < 32 || jwtKey.StartsWith("REPLACE_WITH", StringComparison.Ordinal)))
+    && (jwtKey.Length < AppConstants.JwtKeyMinLength || jwtKey.StartsWith("REPLACE_WITH", StringComparison.Ordinal)))
 {
-    throw new InvalidOperationException("生产环境必须配置强随机 Jwt:Key(至少 32 字符),请通过环境变量 Jwt__Key 注入");
+    throw new InvalidOperationException($"生产环境必须配置强随机 Jwt:Key(至少 {AppConstants.JwtKeyMinLength} 字符),请通过环境变量 Jwt__Key 注入");
 }
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "AssetManagement";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
