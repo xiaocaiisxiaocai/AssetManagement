@@ -11,6 +11,8 @@ import {
 
 import { acceptHMRUpdate, defineStore } from 'pinia';
 
+const DEFAULT_HOME_PATH = '/home';
+
 interface TabbarState {
   /**
    * @zh_CN 当前打开的标签页列表缓存
@@ -151,8 +153,14 @@ export const useTabbarStore = defineStore('core-tabbar', {
      */
     async closeAllTabs(router: Router) {
       const newTabs = this.tabs.filter((tab) => isAffixTab(tab));
-      this.tabs = newTabs.length > 0 ? newTabs : [...this.tabs].splice(0, 1);
-      await this._goToDefaultTab(router);
+      if (newTabs.length > 0) {
+        this.tabs = newTabs;
+        await this._goToDefaultTab(router);
+      } else {
+        const homeTab = this.tabs.find((tab) => getTabPath(tab) === DEFAULT_HOME_PATH);
+        this.tabs = homeTab ? [homeTab] : [];
+        await router.replace(DEFAULT_HOME_PATH);
+      }
       this.updateCacheTabs();
     },
     /**

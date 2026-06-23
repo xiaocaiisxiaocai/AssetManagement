@@ -57,8 +57,6 @@ onMounted(() => {
   <div class="relative">
     <div
       v-if="
-        description ||
-        $slots.description ||
         title ||
         $slots.title ||
         $slots.extra
@@ -78,11 +76,6 @@ onMounted(() => {
           </div>
         </slot>
 
-        <slot name="description">
-          <p v-if="description" class="text-muted-foreground">
-            {{ description }}
-          </p>
-        </slot>
       </div>
 
       <div v-if="$slots.extra">

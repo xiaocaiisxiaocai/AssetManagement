@@ -14,14 +14,14 @@ describe('page.vue', () => {
     expect(wrapper.text()).toContain('Test Title');
   });
 
-  it('renders description when passed', () => {
+  it('does not render description when passed', () => {
     const wrapper = mount(Page, {
       props: {
         description: 'Test Description',
       },
     });
 
-    expect(wrapper.text()).toContain('Test Description');
+    expect(wrapper.text()).not.toContain('Test Description');
   });
 
   it('renders default slot content', () => {
@@ -72,7 +72,7 @@ describe('page.vue', () => {
     expect(wrapper.html()).not.toContain('Test Title');
   });
 
-  it('does not render description slot if description prop is provided', () => {
+  it('does not render description slot or description prop', () => {
     const wrapper = mount(Page, {
       props: {
         description: 'Test Description',
@@ -82,7 +82,7 @@ describe('page.vue', () => {
       },
     });
 
-    expect(wrapper.text()).toContain('Description Slot Content');
+    expect(wrapper.text()).not.toContain('Description Slot Content');
     expect(wrapper.html()).not.toContain('Test Description');
   });
 });

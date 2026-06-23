@@ -70,6 +70,31 @@ describe('useAccessStore', () => {
     expect(store.tabs.length).toBe(1);
   });
 
+  it('keeps home tab when closing all normal tabs', async () => {
+    const store = useTabbarStore();
+    store.tabs = [
+      {
+        fullPath: '/asset/list',
+        meta: {},
+        name: 'AssetList',
+        path: '/asset/list',
+      },
+      { fullPath: '/home', meta: {}, name: 'HomeWorkspace', path: '/home' },
+      {
+        fullPath: '/approval/pending',
+        meta: {},
+        name: 'ApprovalPending',
+        path: '/approval/pending',
+      },
+    ] as any;
+
+    await store.closeAllTabs(router);
+
+    expect(store.tabs).toHaveLength(1);
+    expect(store.tabs[0]?.path).toBe('/home');
+    expect(router.replace).toHaveBeenCalledWith('/home');
+  });
+
   it('closes a non-affix tab', () => {
     const store = useTabbarStore();
     const tab: any = {
