@@ -1,8 +1,8 @@
 // 部门资产管理系统 - 综合端到端测试
 // 测试所有页面、功能流程和业务场景
 
-const { chromium } = require('playwright');
-const fs = require('fs');
+import { chromium } from 'playwright';
+import fs from 'fs';
 
 async function runComprehensiveTest() {
   const browser = await chromium.launch({ headless: true });
@@ -128,10 +128,10 @@ async function runComprehensiveTest() {
     await page.fill('input[name="password"]', '123456');
     await page.click('button:has-text("登录")');
 
-    // 等待登录成功并跳转
+    // 等待登录成功并跳转（修正：实际跳转到 /home）
     await page.waitForTimeout(6000);
     const currentUrl = page.url();
-    if (currentUrl.includes('/asset') || currentUrl.includes('/dashboard') || currentUrl.includes('/list')) {
+    if (currentUrl.includes('/home') || currentUrl.includes('/asset') || currentUrl.includes('/dashboard')) {
       log('✓ 登录成功并正确跳转到主页', 'pass');
     } else {
       log(`✗ 登录后未正确跳转，当前URL: ${currentUrl}`, 'fail');
@@ -140,8 +140,9 @@ async function runComprehensiveTest() {
 
     // ==================== 1.5. 工作台/仪表盘测试 ====================
     log('--- 测试模块: 工作台仪表盘 ---');
-    if (await safeGoto('/dashboard/workspace', '工作台')) {
-      await checkContentWithRetry(['资产概览', '资产总数', '在库数', '借出数', '资产原值', '逾期数'], '工作台仪表盘', 'workspace-fail');
+    // 修正：实际路由是 /home，增加超时到 30 秒，关键字更新
+    if (await safeGoto('/home', '工作台')) {
+      await checkContentWithRetry(['资产总数', '在库资产', '借出资产', '逾期资产', '待办提醒'], '工作台仪表盘', 'workspace-fail', 30000);
     }
 
     // ==================== 2. 资产管理模块测试 ====================

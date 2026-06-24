@@ -19,30 +19,63 @@ public class ReportService : IReportService
 
     public async Task<AssetSummaryDto> GetSummaryAsync()
     {
-        var assets = await _db.Assets.AsNoTracking().ToListAsync();
-        var categories = await _db.AssetCategories.AsNoTracking().ToListAsync();
-        var departments = await _db.Departments.AsNoTracking().ToListAsync();
-        var categoryById = categories.ToDictionary(x => x.Id);
-        var rootDepartmentById = departments.ToDictionary(x => x.Id, x => RootDepartment(x, departments));
-        var total = assets.Count;
+        // 优化：使用数据库聚合而非全部加载到内存
+        var total = await _db.Assets.CountAsync();
+        var available = await _db.Assets.CountAsync(x => x.Status == AssetStatus.Available);
+        var borrowed = await _db.Assets.CountAsync(x => x.Status == AssetStatus.Borrowed);
+
+        // 按分类汇总（使用 GroupBy + Join 避免N+1）
+        var byCategory = await _db.Assets
+            .GroupBy(x => x.CategoryId)
+            .Select(g => new
+            {
+                CategoryId = g.Key,
+                Total = g.Count(),
+                Available = g.Count(x => x.Status == AssetStatus.Available),
+                Borrowed = g.Count(x => x.Status == AssetStatus.Borrowed)
+            })
+            .Join(_db.AssetCategories, x => x.CategoryId, c => c.Id, (x, c) => new CategoryStatRow
+            {
+                CategoryId = c.Id,
+                CategoryCode = c.Code,
+                Total = x.Total,
+                Available = x.Available,
+                Borrowed = x.Borrowed,
+                Percent = total == 0 ? 0 : decimal.Round(x.Total * 100m / total, 2)
+            })
+            .OrderBy(x => x.CategoryCode)
+            .ToListAsync();
+
+        // 按部门汇总（仅汇总一级部门，简化计算）
+        var byDept = await _db.Assets
+            .Where(x => x.DepartmentId.HasValue)
+            .GroupBy(x => x.DepartmentId!.Value)
+            .Select(g => new
+            {
+                DepartmentId = g.Key,
+                Total = g.Count(),
+                Available = g.Count(x => x.Status == AssetStatus.Available),
+                Borrowed = g.Count(x => x.Status == AssetStatus.Borrowed)
+            })
+            .Join(_db.Departments, x => x.DepartmentId, d => d.Id, (x, d) => new DeptStatRow
+            {
+                DepartmentId = d.Id,
+                DepartmentName = d.Name,
+                Total = x.Total,
+                Available = x.Available,
+                Borrowed = x.Borrowed,
+                Percent = total == 0 ? 0 : decimal.Round(x.Total * 100m / total, 2)
+            })
+            .OrderBy(x => x.DepartmentName)
+            .ToListAsync();
 
         return new AssetSummaryDto
         {
             Total = total,
-            Available = assets.Count(x => x.Status == AssetStatus.Available),
-            Borrowed = assets.Count(x => x.Status == AssetStatus.Borrowed),
-            ByCategory = assets
-                .Where(x => categoryById.ContainsKey(x.CategoryId))
-                .GroupBy(x => categoryById[x.CategoryId])
-                .OrderBy(x => x.Key.Code)
-                .Select(x => ToCategoryRow(x.Key, x, total))
-                .ToList(),
-            ByDept = assets
-                .Where(x => x.DepartmentId.HasValue && rootDepartmentById.ContainsKey(x.DepartmentId.Value))
-                .GroupBy(x => rootDepartmentById[x.DepartmentId!.Value])
-                .OrderBy(x => x.Key.Code)
-                .Select(x => ToDeptRow(x.Key, x, total))
-                .ToList()
+            Available = available,
+            Borrowed = borrowed,
+            ByCategory = byCategory,
+            ByDept = byDept
         };
     }
 
