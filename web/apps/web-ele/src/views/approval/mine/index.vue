@@ -98,55 +98,68 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="mine-page">
+      <div class="mine-header">
         <div>
-          <h2 class="text-lg font-semibold">我的申请</h2>
+          <h2 class="mine-title">我的申请</h2>
+          <p class="mine-subtitle">我发起的审批申请记录</p>
         </div>
-        <div class="flex gap-2">
+        <div class="mine-actions">
           <ElButton type="success" @click="openStart('borrow')">发起借用</ElButton>
           <ElButton type="warning" @click="openStart('transfer')">发起转让</ElButton>
           <ElButton @click="openStart('return')">发起归还</ElButton>
         </div>
       </div>
 
-      <ElTable v-loading="loading" :data="flows" border>
-        <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
-        <ElTableColumn label="类型" width="90">
-          <template #default="{ row }">
-            <ElTag>{{ bizText(row.bizType) }}</ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="资产" min-width="180" prop="assetName" />
-        <ElTableColumn label="当前节点" min-width="140">
-          <template #default="{ row }">
-            <span v-if="row.currentNodeIds?.length === 1">
-              {{ row.bpmnTokens?.[row.currentNodeIds[0]]?.nodeName || '-' }}
-            </span>
-            <span v-else-if="row.currentNodeIds?.length > 1">
-              {{ row.currentNodeIds.length }} 个并行节点
-            </span>
-            <span v-else>-</span>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="状态" width="100">
-          <template #default="{ row }">
-            {{ statusText(row.status) }}
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="事由" min-width="220" prop="reason" />
-      </ElTable>
+      <div class="mine-table-panel">
+        <ElTable v-loading="loading" :data="flows" border>
+          <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
+          <ElTableColumn label="类型" width="100" align="center">
+            <template #default="{ row }">
+              <ElTag
+                :type="row.bizType === 'borrow' ? 'success' : row.bizType === 'transfer' ? 'warning' : 'info'"
+                size="small"
+              >
+                {{ bizText(row.bizType) }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="资产" min-width="180" prop="assetName" />
+          <ElTableColumn label="当前节点" min-width="150">
+            <template #default="{ row }">
+              <span v-if="row.currentNodeIds?.length === 1">
+                {{ row.bpmnTokens?.[row.currentNodeIds[0]]?.nodeName || '-' }}
+              </span>
+              <ElTag v-else-if="row.currentNodeIds?.length > 1" type="info" size="small">
+                {{ row.currentNodeIds.length }} 个并行节点
+              </ElTag>
+              <span v-else class="mine-empty-text">-</span>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <ElTag
+                :type="row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'danger' : 'warning'"
+                size="small"
+              >
+                {{ statusText(row.status) }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="申请事由" min-width="220" prop="reason" />
+        </ElTable>
+      </div>
 
-      <ElDialog v-model="dialogVisible" title="发起申请" width="520px">
-        <ElForm label-width="88px">
-          <ElFormItem label="申请类型">
+      <ElDialog v-model="dialogVisible" title="发起申请" width="540px">
+        <ElForm label-width="100px">
+          <ElFormItem label="申请类型" required>
             <ElSelect v-model="form.bizType" style="width: 100%">
               <ElOption label="借用" value="borrow" />
               <ElOption label="转让" value="transfer" />
               <ElOption label="归还" value="return" />
             </ElSelect>
           </ElFormItem>
-          <ElFormItem label="资产">
+          <ElFormItem label="资产" required>
             <ElSelect v-model="form.assetId" filterable placeholder="选择资产" style="width: 100%">
               <ElOption
                 v-for="asset in assets"
@@ -156,11 +169,11 @@ onMounted(loadData);
               />
             </ElSelect>
           </ElFormItem>
-          <ElFormItem v-if="showReturnDate" label="归还日期">
+          <ElFormItem v-if="showReturnDate" label="归还日期" required>
             <ElInput v-model="form.returnDate" placeholder="YYYY-MM-DD，借用时填写" />
           </ElFormItem>
           <ElFormItem label="申请事由">
-            <ElInput v-model="form.reason" :rows="3" type="textarea" />
+            <ElInput v-model="form.reason" :rows="3" type="textarea" placeholder="请输入申请事由" />
           </ElFormItem>
         </ElForm>
         <template #footer>
@@ -171,3 +184,129 @@ onMounted(loadData);
     </div>
   </re-page>
 </template>
+
+<style scoped>
+/* ========== 设计系统规范 ========== */
+.mine-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  min-height: calc(100vh - 112px);
+}
+
+/* ========== 页面头部 ========== */
+.mine-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.mine-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 28px;
+  color: #1e293b;
+  letter-spacing: -0.02em;
+}
+
+.mine-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+.mine-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* ========== 表格面板 ========== */
+.mine-table-panel {
+  flex: 1;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.mine-table-panel :deep(.el-table) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.mine-table-panel :deep(.el-table th.el-table__cell) {
+  background: #f8f9fa;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.mine-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.mine-table-panel :deep(.el-table td.el-table__cell),
+.mine-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: #e8e9eb;
+}
+
+.mine-table-panel :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+}
+
+.mine-empty-text {
+  font-size: 14px;
+  line-height: 20px;
+  color: #94a3b8;
+}
+
+/* ========== 对话框优化 ========== */
+:deep(.el-dialog) {
+  border-radius: 12px;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e8e9eb;
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid #e8e9eb;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+:deep(.el-form-item__label) {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: #475569;
+}
+
+:deep(.el-input__inner) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+:deep(.el-textarea__inner) {
+  font-size: 14px;
+  line-height: 20px;
+}
+</style>

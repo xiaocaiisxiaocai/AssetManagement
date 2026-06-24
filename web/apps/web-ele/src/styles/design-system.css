@@ -1,0 +1,277 @@
+/* ========== 部门资产管理系统 - 统一设计系统样式 ========== */
+
+/* ========== 页面容器 ========== */
+.page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  min-height: calc(100vh - 112px);
+}
+
+/* ========== 页面头部 ========== */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.page-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 28px;
+  color: #1e293b;
+  letter-spacing: -0.02em;
+}
+
+.page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+.page-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* ========== 筛选面板 ========== */
+.filter-panel {
+  padding: 16px 20px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.filter-form .el-form-item {
+  margin-bottom: 0;
+  margin-right: 12px;
+}
+
+.filter-form .el-form-item__label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 32px !important;
+  color: #475569;
+  padding: 0 8px 0 0 !important;
+}
+
+.filter-form .el-form-item__content {
+  line-height: 32px;
+}
+
+/* ========== 表格面板 ========== */
+.table-panel {
+  flex: 1;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.table-panel-with-toolbar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 20px;
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.table-total {
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+.table-pagination {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ========== 表格样式 ========== */
+.table-panel .el-table,
+.table-panel-with-toolbar .el-table {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.table-panel .el-table th.el-table__cell,
+.table-panel-with-toolbar .el-table th.el-table__cell {
+  background: #f8f9fa;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.table-panel .el-table--border,
+.table-panel-with-toolbar .el-table--border {
+  border: none;
+}
+
+.table-panel .el-table td.el-table__cell,
+.table-panel .el-table th.el-table__cell,
+.table-panel-with-toolbar .el-table td.el-table__cell,
+.table-panel-with-toolbar .el-table th.el-table__cell {
+  border-color: #e8e9eb;
+}
+
+.table-panel .el-table .el-table__cell,
+.table-panel-with-toolbar .el-table .el-table__cell {
+  padding: 12px 0;
+}
+
+.table-panel .el-button + .el-button,
+.table-panel-with-toolbar .el-button + .el-button {
+  margin-left: 4px;
+}
+
+.table-panel .el-table__expand-icon,
+.table-panel-with-toolbar .el-table__expand-icon {
+  color: #3b82f6;
+}
+
+/* ========== 空状态文本 ========== */
+.empty-text {
+  font-size: 14px;
+  line-height: 20px;
+  color: #94a3b8;
+}
+
+/* ========== 对话框优化 ========== */
+.el-dialog {
+  border-radius: 12px;
+}
+
+.el-dialog__header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e8e9eb;
+}
+
+.el-dialog__body {
+  padding: 24px;
+}
+
+.el-dialog__footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e8e9eb;
+}
+
+.el-form-item {
+  margin-bottom: 20px;
+}
+
+.el-form-item__label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: #475569;
+}
+
+.el-input__inner {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.el-textarea__inner {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.el-descriptions {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.el-descriptions__label {
+  font-weight: 500;
+  color: #475569;
+}
+
+.el-descriptions__content {
+  color: #1e293b;
+}
+
+/* ========== 统计卡片 ========== */
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.stat-card {
+  padding: 24px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.stat-label {
+  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+  color: #1e293b;
+}
+
+.stat-value-success {
+  color: #10b981;
+}
+
+.stat-value-warning {
+  color: #f59e0b;
+}
+
+.stat-value-danger {
+  color: #ef4444;
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 1280px) {
+  .stat-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stat-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .page-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}

@@ -99,51 +99,56 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex items-center justify-between">
+    <div class="page-container">
+      <div class="page-header">
         <div>
-          <h2 class="text-lg font-semibold">组织架构</h2>
+          <h2 class="page-title">组织架构管理</h2>
+          <p class="page-subtitle">树形组织结构与部门信息维护</p>
         </div>
         <ElButton type="primary" @click="openCreate()">新增部门</ElButton>
       </div>
 
-      <ElTable
-        v-loading="loading"
-        :data="departments"
-        row-key="id"
-        border
-        default-expand-all
-      >
-        <ElTableColumn label="部门名称" min-width="180" prop="name" />
-        <ElTableColumn label="负责人" min-width="120" prop="managerName" />
-        <ElTableColumn label="资产数" min-width="90" prop="assetCount" />
-        <ElTableColumn label="状态" min-width="90">
-          <template #default="{ row }">
-            {{ row.isActive ? '启用' : '停用' }}
-          </template>
-        </ElTableColumn>
-        <ElTableColumn fixed="right" label="操作" width="220">
-          <template #default="{ row }">
-            <ElButton link type="primary" @click="openCreate(row)">
-              新增下级
-            </ElButton>
-            <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
-            <ElButton link type="danger" @click="remove(row)">删除</ElButton>
-          </template>
-        </ElTableColumn>
-      </ElTable>
+      <div class="table-panel">
+        <ElTable
+          v-loading="loading"
+          :data="departments"
+          row-key="id"
+          border
+          default-expand-all
+        >
+          <ElTableColumn label="部门名称" min-width="200" prop="name" />
+          <ElTableColumn label="负责人" min-width="140" prop="managerName" />
+          <ElTableColumn label="资产数" min-width="100" align="center" prop="assetCount" />
+          <ElTableColumn label="状态" min-width="100" align="center">
+            <template #default="{ row }">
+              <ElTag :type="row.isActive ? 'success' : 'info'" size="small">
+                {{ row.isActive ? '启用' : '停用' }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn fixed="right" label="操作" width="240" align="center">
+            <template #default="{ row }">
+              <ElButton link type="primary" size="small" @click="openCreate(row)">
+                新增下级
+              </ElButton>
+              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+            </template>
+          </ElTableColumn>
+        </ElTable>
+      </div>
 
       <ElDialog
         v-model="dialogVisible"
         :title="editingId ? '编辑部门' : '新增部门'"
-        width="460px"
+        width="500px"
       >
-        <ElForm label-width="88px">
+        <ElForm label-width="100px">
           <ElFormItem label="上级 ID">
-            <ElInput v-model.number="form.parentId" clearable placeholder="留空为顶级" />
+            <ElInput v-model.number="form.parentId" clearable placeholder="留空为顶级部门" />
           </ElFormItem>
-          <ElFormItem label="部门名称">
-            <ElInput v-model="form.name" />
+          <ElFormItem label="部门名称" required>
+            <ElInput v-model="form.name" placeholder="请输入部门名称" />
           </ElFormItem>
           <ElFormItem label="启用状态">
             <ElSwitch v-model="form.isActive" />

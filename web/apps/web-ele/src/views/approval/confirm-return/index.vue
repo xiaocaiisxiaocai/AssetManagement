@@ -96,32 +96,33 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex items-center justify-between">
+    <div class="page-container">
+      <div class="page-header">
         <div>
-          <h2 class="text-lg font-semibold">待确认入库</h2>
+          <h2 class="page-title">待确认入库</h2>
+          <p class="page-subtitle">借用资产归还确认</p>
         </div>
-        <div class="text-sm font-medium">
-          共 <span class="text-lg text-primary">{{ total }}</span> 件待确认
+        <div class="page-actions">
+          <span class="table-total">共 <span style="font-size: 20px; font-weight: 600; color: #3b82f6;">{{ total }}</span> 件待确认</span>
         </div>
       </div>
 
-      <div v-if="pendingFlows.length === 0" class="rounded border border-dashed bg-card p-10 text-center text-muted-foreground">
-        暂无待确认的资产
+      <div v-if="pendingFlows.length === 0" class="table-panel" style="padding: 60px 20px; text-align: center;">
+        <div class="empty-text" style="font-size: 16px;">暂无待确认的资产</div>
       </div>
 
-      <div v-else class="space-y-3">
-        <div class="flex items-center justify-between text-sm text-muted-foreground">
-          <span>共 {{ total }} 件资产</span>
+      <div v-else class="table-panel-with-toolbar">
+        <div class="table-toolbar">
+          <span class="table-total">共 {{ total }} 件资产</span>
         </div>
 
         <ElTable v-loading="loading" :data="pendingFlows" border>
           <ElTableColumn label="流程编号" min-width="160" prop="flowNo" />
           <ElTableColumn label="资产编号" min-width="140" prop="assetNo" />
           <ElTableColumn label="资产名称" min-width="200" prop="assetName" />
-          <ElTableColumn label="借用类型" width="100">
+          <ElTableColumn label="借用类型" width="100" align="center">
             <template #default="{ row }">
-              <ElTag>{{ bizText(row.bizType) }}</ElTag>
+              <ElTag type="success" size="small">{{ bizText(row.bizType) }}</ElTag>
             </template>
           </ElTableColumn>
           <ElTableColumn label="借用人" min-width="130" prop="applicant" />
@@ -133,12 +134,13 @@ onMounted(loadData);
             </template>
           </ElTableColumn>
           <ElTableColumn label="借用事由" min-width="200" prop="reason" show-overflow-tooltip />
-          <ElTableColumn fixed="right" label="操作" width="120">
+          <ElTableColumn fixed="right" label="操作" width="120" align="center">
             <template #default="{ row }">
               <ElButton
                 :loading="confirming"
                 link
                 type="primary"
+                size="small"
                 @click="debouncedConfirmReturn(row)"
               >
                 确认入库
@@ -147,7 +149,7 @@ onMounted(loadData);
           </ElTableColumn>
         </ElTable>
 
-        <div v-if="total > query.pageSize" class="flex justify-end">
+        <div v-if="total > query.pageSize" class="table-pagination">
           <ElPagination
             v-model:current-page="query.page"
             :page-size="query.pageSize"
@@ -160,9 +162,3 @@ onMounted(loadData);
     </div>
   </re-page>
 </template>
-
-<style scoped>
-:deep(.el-table) {
-  font-size: 14px;
-}
-</style>

@@ -415,16 +415,6 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="asset-list-page p-5">
-      <div class="asset-page-header">
-        <div>
-          <h2 class="text-lg font-semibold">资产列表</h2>
-        </div>
-        <div class="flex flex-wrap justify-end gap-2">
-          <ElButton @click="openImport">批量导入</ElButton>
-          <ElButton @click="exportAssets">导出</ElButton>
-        </div>
-      </div>
-
       <section class="asset-workspace">
         <div class="asset-workspace-head">
           <div>
@@ -446,6 +436,10 @@ onMounted(async () => {
             >
               返回上一层
             </ElButton>
+            <template v-if="isAssetStage">
+              <ElButton @click="openImport">批量导入</ElButton>
+              <ElButton @click="exportAssets">导出Excel</ElButton>
+            </template>
             <ElButton
               v-if="isCategoryStage"
               type="primary"
@@ -500,6 +494,7 @@ onMounted(async () => {
               v-model="hierarchyKeyword"
               clearable
               placeholder="按编码/备注搜索"
+              style="width: 240px"
               @input="categoryPage = 1"
             />
             <ElButton @click="resetCategorySearch">重置</ElButton>
@@ -569,16 +564,18 @@ onMounted(async () => {
             <ElInput
               v-model="query.assetNo"
               clearable
-              placeholder="搜索资产编号..."
+              placeholder="资产编号"
+              style="width: 200px"
               @keyup.enter="search"
             />
             <ElInput
               v-model="query.name"
               clearable
-              placeholder="搜索资产名称..."
+              placeholder="资产名称"
+              style="width: 220px"
               @keyup.enter="search"
             />
-            <ElSelect v-model="query.status" clearable placeholder="状态" style="width: 140px">
+            <ElSelect v-model="query.status" clearable placeholder="状态" style="width: 110px">
               <ElOption
                 v-for="item in statusOptions"
                 :key="item.value"
@@ -586,56 +583,54 @@ onMounted(async () => {
                 :value="item.value"
               />
             </ElSelect>
-            <ElSelect
-              v-model="query.departmentId"
-              clearable
-              filterable
-              placeholder="归属部门"
-              style="width: 180px"
-            >
-              <ElOption
-                v-for="item in departmentOptions"
-                :key="item.id"
-                :label="item.label"
-                :value="item.id"
-              />
-            </ElSelect>
             <ElButton type="primary" @click="search">查询</ElButton>
             <ElButton @click="resetQuery">重置</ElButton>
-            <ElButton type="primary" @click="openCreate(hierarchyParent?.id)">新增资产</ElButton>
           </div>
 
           <div class="asset-table-panel">
             <div class="asset-table-summary">
               <div>
-                <div class="font-medium">{{ hierarchyParent?.code }}</div>
-                <div class="mt-1 text-sm text-muted-foreground">
-                  {{ hierarchyParent?.code }}，当前分类共 {{ selectedCategoryAssetCount }} 件资产
+                <div class="text-sm text-muted-foreground">
+                  当前分类共 {{ selectedCategoryAssetCount }} 件资产，检索结果 {{ total }} 条
                 </div>
               </div>
             </div>
-            <ElTable v-loading="loading" :data="assets" border>
-              <ElTableColumn type="selection" width="48" />
-              <ElTableColumn label="编号" min-width="170" prop="assetNo" sortable />
-              <ElTableColumn label="名称" min-width="150" prop="name" sortable />
-              <ElTableColumn label="类别" min-width="150" prop="categoryCode" />
-              <ElTableColumn label="状态" width="100">
+            <ElTable v-loading="loading" :data="assets" border stripe>
+              <ElTableColumn label="资产编号" min-width="160" prop="assetNo" sortable />
+              <ElTableColumn label="资产名称" min-width="180" prop="name" sortable show-overflow-tooltip />
+              <ElTableColumn label="归属部门" width="140" prop="departmentName" show-overflow-tooltip />
+              <ElTableColumn label="存放位置" width="140" prop="locationName" show-overflow-tooltip />
+              <ElTableColumn label="保管人" width="110" prop="custodianName" show-overflow-tooltip />
+              <ElTableColumn label="型号品牌" min-width="180" show-overflow-tooltip>
                 <template #default="{ row }">
-                  <ElTag :type="statusMeta(row.status).tag">
+                  <span v-if="row.model || row.brand">
+                    {{ row.model }} {{ row.brand }}
+                  </span>
+                </template>
+              </ElTableColumn>
+              <ElTableColumn label="数量" width="80" prop="quantity" align="center" />
+              <ElTableColumn label="照片" width="80" align="center">
+                <template #default="{ row }">
+                  <ElTag v-if="row.images && row.images.length > 0" size="small" type="success">
+                    {{ row.images.length }}
+                  </ElTag>
+                  <span v-else class="text-gray-400">-</span>
+                </template>
+              </ElTableColumn>
+              <ElTableColumn label="状态" width="90" align="center">
+                <template #default="{ row }">
+                  <ElTag :type="statusMeta(row.status).tag" size="small">
                     {{ statusMeta(row.status).label }}
                   </ElTag>
                 </template>
               </ElTableColumn>
-              <ElTableColumn label="归属部门" min-width="130" prop="departmentName" />
-              <ElTableColumn label="保管人" min-width="120" prop="custodianName" />
-              <ElTableColumn label="位置" min-width="130" prop="locationName" />
-              <ElTableColumn fixed="right" label="操作" width="240">
+              <ElTableColumn fixed="right" label="操作" width="240" align="center">
                 <template #default="{ row }">
-                  <ElButton link type="primary" @click="openDetail(row)">详情</ElButton>
-                  <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
-                  <ElButton link type="primary" @click="openBorrowDialog(row)">借用</ElButton>
-                  <ElButton link type="primary" @click="openTransferDialog(row)">转让</ElButton>
-                  <ElButton link type="danger" @click="debouncedRemove(row)">删除</ElButton>
+                  <ElButton link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
+                  <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+                  <ElButton link type="warning" size="small" @click="openBorrowDialog(row)">借用</ElButton>
+                  <ElButton link type="info" size="small" @click="openTransferDialog(row)">转让</ElButton>
+                  <ElButton link type="danger" size="small" @click="debouncedRemove(row)">删除</ElButton>
                 </template>
               </ElTableColumn>
             </ElTable>
@@ -671,6 +666,7 @@ onMounted(async () => {
         :default-category-id="formDefaultCategoryId"
         :department-options="departmentOptions"
         :location-options="locationOptions"
+        :users="users"
         @saved="onSaved"
       />
 
@@ -705,55 +701,52 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* ========== 设计系统规范 ========== */
+/* 间距系统: 4px 基础单位 */
+/* 圆角系统: 8px(小) 12px(中) 16px(大) */
+/* 字体系统: 12px(辅助) 14px(正文) 16px(小标题) 18px(标题) 20px(大标题) */
+/* 颜色系统: 见下方定义 */
+
+/* ========== 布局容器 ========== */
 .asset-list-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
   min-height: calc(100vh - 112px);
 }
 
-.asset-page-header,
-.asset-workspace-head,
-.asset-pager,
-.asset-filter-strip {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.asset-page-header,
 .asset-workspace {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: var(--el-bg-color);
-}
-
-.asset-page-header {
-  padding: 16px;
-}
-
-.asset-workspace {
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 12px;
+  gap: 20px;
   min-height: 560px;
-  padding: 12px;
+  padding: 20px;
   overflow: hidden;
 }
 
 .asset-workspace-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8e9eb;
 }
 
+/* ========== 标题与路径 ========== */
 .asset-section-title {
   margin-bottom: 8px;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
+  color: #1e293b;
+  line-height: 28px;
+  letter-spacing: -0.02em;
 }
 
 .asset-path {
@@ -763,11 +756,17 @@ onMounted(async () => {
   align-items: center;
   min-height: 32px;
   font-size: 14px;
+  line-height: 20px;
 }
 
 .asset-path a {
-  color: var(--el-color-primary);
+  color: #3b82f6;
   text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.asset-path a:hover {
+  color: #2563eb;
 }
 
 .asset-head-actions {
@@ -777,62 +776,79 @@ onMounted(async () => {
   justify-content: flex-end;
 }
 
+/* ========== 一级分类网格 ========== */
 .asset-root-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, 320px);
-  gap: 16px;
-  padding: 4px 0 12px;
+  gap: 20px;
+  padding: 12px 0 20px;
 }
 
 .asset-root-card {
   overflow: hidden;
   cursor: pointer;
-  border-radius: 8px;
-  border: 1px solid var(--el-border-color-lighter);
-  background: var(--el-bg-color);
-  box-shadow: var(--el-box-shadow-lighter);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  border-radius: 12px;
+  border: 1px solid #e8e9eb;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .asset-root-card:hover,
-.asset-root-card:focus-visible,
-.asset-class-row:hover,
-.asset-class-row:focus-visible {
-  border-color: var(--el-color-primary);
-  box-shadow: var(--el-box-shadow-light);
+.asset-root-card:focus-visible {
+  border-color: #3b82f6;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
   outline: none;
-  transform: translateY(-1px);
+  transform: translateY(-4px);
 }
 
 .asset-root-card-code {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 96px;
+  min-height: 120px;
   color: #fff;
-  background: linear-gradient(135deg, #00448f, #0b63bd);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.asset-root-card-code::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  pointer-events: none;
 }
 
 .asset-root-card-code span {
   max-width: calc(100% - 48px);
-  padding: 6px 14px;
+  padding: 8px 20px;
   overflow: hidden;
   font-size: 20px;
   font-weight: 700;
+  line-height: 28px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: rgb(255 255 255 / 18%);
-  border: 1px solid rgb(255 255 255 / 24%);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  position: relative;
+  z-index: 1;
 }
 
 .asset-root-card-body {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 14px;
+  gap: 16px;
   align-items: center;
-  min-height: 118px;
-  padding: 16px;
+  min-height: 120px;
+  padding: 20px;
+  background: linear-gradient(to bottom, #ffffff 0%, #f9fafb 100%);
 }
 
 .asset-root-actions {
@@ -844,19 +860,31 @@ onMounted(async () => {
 
 .asset-row-warning {
   font-size: 13px;
-  color: #d97706;
+  font-weight: 500;
+  line-height: 20px;
+  color: #f59e0b;
   white-space: nowrap;
 }
 
 .asset-row-warning::before {
   margin-right: 4px;
-  content: "⚠";
+  content: "●";
+  color: #fbbf24;
 }
 
 .asset-enter-link,
 .asset-enter-button {
-  color: var(--el-color-primary);
+  color: #3b82f6;
   white-space: nowrap;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 20px;
+  transition: color 0.2s ease;
+}
+
+.asset-enter-link:hover,
+.asset-enter-button:hover {
+  color: #2563eb;
 }
 
 .asset-enter-button {
@@ -866,51 +894,53 @@ onMounted(async () => {
   border: 0;
 }
 
+/* ========== 搜索栏 ========== */
 .asset-filter-strip {
+  display: flex;
+  gap: 12px;
+  align-items: center;
   flex-wrap: wrap;
   justify-content: flex-start;
-  padding: 12px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  box-shadow: var(--el-box-shadow-lighter);
+  padding: 16px 20px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .asset-filter-strip label {
+  font-size: 14px;
   font-weight: 500;
-  color: var(--el-text-color-regular);
+  line-height: 20px;
+  color: #475569;
 }
 
-.asset-filter-strip :deep(.el-input) {
-  max-width: 100%;
-}
-
-.asset-filter-strip > :deep(.el-input) {
-  flex: 1;
-  min-width: 260px;
-}
-
-.asset-filter-strip-final > :deep(.el-input) {
-  flex: 1 1 180px;
-  min-width: 180px;
-}
-
+/* ========== 分类列表 ========== */
 .asset-class-list {
   display: grid;
-  gap: 8px;
+  gap: 16px;
   overflow-y: auto;
 }
 
 .asset-class-row {
   display: grid;
   grid-template-columns: minmax(140px, 24%) 1fr auto;
-  min-height: 82px;
+  min-height: 96px;
   overflow: hidden;
   cursor: pointer;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: var(--el-bg-color);
-  box-shadow: var(--el-box-shadow-lighter);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.asset-class-row:hover,
+.asset-class-row:focus-visible {
+  border-color: #3b82f6;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+  outline: none;
+  transform: translateY(-4px);
 }
 
 .asset-class-code {
@@ -918,21 +948,38 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   min-width: 0;
-  padding: 8px 14px;
+  padding: 12px 16px;
   color: #fff;
-  background: linear-gradient(135deg, #00448f, #0b63bd);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.asset-class-code::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  pointer-events: none;
 }
 
 .asset-class-code span {
   max-width: 100%;
-  padding: 5px 13px;
+  padding: 6px 16px;
   overflow: hidden;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
+  line-height: 28px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: rgb(255 255 255 / 18%);
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 999px;
+  backdrop-filter: blur(10px);
+  position: relative;
+  z-index: 1;
 }
 
 .asset-class-main {
@@ -940,22 +987,25 @@ onMounted(async () => {
   min-width: 0;
   flex-direction: column;
   justify-content: center;
-  padding: 12px 20px;
+  padding: 16px 24px;
 }
 
 .asset-class-name {
   font-size: 16px;
   font-weight: 600;
-  color: var(--el-text-color-primary);
+  line-height: 24px;
+  color: #1e293b;
   white-space: pre-wrap;
   word-break: break-word;
+  letter-spacing: -0.01em;
 }
 
 .asset-class-desc {
-  margin-top: 6px;
+  margin-top: 8px;
   overflow: hidden;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -966,47 +1016,93 @@ onMounted(async () => {
   align-items: center;
   justify-content: flex-end;
   min-width: 360px;
-  padding: 12px 18px;
+  padding: 16px 20px;
 }
 
+/* ========== 空状态 ========== */
 .asset-empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 280px;
-  color: var(--el-text-color-secondary);
-  border: 1px dashed var(--el-border-color);
-  border-radius: 8px;
-  background: var(--el-fill-color-lighter);
+  min-height: 320px;
+  font-size: 14px;
+  line-height: 20px;
+  color: #94a3b8;
+  border: 2px dashed #e2e8f0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
+/* ========== 表格面板 ========== */
 .asset-table-panel {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .asset-table-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8e9eb;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
 }
 
 .asset-table-panel :deep(.el-table) {
   flex: 1;
 }
 
+.asset-table-panel :deep(.el-table th.el-table__cell) {
+  background: #f8f9fa;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.asset-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.asset-table-panel :deep(.el-table td.el-table__cell),
+.asset-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: #e8e9eb;
+}
+
+.asset-table-panel :deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
+  background: #fafbfc;
+}
+
+.asset-table-panel :deep(.el-table--enable-row-hover .el-table__body tr:hover > td) {
+  background-color: #f1f5f9 !important;
+}
+
+.asset-table-panel :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.asset-table-panel :deep(.el-button + .el-button) {
+  margin-left: 4px;
+}
+
+/* ========== 分页器 ========== */
 .asset-pager {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  padding: 12px 16px;
-  border-top: 1px solid var(--el-border-color-lighter);
-  background: var(--el-bg-color);
+  padding: 16px 20px;
+  border-top: 1px solid #e8e9eb;
+  background: #ffffff;
 }
 
 .asset-pager-left {
@@ -1015,15 +1111,16 @@ onMounted(async () => {
   gap: 8px;
   align-items: center;
   font-size: 14px;
-  color: var(--el-text-color-secondary);
+  line-height: 20px;
+  color: #64748b;
 }
 
 .asset-pager-divider {
-  color: var(--el-border-color);
+  color: #cbd5e1;
 }
 
+/* ========== 响应式 ========== */
 @media (max-width: 768px) {
-  .asset-page-header,
   .asset-workspace-head,
   .asset-pager {
     align-items: stretch;
@@ -1038,7 +1135,7 @@ onMounted(async () => {
   }
 
   .asset-class-code {
-    min-height: 72px;
+    min-height: 80px;
   }
 
   .asset-class-actions {

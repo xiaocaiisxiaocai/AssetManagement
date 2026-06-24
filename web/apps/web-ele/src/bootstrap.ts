@@ -28,6 +28,9 @@ import { Page } from '@vben/common-ui';
 import { ReVxeGrid } from './components/grid';
 import { ReModal } from "./components/modal";
 
+// 引入统一设计系统样式
+import './styles/design-system.css';
+
 async function bootstrap(namespace: string) {
   // 初始化组件适配器
   await initComponentAdapter();

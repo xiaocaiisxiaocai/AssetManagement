@@ -191,21 +191,23 @@ onMounted(async () => {
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex items-center justify-between">
+    <div class="user-page">
+      <div class="user-header">
         <div>
-          <h2 class="text-lg font-semibold">用户管理</h2>
+          <h2 class="user-title">用户管理</h2>
+          <p class="user-subtitle">系统用户账号与权限配置</p>
         </div>
         <ElButton type="primary" @click="openCreate">新增用户</ElButton>
       </div>
 
-      <div class="rounded border bg-card p-4">
-        <ElForm class="user-search-form" inline>
+      <div class="filter-panel">
+        <ElForm class="filter-form" inline>
           <ElFormItem label="搜索">
             <ElInput
               v-model="query.keyword"
               clearable
               placeholder="工号或姓名"
+              style="width: 240px"
               @keyup.enter="search"
             />
           </ElFormItem>
@@ -216,9 +218,9 @@ onMounted(async () => {
         </ElForm>
       </div>
 
-      <div class="space-y-3">
-        <div class="flex items-center justify-between text-sm text-muted-foreground">
-          <span>共 {{ total }} 条</span>
+      <div class="user-table-panel">
+        <div class="user-table-toolbar">
+          <span class="user-table-total">共 {{ total }} 条</span>
           <ElSelect v-model="query.pageSize" style="width: 140px" @change="search">
             <ElOption :value="20" label="每页 20 条" />
             <ElOption :value="50" label="每页 50 条" />
@@ -233,33 +235,33 @@ onMounted(async () => {
           <ElTableColumn label="角色" min-width="180">
             <template #default="{ row }">
               <template v-if="row.roleNames && row.roleNames.length">
-                <ElTag v-for="role in row.roleNames" :key="role" style="margin-right: 4px">
+                <ElTag v-for="role in row.roleNames" :key="role" size="small" style="margin-right: 4px">
                   {{ role }}
                 </ElTag>
               </template>
-              <span v-else class="text-muted-foreground">--</span>
+              <span v-else class="user-empty-text">--</span>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="状态" width="90">
+          <ElTableColumn label="状态" width="100" align="center">
             <template #default="{ row }">
-              <ElTag :type="row.isActive ? 'success' : 'danger'">
+              <ElTag :type="row.isActive ? 'success' : 'danger'" size="small">
                 {{ row.isActive ? '启用' : '禁用' }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn fixed="right" label="操作" width="280">
+          <ElTableColumn fixed="right" label="操作" width="300" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
-              <ElButton link type="primary" @click="resetPassword(row)">重置密码</ElButton>
-              <ElButton link :type="row.isActive ? 'danger' : 'primary'" @click="toggleStatus(row)">
+              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton link type="primary" size="small" @click="resetPassword(row)">重置密码</ElButton>
+              <ElButton link :type="row.isActive ? 'danger' : 'primary'" size="small" @click="toggleStatus(row)">
                 {{ row.isActive ? '禁用' : '启用' }}
               </ElButton>
-              <ElButton link type="danger" @click="remove(row)">删除</ElButton>
+              <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
             </template>
           </ElTableColumn>
         </ElTable>
 
-        <div class="flex justify-end">
+        <div class="user-pagination">
           <ElPagination
             v-model:current-page="query.page"
             :page-size="query.pageSize"
@@ -274,17 +276,17 @@ onMounted(async () => {
       <ElDialog
         v-model="dialogVisible"
         :title="editingId ? '编辑用户' : '新增用户'"
-        width="520px"
+        width="540px"
       >
         <ElForm label-width="100px">
-          <ElFormItem label="工号">
+          <ElFormItem label="工号" required>
             <ElInput
               v-model="form.employeeNo"
               :disabled="!!editingId"
               placeholder="新增用户时必填"
             />
           </ElFormItem>
-          <ElFormItem label="姓名">
+          <ElFormItem label="姓名" required>
             <ElInput v-model="form.name" placeholder="请输入姓名" />
           </ElFormItem>
           <ElFormItem label="邮箱">
@@ -337,7 +339,162 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* ========== 设计系统规范 ========== */
+.user-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  min-height: calc(100vh - 112px);
+}
+
+/* ========== 页面头部 ========== */
+.user-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.user-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 28px;
+  color: #1e293b;
+  letter-spacing: -0.02em;
+}
+
+.user-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+/* ========== 筛选面板 ========== */
+.user-filter-panel {
+  padding: 16px 20px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
 .user-search-form :deep(.el-form-item) {
   margin-bottom: 0;
+  margin-right: 12px;
+}
+
+.user-search-form :deep(.el-form-item__label) {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: #475569;
+}
+
+/* ========== 表格面板 ========== */
+.user-table-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 20px;
+}
+
+.user-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.user-table-total {
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+.user-empty-text {
+  font-size: 14px;
+  line-height: 20px;
+  color: #94a3b8;
+}
+
+.user-table-panel :deep(.el-table) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.user-table-panel :deep(.el-table th.el-table__cell) {
+  background: #f8f9fa;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.user-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.user-table-panel :deep(.el-table td.el-table__cell),
+.user-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: #e8e9eb;
+}
+
+.user-table-panel :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+}
+
+.user-table-panel :deep(.el-button + .el-button) {
+  margin-left: 4px;
+}
+
+.user-pagination {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ========== 对话框优化 ========== */
+:deep(.el-dialog) {
+  border-radius: 12px;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e8e9eb;
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid #e8e9eb;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+:deep(.el-form-item__label) {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: #475569;
+}
+
+:deep(.el-input__inner) {
+  font-size: 14px;
+  line-height: 20px;
 }
 </style>

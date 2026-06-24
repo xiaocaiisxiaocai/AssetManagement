@@ -111,111 +111,102 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="home-page p-5">
-      <section class="home-header">
-        <div>
-          <h2>首页</h2>
-        </div>
-        <div class="home-header-actions">
-          <ElButton @click="loadData">刷新</ElButton>
-          <ElButton type="primary" @click="go('/asset/list')">进入资产列表</ElButton>
-        </div>
-      </section>
-
+    <div class="workspace-container">
       <ElSkeleton :loading="loading" animated>
         <template #template>
-          <div class="home-grid">
-            <div v-for="index in 4" :key="index" class="home-card">
+          <div class="stat-cards">
+            <div v-for="index in 4" :key="index" class="stat-card">
               <ElSkeleton :rows="2" animated />
             </div>
           </div>
         </template>
 
         <template #default>
-          <section class="home-grid">
+          <section class="stat-cards" style="grid-template-columns: repeat(4, 1fr);">
             <button
               v-for="item in metricCards"
               :key="item.label"
-              class="metric-card"
-              :class="`metric-${item.tone}`"
+              class="stat-card workspace-stat-card"
+              :class="`workspace-stat-${item.tone}`"
               type="button"
               @click="go(item.path)"
             >
-              <span>{{ item.label }}</span>
-              <strong>{{ item.value }}</strong>
+              <div class="stat-label">{{ item.label }}</div>
+              <div class="stat-value">{{ item.value }}</div>
             </button>
           </section>
         </template>
       </ElSkeleton>
 
-      <section class="home-dashboard">
-        <ElCard class="home-panel" shadow="never">
+      <section class="workspace-dashboard">
+        <ElCard class="workspace-panel" shadow="never">
           <template #header>
-            <div class="card-head">
+            <div class="workspace-card-header">
               <span>资产概况</span>
               <ElButton link type="primary" @click="go('/report/summary')">
                 查看汇总
               </ElButton>
             </div>
           </template>
-          <div class="summary-strip">
-            <div>
+          <div class="workspace-summary">
+            <div class="workspace-summary-item">
               <span>严重逾期</span>
               <strong>{{ seriousOverdueCount }}</strong>
             </div>
           </div>
-          <ElTable :data="categoryTopRows" class="home-table mt-3" border>
+          <ElTable :data="categoryTopRows" class="workspace-table" border style="margin-top: 16px;">
             <ElTableColumn label="分类" min-width="180">
               <template #default="{ row }">
                 <ElTag size="small">{{ row.categoryCode }}</ElTag>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="总数" prop="total" width="90" />
-            <ElTableColumn label="在库" prop="available" width="90" />
-            <ElTableColumn label="借出" prop="borrowed" width="90" />
+            <ElTableColumn label="总数" prop="total" width="90" align="center" />
+            <ElTableColumn label="在库" prop="available" width="90" align="center" />
+            <ElTableColumn label="借出" prop="borrowed" width="90" align="center" />
           </ElTable>
         </ElCard>
 
-        <div class="home-side">
-          <ElCard class="home-panel home-todo-panel" shadow="never">
+        <div class="workspace-side">
+          <ElCard class="workspace-panel workspace-todo-panel" shadow="never">
             <template #header>
-              <div class="card-head">
+              <div class="workspace-card-header">
                 <span>待办提醒</span>
                 <ElButton link type="primary" @click="go('/approval/pending')">
                   处理审批
                 </ElButton>
               </div>
             </template>
-            <div class="todo-list">
-              <button type="button" @click="go('/approval/pending')">
+            <div class="workspace-todo-list">
+              <button class="workspace-todo-item" type="button" @click="go('/approval/pending')">
                 <span>待我审批</span>
                 <strong>{{ pendingApprovals.length }}</strong>
               </button>
-              <button type="button" @click="go('/approval/mine')">
+              <button class="workspace-todo-item" type="button" @click="go('/approval/mine')">
                 <span>我的审批中申请</span>
                 <strong>{{ pendingMineCount }}</strong>
               </button>
-              <button type="button" @click="go('/approval/confirm-return')">
+              <button class="workspace-todo-item" type="button" @click="go('/approval/confirm-return')">
                 <span>待确认入库</span>
                 <strong>{{ pendingReturns.length }}</strong>
               </button>
-              <button type="button" @click="go('/report/overdue')">
+              <button class="workspace-todo-item" type="button" @click="go('/report/overdue')">
                 <span>逾期未归还</span>
                 <strong>{{ overdueRows.length }}</strong>
               </button>
             </div>
           </ElCard>
 
-          <ElCard class="home-panel" shadow="never">
+          <ElCard class="workspace-panel" shadow="never">
             <template #header>
-              <div class="card-head">
+              <div class="workspace-card-header">
                 <span>快捷入口</span>
               </div>
             </template>
-            <div class="shortcut-grid">
+            <div class="workspace-shortcuts">
               <button
                 v-for="item in shortcuts"
                 :key="item.path"
+                class="workspace-shortcut-item"
                 type="button"
                 @click="go(item.path)"
               >
@@ -225,9 +216,9 @@ onMounted(loadData);
           </ElCard>
         </div>
 
-        <ElCard class="home-panel" shadow="never">
+        <ElCard class="workspace-panel" shadow="never">
           <template #header>
-            <div class="card-head">
+            <div class="workspace-card-header">
               <span>逾期资产</span>
               <ElButton link type="primary" @click="go('/report/overdue')">
                 查看全部
@@ -237,7 +228,7 @@ onMounted(loadData);
           <ElTable
             v-if="overdueRows.length"
             :data="overdueRows.slice(0, 5)"
-            class="home-table"
+            class="workspace-table"
             border
           >
             <ElTableColumn label="资产" min-width="180">
@@ -247,9 +238,9 @@ onMounted(loadData);
               </template>
             </ElTableColumn>
             <ElTableColumn label="借用人" prop="borrower" width="100" />
-            <ElTableColumn label="逾期天数" width="100">
+            <ElTableColumn label="逾期天数" width="120" align="center">
               <template #default="{ row }">
-                <ElTag :type="row.isSerious ? 'danger' : 'warning'">
+                <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">
                   {{ row.overdueDays }} 天
                 </ElTag>
               </template>
@@ -263,222 +254,230 @@ onMounted(loadData);
 </template>
 
 <style scoped>
-.home-page {
+.workspace-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  height: calc(100vh - 112px);
-  min-height: 0;
-  overflow: hidden;
+  gap: 20px;
+  padding: 20px;
 }
 
-.home-header,
-.home-card,
-.metric-card {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: var(--el-bg-color);
-}
-
-.home-header {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-  padding: 14px 18px;
-}
-
-.home-header h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.home-header-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.home-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  flex-shrink: 0;
-  gap: 12px;
-}
-
-.home-card,
-.metric-card {
-  min-height: 86px;
-  padding: 14px 16px;
-}
-
-.metric-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
+/* 统计卡片特殊样式 */
+.workspace-stat-card {
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.2s ease;
+  border: 1px solid #e8e9eb;
 }
 
-.metric-card:hover {
-  border-color: var(--el-color-primary);
-  box-shadow: var(--el-box-shadow-light);
+.workspace-stat-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+  transform: translateY(-2px);
 }
 
-.metric-card span {
-  color: var(--el-text-color-secondary);
+.workspace-stat-primary .stat-value {
+  color: #3b82f6;
 }
 
-.metric-card strong {
-  font-size: 26px;
-  line-height: 1;
+.workspace-stat-success .stat-value {
+  color: #10b981;
 }
 
-.metric-primary strong {
-  color: var(--el-color-primary);
+.workspace-stat-warning .stat-value {
+  color: #f59e0b;
 }
 
-.metric-success strong {
-  color: var(--el-color-success);
+.workspace-stat-danger .stat-value {
+  color: #ef4444;
 }
 
-.metric-warning strong {
-  color: var(--el-color-warning);
-}
-
-.metric-danger strong {
-  color: var(--el-color-danger);
-}
-
-.home-dashboard {
+/* 仪表板布局 */
+.workspace-dashboard {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr) minmax(0, 1fr);
-  gap: 12px;
-  min-height: 0;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr) minmax(0, 1fr);
+  gap: 20px;
+  max-height: calc(100vh - 240px);
+}
+
+.workspace-panel {
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
 }
 
-.home-panel {
-  min-width: 0;
+.workspace-panel :deep(.el-card__header) {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8e9eb;
+  background: #f8f9fa;
+  flex-shrink: 0;
+}
+
+.workspace-panel :deep(.el-card__body) {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
   min-height: 0;
-  overflow: hidden;
 }
 
-.home-panel :deep(.el-card__body) {
-  min-height: 0;
-  overflow: auto;
-}
-
-.home-side {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.home-todo-panel :deep(.el-card__body) {
-  overflow: hidden;
-}
-
-.home-table {
-  max-height: 260px;
-}
-
-.card-head {
+.workspace-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-weight: 600;
-}
-
-.summary-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-
-.summary-strip > div,
-.todo-list button,
-.shortcut-grid button {
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: var(--el-fill-color-lighter);
-}
-
-.summary-strip > div {
-  padding: 10px 12px;
-}
-
-.summary-strip span,
-.todo-list span {
-  color: var(--el-text-color-secondary);
-}
-
-.summary-strip strong {
-  display: block;
-  margin-top: 4px;
   font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  color: #1e293b;
 }
 
-.todo-list {
+/* 侧边栏布局 */
+.workspace-side {
   display: grid;
-  gap: 8px;
+  grid-template-rows: auto auto;
+  gap: 20px;
 }
 
-.todo-list button,
-.shortcut-grid button {
+/* 概况汇总 */
+.workspace-summary {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.workspace-summary-item {
+  padding: 16px;
+  border: 1px solid #e8e9eb;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+
+.workspace-summary-item span {
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+.workspace-summary-item strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+  color: #1e293b;
+}
+
+/* 待办列表 */
+.workspace-todo-list {
+  display: grid;
+  gap: 12px;
+}
+
+.workspace-todo-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 42px;
-  padding: 0 14px;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 1px solid #e8e9eb;
+  border-radius: 8px;
+  background: #ffffff;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.todo-list strong {
+.workspace-todo-item:hover {
+  border-color: #3b82f6;
+  background: #f0f7ff;
+}
+
+.workspace-todo-item span {
+  font-size: 14px;
+  line-height: 20px;
+  color: #475569;
+}
+
+.workspace-todo-item strong {
   font-size: 20px;
-  color: var(--el-color-primary);
+  font-weight: 600;
+  line-height: 28px;
+  color: #3b82f6;
 }
 
-.shortcut-grid {
+/* 快捷入口 */
+.workspace-shortcuts {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 
-.shortcut-grid button {
+.workspace-shortcut-item {
+  display: flex;
+  align-items: center;
   justify-content: center;
-  color: var(--el-color-primary);
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid #e8e9eb;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 14px;
+  line-height: 20px;
+  color: #3b82f6;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-@media (max-width: 1100px) {
-  .home-grid,
-  .home-dashboard,
-  .summary-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+.workspace-shortcut-item:hover {
+  border-color: #3b82f6;
+  background: #f0f7ff;
+}
+
+/* 表格样式 */
+.workspace-table :deep(.el-table) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.workspace-table :deep(.el-table th.el-table__cell) {
+  background: #f8f9fa;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.workspace-table :deep(.el-table--border) {
+  border: none;
+}
+
+.workspace-table :deep(.el-table td.el-table__cell),
+.workspace-table :deep(.el-table th.el-table__cell) {
+  border-color: #e8e9eb;
+}
+
+.workspace-table :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+}
+
+/* 响应式 */
+@media (max-width: 1280px) {
+  .workspace-dashboard {
+    grid-template-columns: repeat(2, 1fr);
   }
 
-  .home-dashboard {
-    overflow: auto;
+  .workspace-dashboard > :last-child {
+    grid-column: 1 / -1;
   }
 }
 
-@media (max-width: 720px) {
-  .home-grid,
-  .home-dashboard,
-  .summary-strip,
-  .shortcut-grid {
+@media (max-width: 768px) {
+  .workspace-dashboard {
     grid-template-columns: 1fr;
   }
 
-  .home-page {
-    height: auto;
-    overflow: visible;
+  .workspace-shortcuts {
+    grid-template-columns: 1fr;
   }
 }
 </style>

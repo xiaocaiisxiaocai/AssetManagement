@@ -92,37 +92,40 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex items-center justify-between">
+    <div class="page-container">
+      <div class="page-header">
         <div>
-          <h2 class="text-lg font-semibold">存放位置</h2>
+          <h2 class="page-title">存放位置管理</h2>
+          <p class="page-subtitle">维护资产存放位置信息</p>
         </div>
         <ElButton type="primary" @click="openCreate()">新增位置</ElButton>
       </div>
 
-      <ElTable
-        v-loading="loading"
-        :data="locations"
-        row-key="id"
-        border
-      >
-        <ElTableColumn label="位置名称" min-width="180" prop="name" />
-        <ElTableColumn fixed="right" label="操作" width="220">
-          <template #default="{ row }">
-            <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
-            <ElButton link type="danger" @click="remove(row)">删除</ElButton>
-          </template>
-        </ElTableColumn>
-      </ElTable>
+      <div class="table-panel">
+        <ElTable
+          v-loading="loading"
+          :data="locations"
+          row-key="id"
+          border
+        >
+          <ElTableColumn label="位置名称" min-width="240" prop="name" />
+          <ElTableColumn fixed="right" label="操作" width="200" align="center">
+            <template #default="{ row }">
+              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+            </template>
+          </ElTableColumn>
+        </ElTable>
+      </div>
 
       <ElDialog
         v-model="dialogVisible"
         :title="editingId ? '编辑位置' : '新增位置'"
-        width="460px"
+        width="500px"
       >
-        <ElForm label-width="88px">
-          <ElFormItem label="位置名称">
-            <ElInput v-model="form.name" />
+        <ElForm label-width="100px">
+          <ElFormItem label="位置名称" required>
+            <ElInput v-model="form.name" placeholder="请输入位置名称" />
           </ElFormItem>
         </ElForm>
         <template #footer>

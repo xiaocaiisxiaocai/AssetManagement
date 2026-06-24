@@ -61,39 +61,42 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex items-center justify-between">
+    <div class="page-container">
+      <div class="page-header">
         <div>
-          <h2 class="text-lg font-semibold">系统参数</h2>
+          <h2 class="page-title">系统参数配置</h2>
+          <p class="page-subtitle">键值对配置管理</p>
         </div>
-        <div class="flex gap-2">
+        <div class="page-actions">
           <ElButton @click="addRow">新增参数</ElButton>
           <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
         </div>
       </div>
 
-      <ElForm>
-        <ElTable v-loading="loading" :data="settings" border>
-          <ElTableColumn label="参数键" min-width="180">
-            <template #default="{ row }">
-              <ElInput v-model="row.key" />
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="参数值" min-width="160">
-            <template #default="{ row }">
-              <ElInput v-model="row.value" />
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="说明" min-width="240">
-            <template #default="{ row }">
-              <ElInput v-model="row.description" />
-            </template>
-          </ElTableColumn>
-        </ElTable>
-        <ElFormItem class="mt-4">
-          <ElButton :loading="saving" type="primary" @click="save">保存参数</ElButton>
-        </ElFormItem>
-      </ElForm>
+      <div class="table-panel">
+        <ElForm>
+          <ElTable v-loading="loading" :data="settings" border>
+            <ElTableColumn label="参数键" min-width="200">
+              <template #default="{ row }">
+                <ElInput v-model="row.key" placeholder="请输入参数键" />
+              </template>
+            </ElTableColumn>
+            <ElTableColumn label="参数值" min-width="180">
+              <template #default="{ row }">
+                <ElInput v-model="row.value" placeholder="请输入参数值" />
+              </template>
+            </ElTableColumn>
+            <ElTableColumn label="说明" min-width="260">
+              <template #default="{ row }">
+                <ElInput v-model="row.description" placeholder="请输入说明" />
+              </template>
+            </ElTableColumn>
+          </ElTable>
+          <ElFormItem style="margin-top: 20px;">
+            <ElButton :loading="saving" type="primary" @click="save">保存全部参数</ElButton>
+          </ElFormItem>
+        </ElForm>
+      </div>
     </div>
   </re-page>
 </template>

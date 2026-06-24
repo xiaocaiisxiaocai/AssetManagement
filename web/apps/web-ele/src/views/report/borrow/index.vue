@@ -100,16 +100,17 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="page-container">
+      <div class="page-header">
         <div>
-          <h2 class="text-lg font-semibold">借用明细</h2>
+          <h2 class="page-title">借用明细报表</h2>
+          <p class="page-subtitle">资产借用记录查询与导出</p>
         </div>
         <ElButton type="primary" @click="exportReport">导出</ElButton>
       </div>
 
-      <div class="rounded border bg-card p-4">
-        <ElForm inline>
+      <div class="filter-panel">
+        <ElForm class="filter-form" inline>
           <ElFormItem label="申请时间">
             <ElDatePicker
               v-model="query.dateRange"
@@ -119,13 +120,14 @@ onMounted(loadData);
               start-placeholder="开始日期"
               type="daterange"
               value-format="YYYY-MM-DD"
+              style="width: 240px"
             />
           </ElFormItem>
           <ElFormItem label="借用人ID">
-            <ElInput v-model.number="query.borrowerId" clearable placeholder="用户ID" />
+            <ElInput v-model.number="query.borrowerId" clearable placeholder="用户ID" style="width: 140px" />
           </ElFormItem>
           <ElFormItem label="分类ID">
-            <ElInput v-model.number="query.categoryId" clearable placeholder="分类ID" />
+            <ElInput v-model.number="query.categoryId" clearable placeholder="分类ID" style="width: 140px" />
           </ElFormItem>
           <ElFormItem label="状态">
             <ElSelect v-model="query.status" clearable placeholder="全部状态" style="width: 130px">
@@ -140,44 +142,46 @@ onMounted(loadData);
         </ElForm>
       </div>
 
-      <ElTable v-loading="loading" :data="rows" border>
-        <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
-        <ElTableColumn label="资产" min-width="220">
-          <template #default="{ row }">
-            <div>{{ row.assetName }}</div>
-            <ElTag size="small">{{ row.assetNo }}</ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="分类" min-width="170">
-          <template #default="{ row }">
-            <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
-            <span v-else>-</span>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="借用人" min-width="120" prop="borrower" />
-        <ElTableColumn label="部门" min-width="120" prop="borrowerDept" />
-        <ElTableColumn label="申请时间" min-width="160">
-          <template #default="{ row }">{{ row.applyTime?.replace('T', ' ').slice(0, 16) }}</template>
-        </ElTableColumn>
-        <ElTableColumn label="预计归还" min-width="120" prop="returnDate" />
-        <ElTableColumn label="状态" width="100">
-          <template #default="{ row }">
-            <ElTag :type="statusType(row.status)">{{ statusText(row.status) }}</ElTag>
-          </template>
-        </ElTableColumn>
-      </ElTable>
+      <div class="table-panel-with-toolbar">
+        <ElTable v-loading="loading" :data="rows" border>
+          <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
+          <ElTableColumn label="资产" min-width="220">
+            <template #default="{ row }">
+              <div>{{ row.assetName }}</div>
+              <ElTag size="small">{{ row.assetNo }}</ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="分类" min-width="170">
+            <template #default="{ row }">
+              <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
+              <span v-else class="empty-text">-</span>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="借用人" min-width="120" prop="borrower" />
+          <ElTableColumn label="部门" min-width="120" prop="borrowerDept" />
+          <ElTableColumn label="申请时间" min-width="160">
+            <template #default="{ row }">{{ row.applyTime?.replace('T', ' ').slice(0, 16) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="预计归还" min-width="120" prop="returnDate" />
+          <ElTableColumn label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <ElTag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</ElTag>
+            </template>
+          </ElTableColumn>
+        </ElTable>
 
-      <div class="flex justify-end">
-        <ElPagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          background
-          layout="total, sizes, prev, pager, next"
-          @current-change="loadData"
-          @size-change="search"
-        />
+        <div class="table-pagination">
+          <ElPagination
+            v-model:current-page="query.page"
+            v-model:page-size="query.pageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="total"
+            background
+            layout="total, sizes, prev, pager, next"
+            @current-change="loadData"
+            @size-change="search"
+          />
+        </div>
       </div>
     </div>
   </re-page>

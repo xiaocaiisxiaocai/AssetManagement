@@ -76,71 +76,74 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="page-container">
+      <div class="page-header">
         <div>
-          <h2 class="text-lg font-semibold">逾期资产</h2>
+          <h2 class="page-title">逾期资产报表</h2>
+          <p class="page-subtitle">逾期资产查询与催办</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="page-actions">
           <ElButton @click="loadData">刷新</ElButton>
           <ElButton :loading="reminding" type="warning" @click="remindBatch">批量催办</ElButton>
           <ElButton type="primary" @click="exportReport">导出</ElButton>
         </div>
       </div>
 
-      <div class="grid gap-3 md:grid-cols-3">
-        <div class="rounded border bg-card p-4">
-          <div class="text-sm text-muted-foreground">逾期资产</div>
-          <div class="mt-2 text-2xl font-semibold">{{ rows.length }}</div>
+      <div class="stat-cards">
+        <div class="stat-card">
+          <div class="stat-label">逾期资产</div>
+          <div class="stat-value stat-value-warning">{{ rows.length }}</div>
         </div>
-        <div class="rounded border bg-card p-4">
-          <div class="text-sm text-muted-foreground">严重逾期</div>
-          <div class="mt-2 text-2xl font-semibold">{{ seriousCount }}</div>
+        <div class="stat-card">
+          <div class="stat-label">严重逾期</div>
+          <div class="stat-value stat-value-danger">{{ seriousCount }}</div>
         </div>
-        <div class="rounded border bg-card p-4">
-          <div class="text-sm text-muted-foreground">已选资产</div>
-          <div class="mt-2 text-2xl font-semibold">{{ selectedRows.length }}</div>
+        <div class="stat-card">
+          <div class="stat-label">已选资产</div>
+          <div class="stat-value">{{ selectedRows.length }}</div>
         </div>
       </div>
 
-      <ElTable
-        v-loading="loading"
-        :data="rows"
-        border
-        row-key="assetId"
-        @selection-change="onSelectionChange"
-      >
-        <ElTableColumn type="selection" width="48" />
-        <ElTableColumn label="资产" min-width="220">
-          <template #default="{ row }">
-            <div>{{ row.assetName }}</div>
-            <ElTag size="small">{{ row.assetNo }}</ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="分类" min-width="170">
-          <template #default="{ row }">
-            <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
-            <span v-else>-</span>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="借用人" min-width="120" prop="borrower" />
-        <ElTableColumn label="部门" min-width="120" prop="borrowerDept" />
-        <ElTableColumn label="预计归还" min-width="120" prop="returnDate" />
-        <ElTableColumn label="逾期天数" width="110">
-          <template #default="{ row }">
-            <ElTag :type="row.isSerious ? 'danger' : 'warning'">
-              {{ row.overdueDays }} 天
-            </ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn fixed="right" label="操作" width="110">
-          <template #default="{ row }">
-            <ElButton :loading="reminding" link type="warning" @click="remind(row)">
-              催办
-            </ElButton>
-          </template>
-        </ElTableColumn>
-      </ElTable>
+      <div class="table-panel">
+        <ElTable
+          v-loading="loading"
+          :data="rows"
+          border
+          row-key="assetId"
+          @selection-change="onSelectionChange"
+        >
+          <ElTableColumn type="selection" width="48" />
+          <ElTableColumn label="资产" min-width="220">
+            <template #default="{ row }">
+              <div>{{ row.assetName }}</div>
+              <ElTag size="small">{{ row.assetNo }}</ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="分类" min-width="170">
+            <template #default="{ row }">
+              <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
+              <span v-else class="empty-text">-</span>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="借用人" min-width="120" prop="borrower" />
+          <ElTableColumn label="部门" min-width="120" prop="borrowerDept" />
+          <ElTableColumn label="预计归还" min-width="120" prop="returnDate" />
+          <ElTableColumn label="逾期天数" width="120" align="center">
+            <template #default="{ row }">
+              <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">
+                {{ row.overdueDays }} 天
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn fixed="right" label="操作" width="110" align="center">
+            <template #default="{ row }">
+              <ElButton :loading="reminding" link type="warning" size="small" @click="remind(row)">
+                催办
+              </ElButton>
+            </template>
+          </ElTableColumn>
+        </ElTable>
+      </div>
     </div>
   </re-page>
 </template>

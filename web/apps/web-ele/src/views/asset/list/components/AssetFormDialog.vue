@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type { AssetItem, AssetPayload, AssetStatus } from '#/api/asset';
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
+import type { UserDto } from '#/api/user';
 
 import { computed, reactive, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
@@ -34,6 +35,7 @@ const props = defineProps<{
   defaultCategoryId: number;
   departmentOptions: FlatOption[];
   locationOptions: FlatOption[];
+  users: UserDto[];
 }>();
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
@@ -52,6 +54,7 @@ const imageFileList = ref<UploadUserFile[]>([]);
 const form = reactive({
   brand: '',
   categoryId: 0,
+  custodianId: undefined as number | undefined,
   departmentId: undefined as number | undefined,
   locationId: undefined as number | undefined,
   model: '',
@@ -75,6 +78,7 @@ watch(visible, (opened) => {
     Object.assign(form, {
       brand: props.asset.brand ?? '',
       categoryId: props.asset.categoryId,
+      custodianId: props.asset.custodianId ?? undefined,
       departmentId: props.asset.departmentId ?? undefined,
       locationId: props.asset.locationId ?? undefined,
       model: props.asset.model ?? '',
@@ -92,6 +96,7 @@ watch(visible, (opened) => {
     Object.assign(form, {
       brand: '',
       categoryId: props.defaultCategoryId,
+      custodianId: undefined,
       departmentId: undefined,
       locationId: undefined,
       model: '',
@@ -107,6 +112,7 @@ function buildPayload(): AssetPayload {
   return {
     brand: form.brand,
     categoryId: form.categoryId,
+    custodianId: form.custodianId,
     departmentId: form.departmentId,
     images: imageFileList.value
       .map((f) => f.url ?? (f.response as { url?: string } | undefined)?.url)
@@ -223,6 +229,22 @@ const debouncedSave = useDebounceFn(save, 300);
             :key="item.id"
             :label="item.label"
             :value="item.id"
+          />
+        </ElSelect>
+      </ElFormItem>
+      <ElFormItem label="保管人">
+        <ElSelect
+          v-model="form.custodianId"
+          clearable
+          filterable
+          placeholder="选择保管人"
+          style="width: 100%"
+        >
+          <ElOption
+            v-for="user in users"
+            :key="user.id"
+            :label="user.realName"
+            :value="user.id"
           />
         </ElSelect>
       </ElFormItem>

@@ -106,16 +106,17 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="page-container">
+      <div class="page-header">
         <div>
-          <h2 class="text-lg font-semibold">审计日志</h2>
+          <h2 class="page-title">审计日志</h2>
+          <p class="page-subtitle">系统操作记录查询与追踪</p>
         </div>
         <ElButton type="primary" @click="exportReport">导出</ElButton>
       </div>
 
-      <div class="rounded border bg-card p-4">
-        <ElForm inline>
+      <div class="filter-panel">
+        <ElForm class="filter-form" inline>
           <ElFormItem label="时间">
             <ElDatePicker
               v-model="query.dateRange"
@@ -125,6 +126,7 @@ onMounted(loadData);
               start-placeholder="开始日期"
               type="daterange"
               value-format="YYYY-MM-DD"
+              style="width: 240px"
             />
           </ElFormItem>
           <ElFormItem label="操作">
@@ -136,10 +138,10 @@ onMounted(loadData);
             </ElSelect>
           </ElFormItem>
           <ElFormItem label="模块">
-            <ElInput v-model="query.module" clearable placeholder="模块/摘要关键字" />
+            <ElInput v-model="query.module" clearable placeholder="模块/摘要关键字" style="width: 180px" />
           </ElFormItem>
           <ElFormItem label="用户ID">
-            <ElInput v-model.number="query.userId" clearable placeholder="用户ID" />
+            <ElInput v-model.number="query.userId" clearable placeholder="用户ID" style="width: 120px" />
           </ElFormItem>
           <ElFormItem>
             <ElButton type="primary" @click="search">查询</ElButton>
@@ -148,35 +150,37 @@ onMounted(loadData);
         </ElForm>
       </div>
 
-      <ElTable v-loading="loading" :data="rows" border>
-        <ElTableColumn label="时间" min-width="170">
-          <template #default="{ row }">{{ formatTime(row.occurredAt) }}</template>
-        </ElTableColumn>
-        <ElTableColumn label="操作人" min-width="120">
-          <template #default="{ row }">{{ row.userName || row.userId || '-' }}</template>
-        </ElTableColumn>
-        <ElTableColumn label="操作" width="100">
-          <template #default="{ row }">
-            <ElTag :type="actionType(row.actionType)">{{ row.actionType }}</ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="模块" min-width="120" prop="targetType" />
-        <ElTableColumn label="目标ID" min-width="100" prop="targetId" />
-        <ElTableColumn label="摘要" min-width="260" prop="summary" />
-        <ElTableColumn label="IP" min-width="140" prop="ip" />
-      </ElTable>
+      <div class="table-panel-with-toolbar">
+        <ElTable v-loading="loading" :data="rows" border>
+          <ElTableColumn label="时间" min-width="170">
+            <template #default="{ row }">{{ formatTime(row.occurredAt) }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="操作人" min-width="120">
+            <template #default="{ row }">{{ row.userName || row.userId || '-' }}</template>
+          </ElTableColumn>
+          <ElTableColumn label="操作" width="100" align="center">
+            <template #default="{ row }">
+              <ElTag :type="actionType(row.actionType)" size="small">{{ row.actionType }}</ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="模块" min-width="120" prop="targetType" />
+          <ElTableColumn label="目标ID" min-width="100" prop="targetId" />
+          <ElTableColumn label="摘要" min-width="260" prop="summary" />
+          <ElTableColumn label="IP" min-width="140" prop="ip" />
+        </ElTable>
 
-      <div class="flex justify-end">
-        <ElPagination
-          v-model:current-page="query.page"
-          v-model:page-size="query.pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          background
-          layout="total, sizes, prev, pager, next"
-          @current-change="loadData"
-          @size-change="search"
-        />
+        <div class="table-pagination">
+          <ElPagination
+            v-model:current-page="query.page"
+            v-model:page-size="query.pageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="total"
+            background
+            layout="total, sizes, prev, pager, next"
+            @current-change="loadData"
+            @size-change="search"
+          />
+        </div>
       </div>
     </div>
   </re-page>

@@ -219,21 +219,23 @@ onMounted(async () => {
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex items-center justify-between">
+    <div class="role-page">
+      <div class="role-header">
         <div>
-          <h2 class="text-lg font-semibold">角色管理</h2>
+          <h2 class="role-title">角色管理</h2>
+          <p class="role-subtitle">角色权限与菜单授权配置</p>
         </div>
         <ElButton type="primary" @click="openCreate">新增角色</ElButton>
       </div>
 
-      <div class="rounded border bg-card p-4">
-        <ElForm class="role-search-form" inline>
+      <div class="filter-panel">
+        <ElForm class="filter-form" inline>
           <ElFormItem label="搜索">
             <ElInput
               v-model="query.keyword"
               clearable
               placeholder="角色名称或编码"
+              style="width: 240px"
               @keyup.enter="search"
             />
           </ElFormItem>
@@ -244,9 +246,9 @@ onMounted(async () => {
         </ElForm>
       </div>
 
-      <div class="space-y-3">
-        <div class="flex items-center justify-between text-sm text-muted-foreground">
-          <span>共 {{ total }} 条</span>
+      <div class="role-table-panel">
+        <div class="role-table-toolbar">
+          <span class="role-table-total">共 {{ total }} 条</span>
           <ElSelect v-model="query.pageSize" style="width: 140px" @change="search">
             <ElOption :value="20" label="每页 20 条" />
             <ElOption :value="50" label="每页 50 条" />
@@ -258,34 +260,34 @@ onMounted(async () => {
           <ElTableColumn label="角色编码" min-width="130" prop="code" />
           <ElTableColumn label="角色名称" min-width="160" prop="name" />
           <ElTableColumn label="描述" min-width="200" prop="description" />
-          <ElTableColumn label="权限数" width="90">
+          <ElTableColumn label="权限数" width="100" align="center">
             <template #default="{ row }">
               {{ row.permissionCount ?? 0 }}
             </template>
           </ElTableColumn>
-          <ElTableColumn label="菜单数" width="90">
+          <ElTableColumn label="菜单数" width="100" align="center">
             <template #default="{ row }">
               {{ row.menuCount ?? 0 }}
             </template>
           </ElTableColumn>
-          <ElTableColumn label="状态" width="90">
+          <ElTableColumn label="状态" width="100" align="center">
             <template #default="{ row }">
-              <ElTag :type="row.isActive ? 'success' : 'danger'">
+              <ElTag :type="row.isActive ? 'success' : 'danger'" size="small">
                 {{ row.isActive ? '启用' : '禁用' }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn fixed="right" label="操作" width="300">
+          <ElTableColumn fixed="right" label="操作" width="320" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
-              <ElButton link type="primary" @click="openPermDialog(row)">权限分配</ElButton>
-              <ElButton link type="primary" @click="openMenuDialog(row)">菜单授权</ElButton>
-              <ElButton link type="danger" @click="remove(row)">删除</ElButton>
+              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton link type="primary" size="small" @click="openPermDialog(row)">权限分配</ElButton>
+              <ElButton link type="primary" size="small" @click="openMenuDialog(row)">菜单授权</ElButton>
+              <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
             </template>
           </ElTableColumn>
         </ElTable>
 
-        <div class="flex justify-end">
+        <div class="role-pagination">
           <ElPagination
             v-model:current-page="query.page"
             :page-size="query.pageSize"
@@ -301,17 +303,17 @@ onMounted(async () => {
       <ElDialog
         v-model="dialogVisible"
         :title="editingId ? '编辑角色' : '新增角色'"
-        width="520px"
+        width="540px"
       >
         <ElForm label-width="100px">
-          <ElFormItem label="角色编码">
+          <ElFormItem label="角色编码" required>
             <ElInput
               v-model="form.code"
               :disabled="!!editingId"
               placeholder="新增角色时必填"
             />
           </ElFormItem>
-          <ElFormItem label="角色名称">
+          <ElFormItem label="角色名称" required>
             <ElInput v-model="form.name" placeholder="请输入角色名称" />
           </ElFormItem>
           <ElFormItem label="描述">
@@ -334,13 +336,13 @@ onMounted(async () => {
       </ElDialog>
 
       <!-- 权限分配弹窗 -->
-      <ElDialog v-model="permDialogVisible" title="权限分配" width="680px">
-        <div class="space-y-4">
+      <ElDialog v-model="permDialogVisible" title="权限分配" width="720px">
+        <div class="role-permission-panel">
           <template v-for="[module, perms] in permissionsByModule" :key="module">
-            <div class="rounded border p-3">
-              <div class="mb-2 font-semibold">{{ module }}</div>
+            <div class="role-permission-group">
+              <div class="role-permission-group-title">{{ module }}</div>
               <ElCheckboxGroup v-model="permissionForm.selectedPermissions">
-                <div class="grid grid-cols-2 gap-2">
+                <div class="role-permission-grid">
                   <ElCheckbox
                     v-for="perm in perms"
                     :key="perm.id"
@@ -348,7 +350,7 @@ onMounted(async () => {
                     border
                   >
                     {{ perm.name }}
-                    <span class="ml-1 text-xs text-muted-foreground">({{ perm.code }})</span>
+                    <span class="role-permission-code">({{ perm.code }})</span>
                   </ElCheckbox>
                 </div>
               </ElCheckboxGroup>
@@ -362,7 +364,7 @@ onMounted(async () => {
       </ElDialog>
 
       <!-- 菜单授权弹窗 -->
-      <ElDialog v-model="menuDialogVisible" title="菜单授权" width="560px">
+      <ElDialog v-model="menuDialogVisible" title="菜单授权" width="580px">
         <ElTree
           v-model="menuForm.selectedMenus"
           :data="menus"
@@ -381,7 +383,198 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* ========== 设计系统规范 ========== */
+.role-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  min-height: calc(100vh - 112px);
+}
+
+/* ========== 页面头部 ========== */
+.role-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.role-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 28px;
+  color: #1e293b;
+  letter-spacing: -0.02em;
+}
+
+.role-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+/* ========== 筛选面板 ========== */
+.role-filter-panel {
+  padding: 16px 20px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
 .role-search-form :deep(.el-form-item) {
   margin-bottom: 0;
+  margin-right: 12px;
+}
+
+.role-search-form :deep(.el-form-item__label) {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: #475569;
+}
+
+/* ========== 表格面板 ========== */
+.role-table-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 20px;
+}
+
+.role-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.role-table-total {
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+.role-table-panel :deep(.el-table) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.role-table-panel :deep(.el-table th.el-table__cell) {
+  background: #f8f9fa;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.role-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.role-table-panel :deep(.el-table td.el-table__cell),
+.role-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: #e8e9eb;
+}
+
+.role-table-panel :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+}
+
+.role-table-panel :deep(.el-button + .el-button) {
+  margin-left: 4px;
+}
+
+.role-pagination {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ========== 权限分配面板 ========== */
+.role-permission-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.role-permission-group {
+  padding: 16px;
+  border: 1px solid #e8e9eb;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+
+.role-permission-group-title {
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: #1e293b;
+}
+
+.role-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.role-permission-code {
+  margin-left: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: #94a3b8;
+}
+
+/* ========== 对话框优化 ========== */
+:deep(.el-dialog) {
+  border-radius: 12px;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e8e9eb;
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid #e8e9eb;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+:deep(.el-form-item__label) {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: #475569;
+}
+
+:deep(.el-input__inner) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+:deep(.el-textarea__inner) {
+  font-size: 14px;
+  line-height: 20px;
 }
 </style>

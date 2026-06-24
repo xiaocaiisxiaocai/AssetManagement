@@ -147,67 +147,71 @@ onMounted(loadData);
 
 <template>
   <re-page>
-    <div class="space-y-4 p-5">
-      <div class="flex items-center justify-between">
+    <div class="page-container">
+      <div class="page-header">
         <div>
-          <h2 class="text-lg font-semibold">资产分类编码树</h2>
+          <h2 class="page-title">资产分类编码树</h2>
+          <p class="page-subtitle">三级分类体系管理</p>
         </div>
         <ElButton type="primary" @click="openCreate()">新增顶级分类</ElButton>
       </div>
 
-      <ElTable
-        v-loading="loading"
-        :data="categories"
-        row-key="id"
-        border
-        default-expand-all
-      >
-        <ElTableColumn label="编码段" min-width="120" prop="codeSeg" />
-        <ElTableColumn label="完整编码" min-width="220">
-          <template #default="{ row }">
-            <ElTag>{{ row.code }}</ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="备注" min-width="220">
-          <template #default="{ row }">
-            <div class="category-remark">
-              {{ row.parentId ? row.remark || '-' : '-' }}
-            </div>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn fixed="right" label="操作" width="240">
-          <template #default="{ row }">
-            <ElButton
-              v-if="canCreateChild(row)"
-              link
-              type="primary"
-              @click="openCreate(row)"
-            >
-              新增下级
-            </ElButton>
-            <ElButton link type="primary" @click="openEdit(row)">编辑</ElButton>
-            <ElButton link type="danger" @click="remove(row)">删除</ElButton>
-          </template>
-        </ElTableColumn>
-      </ElTable>
+      <div class="table-panel">
+        <ElTable
+          v-loading="loading"
+          :data="categories"
+          row-key="id"
+          border
+          default-expand-all
+        >
+          <ElTableColumn label="编码段" min-width="140" prop="codeSeg" />
+          <ElTableColumn label="完整编码" min-width="200">
+            <template #default="{ row }">
+              <ElTag size="default">{{ row.code }}</ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="备注" min-width="260">
+            <template #default="{ row }">
+              <div class="category-remark">
+                {{ row.parentId ? row.remark || '-' : '-' }}
+              </div>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn fixed="right" label="操作" width="220" align="center">
+            <template #default="{ row }">
+              <ElButton
+                v-if="canCreateChild(row)"
+                link
+                type="primary"
+                size="small"
+                @click="openCreate(row)"
+              >
+                新增下级
+              </ElButton>
+              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+            </template>
+          </ElTableColumn>
+        </ElTable>
+      </div>
 
       <ElDialog
         v-model="dialogVisible"
         :title="editingId ? '编辑分类' : '新增分类'"
-        width="460px"
+        width="500px"
       >
-        <ElForm label-width="88px">
+        <ElForm label-width="100px">
           <ElFormItem label="上级分类">
-            <ElTag>{{ parentDisplay }}</ElTag>
+            <ElTag size="default">{{ parentDisplay }}</ElTag>
           </ElFormItem>
-          <ElFormItem label="编码段">
-            <ElInput v-model="form.codeSeg" />
+          <ElFormItem label="编码段" required>
+            <ElInput v-model="form.codeSeg" placeholder="请输入编码段" />
           </ElFormItem>
           <ElFormItem v-if="!isRootCategory" label="备注">
-            <ElInput v-model="form.remark" :rows="3" type="textarea" />
+            <ElInput v-model="form.remark" :rows="3" type="textarea" placeholder="请输入备注信息" />
           </ElFormItem>
           <ElFormItem label="完整编码">
-            <ElTag>{{ previewCode || '待输入' }}</ElTag>
+            <ElTag size="default" type="info">{{ previewCode || '待输入编码段' }}</ElTag>
           </ElFormItem>
         </ElForm>
         <template #footer>

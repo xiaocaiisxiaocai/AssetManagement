@@ -226,186 +226,301 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="pending-container">
-    <ElCard>
-      <template #header>
-        <div class="card-header">
-          <span class="title">待我审批</span>
-          <ElButton type="primary" @click="loadData" :loading="loading">
-            刷新
-          </ElButton>
+  <re-page>
+    <div class="pending-page">
+      <div class="pending-header">
+        <div>
+          <h2 class="pending-title">待我审批</h2>
+          <p class="pending-subtitle">需要我审批的待办事项</p>
         </div>
-      </template>
-
-      <ElTable :data="flows" v-loading="loading" stripe>
-        <ElTableColumn prop="flowNo" label="流程单号" width="180" />
-        <ElTableColumn prop="bizType" label="业务类型" width="100">
-          <template #default="{ row }">
-            <ElTag v-if="row.bizType === 'borrow'" type="success">
-              {{ getBizTypeLabel(row.bizType) }}
-            </ElTag>
-            <ElTag v-else-if="row.bizType === 'transfer'" type="warning">
-              {{ getBizTypeLabel(row.bizType) }}
-            </ElTag>
-            <ElTag v-else type="info">
-              {{ getBizTypeLabel(row.bizType) }}
-            </ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn prop="assetName" label="资产名称" min-width="150" />
-        <ElTableColumn prop="applicant" label="申请人" width="100" />
-        <ElTableColumn prop="applyTime" label="申请时间" width="160" />
-        <ElTableColumn label="当前节点" width="150">
-          <template #default="{ row }">
-            <span v-if="row.currentNodeIds.length === 1">
-              {{ row.bpmnTokens[row.currentNodeIds[0]]?.nodeName || '-' }}
-            </span>
-            <span v-else>
-              {{ row.currentNodeIds.length }} 个并行节点
-            </span>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn label="操作" width="120" fixed="right">
-          <template #default="{ row }">
-            <ElButton type="primary" link @click="openDetail(row)">
-              审批
-            </ElButton>
-          </template>
-        </ElTableColumn>
-      </ElTable>
-    </ElCard>
-
-    <!-- 审批对话框 -->
-    <ElDialog
-      v-model="detailVisible"
-      title="审批"
-      width="600px"
-      :close-on-click-modal="false"
-    >
-      <ElDescriptions v-if="selected" :column="2" border>
-        <ElDescriptionsItem label="流程单号">{{ selected.flowNo }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="业务类型">
-          {{ getBizTypeLabel(selected.bizType) }}
-        </ElDescriptionsItem>
-        <ElDescriptionsItem label="资产编号">{{ selected.assetNo }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="资产名称">{{ selected.assetName }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="申请人">{{ selected.applicant }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="申请部门">{{ selected.applicantDept || '-' }}</ElDescriptionsItem>
-        <ElDescriptionsItem label="申请时间" :span="2">
-          {{ selected.applyTime }}
-        </ElDescriptionsItem>
-        <ElDescriptionsItem label="申请理由" :span="2">
-          {{ selected.reason || '-' }}
-        </ElDescriptionsItem>
-        <ElDescriptionsItem v-if="selected.bizType === 'borrow'" label="归还日期" :span="2">
-          {{ selected.returnDate || '-' }}
-        </ElDescriptionsItem>
-        <ElDescriptionsItem v-if="currentNodeInfo" label="当前节点" :span="2">
-          {{ currentNodeInfo.names }}
-          <span v-if="currentNodeInfo.count > 1" style="color: #999">
-            ({{ currentNodeInfo.count }} 个并行节点)
-          </span>
-        </ElDescriptionsItem>
-        <ElDescriptionsItem v-if="activeNodeOptions.length > 1" label="处理节点" :span="2">
-          <ElSelect
-            v-model="selectedNodeId"
-            placeholder="请选择要处理的节点"
-            style="width: 100%"
-          >
-            <ElOption
-              v-for="item in activeNodeOptions"
-              :key="item.nodeId"
-              :label="item.nodeName"
-              :value="item.nodeId"
-            />
-          </ElSelect>
-        </ElDescriptionsItem>
-        <ElDescriptionsItem v-if="currentSignStates.length > 0" label="签核状态" :span="2">
-          <div class="sign-state-list">
-            <ElTag
-              v-for="item in currentSignStates"
-              :key="`${item.nodeId}-${item.name}`"
-              :type="item.signed ? 'success' : 'warning'"
-              size="small"
-            >
-              {{ item.name }} {{ item.signed ? '已签' : '待签' }}
-            </ElTag>
-          </div>
-        </ElDescriptionsItem>
-      </ElDescriptions>
-
-      <div style="margin-top: 20px">
-        <ElInput
-          v-model="opinion"
-          type="textarea"
-          :rows="3"
-          placeholder="请输入审批意见"
-        />
+        <ElButton type="primary" @click="loadData" :loading="loading">刷新</ElButton>
       </div>
 
-      <template #footer>
-        <ElButton @click="detailVisible = false">取消</ElButton>
-        <ElButton @click="openAddSign" :loading="addSignLoading">
-          加签
-        </ElButton>
-        <ElButton type="danger" @click="debouncedReject" :loading="actionLoading">
-          驳回
-        </ElButton>
-        <ElButton type="primary" @click="debouncedApprove" :loading="actionLoading">
-          通过
-        </ElButton>
-      </template>
-    </ElDialog>
+      <div class="pending-table-panel">
+        <ElTable :data="flows" v-loading="loading" border>
+          <ElTableColumn prop="flowNo" label="流程单号" width="180" />
+          <ElTableColumn prop="bizType" label="业务类型" width="120" align="center">
+            <template #default="{ row }">
+              <ElTag v-if="row.bizType === 'borrow'" type="success" size="small">
+                {{ getBizTypeLabel(row.bizType) }}
+              </ElTag>
+              <ElTag v-else-if="row.bizType === 'transfer'" type="warning" size="small">
+                {{ getBizTypeLabel(row.bizType) }}
+              </ElTag>
+              <ElTag v-else type="info" size="small">
+                {{ getBizTypeLabel(row.bizType) }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn prop="assetName" label="资产名称" min-width="160" />
+          <ElTableColumn prop="applicant" label="申请人" width="120" />
+          <ElTableColumn prop="applyTime" label="申请时间" width="170" />
+          <ElTableColumn label="当前节点" width="160">
+            <template #default="{ row }">
+              <span v-if="row.currentNodeIds.length === 1">
+                {{ row.bpmnTokens[row.currentNodeIds[0]]?.nodeName || '-' }}
+              </span>
+              <ElTag v-else type="info" size="small">
+                {{ row.currentNodeIds.length }} 个并行节点
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="操作" width="120" fixed="right" align="center">
+            <template #default="{ row }">
+              <ElButton type="primary" link size="small" @click="openDetail(row)">
+                审批
+              </ElButton>
+            </template>
+          </ElTableColumn>
+        </ElTable>
+      </div>
 
-    <ElDialog
-      v-model="addSignVisible"
-      title="加签"
-      width="420px"
-      :close-on-click-modal="false"
-    >
-      <ElSelect
-        v-model="addSignUser"
-        filterable
-        placeholder="选择加签人"
-        style="width: 100%"
+      <!-- 审批对话框 -->
+      <ElDialog
+        v-model="detailVisible"
+        title="审批"
+        width="640px"
+        :close-on-click-modal="false"
       >
-        <ElOption
-          v-for="user in users"
-          :key="user.id"
-          :label="`${user.name}（${user.employeeNo}）`"
-          :value="user.name"
-        />
-      </ElSelect>
+        <ElDescriptions v-if="selected" :column="2" border>
+          <ElDescriptionsItem label="流程单号">{{ selected.flowNo }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="业务类型">
+            {{ getBizTypeLabel(selected.bizType) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="资产编号">{{ selected.assetNo }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="资产名称">{{ selected.assetName }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="申请人">{{ selected.applicant }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="申请部门">{{ selected.applicantDept || '-' }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="申请时间" :span="2">
+            {{ selected.applyTime }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="申请理由" :span="2">
+            {{ selected.reason || '-' }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem v-if="selected.bizType === 'borrow'" label="归还日期" :span="2">
+            {{ selected.returnDate || '-' }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem v-if="currentNodeInfo" label="当前节点" :span="2">
+            {{ currentNodeInfo.names }}
+            <span v-if="currentNodeInfo.count > 1" class="pending-node-tip">
+              ({{ currentNodeInfo.count }} 个并行节点)
+            </span>
+          </ElDescriptionsItem>
+          <ElDescriptionsItem v-if="activeNodeOptions.length > 1" label="处理节点" :span="2">
+            <ElSelect
+              v-model="selectedNodeId"
+              placeholder="请选择要处理的节点"
+              style="width: 100%"
+            >
+              <ElOption
+                v-for="item in activeNodeOptions"
+                :key="item.nodeId"
+                :label="item.nodeName"
+                :value="item.nodeId"
+              />
+            </ElSelect>
+          </ElDescriptionsItem>
+          <ElDescriptionsItem v-if="currentSignStates.length > 0" label="签核状态" :span="2">
+            <div class="pending-sign-list">
+              <ElTag
+                v-for="item in currentSignStates"
+                :key="`${item.nodeId}-${item.name}`"
+                :type="item.signed ? 'success' : 'warning'"
+                size="small"
+              >
+                {{ item.name }} {{ item.signed ? '已签' : '待签' }}
+              </ElTag>
+            </div>
+          </ElDescriptionsItem>
+        </ElDescriptions>
 
-      <template #footer>
-        <ElButton @click="addSignVisible = false">取消</ElButton>
-        <ElButton type="primary" :loading="addSignLoading" @click="addSign">
-          确认加签
-        </ElButton>
-      </template>
-    </ElDialog>
-  </div>
+        <div class="pending-opinion-panel">
+          <ElInput
+            v-model="opinion"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入审批意见"
+          />
+        </div>
+
+        <template #footer>
+          <ElButton @click="detailVisible = false">取消</ElButton>
+          <ElButton @click="openAddSign" :loading="addSignLoading">
+            加签
+          </ElButton>
+          <ElButton type="danger" @click="debouncedReject" :loading="actionLoading">
+            驳回
+          </ElButton>
+          <ElButton type="primary" @click="debouncedApprove" :loading="actionLoading">
+            通过
+          </ElButton>
+        </template>
+      </ElDialog>
+
+      <!-- 加签对话框 -->
+      <ElDialog
+        v-model="addSignVisible"
+        title="加签"
+        width="460px"
+        :close-on-click-modal="false"
+      >
+        <ElSelect
+          v-model="addSignUser"
+          filterable
+          placeholder="选择加签人"
+          style="width: 100%"
+        >
+          <ElOption
+            v-for="user in users"
+            :key="user.id"
+            :label="`${user.name}（${user.employeeNo}）`"
+            :value="user.name"
+          />
+        </ElSelect>
+
+        <template #footer>
+          <ElButton @click="addSignVisible = false">取消</ElButton>
+          <ElButton type="primary" :loading="addSignLoading" @click="addSign">
+            确认加签
+          </ElButton>
+        </template>
+      </ElDialog>
+    </div>
+  </re-page>
 </template>
 
 <style scoped>
-.pending-container {
-  padding: 20px;
-}
-
-.card-header {
+/* ========== 设计系统规范 ========== */
+.pending-page {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  min-height: calc(100vh - 112px);
+}
+
+/* ========== 页面头部 ========== */
+.pending-header {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
-.title {
-  font-size: 16px;
+.pending-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
   font-weight: 600;
+  line-height: 28px;
+  color: #1e293b;
+  letter-spacing: -0.02em;
 }
 
-.sign-state-list {
+.pending-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: #64748b;
+}
+
+/* ========== 表格面板 ========== */
+.pending-table-panel {
+  flex: 1;
+  border: 1px solid #e8e9eb;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.pending-table-panel :deep(.el-table) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.pending-table-panel :deep(.el-table th.el-table__cell) {
+  background: #f8f9fa;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.pending-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.pending-table-panel :deep(.el-table td.el-table__cell),
+.pending-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: #e8e9eb;
+}
+
+.pending-table-panel :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+}
+
+/* ========== 审批详情 ========== */
+.pending-node-tip {
+  margin-left: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: #94a3b8;
+}
+
+.pending-sign-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+}
+
+.pending-opinion-panel {
+  margin-top: 20px;
+}
+
+/* ========== 对话框优化 ========== */
+:deep(.el-dialog) {
+  border-radius: 12px;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e8e9eb;
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid #e8e9eb;
+}
+
+:deep(.el-descriptions) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+:deep(.el-descriptions__label) {
+  font-weight: 500;
+  color: #475569;
+}
+
+:deep(.el-descriptions__content) {
+  color: #1e293b;
+}
+
+:deep(.el-input__inner) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+:deep(.el-textarea__inner) {
+  font-size: 14px;
+  line-height: 20px;
 }
 </style>
