@@ -8,7 +8,7 @@ public interface IRbacService
     Task<UserDto> CreateUserAsync(CreateUserRequest request);
     Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request);
     Task ResetPasswordAsync(int id);
-    Task ToggleUserStatusAsync(int id);
+    Task ToggleUserStatusAsync(int id, bool? isActive = null);
 
     Task<PagedResult<RoleDto>> GetRolesAsync(int page, int pageSize);
     Task<RoleDto> GetRoleAsync(int id);

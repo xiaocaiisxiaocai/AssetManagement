@@ -55,6 +55,7 @@ const PRESETS = [
     <VbenTooltip :disabled="!shouldOnHover" side="bottom">
       <template #trigger>
         <ThemeButton
+          :label="isDark ? '切换到浅色模式' : '切换到深色模式'"
           :model-value="isDark"
           type="icon"
           @update:model-value="handleChange"

@@ -29,7 +29,7 @@ async function handleUpdate(value: string) {
       :model-value="preferences.app.locale"
       @update:model-value="handleUpdate"
     >
-      <VbenIconButton>
+      <VbenIconButton aria-label="切换语言" title="切换语言">
         <Languages class="text-foreground size-4" />
       </VbenIconButton>
     </VbenDropdownRadioMenu>

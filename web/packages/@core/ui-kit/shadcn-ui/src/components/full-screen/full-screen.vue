@@ -21,7 +21,11 @@ isFullscreen.value = !!(
 );
 </script>
 <template>
-  <VbenIconButton @click="toggle">
+  <VbenIconButton
+    :aria-label="isFullscreen ? '退出全屏' : '进入全屏'"
+    :title="isFullscreen ? '退出全屏' : '进入全屏'"
+    @click="toggle"
+  >
     <Minimize v-if="isFullscreen" class="text-foreground size-4" />
     <Maximize v-else class="text-foreground size-4" />
   </VbenIconButton>

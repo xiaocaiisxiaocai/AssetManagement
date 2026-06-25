@@ -69,6 +69,10 @@ public class WorkflowService : IWorkflowService
 
         var asset = await _db.Assets.FindAsync(request.AssetId)
             ?? throw new BizException(4048, "资产不存在");
+        if (asset.IsDeleted)
+        {
+            throw new BizException(4048, "资产不存在");
+        }
 
         // 发起前校验资产状态
         if (workflow.BizType is "borrow" or "transfer" && asset.Status != AssetStatus.Available)

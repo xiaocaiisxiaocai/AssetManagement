@@ -24,7 +24,9 @@ export interface CategoryNode {
   children: CategoryNode[];
   code: string;
   codeSeg: string;
+  deletedAt?: null | string;
   id: number;
+  isDeleted: boolean;
   parentId?: null | number;
   remark?: null | string;
 }
@@ -81,8 +83,8 @@ export const updateDepartmentApi = (id: number, data: DepartmentPayload) =>
 export const deleteDepartmentApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<null>>(`/departments/${id}`));
 
-export const getCategoryTreeApi = () =>
-  unwrap(requestClient.get<ApiResult<CategoryNode[]>>('/categories/tree'));
+export const getCategoryTreeApi = (deleteStatus?: 'active' | 'all' | 'deleted') =>
+  unwrap(requestClient.get<ApiResult<CategoryNode[]>>('/categories/tree', { params: { deleteStatus } }));
 
 export const createCategoryApi = (data: CategoryPayload) =>
   unwrap(requestClient.post<ApiResult<CategoryNode>>('/categories', data));
@@ -92,6 +94,12 @@ export const updateCategoryApi = (id: number, data: CategoryPayload) =>
 
 export const deleteCategoryApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<null>>(`/categories/${id}`));
+
+export const purgeCategoryApi = (id: number) =>
+  unwrap(requestClient.delete<ApiResult<null>>(`/categories/${id}/purge`));
+
+export const restoreCategoryApi = (id: number) =>
+  unwrap(requestClient.post<ApiResult<null>>(`/categories/${id}/restore`));
 
 export const getLocationTreeApi = () =>
   unwrap(requestClient.get<ApiResult<LocationNode[]>>('/locations/tree'));

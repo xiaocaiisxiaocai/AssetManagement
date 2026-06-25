@@ -19,16 +19,16 @@ defineOptions({
     </div>
 
     <div class="mt-4 flex flex-wrap justify-center">
-      <VbenIconButton class="mb-3">
+      <VbenIconButton aria-label="微信登录" class="mb-3" title="微信登录">
         <MdiWechat />
       </VbenIconButton>
-      <VbenIconButton class="mb-3">
+      <VbenIconButton aria-label="QQ 登录" class="mb-3" title="QQ 登录">
         <MdiQqchat />
       </VbenIconButton>
-      <VbenIconButton class="mb-3">
+      <VbenIconButton aria-label="GitHub 登录" class="mb-3" title="GitHub 登录">
         <MdiGithub />
       </VbenIconButton>
-      <VbenIconButton class="mb-3">
+      <VbenIconButton aria-label="Google 登录" class="mb-3" title="Google 登录">
         <MdiGoogle />
       </VbenIconButton>
     </div>

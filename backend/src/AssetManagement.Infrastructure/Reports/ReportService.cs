@@ -19,13 +19,15 @@ public class ReportService : IReportService
 
     public async Task<AssetSummaryDto> GetSummaryAsync()
     {
+        var assets = _db.Assets.Where(x => !x.IsDeleted);
+
         // 优化：使用数据库聚合而非全部加载到内存
-        var total = await _db.Assets.CountAsync();
-        var available = await _db.Assets.CountAsync(x => x.Status == AssetStatus.Available);
-        var borrowed = await _db.Assets.CountAsync(x => x.Status == AssetStatus.Borrowed);
+        var total = await assets.CountAsync();
+        var available = await assets.CountAsync(x => x.Status == AssetStatus.Available);
+        var borrowed = await assets.CountAsync(x => x.Status == AssetStatus.Borrowed);
 
         // 按分类汇总（使用 GroupBy + Join 避免N+1）
-        var byCategory = await _db.Assets
+        var byCategory = await assets
             .GroupBy(x => x.CategoryId)
             .Select(g => new
             {
@@ -34,7 +36,7 @@ public class ReportService : IReportService
                 Available = g.Count(x => x.Status == AssetStatus.Available),
                 Borrowed = g.Count(x => x.Status == AssetStatus.Borrowed)
             })
-            .Join(_db.AssetCategories, x => x.CategoryId, c => c.Id, (x, c) => new CategoryStatRow
+            .Join(_db.AssetCategories.Where(x => !x.IsDeleted), x => x.CategoryId, c => c.Id, (x, c) => new CategoryStatRow
             {
                 CategoryId = c.Id,
                 CategoryCode = c.Code,
@@ -47,7 +49,7 @@ public class ReportService : IReportService
             .ToListAsync();
 
         // 按部门汇总（仅汇总一级部门，简化计算）
-        var byDept = await _db.Assets
+        var byDept = await assets
             .Where(x => x.DepartmentId.HasValue)
             .GroupBy(x => x.DepartmentId!.Value)
             .Select(g => new
@@ -163,7 +165,7 @@ public class ReportService : IReportService
             .ToListAsync();
         var assetIds = flows.Select(x => x.AssetId).Distinct().ToArray();
         var borrowedAssets = await _db.Assets.AsNoTracking()
-            .Where(x => assetIds.Contains(x.Id) && x.Status == AssetStatus.Borrowed)
+            .Where(x => assetIds.Contains(x.Id) && !x.IsDeleted && x.Status == AssetStatus.Borrowed)
             .ToDictionaryAsync(x => x.Id);
         var today = DateTime.UtcNow.Date;
         var overdue = flows
@@ -226,7 +228,10 @@ public class ReportService : IReportService
 
     private IQueryable<ApprovalFlow> ApplyBorrowQuery(IQueryable<ApprovalFlow> queryable, BorrowReportQuery query)
     {
-        queryable = queryable.Where(x => x.BizType == "borrow" && x.Status == "approved");
+        queryable = queryable.Where(x =>
+            x.BizType == "borrow"
+            && x.Status == "approved"
+            && _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted));
         if (query.StartTime.HasValue)
         {
             queryable = queryable.Where(x => x.ApplyTime >= query.StartTime.Value);
@@ -247,15 +252,15 @@ public class ReportService : IReportService
             var status = query.Status.Trim().ToLowerInvariant();
             queryable = status switch
             {
-                "returned" => queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && a.Status == AssetStatus.Available)),
-                "borrowed" => queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && a.Status == AssetStatus.Borrowed)),
+                "returned" => queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted && a.Status == AssetStatus.Available)),
+                "borrowed" => queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted && a.Status == AssetStatus.Borrowed)),
                 _ => queryable
             };
         }
 
         if (query.CategoryId.HasValue)
         {
-            queryable = queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && a.CategoryId == query.CategoryId.Value));
+            queryable = queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted && a.CategoryId == query.CategoryId.Value));
         }
 
         return queryable;
@@ -265,9 +270,9 @@ public class ReportService : IReportService
     {
         var list = flows.ToList();
         var assetIds = list.Select(x => x.AssetId).Distinct().ToArray();
-        var assets = await _db.Assets.AsNoTracking().Where(x => assetIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        var assets = await _db.Assets.AsNoTracking().Where(x => assetIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
         var categoryIds = assets.Values.Select(x => x.CategoryId).Distinct().ToArray();
-        var categories = await _db.AssetCategories.AsNoTracking().Where(x => categoryIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        var categories = await _db.AssetCategories.AsNoTracking().Where(x => categoryIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
 
         return list.Select(x =>
         {
@@ -294,9 +299,9 @@ public class ReportService : IReportService
     private async Task<List<OverdueReportRow>> ToOverdueRows(List<(ApprovalFlow Flow, DateTime Due, int Days)> overdue)
     {
         var assetIds = overdue.Select(x => x.Flow.AssetId).Distinct().ToArray();
-        var assets = await _db.Assets.AsNoTracking().Where(x => assetIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        var assets = await _db.Assets.AsNoTracking().Where(x => assetIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
         var categoryIds = assets.Values.Select(x => x.CategoryId).Distinct().ToArray();
-        var categories = await _db.AssetCategories.AsNoTracking().Where(x => categoryIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        var categories = await _db.AssetCategories.AsNoTracking().Where(x => categoryIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
 
         return overdue.Select(x =>
         {

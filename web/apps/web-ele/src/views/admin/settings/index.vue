@@ -86,7 +86,7 @@ onMounted(loadData);
                 <ElInput v-model="row.value" placeholder="请输入参数值" />
               </template>
             </ElTableColumn>
-            <ElTableColumn label="说明" min-width="260">
+            <ElTableColumn class-name="hide-on-mobile" label="说明" min-width="260">
               <template #default="{ row }">
                 <ElInput v-model="row.description" placeholder="请输入说明" />
               </template>

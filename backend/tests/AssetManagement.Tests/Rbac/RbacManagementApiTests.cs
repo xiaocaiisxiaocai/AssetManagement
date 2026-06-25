@@ -101,7 +101,10 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             RoleIds = new[] { role.Data!.Id }
         });
 
-        await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data.Id}/permissions", new[] { permission.Data!.Id });
+        await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data.Id}/permissions", new
+        {
+            permissionIds = new[] { permission.Data!.Id }
+        });
         var tokenBody = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
             employeeNo = user.Data!.EmployeeNo,
@@ -113,6 +116,56 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var info = await _client.GetFromJsonAsync<ApiResult<UserInfoDto>>("/api/auth/user-info");
 
         info!.Data!.Permissions.Should().Contain(permissionCode);
+    }
+
+    [Fact]
+    public async Task Set_role_menu_accepts_frontend_request_body()
+    {
+        await Login();
+        var roleCode = Unique("menu_role");
+        var menuName = Unique("MenuDemo");
+
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = roleCode,
+            Name = "菜单授权角色",
+            IsActive = true
+        });
+        var menu = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = menuName,
+            Title = "菜单授权演示",
+            Path = $"/demo/{menuName}",
+            Component = "/demo/index",
+            Sort = 100,
+            Type = "menu"
+        });
+
+        var updated = await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data!.Id}/menus", new
+        {
+            menuIds = new[] { menu.Data!.Id }
+        });
+
+        updated.Data!.MenuIds.Should().Contain(menu.Data.Id);
+    }
+
+    [Fact]
+    public async Task Set_user_status_is_idempotent()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "状态测试用户",
+            RoleIds = Array.Empty<int>()
+        });
+
+        await Post<ApiResult<object?>>($"/api/users/{user.Data!.Id}/toggle-status", new { isActive = false });
+        await Post<ApiResult<object?>>($"/api/users/{user.Data.Id}/toggle-status", new { isActive = false });
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={employeeNo}");
+
+        list!.Data!.Items.Single().IsActive.Should().BeFalse();
     }
 
     private async Task Login()

@@ -82,11 +82,11 @@ public class RbacService : IRbacService
         await _db.SaveChangesAsync();
     }
 
-    public async Task ToggleUserStatusAsync(int id)
+    public async Task ToggleUserStatusAsync(int id, bool? isActive = null)
     {
         var user = await _db.Users.FindAsync(id)
             ?? throw new BizException(4041, "用户不存在");
-        user.IsActive = !user.IsActive;
+        user.IsActive = isActive ?? !user.IsActive;
         await _db.SaveChangesAsync();
     }
 

@@ -18,8 +18,8 @@ public class AssetCategoryController : ControllerBase
 
     [HttpGet("tree")]
     [HasPermission("asset:view")]
-    public async Task<ApiResult<List<CategoryNodeDto>>> Tree()
-        => ApiResult<List<CategoryNodeDto>>.Ok(await _service.GetCategoryTreeAsync());
+    public async Task<ApiResult<List<CategoryNodeDto>>> Tree([FromQuery] string? deleteStatus = null)
+        => ApiResult<List<CategoryNodeDto>>.Ok(await _service.GetCategoryTreeAsync(deleteStatus));
 
     [HttpPost]
     [HasPermission("asset:create")]
@@ -36,6 +36,22 @@ public class AssetCategoryController : ControllerBase
     public async Task<ApiResult<object?>> Delete(int id)
     {
         await _service.DeleteCategoryAsync(id);
+        return ApiResult.Ok();
+    }
+
+    [HttpDelete("{id:int}/purge")]
+    [HasPermission("asset:purge")]
+    public async Task<ApiResult<object?>> Purge(int id)
+    {
+        await _service.PurgeCategoryAsync(id);
+        return ApiResult.Ok();
+    }
+
+    [HttpPost("{id:int}/restore")]
+    [HasPermission("asset:restore")]
+    public async Task<ApiResult<object?>> Restore(int id)
+    {
+        await _service.RestoreCategoryAsync(id);
         return ApiResult.Ok();
     }
 }

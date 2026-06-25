@@ -235,6 +235,8 @@ async function handleReset() {
         <div class="flex items-center">
           <VbenIconButton
             :disabled="!diffPreference"
+            :aria-label="$t('preferences.resetTip')"
+            :title="$t('preferences.resetTip')"
             :tooltip="$t('preferences.resetTip')"
             class="relative"
           >

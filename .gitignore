@@ -25,3 +25,9 @@ backend/docs/
 web/output-*.png
 web/output-*.json
 web/perf-flow.cjs
+
+# 临时测试依赖与产物(playwright 等),不入库
+/node_modules/
+/package.json
+/package-lock.json
+test-screenshots/

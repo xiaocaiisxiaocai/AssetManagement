@@ -131,7 +131,10 @@ onMounted(() => {
         </div>
       </template>
     </Modal>
-    <div
+    <button
+      :aria-label="$t('ui.widgets.search.title')"
+      :title="$t('ui.widgets.search.title')"
+      type="button"
       class="md:bg-accent group flex h-8 cursor-pointer items-center gap-3 rounded-2xl border-none bg-none px-2 py-0.5 outline-none"
       @click="toggleOpen()"
     >
@@ -151,6 +154,6 @@ onMounted(() => {
         <kbd>K</kbd>
       </span>
       <span v-else></span>
-    </div>
+    </button>
   </div>
 </template>

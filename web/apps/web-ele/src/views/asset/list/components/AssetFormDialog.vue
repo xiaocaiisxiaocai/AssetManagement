@@ -243,7 +243,7 @@ const debouncedSave = useDebounceFn(save, 300);
           <ElOption
             v-for="user in users"
             :key="user.id"
-            :label="user.realName"
+            :label="user.name"
             :value="user.id"
           />
         </ElSelect>

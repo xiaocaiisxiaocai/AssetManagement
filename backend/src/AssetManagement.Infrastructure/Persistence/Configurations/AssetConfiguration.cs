@@ -18,6 +18,7 @@ public class AssetConfiguration : IEntityTypeConfiguration<Asset>
         b.HasIndex(x => x.AssetNo).IsUnique();
         b.HasIndex(x => x.CategoryId);
         b.HasIndex(x => x.DepartmentId);
+        b.HasIndex(x => x.IsDeleted);
         b.HasIndex(x => x.Status);
     }
 }

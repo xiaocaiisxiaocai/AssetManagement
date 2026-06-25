@@ -52,7 +52,7 @@ function handleUpdate(value: string) {
     :model-value="preferences.app.authPageLayout"
     @update:model-value="handleUpdate"
   >
-    <VbenIconButton>
+    <VbenIconButton aria-label="切换认证页布局" title="切换认证页布局">
       <PanelRight v-if="authPanelRight" class="size-4" />
       <PanelLeft v-if="authPanelLeft" class="size-4" />
       <InspectionPanel v-if="authPanelCenter" class="size-4" />

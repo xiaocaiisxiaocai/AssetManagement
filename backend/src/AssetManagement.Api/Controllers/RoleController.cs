@@ -46,12 +46,12 @@ public class RoleController : ControllerBase
 
     [HttpPut("{id:int}/permissions")]
     [HasPermission("admin:role")]
-    public async Task<ApiResult<RoleDto>> SetPermissions(int id, int[] permissionIds)
-        => ApiResult<RoleDto>.Ok(await _rbac.SetRolePermissionsAsync(id, permissionIds));
+    public async Task<ApiResult<RoleDto>> SetPermissions(int id, SetRolePermissionsRequest request)
+        => ApiResult<RoleDto>.Ok(await _rbac.SetRolePermissionsAsync(id, request.PermissionIds));
 
     [HttpPut("{id:int}/menus")]
     [HasPermission("admin:role")]
-    public async Task<ApiResult<RoleDto>> SetMenus(int id, int[] menuIds)
-        => ApiResult<RoleDto>.Ok(await _rbac.SetRoleMenusAsync(id, menuIds));
+    public async Task<ApiResult<RoleDto>> SetMenus(int id, SetRoleMenusRequest request)
+        => ApiResult<RoleDto>.Ok(await _rbac.SetRoleMenusAsync(id, request.MenuIds));
 }
 

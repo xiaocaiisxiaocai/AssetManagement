@@ -67,7 +67,11 @@ function handleClick(item: NotificationItem) {
   >
     <template #trigger>
       <div class="flex-center mr-2 h-full" @click.stop="toggle()">
-        <VbenIconButton class="bell-button text-foreground relative">
+        <VbenIconButton
+          aria-label="通知中心"
+          class="bell-button text-foreground relative"
+          title="通知中心"
+        >
           <span
             v-if="dot"
             class="bg-primary absolute right-0.5 top-0.5 h-2 w-2 rounded"
@@ -83,6 +87,8 @@ function handleClick(item: NotificationItem) {
         <VbenIconButton
           :disabled="notifications.length <= 0"
           :tooltip="$t('ui.widgets.markAllAsRead')"
+          aria-label="全部标记为已读"
+          title="全部标记为已读"
           @click="handleMakeAll"
         >
           <MailCheck class="size-4" />

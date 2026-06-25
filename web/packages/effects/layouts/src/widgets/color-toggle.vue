@@ -31,6 +31,8 @@ function handleUpdate(colorPrimary: string, type: BuiltinThemeType) {
       <template v-for="preset in COLOR_PRESETS" :key="preset.color">
         <VbenIconButton
           class="flex-center flex-shrink-0"
+          :aria-label="`切换主题色：${preset.type}`"
+          :title="`切换主题色：${preset.type}`"
           @click="handleUpdate(preset.color, preset.type)"
         >
           <div
@@ -56,7 +58,7 @@ function handleUpdate(colorPrimary: string, type: BuiltinThemeType) {
       </template>
     </div>
 
-    <VbenIconButton>
+    <VbenIconButton aria-label="主题色设置" title="主题色设置">
       <Palette class="text-primary size-4" />
     </VbenIconButton>
   </div>

@@ -21,6 +21,8 @@ public record AssetDto
     public int Quantity { get; init; }
     public AssetStatus Status { get; init; }
     public DateTime CreatedAt { get; init; }
+    public bool IsDeleted { get; init; }
+    public DateTime? DeletedAt { get; init; }
     public List<string> Images { get; init; } = new();
 }
 
@@ -31,6 +33,8 @@ public record AssetQuery
     public int? CategoryId { get; init; }
     public int? DepartmentId { get; init; }
     public AssetStatus? Status { get; init; }
+    public string? DeleteStatus { get; init; }
+    public bool DeletedOnly { get; init; }
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 20;
 }

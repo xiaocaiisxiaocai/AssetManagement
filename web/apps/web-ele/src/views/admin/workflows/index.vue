@@ -2,7 +2,6 @@
 import { defineAsyncComponent, onMounted, ref } from 'vue';
 import {
   ElButton,
-  ElCard,
   ElDialog,
   ElForm,
   ElFormItem,
@@ -166,7 +165,7 @@ onMounted(() => {
 
       <div class="table-panel">
         <ElTable :data="workflows" v-loading="loading" border>
-          <ElTableColumn prop="id" label="ID" width="80" align="center" />
+          <ElTableColumn class-name="hide-on-mobile" prop="id" label="ID" width="80" align="center" />
           <ElTableColumn prop="name" label="名称" min-width="180" />
           <ElTableColumn prop="bizType" label="业务类型" width="120" align="center">
             <template #default="{ row }">
@@ -176,7 +175,7 @@ onMounted(() => {
               <ElTag v-else size="small">{{ row.bizType }}</ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="BPMN 状态" width="120" align="center">
+          <ElTableColumn class-name="hide-on-mobile" label="BPMN 状态" width="120" align="center">
             <template #default="{ row }">
               <ElTag v-if="row.bpmnXml" type="success" size="small">已配置</ElTag>
               <ElTag v-else type="warning" size="small">未配置</ElTag>

@@ -8,7 +8,7 @@ defineProps<DropdownMenuProps>();
 </script>
 
 <template>
-  <VbenDropdownMenu :menus="menus" :modal="false">
+  <VbenDropdownMenu :menus="menus" :modal="false" trigger-label="更多标签操作">
     <div
       class="flex-center hover:bg-muted hover:text-foreground text-muted-foreground border-border h-full cursor-pointer border-l px-2 text-lg font-semibold"
     >

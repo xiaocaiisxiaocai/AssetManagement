@@ -118,7 +118,12 @@ function clearPreferencesAndLogout() {
   >
     <slot :name="slot.name">
       <template v-if="slot.name === 'refresh'">
-        <VbenIconButton class="my-0 mr-1 rounded-md" @click="refresh">
+        <VbenIconButton
+          aria-label="刷新页面"
+          class="my-0 mr-1 rounded-md"
+          title="刷新页面"
+          @click="refresh"
+        >
           <RotateCw class="size-4" />
         </VbenIconButton>
       </template>

@@ -119,15 +119,15 @@ onMounted(loadData);
               <ElTag size="small">{{ row.assetNo }}</ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="分类" min-width="170">
+          <ElTableColumn class-name="hide-on-mobile" label="分类" min-width="170">
             <template #default="{ row }">
               <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
               <span v-else class="empty-text">-</span>
             </template>
           </ElTableColumn>
           <ElTableColumn label="借用人" min-width="120" prop="borrower" />
-          <ElTableColumn label="部门" min-width="120" prop="borrowerDept" />
-          <ElTableColumn label="预计归还" min-width="120" prop="returnDate" />
+          <ElTableColumn class-name="hide-on-mobile" label="部门" min-width="120" prop="borrowerDept" />
+          <ElTableColumn class-name="hide-on-mobile" label="预计归还" min-width="120" prop="returnDate" />
           <ElTableColumn label="逾期天数" width="120" align="center">
             <template #default="{ row }">
               <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">

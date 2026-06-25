@@ -536,7 +536,9 @@ const idMainContent = ELEMENT_ID_MAIN_CONTENT;
           <template #toggle-button>
             <VbenIconButton
               v-if="showHeaderToggleButton"
+              aria-label="切换侧边栏折叠状态"
               class="my-0 mr-1 rounded-md"
+              title="切换侧边栏折叠状态"
               @click="handleHeaderToggle"
             >
               <Menu class="size-4" />

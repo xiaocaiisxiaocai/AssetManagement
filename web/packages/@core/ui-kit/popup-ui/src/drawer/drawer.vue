@@ -186,7 +186,7 @@ const getAppendTo = computed(() => {
             as-child
             class="data-[state=open]:bg-secondary ml-[2px] cursor-pointer rounded-full opacity-80 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
           >
-            <VbenIconButton>
+            <VbenIconButton aria-label="关闭抽屉" title="关闭抽屉">
               <X class="size-4" />
             </VbenIconButton>
           </SheetClose>

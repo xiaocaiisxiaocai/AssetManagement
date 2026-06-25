@@ -130,7 +130,13 @@ onMounted(loadData);
             />
           </ElFormItem>
           <ElFormItem label="操作">
-            <ElSelect v-model="query.actionType" clearable placeholder="全部操作" style="width: 130px">
+            <ElSelect
+              v-model="query.actionType"
+              aria-label="操作类型"
+              clearable
+              placeholder="全部操作"
+              style="width: 130px"
+            >
               <ElOption label="新增" value="POST" />
               <ElOption label="修改" value="PUT" />
               <ElOption label="删除" value="DELETE" />
@@ -163,10 +169,10 @@ onMounted(loadData);
               <ElTag :type="actionType(row.actionType)" size="small">{{ row.actionType }}</ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="模块" min-width="120" prop="targetType" />
-          <ElTableColumn label="目标ID" min-width="100" prop="targetId" />
+          <ElTableColumn class-name="hide-on-mobile" label="模块" min-width="120" prop="targetType" />
+          <ElTableColumn class-name="hide-on-mobile" label="目标ID" min-width="100" prop="targetId" />
           <ElTableColumn label="摘要" min-width="260" prop="summary" />
-          <ElTableColumn label="IP" min-width="140" prop="ip" />
+          <ElTableColumn class-name="hide-on-mobile" label="IP" min-width="140" prop="ip" />
         </ElTable>
 
         <div class="table-pagination">

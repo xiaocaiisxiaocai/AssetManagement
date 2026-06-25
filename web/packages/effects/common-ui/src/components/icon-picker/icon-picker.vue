@@ -162,8 +162,10 @@ defineExpose({ toggleOpenState, open, close });
         <VbenIconButton
           v-for="(item, index) in paginationList"
           :key="index"
+          :aria-label="`选择图标 ${item}`"
           :tooltip="item"
           tooltip-side="top"
+          :title="`选择图标 ${item}`"
           @click="handleClick(item)"
         >
           <VbenIcon

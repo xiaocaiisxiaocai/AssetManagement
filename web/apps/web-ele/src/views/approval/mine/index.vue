@@ -146,12 +146,12 @@ onMounted(loadData);
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="申请事由" min-width="220" prop="reason" />
+          <ElTableColumn class-name="hide-on-mobile" label="申请事由" min-width="220" prop="reason" />
         </ElTable>
       </div>
 
       <ElDialog v-model="dialogVisible" title="发起申请" width="540px">
-        <ElForm label-width="100px">
+        <ElForm class="start-approval-form" label-width="100px">
           <ElFormItem label="申请类型" required>
             <ElSelect v-model="form.bizType" style="width: 100%">
               <ElOption label="借用" value="borrow" />
@@ -201,10 +201,10 @@ onMounted(loadData);
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+  box-shadow: var(--asset-page-shadow);
 }
 
 .mine-title {
@@ -212,7 +212,7 @@ onMounted(loadData);
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
-  color: #1e293b;
+  color: var(--asset-page-text);
   letter-spacing: -0.02em;
 }
 
@@ -220,7 +220,7 @@ onMounted(loadData);
   margin: 0;
   font-size: 14px;
   line-height: 20px;
-  color: #64748b;
+  color: var(--asset-page-muted);
 }
 
 .mine-actions {
@@ -231,10 +231,10 @@ onMounted(loadData);
 /* ========== 表格面板 ========== */
 .mine-table-panel {
   flex: 1;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
   overflow: hidden;
 }
 
@@ -244,8 +244,8 @@ onMounted(loadData);
 }
 
 .mine-table-panel :deep(.el-table th.el-table__cell) {
-  background: #f8f9fa;
-  color: #475569;
+  background: var(--asset-page-surface-soft);
+  color: var(--asset-page-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
@@ -257,7 +257,7 @@ onMounted(loadData);
 
 .mine-table-panel :deep(.el-table td.el-table__cell),
 .mine-table-panel :deep(.el-table th.el-table__cell) {
-  border-color: #e8e9eb;
+  border-color: var(--asset-page-border);
 }
 
 .mine-table-panel :deep(.el-table .el-table__cell) {
@@ -267,7 +267,7 @@ onMounted(loadData);
 .mine-empty-text {
   font-size: 14px;
   line-height: 20px;
-  color: #94a3b8;
+  color: var(--asset-page-muted);
 }
 
 /* ========== 对话框优化 ========== */
@@ -277,7 +277,7 @@ onMounted(loadData);
 
 :deep(.el-dialog__header) {
   padding: 20px 24px;
-  border-bottom: 1px solid #e8e9eb;
+  border-bottom: 1px solid var(--asset-page-border);
 }
 
 :deep(.el-dialog__body) {
@@ -286,7 +286,7 @@ onMounted(loadData);
 
 :deep(.el-dialog__footer) {
   padding: 16px 24px;
-  border-top: 1px solid #e8e9eb;
+  border-top: 1px solid var(--asset-page-border);
 }
 
 :deep(.el-form-item) {
@@ -297,7 +297,12 @@ onMounted(loadData);
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
-  color: #475569;
+  color: var(--asset-page-text-secondary);
+}
+
+.start-approval-form :deep(.el-form-item__label) {
+  align-items: center;
+  line-height: var(--el-component-size);
 }
 
 :deep(.el-input__inner) {

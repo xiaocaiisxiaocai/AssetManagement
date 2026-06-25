@@ -9,6 +9,8 @@ public class AssetCategory : ICatNode
     public string CodeSeg { get; set; } = "";
     public string Code { get; set; } = "";
     public string? Remark { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
     public List<AssetCategory> Children { get; set; } = new();
 
     string ICatNode.Seg

@@ -14,6 +14,7 @@ public class AssetCategoryConfiguration : IEntityTypeConfiguration<AssetCategory
         b.Property(x => x.Code).HasMaxLength(200).IsRequired();
         b.Property(x => x.Remark).HasMaxLength(500);
         b.HasIndex(x => x.Code).IsUnique();
+        b.HasIndex(x => x.IsDeleted);
         b.HasIndex(x => x.ParentId);
         b.Ignore(x => x.Children);
     }

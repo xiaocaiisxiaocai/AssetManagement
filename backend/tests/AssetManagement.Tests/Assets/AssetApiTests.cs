@@ -93,6 +93,94 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Delete_asset_soft_deletes_then_purge_removes_it()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "待软删除资产",
+            CategoryId = category.Id,
+        });
+
+        var purgeBeforeDelete = await _client.DeleteAsync($"/api/assets/{created.Data!.Id}/purge");
+        var purgeBeforeDeleteBody = await purgeBeforeDelete.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        purgeBeforeDeleteBody!.Code.Should().Be(4097);
+
+        var softDelete = await _client.DeleteAsync($"/api/assets/{created.Data.Id}");
+        softDelete.EnsureSuccessStatusCode();
+        var repeatedDelete = await _client.DeleteAsync($"/api/assets/{created.Data.Id}");
+        var repeatedDeleteBody = await repeatedDelete.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        repeatedDeleteBody!.Code.Should().Be(4048);
+
+        var normalList = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?categoryId={category.Id}");
+        normalList!.Data!.Items.Should().NotContain(x => x.Id == created.Data.Id);
+
+        var allList = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?deleteStatus=all&categoryId={category.Id}");
+        allList!.Data!.Items.Should().ContainSingle(x => x.Id == created.Data.Id && x.IsDeleted);
+
+        var deletedList = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?deletedOnly=true");
+        deletedList!.Data!.Items.Should().ContainSingle(x => x.Id == created.Data.Id && x.IsDeleted);
+
+        var deletedByStatus = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?deleteStatus=deleted");
+        deletedByStatus!.Data!.Items.Should().ContainSingle(x => x.Id == created.Data.Id && x.IsDeleted);
+
+        // 已删除资产仍可查看详情(供主清单中已删除行的"详情"按钮使用)
+        var deletedDetail = await _client.GetFromJsonAsync<ApiResult<AssetDetailDto>>($"/api/assets/{created.Data.Id}/detail");
+        deletedDetail!.Code.Should().Be(0);
+        deletedDetail.Data!.Asset.IsDeleted.Should().BeTrue();
+
+        var purge = await _client.DeleteAsync($"/api/assets/{created.Data.Id}/purge");
+        purge.EnsureSuccessStatusCode();
+
+        var deletedAfterPurge = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?deletedOnly=true");
+        deletedAfterPurge!.Data!.Items.Should().NotContain(x => x.Id == created.Data.Id);
+    }
+
+    [Fact]
+    public async Task Soft_deleted_asset_can_be_restored()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "待恢复资产",
+            CategoryId = category.Id,
+        });
+
+        (await _client.DeleteAsync($"/api/assets/{created.Data!.Id}")).EnsureSuccessStatusCode();
+
+        var restore = await _client.PostAsync($"/api/assets/{created.Data.Id}/restore", null);
+        restore.EnsureSuccessStatusCode();
+
+        // 恢复后回到未删除列表
+        var normalList = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?categoryId={category.Id}");
+        normalList!.Data!.Items.Should().ContainSingle(x => x.Id == created.Data.Id && !x.IsDeleted);
+
+        // 未删除资产重复恢复应报错
+        var restoreAgain = await _client.PostAsync($"/api/assets/{created.Data.Id}/restore", null);
+        var restoreAgainBody = await restoreAgain.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        restoreAgainBody!.Code.Should().Be(4099);
+    }
+
+    [Fact]
+    public async Task Category_with_assets_cannot_be_soft_deleted()
+    {
+        await Login();
+        var category = await CreateCategory();
+        await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "分类占用资产",
+            CategoryId = category.Id,
+        });
+
+        var res = await _client.DeleteAsync($"/api/categories/{category.Id}");
+        var body = await res.Content.ReadFromJsonAsync<ApiResult<object?>>();
+
+        body!.Code.Should().Be(4098);
+    }
+
+    [Fact]
     public async Task Import_validate_previews_errors_and_confirm_imports_valid_rows()
     {
         await Login();

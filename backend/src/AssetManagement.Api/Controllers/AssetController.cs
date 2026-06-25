@@ -49,6 +49,22 @@ public class AssetController : ControllerBase
         return ApiResult.Ok();
     }
 
+    [HttpDelete("{id:int}/purge")]
+    [HasPermission("asset:purge")]
+    public async Task<ApiResult<object?>> Purge(int id)
+    {
+        await _service.PurgeAsync(id);
+        return ApiResult.Ok();
+    }
+
+    [HttpPost("{id:int}/restore")]
+    [HasPermission("asset:restore")]
+    public async Task<ApiResult<object?>> Restore(int id)
+    {
+        await _service.RestoreAsync(id);
+        return ApiResult.Ok();
+    }
+
     [HttpGet("export")]
     [HasPermission("asset:view")]
     public async Task<FileContentResult> Export([FromQuery] AssetQuery query)

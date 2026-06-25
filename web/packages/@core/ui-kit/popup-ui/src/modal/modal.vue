@@ -259,7 +259,9 @@ const getAppendTo = computed(() => {
 
       <VbenIconButton
         v-if="fullscreenButton"
+        :aria-label="fullscreen ? '退出全屏' : '切换为全屏'"
         class="hover:bg-accent hover:text-accent-foreground text-foreground/80 flex-center absolute right-10 top-3 hidden size-6 rounded-full px-1 text-lg opacity-70 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none sm:block"
+        :title="fullscreen ? '退出全屏' : '切换为全屏'"
         @click="handleFullscreen"
       >
         <Shrink v-if="fullscreen" class="size-3.5" />

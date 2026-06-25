@@ -21,6 +21,7 @@ import {
   ElSwitch,
   ElTable,
   ElTableColumn,
+  ElTag,
 } from 'element-plus';
 
 defineOptions({ name: 'AdminDepartments' });
@@ -117,8 +118,8 @@ onMounted(loadData);
           default-expand-all
         >
           <ElTableColumn label="部门名称" min-width="200" prop="name" />
-          <ElTableColumn label="负责人" min-width="140" prop="managerName" />
-          <ElTableColumn label="资产数" min-width="100" align="center" prop="assetCount" />
+          <ElTableColumn class-name="hide-on-mobile" label="负责人" min-width="140" prop="managerName" />
+          <ElTableColumn class-name="hide-on-mobile" label="资产数" min-width="100" align="center" prop="assetCount" />
           <ElTableColumn label="状态" min-width="100" align="center">
             <template #default="{ row }">
               <ElTag :type="row.isActive ? 'success' : 'info'" size="small">

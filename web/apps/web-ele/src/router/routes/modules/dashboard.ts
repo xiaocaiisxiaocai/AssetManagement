@@ -21,6 +21,7 @@ const routes: RouteRecordRaw[] = [
         meta: {
           hideInMenu: true,
           hideInTab: true,
+          title: '首页',
         },
       },
       {

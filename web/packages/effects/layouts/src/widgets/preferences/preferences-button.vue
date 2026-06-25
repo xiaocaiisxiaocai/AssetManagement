@@ -12,7 +12,7 @@ function clearPreferencesAndLogout() {
 </script>
 <template>
   <Preferences @clear-preferences-and-logout="clearPreferencesAndLogout">
-    <VbenIconButton>
+    <VbenIconButton aria-label="打开偏好设置" title="打开偏好设置">
       <Settings class="text-foreground size-4" />
     </VbenIconButton>
   </Preferences>

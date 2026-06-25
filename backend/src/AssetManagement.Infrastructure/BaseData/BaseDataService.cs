@@ -89,23 +89,37 @@ public class BaseDataService : IBaseDataService
         _cache.Remove("department_tree");
     }
 
-    public async Task<List<CategoryNodeDto>> GetCategoryTreeAsync()
+    public async Task<List<CategoryNodeDto>> GetCategoryTreeAsync(string? deleteStatus = null)
     {
+        // 删除状态:all=全部(含已删除),deleted=仅已删除,其余=仅未删除
+        var status = (deleteStatus?.Trim().ToLowerInvariant()) switch
+        {
+            "all" => "all",
+            "deleted" => "deleted",
+            _ => "active",
+        };
         // 从缓存获取分类树
-        return await _cache.GetOrCreateAsync(CategoryTreeCacheKey, async entry =>
+        return await _cache.GetOrCreateAsync($"{CategoryTreeCacheKey}:{status}", async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(AppConstants.CategoryTreeCacheMinutes);
-            var categories = await _db.AssetCategories
+            var queryable = _db.AssetCategories.AsQueryable();
+            queryable = status switch
+            {
+                "all" => queryable,
+                "deleted" => queryable.Where(x => x.IsDeleted),
+                _ => queryable.Where(x => !x.IsDeleted),
+            };
+            var categories = await queryable
                 .OrderBy(x => x.Code)
                 .ThenBy(x => x.Id)
                 .ToListAsync();
-            return BuildCategoryTree(null, categories);
+            return BuildCategoryTreeRoots(categories);
         }) ?? new List<CategoryNodeDto>();
     }
 
     public async Task<CategoryNodeDto> CreateCategoryAsync(CreateCategoryRequest request)
     {
-        var all = await _db.AssetCategories.ToListAsync();
+        var all = await _db.AssetCategories.Where(x => !x.IsDeleted).ToListAsync();
         var parent = FindCategory(request.ParentId, all);
         var newDepth = parent is null ? 1 : CategoryDepth(parent, all) + 1;
         EnsureCategoryMaxDepth(newDepth);
@@ -121,14 +135,14 @@ public class BaseDataService : IBaseDataService
         await _db.SaveChangesAsync();
 
         // 清除分类树缓存
-        _cache.Remove(CategoryTreeCacheKey);
+        ClearCategoryTreeCache();
 
         return ToCategoryDto(category);
     }
 
     public async Task<CategoryNodeDto> UpdateCategoryAsync(int id, UpdateCategoryRequest request)
     {
-        var all = await _db.AssetCategories.ToListAsync();
+        var all = await _db.AssetCategories.Where(x => !x.IsDeleted).AsTracking().ToListAsync();
         var category = all.SingleOrDefault(x => x.Id == id)
             ?? throw new BizException(4046, "资产分类不存在");
         var parent = FindCategory(request.ParentId, all);
@@ -150,22 +164,86 @@ public class BaseDataService : IBaseDataService
         await _db.SaveChangesAsync();
 
         // 清除分类树缓存
-        _cache.Remove(CategoryTreeCacheKey);
+        ClearCategoryTreeCache();
 
         return ToCategoryDto(category);
     }
 
     public async Task DeleteCategoryAsync(int id)
     {
-        var all = await _db.AssetCategories.ToListAsync();
+        var all = await _db.AssetCategories.AsTracking().ToListAsync();
         var root = all.SingleOrDefault(x => x.Id == id)
             ?? throw new BizException(4046, "资产分类不存在");
+        if (root.IsDeleted)
+        {
+            return;
+        }
         var ids = DescendantCategoryIds(id, all).Append(id).ToArray();
-        _db.AssetCategories.RemoveRange(all.Where(x => ids.Contains(x.Id)));
+        if (await _db.Assets.AnyAsync(x => ids.Contains(x.CategoryId)))
+        {
+            throw new BizException(4098, "该分类下存在资产，不能删除");
+        }
+
+        var now = DateTime.UtcNow;
+        foreach (var category in all.Where(x => ids.Contains(x.Id)))
+        {
+            category.IsDeleted = true;
+            category.DeletedAt = now;
+        }
         await _db.SaveChangesAsync();
 
         // 清除分类树缓存
-        _cache.Remove(CategoryTreeCacheKey);
+        ClearCategoryTreeCache();
+    }
+
+    public async Task PurgeCategoryAsync(int id)
+    {
+        var all = await _db.AssetCategories.AsTracking().ToListAsync();
+        var root = all.SingleOrDefault(x => x.Id == id)
+            ?? throw new BizException(4046, "资产分类不存在");
+        var ids = DescendantCategoryIds(id, all).Append(id).ToArray();
+        var subtree = all.Where(x => ids.Contains(x.Id)).ToList();
+        if (subtree.Any(x => !x.IsDeleted))
+        {
+            throw new BizException(4097, "请先删除分类后再彻底删除");
+        }
+        if (await _db.Assets.AnyAsync(x => ids.Contains(x.CategoryId)))
+        {
+            throw new BizException(4098, "该分类下存在资产，不能彻底删除");
+        }
+
+        _db.AssetCategories.RemoveRange(subtree);
+        await _db.SaveChangesAsync();
+        ClearCategoryTreeCache();
+    }
+
+    public async Task RestoreCategoryAsync(int id)
+    {
+        var all = await _db.AssetCategories.AsTracking().ToListAsync();
+        var root = all.SingleOrDefault(x => x.Id == id)
+            ?? throw new BizException(4046, "资产分类不存在");
+        if (!root.IsDeleted)
+        {
+            throw new BizException(4099, "分类未删除，无需恢复");
+        }
+        // 上级若仍处于删除状态,需先恢复上级,避免出现"孤儿"节点
+        if (root.ParentId.HasValue)
+        {
+            var parent = all.SingleOrDefault(x => x.Id == root.ParentId.Value);
+            if (parent is not null && parent.IsDeleted)
+            {
+                throw new BizException(4096, "请先恢复上级分类");
+            }
+        }
+        // 与删除对称:级联恢复该分类及其所有子孙
+        var ids = DescendantCategoryIds(id, all).Append(id).ToArray();
+        foreach (var category in all.Where(x => ids.Contains(x.Id) && x.IsDeleted))
+        {
+            category.IsDeleted = false;
+            category.DeletedAt = null;
+        }
+        await _db.SaveChangesAsync();
+        ClearCategoryTreeCache();
     }
 
     public async Task<List<LocationNodeDto>> GetLocationTreeAsync()
@@ -239,6 +317,21 @@ public class BaseDataService : IBaseDataService
                 return dto with { Children = BuildDepartmentTree(x.Id, departments, managers) };
             })
             .ToList();
+
+    private static List<CategoryNodeDto> BuildCategoryTreeRoots(List<AssetCategory> categories)
+    {
+        var ids = categories.Select(x => x.Id).ToHashSet();
+        return categories
+            .Where(x => !x.ParentId.HasValue || !ids.Contains(x.ParentId.Value))
+            .OrderBy(x => x.Code)
+            .ThenBy(x => x.Id)
+            .Select(x =>
+            {
+                var dto = ToCategoryDto(x);
+                return dto with { Children = BuildCategoryTree(x.Id, categories) };
+            })
+            .ToList();
+    }
 
     private static List<CategoryNodeDto> BuildCategoryTree(int? parentId, List<AssetCategory> categories)
         => categories
@@ -334,8 +427,17 @@ public class BaseDataService : IBaseDataService
         ParentId = x.ParentId,
         CodeSeg = x.CodeSeg,
         Code = x.Code,
-        Remark = x.ParentId.HasValue ? x.Remark : null
+        Remark = x.ParentId.HasValue ? x.Remark : null,
+        IsDeleted = x.IsDeleted,
+        DeletedAt = x.DeletedAt
     };
+
+    private void ClearCategoryTreeCache()
+    {
+        _cache.Remove($"{CategoryTreeCacheKey}:active");
+        _cache.Remove($"{CategoryTreeCacheKey}:all");
+        _cache.Remove($"{CategoryTreeCacheKey}:deleted");
+    }
 
     private static string? CategoryRemark(int? parentId, string? remark)
         => parentId.HasValue ? EmptyToNull(remark) : null;

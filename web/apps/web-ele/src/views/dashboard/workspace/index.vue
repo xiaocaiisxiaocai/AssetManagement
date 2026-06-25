@@ -122,7 +122,7 @@ onMounted(loadData);
         </template>
 
         <template #default>
-          <section class="stat-cards" style="grid-template-columns: repeat(4, 1fr);">
+          <section class="stat-cards workspace-stat-grid">
             <button
               v-for="item in metricCards"
               :key="item.label"
@@ -265,7 +265,11 @@ onMounted(loadData);
 .workspace-stat-card {
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
+}
+
+.workspace-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .workspace-stat-card:hover {
@@ -299,9 +303,9 @@ onMounted(loadData);
 }
 
 .workspace-panel {
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--asset-page-shadow);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -310,8 +314,8 @@ onMounted(loadData);
 
 .workspace-panel :deep(.el-card__header) {
   padding: 16px 20px;
-  border-bottom: 1px solid #e8e9eb;
-  background: #f8f9fa;
+  border-bottom: 1px solid var(--asset-page-border);
+  background: var(--asset-page-surface-soft);
   flex-shrink: 0;
 }
 
@@ -329,7 +333,7 @@ onMounted(loadData);
   font-size: 16px;
   font-weight: 600;
   line-height: 24px;
-  color: #1e293b;
+  color: var(--asset-page-text);
 }
 
 /* 侧边栏布局 */
@@ -348,15 +352,15 @@ onMounted(loadData);
 
 .workspace-summary-item {
   padding: 16px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: #f8f9fa;
+  background: var(--asset-page-surface-soft);
 }
 
 .workspace-summary-item span {
   font-size: 14px;
   line-height: 20px;
-  color: #64748b;
+  color: var(--asset-page-muted);
 }
 
 .workspace-summary-item strong {
@@ -365,7 +369,7 @@ onMounted(loadData);
   font-size: 24px;
   font-weight: 600;
   line-height: 32px;
-  color: #1e293b;
+  color: var(--asset-page-text);
 }
 
 /* 待办列表 */
@@ -380,22 +384,22 @@ onMounted(loadData);
   justify-content: space-between;
   min-height: 48px;
   padding: 0 16px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--asset-page-surface);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .workspace-todo-item:hover {
   border-color: #3b82f6;
-  background: #f0f7ff;
+  background: var(--asset-page-surface-soft);
 }
 
 .workspace-todo-item span {
   font-size: 14px;
   line-height: 20px;
-  color: #475569;
+  color: var(--asset-page-text-secondary);
 }
 
 .workspace-todo-item strong {
@@ -418,9 +422,9 @@ onMounted(loadData);
   justify-content: center;
   min-height: 44px;
   padding: 0 16px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--asset-page-surface);
   font-size: 14px;
   line-height: 20px;
   color: #3b82f6;
@@ -430,7 +434,7 @@ onMounted(loadData);
 
 .workspace-shortcut-item:hover {
   border-color: #3b82f6;
-  background: #f0f7ff;
+  background: var(--asset-page-surface-soft);
 }
 
 /* 表格样式 */
@@ -440,8 +444,8 @@ onMounted(loadData);
 }
 
 .workspace-table :deep(.el-table th.el-table__cell) {
-  background: #f8f9fa;
-  color: #475569;
+  background: var(--asset-page-surface-soft);
+  color: var(--asset-page-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
@@ -453,7 +457,7 @@ onMounted(loadData);
 
 .workspace-table :deep(.el-table td.el-table__cell),
 .workspace-table :deep(.el-table th.el-table__cell) {
-  border-color: #e8e9eb;
+  border-color: var(--asset-page-border);
 }
 
 .workspace-table :deep(.el-table .el-table__cell) {
@@ -466,6 +470,10 @@ onMounted(loadData);
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .workspace-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .workspace-dashboard > :last-child {
     grid-column: 1 / -1;
   }
@@ -473,6 +481,10 @@ onMounted(loadData);
 
 @media (max-width: 768px) {
   .workspace-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-stat-grid {
     grid-template-columns: 1fr;
   }
 

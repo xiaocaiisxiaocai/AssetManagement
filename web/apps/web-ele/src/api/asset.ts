@@ -23,11 +23,13 @@ export interface AssetItem {
   categoryCode: string;
   categoryId: number;
   createdAt: string;
+  deletedAt?: null | string;
   custodianId?: null | number;
   custodianName?: null | string;
   departmentId?: null | number;
   departmentName?: null | string;
   id: number;
+  isDeleted: boolean;
   images?: null | string[];
   locationId?: null | number;
   locationName?: null | string;
@@ -40,7 +42,9 @@ export interface AssetItem {
 export interface AssetQuery {
   assetNo?: string;
   categoryId?: null | number;
+  deleteStatus?: 'active' | 'all' | 'deleted';
   departmentId?: null | number;
+  deletedOnly?: boolean;
   name?: string;
   page?: number;
   pageSize?: number;
@@ -132,6 +136,12 @@ export const updateAssetApi = (id: number, data: AssetPayload) =>
 
 export const deleteAssetApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<null>>(`/assets/${id}`));
+
+export const purgeAssetApi = (id: number) =>
+  unwrap(requestClient.delete<ApiResult<null>>(`/assets/${id}/purge`));
+
+export const restoreAssetApi = (id: number) =>
+  unwrap(requestClient.post<ApiResult<null>>(`/assets/${id}/restore`));
 
 export const validateAssetImportApi = (file: File) => {
   const form = new FormData();

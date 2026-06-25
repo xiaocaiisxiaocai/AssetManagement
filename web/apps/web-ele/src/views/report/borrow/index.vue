@@ -130,7 +130,13 @@ onMounted(loadData);
             <ElInput v-model.number="query.categoryId" clearable placeholder="分类ID" style="width: 140px" />
           </ElFormItem>
           <ElFormItem label="状态">
-            <ElSelect v-model="query.status" clearable placeholder="全部状态" style="width: 130px">
+            <ElSelect
+              v-model="query.status"
+              aria-label="借用状态"
+              clearable
+              placeholder="全部状态"
+              style="width: 130px"
+            >
               <ElOption label="借用中" value="borrowed" />
               <ElOption label="已归还" value="returned" />
             </ElSelect>
@@ -151,18 +157,18 @@ onMounted(loadData);
               <ElTag size="small">{{ row.assetNo }}</ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="分类" min-width="170">
+          <ElTableColumn class-name="hide-on-mobile" label="分类" min-width="170">
             <template #default="{ row }">
               <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
               <span v-else class="empty-text">-</span>
             </template>
           </ElTableColumn>
           <ElTableColumn label="借用人" min-width="120" prop="borrower" />
-          <ElTableColumn label="部门" min-width="120" prop="borrowerDept" />
-          <ElTableColumn label="申请时间" min-width="160">
+          <ElTableColumn class-name="hide-on-mobile" label="部门" min-width="120" prop="borrowerDept" />
+          <ElTableColumn class-name="hide-on-mobile" label="申请时间" min-width="160">
             <template #default="{ row }">{{ row.applyTime?.replace('T', ' ').slice(0, 16) }}</template>
           </ElTableColumn>
-          <ElTableColumn label="预计归还" min-width="120" prop="returnDate" />
+          <ElTableColumn class-name="hide-on-mobile" label="预计归还" min-width="120" prop="returnDate" />
           <ElTableColumn label="状态" width="100" align="center">
             <template #default="{ row }">
               <ElTag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</ElTag>

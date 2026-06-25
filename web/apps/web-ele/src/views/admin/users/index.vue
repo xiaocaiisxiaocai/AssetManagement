@@ -157,7 +157,7 @@ async function toggleStatus(row: UserDto) {
   await ElMessageBox.confirm(`确认${action}用户「${row.name}」？`, '确认', {
     type: 'warning',
   });
-  await toggleUserStatusApi(row.id);
+  await toggleUserStatusApi(row.id, !row.isActive);
   ElMessage.success(`${action}成功`);
   await loadData();
 }
@@ -221,7 +221,12 @@ onMounted(async () => {
       <div class="user-table-panel">
         <div class="user-table-toolbar">
           <span class="user-table-total">共 {{ total }} 条</span>
-          <ElSelect v-model="query.pageSize" style="width: 140px" @change="search">
+          <ElSelect
+            v-model="query.pageSize"
+            aria-label="用户列表每页条数"
+            style="width: 140px"
+            @change="search"
+          >
             <ElOption :value="20" label="每页 20 条" />
             <ElOption :value="50" label="每页 50 条" />
             <ElOption :value="100" label="每页 100 条" />
@@ -231,8 +236,8 @@ onMounted(async () => {
         <ElTable v-loading="loading" :data="users" border>
           <ElTableColumn label="工号" min-width="120" prop="employeeNo" />
           <ElTableColumn label="姓名" min-width="140" prop="name" />
-          <ElTableColumn label="邮箱" min-width="180" prop="email" />
-          <ElTableColumn label="角色" min-width="180">
+          <ElTableColumn class-name="hide-on-mobile" label="邮箱" min-width="180" prop="email" />
+          <ElTableColumn class-name="hide-on-mobile" label="角色" min-width="180">
             <template #default="{ row }">
               <template v-if="row.roleNames && row.roleNames.length">
                 <ElTag v-for="role in row.roleNames" :key="role" size="small" style="margin-right: 4px">
@@ -253,7 +258,13 @@ onMounted(async () => {
             <template #default="{ row }">
               <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
               <ElButton link type="primary" size="small" @click="resetPassword(row)">重置密码</ElButton>
-              <ElButton link :type="row.isActive ? 'danger' : 'primary'" size="small" @click="toggleStatus(row)">
+              <ElButton
+                link
+                :disabled="loading"
+                :type="row.isActive ? 'danger' : 'primary'"
+                size="small"
+                @click="toggleStatus(row)"
+              >
                 {{ row.isActive ? '禁用' : '启用' }}
               </ElButton>
               <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
@@ -278,7 +289,7 @@ onMounted(async () => {
         :title="editingId ? '编辑用户' : '新增用户'"
         width="540px"
       >
-        <ElForm label-width="100px">
+        <ElForm class="user-edit-form" label-width="100px">
           <ElFormItem label="工号" required>
             <ElInput
               v-model="form.employeeNo"
@@ -354,10 +365,10 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+  box-shadow: var(--asset-page-shadow);
 }
 
 .user-title {
@@ -365,7 +376,7 @@ onMounted(async () => {
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
-  color: #1e293b;
+  color: var(--asset-page-text);
   letter-spacing: -0.02em;
 }
 
@@ -373,16 +384,16 @@ onMounted(async () => {
   margin: 0;
   font-size: 14px;
   line-height: 20px;
-  color: #64748b;
+  color: var(--asset-page-muted);
 }
 
 /* ========== 筛选面板 ========== */
 .user-filter-panel {
   padding: 16px 20px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
 }
 
 .user-search-form :deep(.el-form-item) {
@@ -394,7 +405,7 @@ onMounted(async () => {
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
-  color: #475569;
+  color: var(--asset-page-text-secondary);
 }
 
 /* ========== 表格面板 ========== */
@@ -403,10 +414,10 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
   padding: 20px;
 }
 
@@ -419,13 +430,13 @@ onMounted(async () => {
 .user-table-total {
   font-size: 14px;
   line-height: 20px;
-  color: #64748b;
+  color: var(--asset-page-muted);
 }
 
 .user-empty-text {
   font-size: 14px;
   line-height: 20px;
-  color: #94a3b8;
+  color: var(--asset-page-muted);
 }
 
 .user-table-panel :deep(.el-table) {
@@ -434,8 +445,8 @@ onMounted(async () => {
 }
 
 .user-table-panel :deep(.el-table th.el-table__cell) {
-  background: #f8f9fa;
-  color: #475569;
+  background: var(--asset-page-surface-soft);
+  color: var(--asset-page-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
@@ -447,7 +458,7 @@ onMounted(async () => {
 
 .user-table-panel :deep(.el-table td.el-table__cell),
 .user-table-panel :deep(.el-table th.el-table__cell) {
-  border-color: #e8e9eb;
+  border-color: var(--asset-page-border);
 }
 
 .user-table-panel :deep(.el-table .el-table__cell) {
@@ -470,7 +481,7 @@ onMounted(async () => {
 
 :deep(.el-dialog__header) {
   padding: 20px 24px;
-  border-bottom: 1px solid #e8e9eb;
+  border-bottom: 1px solid var(--asset-page-border);
 }
 
 :deep(.el-dialog__body) {
@@ -479,7 +490,7 @@ onMounted(async () => {
 
 :deep(.el-dialog__footer) {
   padding: 16px 24px;
-  border-top: 1px solid #e8e9eb;
+  border-top: 1px solid var(--asset-page-border);
 }
 
 :deep(.el-form-item) {
@@ -490,7 +501,12 @@ onMounted(async () => {
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
-  color: #475569;
+  color: var(--asset-page-text-secondary);
+}
+
+.user-edit-form :deep(.el-form-item__label) {
+  align-items: center;
+  line-height: var(--el-component-size);
 }
 
 :deep(.el-input__inner) {

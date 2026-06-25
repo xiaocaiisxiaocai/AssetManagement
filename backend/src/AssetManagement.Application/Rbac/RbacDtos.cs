@@ -35,6 +35,11 @@ public record UpdateUserRequest
     public int[] RoleIds { get; init; } = Array.Empty<int>();
 }
 
+public record SetUserStatusRequest
+{
+    public bool? IsActive { get; init; }
+}
+
 public record RoleDto
 {
     public int Id { get; init; }
@@ -42,6 +47,16 @@ public record RoleDto
     public string Name { get; init; } = "";
     public bool IsActive { get; init; } = true;
     public int[] PermissionIds { get; init; } = Array.Empty<int>();
+    public int[] MenuIds { get; init; } = Array.Empty<int>();
+}
+
+public record SetRolePermissionsRequest
+{
+    public int[] PermissionIds { get; init; } = Array.Empty<int>();
+}
+
+public record SetRoleMenusRequest
+{
     public int[] MenuIds { get; init; } = Array.Empty<int>();
 }
 

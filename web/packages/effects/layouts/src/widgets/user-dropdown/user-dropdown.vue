@@ -183,12 +183,17 @@ if (enableShortcutKey.value) {
   </LogoutModal>
 
   <DropdownMenu v-model:open="openPopover">
-    <DropdownMenuTrigger ref="refTrigger" :disabled="props.trigger === 'hover'">
-      <div class="hover:bg-accent ml-1 mr-2 cursor-pointer rounded-full p-1.5">
+    <DropdownMenuTrigger ref="refTrigger" :disabled="props.trigger === 'hover'" as-child>
+      <button
+        aria-label="用户菜单"
+        class="hover:bg-accent ml-1 mr-2 cursor-pointer rounded-full border-none bg-transparent p-1.5"
+        title="用户菜单"
+        type="button"
+      >
         <div class="hover:text-accent-foreground flex-center">
           <VbenAvatar :alt="text" :src="avatar" class="size-8" dot />
         </div>
-      </div>
+      </button>
     </DropdownMenuTrigger>
     <DropdownMenuContent class="mr-2 min-w-[240px] p-0 pb-1">
       <div ref="refContent">

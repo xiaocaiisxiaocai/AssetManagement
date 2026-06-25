@@ -51,15 +51,24 @@ public class AssetService : IAssetService
 
     public async Task<AssetDto> GetAsync(int id)
     {
-        var asset = await _db.Assets.FindAsync(id)
+        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
+        if (asset.IsDeleted)
+        {
+            throw new BizException(4048, "资产不存在");
+        }
         EnsureCanAccess(asset);
         return (await ToDtos(new[] { asset })).Single();
     }
 
     public async Task<AssetDetailDto> GetDetailAsync(int id)
     {
-        var asset = await GetAsync(id);
+        // 详情允许查看已删除资产(供主清单中已删除行的"详情"按钮使用),
+        // 故不经会拦截已删除的 GetAsync,自行加载实体并保留权限隔离。
+        var entity = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+            ?? throw new BizException(4048, "资产不存在");
+        EnsureCanAccess(entity);
+        var asset = (await ToDtos(new[] { entity })).Single();
 
         var flows = await _db.ApprovalFlows
             .Where(x => x.AssetId == id)
@@ -114,7 +123,7 @@ public class AssetService : IAssetService
     public async Task<AssetDto> CreateAsync(CreateAssetRequest request)
     {
         EnsureCanAssignDepartment(request.DepartmentId);
-        var category = await _db.AssetCategories.FindAsync(request.CategoryId)
+        var category = await _db.AssetCategories.SingleOrDefaultAsync(x => x.Id == request.CategoryId && !x.IsDeleted)
             ?? throw new BizException(4046, "资产分类不存在");
 
         for (var attempt = 0; ; attempt++)
@@ -150,11 +159,11 @@ public class AssetService : IAssetService
 
     public async Task<AssetDto> UpdateAsync(int id, UpdateAssetRequest request)
     {
-        var asset = await _db.Assets.FindAsync(id)
+        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
         EnsureCanAccess(asset);
         EnsureCanAssignDepartment(request.DepartmentId);
-        if (!await _db.AssetCategories.AnyAsync(x => x.Id == request.CategoryId))
+        if (!await _db.AssetCategories.AnyAsync(x => x.Id == request.CategoryId && !x.IsDeleted))
         {
             throw new BizException(4046, "资产分类不存在");
         }
@@ -178,15 +187,49 @@ public class AssetService : IAssetService
 
     public async Task DeleteAsync(int id)
     {
-        var asset = await _db.Assets.FindAsync(id)
+        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
+        if (asset.IsDeleted)
+        {
+            throw new BizException(4048, "资产不存在");
+        }
         EnsureCanAccess(asset);
         if (asset.Status == AssetStatus.Borrowed)
         {
             throw new BizException(4092, "借出中资产不能删除");
         }
 
+        asset.IsDeleted = true;
+        asset.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task PurgeAsync(int id)
+    {
+        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+            ?? throw new BizException(4048, "资产不存在");
+        EnsureCanAccess(asset);
+        if (!asset.IsDeleted)
+        {
+            throw new BizException(4097, "请先删除资产后再彻底删除");
+        }
+
         _db.Assets.Remove(asset);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task RestoreAsync(int id)
+    {
+        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+            ?? throw new BizException(4048, "资产不存在");
+        EnsureCanAccess(asset);
+        if (!asset.IsDeleted)
+        {
+            throw new BizException(4099, "资产未删除，无需恢复");
+        }
+
+        asset.IsDeleted = false;
+        asset.DeletedAt = null;
         await _db.SaveChangesAsync();
     }
 
@@ -228,7 +271,7 @@ public class AssetService : IAssetService
         {
             throw new BizException(4153, $"单次导入不能超过 {AppConstants.MaxImportRows} 行");
         }
-        var categories = await _db.AssetCategories.ToDictionaryAsync(x => x.Code, x => x);
+        var categories = await _db.AssetCategories.Where(x => !x.IsDeleted).ToDictionaryAsync(x => x.Code, x => x);
         return rows.Select((cells, index) => ValidateRow(index + 2, cells, categories)).ToList();
     }
 
@@ -246,7 +289,7 @@ public class AssetService : IAssetService
         {
             if (!categoryCache.TryGetValue(row.CategoryCode, out var category))
             {
-                category = await _db.AssetCategories.SingleAsync(x => x.Code == row.CategoryCode);
+                category = await _db.AssetCategories.SingleAsync(x => x.Code == row.CategoryCode && !x.IsDeleted);
                 categoryCache[row.CategoryCode] = category;
             }
             // 同分类多行在内存中递增取号:批量提交前 Count 不变,直接用会撞唯一索引
@@ -282,6 +325,16 @@ public class AssetService : IAssetService
 
     private IQueryable<Asset> ApplyQuery(IQueryable<Asset> queryable, AssetQuery query)
     {
+        var deleteStatus = query.DeletedOnly
+            ? "deleted"
+            : query.DeleteStatus?.Trim().ToLowerInvariant();
+        queryable = deleteStatus switch
+        {
+            "all" => queryable,
+            "deleted" => queryable.Where(x => x.IsDeleted),
+            _ => queryable.Where(x => !x.IsDeleted)
+        };
+
         // 部门数据权限隔离:部门管理员只能查看本部门及子部门资产(超级管理员/普通员工不受限)
         var allowedDepartments = AllowedDepartmentIds();
         if (allowedDepartments != null)
@@ -433,6 +486,8 @@ public class AssetService : IAssetService
                 Quantity = x.Quantity,
                 Status = x.Status,
                 CreatedAt = x.CreatedAt,
+                IsDeleted = x.IsDeleted,
+                DeletedAt = x.DeletedAt,
                 Images = SplitImages(x.ImageUrls)
             };
         }).ToList();

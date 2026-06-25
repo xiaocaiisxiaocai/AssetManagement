@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { MenuDto, PermissionDto, RoleDto } from '#/api/role';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 
 import {
   createRoleApi,
@@ -46,6 +46,7 @@ const roles = ref<RoleDto[]>([]);
 const permissions = ref<PermissionDto[]>([]);
 const menus = ref<MenuDto[]>([]);
 const total = ref(0);
+const menuTreeRef = ref<InstanceType<typeof ElTree>>();
 
 const query = reactive({
   keyword: '',
@@ -173,15 +174,18 @@ async function savePermissions() {
   }
 }
 
-function openMenuDialog(row: RoleDto) {
+async function openMenuDialog(row: RoleDto) {
   menuForm.roleId = row.id;
   menuForm.selectedMenus = [...(row.menuIds ?? [])];
   menuDialogVisible.value = true;
+  await nextTick();
+  menuTreeRef.value?.setCheckedKeys(menuForm.selectedMenus, false);
 }
 
 async function saveMenus() {
   saving.value = true;
   try {
+    menuForm.selectedMenus = menuTreeRef.value?.getCheckedKeys(false) as number[] ?? [];
     await setRoleMenusApi(menuForm.roleId, menuForm.selectedMenus);
     ElMessage.success('菜单授权成功');
     menuDialogVisible.value = false;
@@ -249,7 +253,12 @@ onMounted(async () => {
       <div class="role-table-panel">
         <div class="role-table-toolbar">
           <span class="role-table-total">共 {{ total }} 条</span>
-          <ElSelect v-model="query.pageSize" style="width: 140px" @change="search">
+          <ElSelect
+            v-model="query.pageSize"
+            aria-label="角色列表每页条数"
+            style="width: 140px"
+            @change="search"
+          >
             <ElOption :value="20" label="每页 20 条" />
             <ElOption :value="50" label="每页 50 条" />
             <ElOption :value="100" label="每页 100 条" />
@@ -259,15 +268,15 @@ onMounted(async () => {
         <ElTable v-loading="loading" :data="roles" border>
           <ElTableColumn label="角色编码" min-width="130" prop="code" />
           <ElTableColumn label="角色名称" min-width="160" prop="name" />
-          <ElTableColumn label="描述" min-width="200" prop="description" />
+          <ElTableColumn class-name="hide-on-mobile" label="描述" min-width="200" prop="description" />
           <ElTableColumn label="权限数" width="100" align="center">
             <template #default="{ row }">
-              {{ row.permissionCount ?? 0 }}
+              {{ row.permissionIds?.length ?? 0 }}
             </template>
           </ElTableColumn>
-          <ElTableColumn label="菜单数" width="100" align="center">
+          <ElTableColumn class-name="hide-on-mobile" label="菜单数" width="100" align="center">
             <template #default="{ row }">
-              {{ row.menuCount ?? 0 }}
+              {{ row.menuIds?.length ?? 0 }}
             </template>
           </ElTableColumn>
           <ElTableColumn label="状态" width="100" align="center">
@@ -366,7 +375,7 @@ onMounted(async () => {
       <!-- 菜单授权弹窗 -->
       <ElDialog v-model="menuDialogVisible" title="菜单授权" width="580px">
         <ElTree
-          v-model="menuForm.selectedMenus"
+          ref="menuTreeRef"
           :data="menus"
           :props="{ children: 'children', label: 'title' }"
           check-strictly
@@ -398,10 +407,10 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+  box-shadow: var(--asset-page-shadow);
 }
 
 .role-title {
@@ -409,7 +418,7 @@ onMounted(async () => {
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
-  color: #1e293b;
+  color: var(--asset-page-text);
   letter-spacing: -0.02em;
 }
 
@@ -417,16 +426,16 @@ onMounted(async () => {
   margin: 0;
   font-size: 14px;
   line-height: 20px;
-  color: #64748b;
+  color: var(--asset-page-muted);
 }
 
 /* ========== 筛选面板 ========== */
 .role-filter-panel {
   padding: 16px 20px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
 }
 
 .role-search-form :deep(.el-form-item) {
@@ -438,7 +447,7 @@ onMounted(async () => {
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
-  color: #475569;
+  color: var(--asset-page-text-secondary);
 }
 
 /* ========== 表格面板 ========== */
@@ -447,10 +456,10 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
   padding: 20px;
 }
 
@@ -463,7 +472,7 @@ onMounted(async () => {
 .role-table-total {
   font-size: 14px;
   line-height: 20px;
-  color: #64748b;
+  color: var(--asset-page-muted);
 }
 
 .role-table-panel :deep(.el-table) {
@@ -472,8 +481,8 @@ onMounted(async () => {
 }
 
 .role-table-panel :deep(.el-table th.el-table__cell) {
-  background: #f8f9fa;
-  color: #475569;
+  background: var(--asset-page-surface-soft);
+  color: var(--asset-page-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
@@ -485,7 +494,7 @@ onMounted(async () => {
 
 .role-table-panel :deep(.el-table td.el-table__cell),
 .role-table-panel :deep(.el-table th.el-table__cell) {
-  border-color: #e8e9eb;
+  border-color: var(--asset-page-border);
 }
 
 .role-table-panel :deep(.el-table .el-table__cell) {
@@ -512,9 +521,9 @@ onMounted(async () => {
 
 .role-permission-group {
   padding: 16px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: #f8f9fa;
+  background: var(--asset-page-surface-soft);
 }
 
 .role-permission-group-title {
@@ -522,7 +531,7 @@ onMounted(async () => {
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
-  color: #1e293b;
+  color: var(--asset-page-text);
 }
 
 .role-permission-grid {
@@ -535,7 +544,7 @@ onMounted(async () => {
   margin-left: 4px;
   font-size: 12px;
   line-height: 16px;
-  color: #94a3b8;
+  color: var(--asset-page-muted);
 }
 
 /* ========== 对话框优化 ========== */
@@ -545,7 +554,7 @@ onMounted(async () => {
 
 :deep(.el-dialog__header) {
   padding: 20px 24px;
-  border-bottom: 1px solid #e8e9eb;
+  border-bottom: 1px solid var(--asset-page-border);
 }
 
 :deep(.el-dialog__body) {
@@ -554,7 +563,7 @@ onMounted(async () => {
 
 :deep(.el-dialog__footer) {
   padding: 16px 24px;
-  border-top: 1px solid #e8e9eb;
+  border-top: 1px solid var(--asset-page-border);
 }
 
 :deep(.el-form-item) {
@@ -565,7 +574,7 @@ onMounted(async () => {
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
-  color: #475569;
+  color: var(--asset-page-text-secondary);
 }
 
 :deep(.el-input__inner) {

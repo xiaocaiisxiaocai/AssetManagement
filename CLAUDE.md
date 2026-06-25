@@ -8,9 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `backend/` — **正式后端**:ASP.NET Core 8 + EF Core + SQLite,DDD 四层架构,JWT + 权限码鉴权,可配置审批工作流引擎。当前活跃开发对象。
 - `web/` — **正式前端**:基于 vue-vben-admin 5.x 的 monorepo(pnpm + turbo)。实际开发的应用是 `apps/web-ele`(Vue 3 + Element Plus);`web-antd`、`web-naive` 为上游模板自带,**不使用**。
-- `docs/` — 需求/设计/实施规划文档(`.md` 与 `.pdf` 并存,**修改以 `.md` 为准**)。审批与多部门设计见 `docs/审批工作流设计.md`、`docs/多部门预留设计.md`;路线图见 `docs/全栈实施规划.md` 与 `docs/plans/`。
+- `docs/` — 需求/设计/实施规划文档(`.md` 与 `.pdf` 并存,**修改以 `.md` 为准**)。审批与多部门设计见 `docs/审批工作流设计.md`、`docs/多部门预留设计.md`;路线图见 `docs/全栈实施规划.md` 与 `docs/plans/`。**注意**:`docs/` 下有大量过程性报告(`BPMN-*报告.md`、`*-报告-2026-06-2x.md`、`*测试报告*.md` 等)属历史快照,**仅供追溯,勿当作现行规范**;权威设计以 `审批工作流设计.md`、`架构设计文档.md`、`全栈实施规划.md` 与 `docs/plans/` 为准。
 - `prototype/` — 早期纯静态 HTML 原型(零依赖),仅作参考,新功能不在此实现。
-- `deploy/` — 内网部署说明、生产配置样例、SQLite 备份脚本。
+- `deploy/` — 内网部署说明、生产配置样例、SQLite 备份脚本(部署方案见 `deploy/README-部署.md`)。
+
+> **本文件是单一信息源**:根目录另有 `AGENTS.md`(面向 Codex / Copilot / Cursor 等其他 AI 代理的快速入口),它**仅摘录**本文件最常用的部分并声明以 `CLAUDE.md` 为准。更新架构说明、开发场景速查或约定时,**只改本文件**;`AGENTS.md` 保持精简摘要,避免双份维护漂移。
 
 ## 常用命令
 
@@ -27,7 +29,10 @@ dotnet test .\backend\tests\AssetManagement.Tests --filter "Name=Health_returns_
 EF Core 迁移(`dotnet-ef` 已固定 8.0.28,通过 `backend/dotnet-tools.json` 管理):
 
 ```powershell
-dotnet ef migrations add <Name> --project backend\src\AssetManagement.Infrastructure --startup-project backend\src\AssetManagement.Api
+# ⚠️ 工具清单在 backend\dotnet-tools.json(非标准 .config\ 位置,isRoot=true)
+# dotnet ef 必须在 backend\ 目录下执行,否则会报"找不到 dotnet-ef"
+cd backend
+dotnet ef migrations add <Name> --project src\AssetManagement.Infrastructure --startup-project src\AssetManagement.Api
 # 无需手动 update:Program.cs 启动时自动 db.Database.Migrate() + DbSeeder.Seed()
 ```
 
@@ -66,7 +71,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 - 控制器 action 用 `[HasPermission("asset:view")]` 标注(继承 `AuthorizeAttribute`,Policy 名为 `perm:<code>`)。
 - 自定义 `PermissionPolicyProvider` + `PermissionAuthorizationHandler` 动态解析策略,无需预注册每个权限。
-- 权限码、角色、角色-权限/菜单映射的种子数据集中在 `DbSeeder`;权限矩阵参照需求文档。
+- 权限码、角色、角色-权限/菜单映射的种子数据集中在 `DbSeeder`;权限矩阵参照需求文档。资产删除相关的 `asset:delete`/`asset:restore`/`asset:purge` 见下「资产/分类删除模型」。
 
 ### 多部门数据隔离(已实现)
 
@@ -77,6 +82,21 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
   - 普通员工:无限制(共享资产池模式)
 - **实现方式**:通过 `IHttpContextAccessor` 获取当前用户的角色和部门信息,在 EF 查询条件中自动附加 `DepartmentId` 过滤。
 - 参考设计文档:`docs/多部门预留设计.md`。
+
+### 资产/分类删除模型(软删除 + 撤销/彻底删除)
+
+`Asset`/`AssetCategory` 含 `IsDeleted` + `DeletedAt`,删除采用软删除,**无独立"回收站"视图**——已删除项仍显示在主清单/分类树中(置灰 + "已删除"标签)。三个删除相关权限码:
+
+- **`asset:delete`** — 软删除("删除"):置 `IsDeleted=true`;借出中资产不可删;有资产的分类不可删。
+- **`asset:restore`** — 撤销删除(恢复):`AssetService.RestoreAsync`/`BaseDataService.RestoreCategoryAsync`(分类级联恢复子树,且要求上级未删除)。默认授予 `admin` + `dept_admin`。
+- **`asset:purge`** — 彻底删除(物理删除):**必须先软删除**才能彻底删除。默认授予 `admin`。
+
+要点:
+
+- **查询三态**:资产 `AssetQuery.DeleteStatus`(`active`/`all`/`deleted`),主清单默认传 `all`;分类树 `GetCategoryTreeAsync(string? deleteStatus)` 同三态(旧 `deletedOnly` 布尔已废弃)。报表/可借用/工作流流转(`ReportService`/`BizEffectApplier`/`WorkflowService`)**自动排除**已删除资产。
+- **详情可见**:`AssetService.GetDetailAsync` **允许查看已删除资产**(不经会拦截已删除的 `GetAsync`),供主清单已删除行的「详情」按钮使用。
+- **种子**:`asset:restore`/`asset:purge` 通过 `DbSeeder` **增量种子**(幂等检查)确保已有库补上并授予对应角色,无需迁移(权限是数据非表结构)。
+- 前端:`asset/list`、`asset/categories` 已删除行按权限显示「撤销删除」「彻底删除」;详情对话框 `AssetDetailDialog.vue` 用 `ElDescriptions` 展示并高亮删除状态。
 
 ### 审批工作流引擎（BPMN 2.0）
 
@@ -154,8 +174,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 | **扩展基础数据(分类/部门/位置)** | (1) Domain: `AssetCategory`/`Department`/`Location` 实体(分类编码生成在 `Services/CategoryCodeService`) (2) Application: 复用 `IBaseDataService`(三类基础数据共用同一粗粒度服务)+ DTO (3) Infrastructure: 实现 + EntityTypeConfiguration (4) DbSeeder: 种子数据 (5) Api: 对应控制器(如 `AssetCategoryController`) (6) 迁移 (7) 前端页面(如 `views/admin/categories`)+ 菜单注册 |
 | **后端新增权限** | (1) DbSeeder: `Permission` 表加行 + 角色-权限映射 (2) Api: action 标注 `[HasPermission("code")]` (3) 迁移 (4) 前端菜单由后端下发,无需改前端代码 |
 | **前端新页面映射后端菜单** | (1) 后端 DbSeeder 注册 Menu(name/path/component) + Permission (2) 前端在 `views/<module>/` 创建页面,Component 路径须与后端 menu.Component 一致 (3) 登录后菜单自动下发,无需硬编码路由 |
-| **修改 BPMN 工作流定义** | (1) 前端: `views/admin/workflows/bpmn-modeler.vue` 可视化设计器调整流程 (2) 保存后 `Workflow.BpmnXml` 字段自动更新 (3) 测试: `BpmnEngineTests.cs` 覆盖新场景 (4) 如需扩展网关类型,修改 `Domain/Workflow/BpmnParser.cs` + `BpmnEngine.cs` |
-| **查看工作流执行状态** | `ApprovalFlow.CurrentNodeIds`(活跃节点列表) + `BpmnTokens`(Token 状态字典,JSON 存储);调试时可在数据库直接查看或通过 `ApprovalController` 返回的流程详情分析执行路径 |
+| **新增报表/导出** | (1) Application: `IReportService` 加方法 + DTO (2) Infrastructure: `Reports/ReportService` 实现查询(注意复用 `AssetService.ApplyQuery` 的部门隔离逻辑) (3) Api: `ReportController`(路由 `api/reports`)加 action,统一 `[HasPermission("report:view")]`,导出走 `.../export` 后缀返回 Excel (4) 前端: `views/report/` 加页面 + `api/report.ts` | | `ApprovalFlow.CurrentNodeIds`(活跃节点列表) + `BpmnTokens`(Token 状态字典,JSON 存储);调试时可在数据库直接查看或通过 `ApprovalController` 返回的流程详情分析执行路径 |
 | **新增资产附件字段** | (1) Domain: `Asset` 实体加字段 (2) Infrastructure: `EntityTypeConfiguration` 配置长度/映射 (3) Application: DTO 加字段并在 Service 映射 (4) 迁移 (5) 前端: `api/asset.ts` 加类型,表单加上传组件 |
 | **资产批量导入(Excel)** | `AssetImportController`(路由 `api/assets/import`)三段式:`GET .../template` 下模板 → `POST .../validate` 上传预览校验 → `POST .../confirm` 确认落库;实现在 `IAssetService.BuildImportTemplate`/`ValidateImportAsync`/`ConfirmImportAsync`。模板下载用 `asset:view`,校验/确认用 `asset:create` |
 | **查询流转历史或审计日志** | 流转历史: `ApprovalFlows` 表按 `AssetId` 筛选; 审计日志: `AuditLogs` 表按 `TargetType=="Asset" && TargetId==资产ID` 筛选。参考 `AssetService.GetDetailAsync` 实现 |
@@ -216,13 +235,16 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-当前完成度约 **90%**,四大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据)已全面打通,所有计划待办事项已完成。
+当前完成度约 **95%**,四大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据)已全面打通,所有计划待办事项已完成,后端测试约 **86 个** `[Fact]`/`[Theory]` 全部通过。
 
-最新里程碑(2026-06-17 ~ 2026-06-22):
+最新里程碑(2026-06-17 ~ 2026-06-25):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)
 - ✅ 资产详情页及流转时间线(`GET /api/assets/{id}/detail`)
 - ✅ 资产照片附件上传与回显(`Asset.ImageUrls` + `FileStorageService`)
 - ✅ 多部门数据权限隔离(部门管理员仅看本部门资产,JWT 携带 `departmentId`)
 - ✅ **BPMN 2.0 工作流引擎升级**(从简单线性引擎升级到标准 BPMN,支持并行网关/包容网关/排他网关)
+- ✅ P0/P1/P2 优化任务全部完成,后端测试覆盖率提升至 100%
+- ✅ 前端 UI 统一优化(样式规范与布局改进、登录跳转修复)
+- ✅ **资产/分类删除子系统重构**(删除即软删除并保留在主清单、`asset:restore` 撤销删除 + `asset:purge` 彻底删除、详情接口支持已删除项、`AssetDetailDialog` 详情页重构)
 
 系统已进入生产部署准备阶段。详见 `docs/plans/M7-进度分析与待办事项.md` 与 `docs/BPMN-*.md`。

@@ -14,16 +14,15 @@ import { getUserListApi } from '#/api/user';
 import {
   ElButton,
   ElDialog,
-  ElInput,
-  ElMessage,
-  ElTag,
-  ElTable,
-  ElTableColumn,
-  ElCard,
   ElDescriptions,
   ElDescriptionsItem,
+  ElInput,
   ElOption,
   ElSelect,
+  ElTable,
+  ElTableColumn,
+  ElTag,
+  ElMessage,
 } from 'element-plus';
 
 defineOptions({ name: 'ApprovalPending' });
@@ -253,8 +252,8 @@ onMounted(() => {
             </template>
           </ElTableColumn>
           <ElTableColumn prop="assetName" label="资产名称" min-width="160" />
-          <ElTableColumn prop="applicant" label="申请人" width="120" />
-          <ElTableColumn prop="applyTime" label="申请时间" width="170" />
+          <ElTableColumn class-name="hide-on-mobile" prop="applicant" label="申请人" width="120" />
+          <ElTableColumn class-name="hide-on-mobile" prop="applyTime" label="申请时间" width="170" />
           <ElTableColumn label="当前节点" width="160">
             <template #default="{ row }">
               <span v-if="row.currentNodeIds.length === 1">
@@ -405,10 +404,10 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+  box-shadow: var(--asset-page-shadow);
 }
 
 .pending-title {
@@ -416,7 +415,7 @@ onMounted(() => {
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
-  color: #1e293b;
+  color: var(--asset-page-text);
   letter-spacing: -0.02em;
 }
 
@@ -424,16 +423,16 @@ onMounted(() => {
   margin: 0;
   font-size: 14px;
   line-height: 20px;
-  color: #64748b;
+  color: var(--asset-page-muted);
 }
 
 /* ========== 表格面板 ========== */
 .pending-table-panel {
   flex: 1;
-  border: 1px solid #e8e9eb;
+  border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
   overflow: hidden;
 }
 
@@ -443,8 +442,8 @@ onMounted(() => {
 }
 
 .pending-table-panel :deep(.el-table th.el-table__cell) {
-  background: #f8f9fa;
-  color: #475569;
+  background: var(--asset-page-surface-soft);
+  color: var(--asset-page-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
@@ -456,7 +455,7 @@ onMounted(() => {
 
 .pending-table-panel :deep(.el-table td.el-table__cell),
 .pending-table-panel :deep(.el-table th.el-table__cell) {
-  border-color: #e8e9eb;
+  border-color: var(--asset-page-border);
 }
 
 .pending-table-panel :deep(.el-table .el-table__cell) {
@@ -468,7 +467,7 @@ onMounted(() => {
   margin-left: 8px;
   font-size: 12px;
   line-height: 16px;
-  color: #94a3b8;
+  color: var(--asset-page-muted);
 }
 
 .pending-sign-list {
@@ -488,7 +487,7 @@ onMounted(() => {
 
 :deep(.el-dialog__header) {
   padding: 20px 24px;
-  border-bottom: 1px solid #e8e9eb;
+  border-bottom: 1px solid var(--asset-page-border);
 }
 
 :deep(.el-dialog__body) {
@@ -497,7 +496,7 @@ onMounted(() => {
 
 :deep(.el-dialog__footer) {
   padding: 16px 24px;
-  border-top: 1px solid #e8e9eb;
+  border-top: 1px solid var(--asset-page-border);
 }
 
 :deep(.el-descriptions) {
@@ -507,11 +506,11 @@ onMounted(() => {
 
 :deep(.el-descriptions__label) {
   font-weight: 500;
-  color: #475569;
+  color: var(--asset-page-text-secondary);
 }
 
 :deep(.el-descriptions__content) {
-  color: #1e293b;
+  color: var(--asset-page-text);
 }
 
 :deep(.el-input__inner) {

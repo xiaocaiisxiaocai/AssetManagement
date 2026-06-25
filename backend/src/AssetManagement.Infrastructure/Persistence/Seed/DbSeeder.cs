@@ -20,6 +20,8 @@ public static class DbSeeder
             new Permission { Code = "asset:create", Name = "新增资产", Module = "asset" },
             new Permission { Code = "asset:edit", Name = "编辑资产", Module = "asset" },
             new Permission { Code = "asset:delete", Name = "删除资产", Module = "asset" },
+            new Permission { Code = "asset:purge", Name = "彻底删除资产/分类", Module = "asset" },
+            new Permission { Code = "asset:restore", Name = "恢复资产/分类", Module = "asset" },
             new Permission { Code = "approval:handle", Name = "处理审批", Module = "approval" },
             new Permission { Code = "approval:view", Name = "查看审批", Module = "approval" },
             new Permission { Code = "report:view", Name = "查看报表", Module = "report" },
@@ -92,7 +94,7 @@ public static class DbSeeder
         {
             ["warehouse"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:delete", "approval:handle", "approval:view", "report:view", "admin:audit", "admin:setting", "workflow:design" },
             ["supervisor"] = new[] { "asset:view", "approval:handle", "approval:view", "report:view" },
-            ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "approval:handle", "approval:view", "report:view" },
+            ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:restore", "approval:handle", "approval:view", "report:view" },
             ["employee"] = new[] { "asset:view", "approval:view" }
         };
         var allMenusForSeed = db.Menus.ToList();
@@ -180,6 +182,50 @@ public static class DbSeeder
         if (!db.SystemSettings.Any(x => x.Key == "page_size"))
         {
             db.SystemSettings.Add(new SystemSetting { Key = "page_size", Value = "20", Description = "默认每页记录数" });
+        }
+
+        var purgePermission = db.Permissions.SingleOrDefault(x => x.Code == "asset:purge");
+        if (purgePermission is null)
+        {
+            purgePermission = new Permission { Code = "asset:purge", Name = "彻底删除资产/分类", Module = "asset" };
+            db.Permissions.Add(purgePermission);
+            db.SaveChanges();
+        }
+        else
+        {
+            purgePermission.Name = "彻底删除资产/分类";
+            purgePermission.Module = "asset";
+        }
+
+        var admin = db.Roles.SingleOrDefault(x => x.Code == "admin");
+        if (admin is not null
+            && !db.RolePermissions.Any(x => x.RoleId == admin.Id && x.PermissionId == purgePermission.Id))
+        {
+            db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = purgePermission.Id });
+        }
+
+        // 增量种子:恢复(撤销删除)权限,确保已有库补上并授予系统管理员 + 部门管理员
+        var restorePermission = db.Permissions.SingleOrDefault(x => x.Code == "asset:restore");
+        if (restorePermission is null)
+        {
+            restorePermission = new Permission { Code = "asset:restore", Name = "恢复资产/分类", Module = "asset" };
+            db.Permissions.Add(restorePermission);
+            db.SaveChanges();
+        }
+        else
+        {
+            restorePermission.Name = "恢复资产/分类";
+            restorePermission.Module = "asset";
+        }
+
+        foreach (var roleCode in new[] { "admin", "dept_admin" })
+        {
+            var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
+            if (role is not null
+                && !db.RolePermissions.Any(x => x.RoleId == role.Id && x.PermissionId == restorePermission.Id))
+            {
+                db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = restorePermission.Id });
+            }
         }
 
         if (!db.Menus.Any(x => x.Name == "ReportOverdue"))

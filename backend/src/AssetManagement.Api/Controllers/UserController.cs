@@ -41,9 +41,9 @@ public class UserController : ControllerBase
 
     [HttpPost("{id:int}/toggle-status")]
     [HasPermission("admin:user")]
-    public async Task<ApiResult<object?>> ToggleStatus(int id)
+    public async Task<ApiResult<object?>> ToggleStatus(int id, SetUserStatusRequest? request)
     {
-        await _rbac.ToggleUserStatusAsync(id);
+        await _rbac.ToggleUserStatusAsync(id, request?.IsActive);
         return ApiResult.Ok();
     }
 }

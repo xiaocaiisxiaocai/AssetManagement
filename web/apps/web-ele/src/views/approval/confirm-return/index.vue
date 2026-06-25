@@ -118,7 +118,7 @@ onMounted(loadData);
 
         <ElTable v-loading="loading" :data="pendingFlows" border>
           <ElTableColumn label="流程编号" min-width="160" prop="flowNo" />
-          <ElTableColumn label="资产编号" min-width="140" prop="assetNo" />
+          <ElTableColumn class-name="hide-on-mobile" label="资产编号" min-width="140" prop="assetNo" />
           <ElTableColumn label="资产名称" min-width="200" prop="assetName" />
           <ElTableColumn label="借用类型" width="100" align="center">
             <template #default="{ row }">
@@ -126,14 +126,14 @@ onMounted(loadData);
             </template>
           </ElTableColumn>
           <ElTableColumn label="借用人" min-width="130" prop="applicant" />
-          <ElTableColumn label="借用部门" min-width="150" prop="applicantDept" />
+          <ElTableColumn class-name="hide-on-mobile" label="借用部门" min-width="150" prop="applicantDept" />
           <ElTableColumn label="应归还日期" min-width="140" prop="returnDate" />
-          <ElTableColumn label="申请时间" min-width="180">
+          <ElTableColumn class-name="hide-on-mobile" label="申请时间" min-width="180">
             <template #default="{ row }">
               {{ formatTime(row.applyTime) }}
             </template>
           </ElTableColumn>
-          <ElTableColumn label="借用事由" min-width="200" prop="reason" show-overflow-tooltip />
+          <ElTableColumn class-name="hide-on-mobile" label="借用事由" min-width="200" prop="reason" show-overflow-tooltip />
           <ElTableColumn fixed="right" label="操作" width="120" align="center">
             <template #default="{ row }">
               <ElButton

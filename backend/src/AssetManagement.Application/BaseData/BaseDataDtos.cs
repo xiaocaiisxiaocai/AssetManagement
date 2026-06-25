@@ -33,6 +33,8 @@ public record CategoryNodeDto
     public string CodeSeg { get; init; } = "";
     public string Code { get; init; } = "";
     public string? Remark { get; init; }
+    public bool IsDeleted { get; init; }
+    public DateTime? DeletedAt { get; init; }
     public List<CategoryNodeDto> Children { get; init; } = new();
 }
 

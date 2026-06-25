@@ -59,5 +59,5 @@ export const deleteUserApi = (id: number) =>
 export const resetUserPasswordApi = (id: number) =>
   unwrap(requestClient.post<ApiResult<null>>(`/users/${id}/reset-password`, {}));
 
-export const toggleUserStatusApi = (id: number) =>
-  unwrap(requestClient.post<ApiResult<null>>(`/users/${id}/toggle-status`, {}));
+export const toggleUserStatusApi = (id: number, isActive: boolean) =>
+  unwrap(requestClient.post<ApiResult<null>>(`/users/${id}/toggle-status`, { isActive }));

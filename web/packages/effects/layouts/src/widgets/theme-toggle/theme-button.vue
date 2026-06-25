@@ -8,6 +8,10 @@ interface Props {
    * 类型
    */
   type?: 'icon' | 'normal';
+  /**
+   * 按钮说明
+   */
+  label?: string;
 }
 
 defineOptions({
@@ -16,6 +20,7 @@ defineOptions({
 
 const props = withDefaults(defineProps<Props>(), {
   type: 'normal',
+  label: '',
 });
 
 const isDark = defineModel<boolean>();
@@ -82,9 +87,10 @@ function toggleTheme(event: MouseEvent) {
 
 <template>
   <VbenButton
-    :aria-label="theme"
+    :aria-label="label || theme"
     :class="[`is-${theme}`]"
     aria-live="polite"
+    :title="label || theme"
     class="theme-toggle cursor-pointer border-none bg-none"
     v-bind="bindProps"
     @click.stop="toggleTheme"

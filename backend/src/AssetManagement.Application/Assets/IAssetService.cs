@@ -10,6 +10,8 @@ public interface IAssetService
     Task<AssetDto> CreateAsync(CreateAssetRequest request);
     Task<AssetDto> UpdateAsync(int id, UpdateAssetRequest request);
     Task DeleteAsync(int id);
+    Task PurgeAsync(int id);
+    Task RestoreAsync(int id);
     Task<byte[]> ExportAsync(AssetQuery query);
     byte[] BuildImportTemplate();
     Task<List<ImportPreviewRow>> ValidateImportAsync(Stream file);

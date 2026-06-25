@@ -7,10 +7,12 @@ public interface IBaseDataService
     Task<DepartmentNodeDto> UpdateDepartmentAsync(int id, UpdateDepartmentRequest request);
     Task DeleteDepartmentAsync(int id);
 
-    Task<List<CategoryNodeDto>> GetCategoryTreeAsync();
+    Task<List<CategoryNodeDto>> GetCategoryTreeAsync(string? deleteStatus = null);
     Task<CategoryNodeDto> CreateCategoryAsync(CreateCategoryRequest request);
     Task<CategoryNodeDto> UpdateCategoryAsync(int id, UpdateCategoryRequest request);
     Task DeleteCategoryAsync(int id);
+    Task PurgeCategoryAsync(int id);
+    Task RestoreCategoryAsync(int id);
 
     Task<List<LocationNodeDto>> GetLocationTreeAsync();
     Task<LocationNodeDto> CreateLocationAsync(CreateLocationRequest request);
