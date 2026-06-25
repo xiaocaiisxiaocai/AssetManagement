@@ -25,6 +25,10 @@ public class AppDbContext : DbContext
     public DbSet<AssetManagement.Domain.Entities.Workflow> Workflows => Set<AssetManagement.Domain.Entities.Workflow>();
     public DbSet<ApprovalFlow> ApprovalFlows => Set<ApprovalFlow>();
     public DbSet<FlowRecord> FlowRecords => Set<FlowRecord>();
+    public DbSet<TestProject> TestProjects => Set<TestProject>();
+    public DbSet<TestMaterial> TestMaterials => Set<TestMaterial>();
+    public DbSet<MaterialFlow> MaterialFlows => Set<MaterialFlow>();
+    public DbSet<MaterialFlowRecord> MaterialFlowRecords => Set<MaterialFlowRecord>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
