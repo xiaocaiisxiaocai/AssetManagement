@@ -7,6 +7,7 @@ using AssetManagement.Application.Common;
 using AssetManagement.Application.Files;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Reports;
+using AssetManagement.Application.TestMaterials;
 using AssetManagement.Application.Workflow;
 using AssetManagement.Infrastructure.Audit;
 using AssetManagement.Infrastructure.Assets;
@@ -17,6 +18,7 @@ using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Persistence.Seed;
 using AssetManagement.Infrastructure.Reports;
 using AssetManagement.Infrastructure.Rbac;
+using AssetManagement.Infrastructure.TestMaterials;
 using AssetManagement.Infrastructure.Workflow;
 using AssetManagement.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -92,6 +94,9 @@ builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 builder.Services.AddScoped<IBizEffectApplier, BizEffectApplier>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
+builder.Services.AddScoped<ITestProjectService, TestProjectService>();
+builder.Services.AddScoped<ITestMaterialService, TestMaterialService>();
+builder.Services.AddScoped<IMaterialFlowService, MaterialFlowService>();
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
 // 生产环境纵深防御:禁止以占位符或弱密钥(<32 字符)启动,密钥应通过环境变量 Jwt__Key 注入
