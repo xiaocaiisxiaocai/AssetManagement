@@ -356,7 +356,7 @@ public static class DbSeeder
         }
         db.SaveChanges();
 
-        // ---- 3. 菜单(一级入口"测试料件"+ 三个子菜单)----
+        // ---- 3. 菜单(一级入口"新产品新技术跟进"+ 单一项目入口)----
         var adminRole = db.Roles.SingleOrDefault(x => x.Code == "admin");
         var rootMenu = db.Menus.SingleOrDefault(x => x.Name == "Material");
         if (rootMenu is null)
@@ -364,16 +364,42 @@ public static class DbSeeder
             rootMenu = new Menu
             {
                 Id = db.Menus.Max(x => x.Id) + 1,
-                Name = "Material", Title = "测试料件", Path = "/material",
+                Name = "Material", Title = "新产品新技术跟进", Path = "/material",
                 Component = "BasicLayout", Icon = "lucide:flask-conical", Sort = 15
             };
             db.Menus.Add(rootMenu);
             db.SaveChanges();
         }
+        else
+        {
+            rootMenu.Title = "新产品新技术跟进";
+        }
+        db.SaveChanges();
+
+        var removedChildMenus = db.Menus
+            .Where(x => x.Name == "MaterialList" || x.Name == "MaterialTransfers")
+            .ToList();
+        if (removedChildMenus.Count > 0)
+        {
+            var removedIds = removedChildMenus.Select(x => x.Id).ToArray();
+            db.RoleMenus.RemoveRange(db.RoleMenus.Where(x => removedIds.Contains(x.MenuId)));
+            db.Menus.RemoveRange(removedChildMenus);
+            db.SaveChanges();
+        }
 
         void EnsureChild(string name, string title, string path, string component, int sort, string permCode)
         {
-            if (db.Menus.Any(x => x.Name == name)) return;
+            var existing = db.Menus.SingleOrDefault(x => x.Name == name);
+            if (existing is not null)
+            {
+                existing.ParentId = rootMenu.Id;
+                existing.Title = title;
+                existing.Path = path;
+                existing.Component = component;
+                existing.Sort = sort;
+                existing.PermissionCode = permCode;
+                return;
+            }
             var menu = new Menu
             {
                 Id = db.Menus.Max(x => x.Id) + 1,
@@ -391,9 +417,7 @@ public static class DbSeeder
         if (adminRole != null && !db.RoleMenus.Any(x => x.RoleId == adminRole.Id && x.MenuId == rootMenu.Id))
             db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = rootMenu.Id });
 
-        EnsureChild("MaterialList", "料件清单", "/material/list", "/material/list/index", 16, "material:view");
         EnsureChild("MaterialProjects", "测试项目", "/material/projects", "/material/projects/index", 17, "project:manage");
-        EnsureChild("MaterialTransfers", "流转审批", "/material/transfers", "/material/transfers/index", 18, "material:transfer");
         db.SaveChanges();
 
         // 把根菜单 + 子菜单授予 dept_admin / employee(按其权限码可见性)

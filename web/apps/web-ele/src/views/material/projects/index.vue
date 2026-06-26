@@ -1,5 +1,13 @@
 <script lang="ts" setup>
 import type {
+  MaterialDetail,
+  MaterialFlowItem,
+  MaterialItem,
+  MaterialQuery,
+  MaterialStatus,
+} from '#/api/material';
+import type { DepartmentNode, LocationNode } from '#/api/base-data';
+import type {
   SaveTestProjectOptionPayload,
   SaveTestProjectPayload,
   TestProjectFollowup,
@@ -25,6 +33,7 @@ import {
   ElMessage,
   ElMessageBox,
   ElOption,
+  ElPagination,
   ElSelect,
   ElSwitch,
   ElTabPane,
@@ -36,6 +45,19 @@ import {
   ElTimelineItem,
 } from 'element-plus';
 
+import { getDepartmentTreeApi, getLocationTreeApi } from '#/api/base-data';
+import {
+  approveFlowApi,
+  deleteMaterialApi,
+  getMaterialDetailApi,
+  listMaterialsApi,
+  listMyFlowsApi,
+  listPendingFlowsApi,
+  purgeMaterialApi,
+  rejectFlowApi,
+  restoreMaterialApi,
+  returnMaterialApi,
+} from '#/api/material';
 import {
   createTestProjectApi,
   createTestProjectFollowupApi,
@@ -53,9 +75,14 @@ import {
 } from '#/api/test-project';
 import { getUserListApi } from '#/api/user';
 
+import MaterialDetailDialog from '../components/MaterialDetailDialog.vue';
+import MaterialFormDialog from '../components/MaterialFormDialog.vue';
+import TransferDialog from '../components/TransferDialog.vue';
+
 defineOptions({ name: 'MaterialProjects' });
 
 type DeleteStatus = 'active' | 'all' | 'deleted';
+type FlatOption = { id: number; label: string };
 type OptionKind = 'project_progress' | 'project_type';
 type ProjectFormState = {
   closedDate: string;
@@ -85,9 +112,29 @@ const defaultFollowUpStatus: { label: string; type: 'danger' | 'success' | 'warn
   type: 'success',
 };
 
+const materialStatusOptions: Array<{
+  label: string;
+  tag: 'info' | 'success';
+  value: MaterialStatus;
+}> = [
+  { label: '在用', tag: 'success', value: 0 },
+  { label: '已退回厂商', tag: 'info', value: 1 },
+];
+
+const flowStatusMeta: Record<string, { label: string; tag: 'info' | 'success' | 'warning' }> = {
+  approved: { label: '已通过', tag: 'success' },
+  pending: { label: '审批中', tag: 'warning' },
+  rejected: { label: '已驳回', tag: 'info' },
+};
+
 const { hasAccessByCodes } = useAccess();
 const canManage = computed(() => hasAccessByCodes(['project:manage']));
 const canPurge = computed(() => hasAccessByCodes(['material:purge']));
+const canCreateMaterial = computed(() => hasAccessByCodes(['material:create']));
+const canEditMaterial = computed(() => hasAccessByCodes(['material:edit']));
+const canDeleteMaterial = computed(() => hasAccessByCodes(['material:delete']));
+const canTransferMaterial = computed(() => hasAccessByCodes(['material:transfer']));
+const canRestoreMaterial = computed(() => hasAccessByCodes(['material:restore']));
 
 const loading = ref(false);
 const projects = ref<TestProjectItem[]>([]);
@@ -95,6 +142,8 @@ const deleteStatus = ref<DeleteStatus>('all');
 
 const options = ref<TestProjectOption[]>([]);
 const users = ref<UserDto[]>([]);
+const departments = ref<DepartmentNode[]>([]);
+const locations = ref<LocationNode[]>([]);
 
 const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
@@ -126,6 +175,7 @@ const optionForm = reactive<SaveTestProjectOptionPayload>({
 
 const followupDrawerVisible = ref(false);
 const currentProject = ref<null | TestProjectItem>(null);
+const activeProjectTab = ref('followups');
 const followups = ref<TestProjectFollowup[]>([]);
 const followupLoading = ref(false);
 const followupSaving = ref(false);
@@ -135,14 +185,53 @@ const followupForm = reactive({
   dueDate: '',
 });
 
+const materialLoading = ref(false);
+const materials = ref<MaterialItem[]>([]);
+const materialTotal = ref(0);
+const materialFormVisible = ref(false);
+const editingMaterial = ref<MaterialItem | null>(null);
+const materialDetailVisible = ref(false);
+const materialDetailLoading = ref(false);
+const materialDetail = ref<MaterialDetail | null>(null);
+const transferVisible = ref(false);
+const transferMaterial = ref<MaterialItem | null>(null);
+const materialQuery = reactive({
+  deleteStatus: 'all' as DeleteStatus,
+  materialNo: '',
+  name: '',
+  page: 1,
+  pageSize: 10,
+  status: undefined as MaterialStatus | undefined,
+});
+
+const flowActiveTab = ref('pending');
+const pendingFlowLoading = ref(false);
+const myFlowLoading = ref(false);
+const pendingFlows = ref<MaterialFlowItem[]>([]);
+const myFlows = ref<MaterialFlowItem[]>([]);
+
 const projectTypeOptions = computed(() => activeOptions('project_type'));
 const progressOptions = computed(() => activeOptions('project_progress'));
 const displayedOptions = computed(() =>
   options.value.filter((item) => item.kind === activeOptionKind.value),
 );
+const departmentOptions = computed(() => flattenDepartments(departments.value));
+const locationOptions = computed<FlatOption[]>(() =>
+  locations.value.map((node) => ({ id: node.id, label: node.name })),
+);
+const currentProjectList = computed(() =>
+  currentProject.value ? [currentProject.value] : projects.value,
+);
 
 function activeOptions(kind: OptionKind) {
   return options.value.filter((item) => item.kind === kind && item.isActive);
+}
+
+function flattenDepartments(nodes: DepartmentNode[], level = 0): FlatOption[] {
+  return nodes.flatMap((node) => [
+    { id: node.id, label: `${'　'.repeat(level)}${node.name}` },
+    ...flattenDepartments(node.children, level + 1),
+  ]);
 }
 
 function dateText(value?: null | string) {
@@ -165,6 +254,14 @@ function normalizeText(value?: null | string) {
 
 function statusMeta(status: string) {
   return followUpStatusMap[status] ?? defaultFollowUpStatus;
+}
+
+function materialStatusMeta(status: MaterialStatus) {
+  return materialStatusOptions.find((item) => item.value === status) ?? materialStatusOptions[0]!;
+}
+
+function flowMetaOf(status: string) {
+  return flowStatusMeta[status] ?? { label: status, tag: 'info' as const };
 }
 
 function optionKindLabel(kind: OptionKind) {
@@ -190,9 +287,17 @@ async function loadOptions() {
 }
 
 async function loadUsers() {
-  if (!canManage.value) return;
   const result = await getUserListApi('', 1, 500);
   users.value = result.items.filter((user) => user.isActive);
+}
+
+async function loadBaseOptions() {
+  const [departmentTree, locationTree] = await Promise.all([
+    getDepartmentTreeApi(),
+    getLocationTreeApi(),
+  ]);
+  departments.value = departmentTree;
+  locations.value = locationTree;
 }
 
 function resetProjectForm() {
@@ -381,13 +486,14 @@ async function removeOption(row: TestProjectOption) {
 
 async function openFollowups(row: TestProjectItem) {
   currentProject.value = row;
+  activeProjectTab.value = 'followups';
   editingFollowupId.value = null;
   Object.assign(followupForm, {
     content: '',
     dueDate: row.nextFollowUpDueDate ? row.nextFollowUpDueDate.slice(0, 10) : '',
   });
   followupDrawerVisible.value = true;
-  await loadFollowups(row.id);
+  await Promise.all([loadFollowups(row.id), loadProjectMaterials(row.id)]);
 }
 
 async function loadFollowups(projectId: number) {
@@ -446,12 +552,223 @@ async function saveFollowup() {
   }
 }
 
+function buildMaterialQuery(projectId: number): MaterialQuery {
+  return {
+    deleteStatus: materialQuery.deleteStatus,
+    materialNo: materialQuery.materialNo || undefined,
+    name: materialQuery.name || undefined,
+    page: materialQuery.page,
+    pageSize: materialQuery.pageSize,
+    projectId,
+    status: materialQuery.status,
+  };
+}
+
+async function loadProjectMaterials(projectId = currentProject.value?.id) {
+  if (!projectId) return;
+  materialLoading.value = true;
+  try {
+    const result = await listMaterialsApi(buildMaterialQuery(projectId));
+    materials.value = result.items;
+    materialTotal.value = result.total;
+  } finally {
+    materialLoading.value = false;
+  }
+}
+
+function searchMaterials() {
+  materialQuery.page = 1;
+  void loadProjectMaterials();
+}
+
+function resetMaterialQuery() {
+  Object.assign(materialQuery, {
+    deleteStatus: 'all',
+    materialNo: '',
+    name: '',
+    page: 1,
+    pageSize: 10,
+    status: undefined,
+  });
+  void loadProjectMaterials();
+}
+
+function openCreateMaterial() {
+  editingMaterial.value = null;
+  materialFormVisible.value = true;
+}
+
+function openEditMaterial(row: MaterialItem) {
+  editingMaterial.value = row;
+  materialFormVisible.value = true;
+}
+
+async function openMaterialDetail(row: MaterialItem) {
+  materialDetailVisible.value = true;
+  materialDetailLoading.value = true;
+  materialDetail.value = null;
+  try {
+    materialDetail.value = await getMaterialDetailApi(row.id);
+  } finally {
+    materialDetailLoading.value = false;
+  }
+}
+
+function openTransfer(row: MaterialItem) {
+  transferMaterial.value = row;
+  transferVisible.value = true;
+}
+
+async function onReturnMaterial(row: MaterialItem) {
+  try {
+    await ElMessageBox.confirm(
+      `确认将料件「${row.name}」标记为已退回厂商？`,
+      '退回厂商',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
+  await returnMaterialApi(row.id);
+  ElMessage.success('已标记为退回厂商');
+  await afterMaterialChanged();
+}
+
+async function removeMaterial(row: MaterialItem) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除料件「${row.name}」？删除后仍显示在清单中，可由管理员彻底删除。`,
+      '删除确认',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
+  await deleteMaterialApi(row.id);
+  ElMessage.success('已删除');
+  await afterMaterialChanged();
+}
+
+async function restoreMaterial(row: MaterialItem) {
+  try {
+    await ElMessageBox.confirm(`确认撤销删除料件「${row.name}」？`, '撤销删除', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
+  await restoreMaterialApi(row.id);
+  ElMessage.success('已恢复');
+  await afterMaterialChanged();
+}
+
+async function purgeMaterial(row: MaterialItem) {
+  try {
+    await ElMessageBox.confirm(
+      `彻底删除料件「${row.name}」后不可恢复，确认继续？`,
+      '彻底删除确认',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
+  await purgeMaterialApi(row.id);
+  ElMessage.success('已彻底删除');
+  await afterMaterialChanged();
+}
+
+function isReturned(row: MaterialItem) {
+  return row.status === 1;
+}
+
+function canOperateMaterial(row: MaterialItem) {
+  return !row.isDeleted && !isReturned(row);
+}
+
+function materialRowClassName({ row }: { row: MaterialItem }) {
+  if (row.isDeleted) return 'material-row-deleted';
+  return isReturned(row) ? 'material-row-returned' : '';
+}
+
+async function afterMaterialChanged() {
+  await Promise.all([loadProjectMaterials(), loadData()]);
+  if (activeProjectTab.value === 'flows') await loadProjectFlows();
+}
+
+async function loadProjectFlows(projectId = currentProject.value?.id) {
+  if (!projectId) return;
+  const loadMine = flowActiveTab.value === 'mine';
+  if (loadMine) myFlowLoading.value = true;
+  else pendingFlowLoading.value = true;
+  try {
+    const [materialResult, flows] = await Promise.all([
+      listMaterialsApi({
+        deleteStatus: 'all',
+        page: 1,
+        pageSize: 1000,
+        projectId,
+      }),
+      loadMine ? listMyFlowsApi() : listPendingFlowsApi(),
+    ]);
+    const materialIds = new Set(materialResult.items.map((item) => item.id));
+    const scopedFlows = flows.filter((flow) => materialIds.has(flow.materialId));
+    if (loadMine) myFlows.value = scopedFlows;
+    else pendingFlows.value = scopedFlows;
+  } finally {
+    if (loadMine) myFlowLoading.value = false;
+    else pendingFlowLoading.value = false;
+  }
+}
+
+async function approveFlow(row: MaterialFlowItem) {
+  try {
+    await ElMessageBox.confirm(
+      `确认通过料件「${row.materialName}」的流转申请？`,
+      '审批通过',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
+  await approveFlowApi(row.id, '同意');
+  ElMessage.success('已通过');
+  await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
+}
+
+async function rejectFlow(row: MaterialFlowItem) {
+  let reason = '不同意';
+  try {
+    const result = await ElMessageBox.prompt('请输入驳回原因', '驳回', {
+      inputPlaceholder: '驳回原因',
+    });
+    reason = result.value || reason;
+  } catch {
+    return;
+  }
+  await rejectFlowApi(row.id, reason);
+  ElMessage.success('已驳回');
+  await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
+}
+
+function onProjectTabChange(name: number | string) {
+  if (name === 'materials') {
+    void loadProjectMaterials();
+  }
+  if (name === 'flows') {
+    void loadProjectFlows();
+  }
+}
+
+function onFlowTabChange() {
+  void loadProjectFlows();
+}
+
 function tableRowClassName({ row }: { row: TestProjectItem }) {
   return row.isDeleted ? 'project-row-deleted' : '';
 }
 
 onMounted(async () => {
-  await Promise.all([loadOptions(), loadUsers(), loadData()]);
+  await Promise.all([loadOptions(), loadUsers(), loadBaseOptions(), loadData()]);
 });
 </script>
 
@@ -482,7 +799,13 @@ onMounted(async () => {
         border
         stripe
       >
-        <ElTableColumn fixed label="项目名称" min-width="180" prop="name" show-overflow-tooltip />
+        <ElTableColumn fixed label="项目名称" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <ElButton link type="primary" @click="openFollowups(row)">
+              {{ row.name }}
+            </ElButton>
+          </template>
+        </ElTableColumn>
         <ElTableColumn label="项目编号" min-width="130" prop="code" show-overflow-tooltip />
         <ElTableColumn label="项目类型" min-width="120">
           <template #default="{ row }">
@@ -541,12 +864,9 @@ onMounted(async () => {
             <ElTag v-else size="small" type="success">正常</ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn align="center" fixed="right" label="操作" width="250">
+        <ElTableColumn align="center" fixed="right" label="操作" width="160">
           <template #default="{ row }">
             <template v-if="!row.isDeleted">
-              <ElButton link size="small" type="primary" @click="openFollowups(row)">
-                跟进
-              </ElButton>
               <ElButton
                 v-if="canManage"
                 link
@@ -747,8 +1067,8 @@ onMounted(async () => {
 
       <ElDrawer
         v-model="followupDrawerVisible"
-        :title="currentProject ? `落地情况跟进 - ${currentProject.name}` : '落地情况跟进'"
-        size="520px"
+        :title="currentProject ? `项目跟进 - ${currentProject.name}` : '项目跟进'"
+        size="78%"
       >
         <div v-if="currentProject" class="followup-panel">
           <div class="followup-summary">
@@ -769,65 +1089,293 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div v-if="currentProject.canWriteFollowUp" class="followup-editor">
-            <ElForm label-width="86px">
-              <ElFormItem label="跟进日期">
-                <ElDatePicker
-                  v-model="followupForm.dueDate"
-                  placeholder="选择对应周期日期"
-                  style="width: 100%"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                />
-              </ElFormItem>
-              <ElFormItem label="落地情况">
-                <ElInput
-                  v-model="followupForm.content"
-                  :rows="4"
-                  maxlength="2000"
-                  placeholder="填写本周期落地进展、问题和下一步"
-                  show-word-limit
-                  type="textarea"
-                />
-              </ElFormItem>
-            </ElForm>
-            <div class="followup-actions">
-              <ElButton v-if="editingFollowupId" @click="cancelFollowupEdit">
-                取消编辑
-              </ElButton>
-              <ElButton :loading="followupSaving" type="primary" @click="saveFollowup">
-                {{ editingFollowupId ? '保存修改' : '新增跟进' }}
-              </ElButton>
-            </div>
-          </div>
-          <ElTag v-else type="info">
-            只有项目负责人或管理员可以填写，其他人只读
-          </ElTag>
+          <ElTabs v-model="activeProjectTab" @tab-change="onProjectTabChange">
+            <ElTabPane label="落地跟进" name="followups">
+              <div v-if="currentProject.canWriteFollowUp" class="followup-editor">
+                <ElForm label-width="86px">
+                  <ElFormItem label="跟进日期">
+                    <ElDatePicker
+                      v-model="followupForm.dueDate"
+                      placeholder="选择对应周期日期"
+                      style="width: 100%"
+                      type="date"
+                      value-format="YYYY-MM-DD"
+                    />
+                  </ElFormItem>
+                  <ElFormItem label="落地情况">
+                    <ElInput
+                      v-model="followupForm.content"
+                      :rows="4"
+                      maxlength="2000"
+                      placeholder="填写本周期落地进展、问题和下一步"
+                      show-word-limit
+                      type="textarea"
+                    />
+                  </ElFormItem>
+                </ElForm>
+                <div class="followup-actions">
+                  <ElButton v-if="editingFollowupId" @click="cancelFollowupEdit">
+                    取消编辑
+                  </ElButton>
+                  <ElButton :loading="followupSaving" type="primary" @click="saveFollowup">
+                    {{ editingFollowupId ? '保存修改' : '新增跟进' }}
+                  </ElButton>
+                </div>
+              </div>
+              <ElTag v-else type="info">
+                只有项目负责人或管理员可以填写，其他人只读
+              </ElTag>
 
-          <div v-loading="followupLoading" class="followup-list">
-            <ElEmpty v-if="!followups.length && !followupLoading" description="暂无跟进记录" />
-            <ElTimeline v-else>
-              <ElTimelineItem
-                v-for="item in followups"
-                :key="item.id"
-                :timestamp="`${dateText(item.dueDate)} · ${item.filledByName || '-'} · ${dateTimeText(item.filledAt)}`"
-                placement="top"
-              >
-                <div class="followup-content">{{ item.content }}</div>
-                <ElButton
-                  v-if="currentProject.canWriteFollowUp"
-                  link
-                  size="small"
-                  type="primary"
-                  @click="editFollowup(item)"
+              <div v-loading="followupLoading" class="followup-list">
+                <ElEmpty v-if="!followups.length && !followupLoading" description="暂无跟进记录" />
+                <ElTimeline v-else>
+                  <ElTimelineItem
+                    v-for="item in followups"
+                    :key="item.id"
+                    :timestamp="`${dateText(item.dueDate)} · ${item.filledByName || '-'} · ${dateTimeText(item.filledAt)}`"
+                    placement="top"
+                  >
+                    <div class="followup-content">{{ item.content }}</div>
+                    <ElButton
+                      v-if="currentProject.canWriteFollowUp"
+                      link
+                      size="small"
+                      type="primary"
+                      @click="editFollowup(item)"
+                    >
+                      编辑
+                    </ElButton>
+                  </ElTimelineItem>
+                </ElTimeline>
+              </div>
+            </ElTabPane>
+
+            <ElTabPane label="料件清单" name="materials">
+              <div class="material-filter">
+                <ElInput
+                  v-model="materialQuery.materialNo"
+                  clearable
+                  placeholder="料件编号"
+                  style="width: 150px"
+                  @keyup.enter="searchMaterials"
+                />
+                <ElInput
+                  v-model="materialQuery.name"
+                  clearable
+                  placeholder="料件名称"
+                  style="width: 160px"
+                  @keyup.enter="searchMaterials"
+                />
+                <ElSelect
+                  v-model="materialQuery.status"
+                  clearable
+                  placeholder="状态"
+                  style="width: 120px"
                 >
-                  编辑
+                  <ElOption
+                    v-for="item in materialStatusOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </ElSelect>
+                <ElSelect
+                  v-model="materialQuery.deleteStatus"
+                  placeholder="删除状态"
+                  style="width: 120px"
+                  @change="searchMaterials"
+                >
+                  <ElOption label="全部" value="all" />
+                  <ElOption label="未删除" value="active" />
+                  <ElOption label="已删除" value="deleted" />
+                </ElSelect>
+                <ElButton type="primary" @click="searchMaterials">查询</ElButton>
+                <ElButton @click="resetMaterialQuery">重置</ElButton>
+                <ElButton v-if="canCreateMaterial" type="primary" @click="openCreateMaterial">
+                  新增料件
                 </ElButton>
-              </ElTimelineItem>
-            </ElTimeline>
-          </div>
+              </div>
+
+              <ElTable
+                v-loading="materialLoading"
+                :data="materials"
+                :row-class-name="materialRowClassName"
+                border
+                class="mt-4"
+                stripe
+              >
+                <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
+                <ElTableColumn label="名称" min-width="140" prop="name" show-overflow-tooltip />
+                <ElTableColumn label="厂商" min-width="120" prop="vendorName" show-overflow-tooltip />
+                <ElTableColumn label="型号品牌" min-width="140" show-overflow-tooltip>
+                  <template #default="{ row }">
+                    <span v-if="row.model || row.brand">{{ row.model }} {{ row.brand }}</span>
+                    <span v-else>-</span>
+                  </template>
+                </ElTableColumn>
+                <ElTableColumn align="center" label="数量" prop="quantity" width="70" />
+                <ElTableColumn label="部门" min-width="110" prop="departmentName" show-overflow-tooltip />
+                <ElTableColumn label="保管人" min-width="100" prop="custodianName" show-overflow-tooltip />
+                <ElTableColumn align="center" label="状态" width="130">
+                  <template #default="{ row }">
+                    <ElTag :type="materialStatusMeta(row.status).tag" size="small">
+                      {{ materialStatusMeta(row.status).label }}
+                    </ElTag>
+                    <ElTag v-if="row.isDeleted" class="ml-1" size="small" type="danger">
+                      已删除
+                    </ElTag>
+                  </template>
+                </ElTableColumn>
+                <ElTableColumn align="center" label="操作" width="280">
+                  <template #default="{ row }">
+                    <template v-if="!row.isDeleted">
+                      <ElButton link size="small" type="primary" @click="openMaterialDetail(row)">
+                        详情
+                      </ElButton>
+                      <ElButton
+                        v-if="canEditMaterial && canOperateMaterial(row)"
+                        link
+                        size="small"
+                        type="primary"
+                        @click="openEditMaterial(row)"
+                      >
+                        编辑
+                      </ElButton>
+                      <ElButton
+                        v-if="canTransferMaterial && canOperateMaterial(row) && !row.hasPendingFlow"
+                        link
+                        size="small"
+                        type="info"
+                        @click="openTransfer(row)"
+                      >
+                        转移
+                      </ElButton>
+                      <ElButton
+                        v-if="canEditMaterial && canOperateMaterial(row) && !row.hasPendingFlow"
+                        link
+                        size="small"
+                        type="warning"
+                        @click="onReturnMaterial(row)"
+                      >
+                        退回厂商
+                      </ElButton>
+                      <ElButton
+                        v-if="canDeleteMaterial && canOperateMaterial(row)"
+                        link
+                        size="small"
+                        type="danger"
+                        @click="removeMaterial(row)"
+                      >
+                        删除
+                      </ElButton>
+                    </template>
+                    <template v-else>
+                      <ElButton link size="small" type="primary" @click="openMaterialDetail(row)">
+                        详情
+                      </ElButton>
+                      <ElButton
+                        v-if="canRestoreMaterial"
+                        link
+                        size="small"
+                        type="success"
+                        @click="restoreMaterial(row)"
+                      >
+                        撤销删除
+                      </ElButton>
+                      <ElButton
+                        v-if="canPurge"
+                        link
+                        size="small"
+                        type="danger"
+                        @click="purgeMaterial(row)"
+                      >
+                        彻底删除
+                      </ElButton>
+                    </template>
+                  </template>
+                </ElTableColumn>
+              </ElTable>
+
+              <div class="mt-4 flex justify-end">
+                <ElPagination
+                  v-model:current-page="materialQuery.page"
+                  :page-size="materialQuery.pageSize"
+                  :total="materialTotal"
+                  background
+                  layout="total, prev, pager, next"
+                  @current-change="loadProjectMaterials()"
+                />
+              </div>
+            </ElTabPane>
+
+            <ElTabPane label="流转审批" name="flows">
+              <ElTabs v-model="flowActiveTab" @tab-change="onFlowTabChange">
+                <ElTabPane label="待我审批" name="pending">
+                  <ElTable v-loading="pendingFlowLoading" :data="pendingFlows" border stripe>
+                    <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
+                    <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
+                    <ElTableColumn label="料件名称" min-width="140" prop="materialName" show-overflow-tooltip />
+                    <ElTableColumn label="发起人" min-width="90" prop="applicant" />
+                    <ElTableColumn label="受让人" min-width="90" prop="transferee" />
+                    <ElTableColumn label="原因" min-width="150" prop="reason" show-overflow-tooltip />
+                    <ElTableColumn align="center" label="操作" width="140">
+                      <template #default="{ row }">
+                        <ElButton link size="small" type="success" @click="approveFlow(row)">
+                          通过
+                        </ElButton>
+                        <ElButton link size="small" type="danger" @click="rejectFlow(row)">
+                          驳回
+                        </ElButton>
+                      </template>
+                    </ElTableColumn>
+                  </ElTable>
+                </ElTabPane>
+                <ElTabPane label="我的发起" name="mine">
+                  <ElTable v-loading="myFlowLoading" :data="myFlows" border stripe>
+                    <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
+                    <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
+                    <ElTableColumn label="料件名称" min-width="140" prop="materialName" show-overflow-tooltip />
+                    <ElTableColumn label="受让人" min-width="90" prop="transferee" />
+                    <ElTableColumn label="原因" min-width="150" prop="reason" show-overflow-tooltip />
+                    <ElTableColumn align="center" label="状态" width="110">
+                      <template #default="{ row }">
+                        <ElTag :type="flowMetaOf(row.status).tag" size="small">
+                          {{ flowMetaOf(row.status).label }}
+                        </ElTag>
+                      </template>
+                    </ElTableColumn>
+                  </ElTable>
+                </ElTabPane>
+              </ElTabs>
+            </ElTabPane>
+          </ElTabs>
         </div>
       </ElDrawer>
+
+      <MaterialFormDialog
+        v-model:visible="materialFormVisible"
+        :default-project-id="currentProject?.id"
+        :department-options="departmentOptions"
+        :location-options="locationOptions"
+        :material="editingMaterial"
+        :project-locked="true"
+        :projects="currentProjectList"
+        :users="users"
+        @saved="afterMaterialChanged"
+      />
+
+      <MaterialDetailDialog
+        v-model:visible="materialDetailVisible"
+        :detail="materialDetail"
+        :loading="materialDetailLoading"
+      />
+
+      <TransferDialog
+        v-model:visible="transferVisible"
+        :material="transferMaterial"
+        :users="users"
+        @done="afterMaterialChanged"
+      />
     </div>
   </re-page>
 </template>
@@ -902,9 +1450,25 @@ onMounted(async () => {
   white-space: pre-wrap;
 }
 
+.material-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
 :deep(.project-row-deleted td.el-table__cell) {
   color: var(--el-text-color-disabled);
   background-color: #f3f4f6 !important;
+}
+
+:deep(.material-row-deleted td.el-table__cell) {
+  color: var(--el-text-color-disabled);
+  background-color: #f3f4f6 !important;
+}
+
+:deep(.material-row-returned td.el-table__cell) {
+  color: var(--el-text-color-secondary);
 }
 
 @media (max-width: 768px) {

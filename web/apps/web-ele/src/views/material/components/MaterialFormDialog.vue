@@ -28,9 +28,11 @@ import { createMaterialApi, updateMaterialApi } from '#/api/material';
 type FlatOption = { id: number; label: string };
 
 const props = defineProps<{
+  defaultProjectId?: number;
   departmentOptions: FlatOption[];
   locationOptions: FlatOption[];
   material: MaterialItem | null;
+  projectLocked?: boolean;
   projects: TestProjectItem[];
   users: UserDto[];
 }>();
@@ -87,7 +89,7 @@ watch(visible, (opened) => {
       locationId: undefined,
       model: '',
       name: '',
-      projectId: undefined,
+      projectId: props.defaultProjectId,
       quantity: 1,
       receivedDate: undefined,
       remark: '',
@@ -176,6 +178,7 @@ const debouncedSave = useDebounceFn(save, 300);
       <ElFormItem label="所属项目">
         <ElSelect
           v-model="form.projectId"
+          :disabled="props.projectLocked"
           filterable
           placeholder="选择测试项目"
           style="width: 100%"
