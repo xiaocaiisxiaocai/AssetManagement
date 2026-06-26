@@ -9,7 +9,22 @@ public class TestProjectDto
     public int Id { get; set; }
     public string Name { get; set; } = "";
     public string? Code { get; set; }
-    public string? Description { get; set; }
+    public string? ProjectTypeCode { get; set; }
+    public string? ProjectTypeLabel { get; set; }
+    public DateTime? StartDate { get; set; }
+    public DateTime? PlannedFinishDate { get; set; }
+    public DateTime? ClosedDate { get; set; }
+    public string? ProgressCode { get; set; }
+    public string? ProgressLabel { get; set; }
+    public int? OwnerId { get; set; }
+    public string? OwnerName { get; set; }
+    public string? TestStatus { get; set; }
+    public int FollowUpIntervalDays { get; set; }
+    public DateTime? NextFollowUpDueDate { get; set; }
+    public string FollowUpStatus { get; set; } = "";
+    public string? LatestFollowUpContent { get; set; }
+    public DateTime? LatestFollowUpAt { get; set; }
+    public bool CanWriteFollowUp { get; set; }
     public DateTime CreatedAt { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
@@ -20,7 +35,50 @@ public class SaveTestProjectRequest
 {
     public string Name { get; set; } = "";
     public string? Code { get; set; }
-    public string? Description { get; set; }
+    public string? ProjectTypeCode { get; set; }
+    public DateTime? StartDate { get; set; }
+    public DateTime? PlannedFinishDate { get; set; }
+    public DateTime? ClosedDate { get; set; }
+    public string? ProgressCode { get; set; }
+    public int? OwnerId { get; set; }
+    public string? TestStatus { get; set; }
+    public int FollowUpIntervalDays { get; set; } = 14;
+}
+
+public class TestProjectOptionDto
+{
+    public int Id { get; set; }
+    public string Kind { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int Sort { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class SaveTestProjectOptionRequest
+{
+    public string Kind { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int Sort { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class TestProjectFollowupDto
+{
+    public int Id { get; set; }
+    public int ProjectId { get; set; }
+    public DateTime DueDate { get; set; }
+    public string Content { get; set; } = "";
+    public int FilledById { get; set; }
+    public string? FilledByName { get; set; }
+    public DateTime FilledAt { get; set; }
+}
+
+public class SaveTestProjectFollowupRequest
+{
+    public DateTime? DueDate { get; set; }
+    public string Content { get; set; } = "";
 }
 
 // ===== 测试料件 =====

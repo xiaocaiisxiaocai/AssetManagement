@@ -5,15 +5,22 @@ using AssetManagement.Application.Auth;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AssetManagement.Tests.TestMaterials;
 
 public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
 {
+    private readonly TestWebAppFactory _factory;
     private readonly HttpClient _client;
-    public TestMaterialApiTests(TestWebAppFactory factory) => _client = factory.CreateClient();
+    public TestMaterialApiTests(TestWebAppFactory factory)
+    {
+        _factory = factory;
+        _client = factory.CreateClient();
+    }
 
     [Fact]
     public async Task Create_material_autogenerates_no_and_lists()
@@ -101,18 +108,126 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         returned.Data!.Status.Should().Be(MaterialStatus.ReturnedToVendor);
     }
 
+    [Fact]
+    public async Task Returned_material_cannot_be_updated_or_deleted()
+    {
+        await Login();
+        var project = await CreateProject("退回锁定项目");
+        var created = await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "退回后锁定样品", ProjectId = project.Id
+        });
+        await Post<ApiResult<TestMaterialDto>>($"/api/test-materials/{created.Data!.Id}/return", new { });
+
+        var updateResponse = await _client.PutAsJsonAsync($"/api/test-materials/{created.Data.Id}", new SaveTestMaterialRequest
+        {
+            Name = "不应允许修改", ProjectId = project.Id
+        });
+        var updateBody = await updateResponse.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
+        updateBody!.Code.Should().Be(4098);
+
+        var deleteResponse = await _client.DeleteAsync($"/api/test-materials/{created.Data.Id}");
+        var deleteBody = await deleteResponse.Content.ReadFromJsonAsync<ApiResult<object>>();
+        deleteBody!.Code.Should().Be(4098);
+    }
+
+    [Fact]
+    public async Task Project_fields_options_and_followup_due_status_are_returned()
+    {
+        await Login();
+        var owner = await CreateUserInDb("1901", "项目负责人");
+        var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Name = "E2E整机测试",
+            Code = "TP-001",
+            ProjectTypeCode = "prototype",
+            ProgressCode = "testing",
+            OwnerId = owner.Id,
+            StartDate = new DateTime(2026, 6, 1),
+            PlannedFinishDate = new DateTime(2026, 7, 1),
+            ClosedDate = new DateTime(2026, 7, 15),
+            FollowUpIntervalDays = 14,
+            TestStatus = "样机测试中"
+        });
+
+        project.Data!.ProjectTypeLabel.Should().Be("样机测试");
+        project.Data.ProgressLabel.Should().Be("测试中");
+        project.Data.OwnerName.Should().Be("项目负责人");
+        project.Data.FollowUpIntervalDays.Should().Be(14);
+        project.Data.NextFollowUpDueDate.Should().Be(new DateTime(2026, 6, 15));
+        project.Data.FollowUpStatus.Should().NotBeNullOrWhiteSpace();
+
+        var options = await _client.GetFromJsonAsync<ApiResult<List<TestProjectOptionDto>>>(
+            "/api/test-projects/options?kind=project_type");
+        options!.Data!.Should().Contain(x => x.Code == "prototype" && x.Label == "样机测试");
+    }
+
+    [Fact]
+    public async Task Only_project_owner_or_admin_can_write_followup()
+    {
+        await Login();
+        var owner = await CreateUserInDb("1902", "跟进负责人");
+        var outsider = await CreateUserInDb("1903", "无关人员");
+        var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Name = "权限跟进项目",
+            ProjectTypeCode = "prototype",
+            ProgressCode = "testing",
+            OwnerId = owner.Id,
+            StartDate = DateTime.UtcNow.Date,
+            FollowUpIntervalDays = 14
+        });
+
+        await Login(outsider.EmployeeNo, "123456");
+        var denied = await _client.PostAsJsonAsync($"/api/test-projects/{project.Data!.Id}/followups",
+            new SaveTestProjectFollowupRequest { Content = "我不应该能填" });
+        var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
+        deniedBody!.Code.Should().Be(4031);
+
+        await Login(owner.EmployeeNo, "123456");
+        var ownerFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{project.Data.Id}/followups",
+            new SaveTestProjectFollowupRequest { Content = "负责人填写本期落地情况" });
+        ownerFollowup.Data!.FilledByName.Should().Be("跟进负责人");
+
+        await Login();
+        var adminFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{project.Data.Id}/followups",
+            new SaveTestProjectFollowupRequest { Content = "管理员补充跟进" });
+        adminFollowup.Data!.FilledByName.Should().Be("系统管理员");
+    }
+
     // ===== 辅助方法 =====
     private async Task<TestProjectDto> CreateProject(string name)
         => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest { Name = name })).Data!;
 
-    private async Task Login()
+    private async Task Login(string employeeNo = "1001", string password = "123456")
     {
         var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
-            employeeNo = "1001",
-            password = "123456"
+            employeeNo,
+            password
         });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.Data!.Token);
+    }
+
+    private async Task<User> CreateUserInDb(string employeeNo, string name)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var employeeRole = db.Roles.Single(x => x.Code == "employee");
+        var user = new User
+        {
+            EmployeeNo = employeeNo,
+            Name = name,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = employeeRole.Id });
+        await db.SaveChangesAsync();
+        return user;
     }
 
     private async Task<T> Post<T>(string url, object payload)

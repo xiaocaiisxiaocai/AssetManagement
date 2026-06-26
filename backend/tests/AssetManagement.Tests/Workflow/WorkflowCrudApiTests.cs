@@ -3,16 +3,22 @@ using System.Net.Http.Json;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Workflow;
+using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Workflow;
 
 public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
 {
+    private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
 
     public WorkflowCrudApiTests(TestWebAppFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -51,6 +57,36 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
 
         var getDeleted = await _client.GetFromJsonAsync<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data.Id}");
         getDeleted!.Code.Should().Be(4049);
+    }
+
+    [Fact]
+    public async Task Workflow_list_returns_display_label_and_validated_bpmn_status()
+    {
+        await Login();
+        var empty = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = "未配置流程",
+            BizType = Unique("empty")
+        });
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var materialWorkflow = db.Workflows.Single(x => x.BizType == "material_transfer");
+            materialWorkflow.BpmnXml = "<invalid>";
+            await db.SaveChangesAsync();
+        }
+
+        var list = await _client.GetFromJsonAsync<ApiResult<List<WorkflowDto>>>("/api/workflows");
+
+        var emptyRow = list!.Data!.Single(x => x.Id == empty.Data!.Id);
+        emptyRow.BpmnStatus.Should().Be("empty");
+        emptyRow.BizTypeLabel.Should().Be(emptyRow.BizType);
+
+        var invalidRow = list.Data!.Single(x => x.BizType == "material_transfer");
+        invalidRow.BizType.Should().Be("material_transfer");
+        invalidRow.BizTypeLabel.Should().Be("测试料件流转");
+        invalidRow.BpmnStatus.Should().Be("invalid");
+        invalidRow.BpmnValidationErrors.Should().NotBeEmpty();
     }
 
     private async Task Login()

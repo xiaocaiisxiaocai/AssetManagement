@@ -423,6 +423,15 @@ public static class DbSeeder
             });
         }
 
+        // ---- 4.1 测试项目配置项 ----
+        EnsureProjectOption(db, "project_type", "prototype", "样机测试", 1);
+        EnsureProjectOption(db, "project_type", "trial", "试产验证", 2);
+        EnsureProjectOption(db, "project_type", "issue", "问题验证", 3);
+        EnsureProjectOption(db, "project_progress", "planning", "计划中", 1);
+        EnsureProjectOption(db, "project_progress", "testing", "测试中", 2);
+        EnsureProjectOption(db, "project_progress", "landing", "落地跟进", 3);
+        EnsureProjectOption(db, "project_progress", "closed", "已结案", 4);
+
         // ---- 5. 默认 BPMN 工作流模板(material_transfer)----
         if (!db.Workflows.Any(x => x.BizType == "material_transfer"))
         {
@@ -434,6 +443,26 @@ public static class DbSeeder
             });
         }
         db.SaveChanges();
+    }
+
+    private static void EnsureProjectOption(AppDbContext db, string kind, string code, string label, int sort)
+    {
+        var option = db.TestProjectOptions.SingleOrDefault(x => x.Kind == kind && x.Code == code);
+        if (option is null)
+        {
+            db.TestProjectOptions.Add(new TestProjectOption
+            {
+                Kind = kind,
+                Code = code,
+                Label = label,
+                Sort = sort,
+                IsActive = true
+            });
+            return;
+        }
+
+        option.Label = label;
+        option.Sort = sort;
     }
 
     private const string MaterialTransferBpmnXml = @"<?xml version=""1.0"" encoding=""UTF-8""?>

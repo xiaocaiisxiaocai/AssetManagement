@@ -92,6 +92,27 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         after!.Data!.CustodianId.Should().Be(originalCustodian);
     }
 
+    [Fact]
+    public async Task Returned_material_cannot_start_transfer()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var project = await CreateProject("退回禁止转移项目");
+        var transferee = await CreateUser("0905", "受让人戊");
+        var material = await CreateMaterial(project.Id, "已退回样品");
+        await Post<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}/return", new { });
+
+        var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "不应允许转移"
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        body!.Code.Should().Be(4098);
+    }
+
     // ===== 辅助方法 =====
     private async Task SetApprovalSwitch(bool enabled)
     {

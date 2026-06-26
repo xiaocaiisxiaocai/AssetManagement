@@ -2,6 +2,7 @@ using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Infrastructure.Auth;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace AssetManagement.Api.Controllers;
 
@@ -15,7 +16,45 @@ public class TestProjectController : ControllerBase
     [HttpGet]
     [HasPermission("material:view")]
     public async Task<ApiResult<List<TestProjectDto>>> List([FromQuery] string? deleteStatus)
-        => ApiResult<List<TestProjectDto>>.Ok(await _service.ListAsync(deleteStatus));
+        => ApiResult<List<TestProjectDto>>.Ok(await _service.ListAsync(deleteStatus, CurrentUserId()));
+
+    [HttpGet("options")]
+    [HasPermission("material:view")]
+    public async Task<ApiResult<List<TestProjectOptionDto>>> Options([FromQuery] string? kind)
+        => ApiResult<List<TestProjectOptionDto>>.Ok(await _service.ListOptionsAsync(kind));
+
+    [HttpPost("options")]
+    [HasPermission("project:manage")]
+    public async Task<ApiResult<TestProjectOptionDto>> CreateOption(SaveTestProjectOptionRequest request)
+        => ApiResult<TestProjectOptionDto>.Ok(await _service.CreateOptionAsync(request));
+
+    [HttpPut("options/{id:int}")]
+    [HasPermission("project:manage")]
+    public async Task<ApiResult<TestProjectOptionDto>> UpdateOption(int id, SaveTestProjectOptionRequest request)
+        => ApiResult<TestProjectOptionDto>.Ok(await _service.UpdateOptionAsync(id, request));
+
+    [HttpDelete("options/{id:int}")]
+    [HasPermission("project:manage")]
+    public async Task<ApiResult<object?>> DeleteOption(int id)
+    {
+        await _service.DeleteOptionAsync(id);
+        return ApiResult.Ok();
+    }
+
+    [HttpGet("{id:int}/followups")]
+    [HasPermission("material:view")]
+    public async Task<ApiResult<List<TestProjectFollowupDto>>> Followups(int id)
+        => ApiResult<List<TestProjectFollowupDto>>.Ok(await _service.ListFollowupsAsync(id));
+
+    [HttpPost("{id:int}/followups")]
+    [HasPermission("material:view")]
+    public async Task<ApiResult<TestProjectFollowupDto>> CreateFollowup(int id, SaveTestProjectFollowupRequest request)
+        => ApiResult<TestProjectFollowupDto>.Ok(await _service.CreateFollowupAsync(id, request, CurrentUserId()));
+
+    [HttpPut("{id:int}/followups/{followupId:int}")]
+    [HasPermission("material:view")]
+    public async Task<ApiResult<TestProjectFollowupDto>> UpdateFollowup(int id, int followupId, SaveTestProjectFollowupRequest request)
+        => ApiResult<TestProjectFollowupDto>.Ok(await _service.UpdateFollowupAsync(id, followupId, request, CurrentUserId()));
 
     [HttpPost]
     [HasPermission("project:manage")]
@@ -50,4 +89,7 @@ public class TestProjectController : ControllerBase
         await _service.PurgeAsync(id);
         return ApiResult.Ok();
     }
+
+    private int CurrentUserId()
+        => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");
 }

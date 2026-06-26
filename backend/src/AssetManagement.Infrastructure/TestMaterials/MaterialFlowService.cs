@@ -21,6 +21,8 @@ public class MaterialFlowService : IMaterialFlowService
         var material = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == request.MaterialId)
             ?? throw new BizException(4048, "测试料件不存在");
         if (material.IsDeleted) throw new BizException(4048, "测试料件不存在");
+        if (material.Status != MaterialStatus.InUse)
+            throw new BizException(4098, "已退回厂商的料件不能转移");
 
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
             throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
@@ -137,6 +139,8 @@ public class MaterialFlowService : IMaterialFlowService
         if (flow.Status == "approved")
         {
             var material = await _db.TestMaterials.FindAsync(flow.MaterialId);
+            if (material is { Status: not MaterialStatus.InUse })
+                throw new BizException(4098, "已退回厂商的料件不能转移");
             if (material != null && flow.TransfereeId.HasValue)
                 material.CustodianId = flow.TransfereeId.Value;
         }

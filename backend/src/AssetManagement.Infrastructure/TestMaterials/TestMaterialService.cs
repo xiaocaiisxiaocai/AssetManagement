@@ -141,6 +141,7 @@ public class TestMaterialService : ITestMaterialService
         var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
         EnsureCanAccess(m);
+        EnsureInUse(m, "已退回厂商的料件不能编辑");
         EnsureCanAssignDepartment(request.DepartmentId);
         if (!await _db.TestProjects.AnyAsync(x => x.Id == request.ProjectId && !x.IsDeleted))
             throw new BizException(4046, "测试项目不存在");
@@ -167,6 +168,7 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         EnsureCanAccess(m);
+        EnsureInUse(m, "已退回厂商的料件不能删除");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能删除");
         m.IsDeleted = true;
@@ -201,6 +203,8 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         EnsureCanAccess(m);
+        if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
+            throw new BizException(4092, "该料件有进行中的流转,不能退回厂商");
         m.Status = MaterialStatus.ReturnedToVendor;
         await _db.SaveChangesAsync();
         return await GetAsync(id);
@@ -288,6 +292,12 @@ public class TestMaterialService : ITestMaterialService
         var allowed = AllowedDepartmentIds();
         if (allowed != null && (!departmentId.HasValue || !allowed.Contains(departmentId.Value)))
             throw new BizException(4047, "无权将料件归属到该部门");
+    }
+
+    private static void EnsureInUse(TestMaterial material, string message)
+    {
+        if (material.Status != MaterialStatus.InUse)
+            throw new BizException(4098, message);
     }
 
     private async Task<string> NextMaterialNo()

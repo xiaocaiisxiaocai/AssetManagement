@@ -21,5 +21,5 @@ public interface IWorkflowService
 
 public interface IBizEffectApplier
 {
-    Task ApplyAsync(AssetManagement.Domain.Entities.ApprovalFlow flow);
+    Task ApplyAsync(AssetManagement.Domain.Entities.ApprovalFlow flow, int? operatorUserId = null);
 }

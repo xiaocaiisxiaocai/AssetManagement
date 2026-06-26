@@ -206,7 +206,7 @@ public class WorkflowService : IWorkflowService
         // 检查流程是否完成
         if (flow.Status == "approved")
         {
-            await _bizEffectApplier.ApplyAsync(flow);
+            await _bizEffectApplier.ApplyAsync(flow, userId);
         }
 
         await _db.SaveChangesAsync();
@@ -538,13 +538,57 @@ public class WorkflowService : IWorkflowService
         await _db.SaveChangesAsync();
     }
 
-    private static WorkflowDto ToWorkflowDto(WorkflowEntity w) => new()
+    private static WorkflowDto ToWorkflowDto(WorkflowEntity w)
     {
-        Id = w.Id,
-        Name = w.Name,
-        BizType = w.BizType,
-        BpmnXml = w.BpmnXml
-    };
+        var errors = ValidateWorkflowBpmnForStatus(w.BpmnXml);
+        return new WorkflowDto
+        {
+            Id = w.Id,
+            Name = w.Name,
+            BizType = w.BizType,
+            BizTypeLabel = BizTypeLabel(w.BizType),
+            BpmnXml = w.BpmnXml,
+            BpmnStatus = string.IsNullOrWhiteSpace(w.BpmnXml)
+                ? "empty"
+                : errors.Count == 0 ? "configured" : "invalid",
+            BpmnValidationErrors = errors
+        };
+    }
+
+    private static string BizTypeLabel(string bizType)
+        => bizType switch
+        {
+            "borrow" => "资产借用",
+            "transfer" => "资产转让",
+            "return" => "资产归还",
+            "material_transfer" => "测试料件流转",
+            _ => bizType
+        };
+
+    private static List<string> ValidateWorkflowBpmnForStatus(string? bpmnXml)
+    {
+        if (string.IsNullOrWhiteSpace(bpmnXml))
+        {
+            return new List<string>();
+        }
+
+        var errors = BpmnValidator.ValidateSecurity(bpmnXml);
+        errors.AddRange(BpmnValidator.Validate(bpmnXml));
+        if (errors.Count > 0)
+        {
+            return errors;
+        }
+
+        try
+        {
+            var process = BpmnParser.Parse(bpmnXml);
+            return BpmnParser.Validate(process);
+        }
+        catch (Exception ex)
+        {
+            return new List<string> { $"BPMN XML 解析失败: {ex.Message}" };
+        }
+    }
 
     private static ApprovalFlowDto ToFlowDto(ApprovalFlow f) => new()
     {

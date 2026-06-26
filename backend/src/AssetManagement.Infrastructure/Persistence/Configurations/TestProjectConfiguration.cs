@@ -12,7 +12,11 @@ public class TestProjectConfiguration : IEntityTypeConfiguration<TestProject>
         b.HasKey(x => x.Id);
         b.Property(x => x.Name).HasMaxLength(100).IsRequired();
         b.Property(x => x.Code).HasMaxLength(50);
-        b.Property(x => x.Description).HasMaxLength(500);
+        b.Property(x => x.ProjectTypeCode).HasMaxLength(50);
+        b.Property(x => x.ProgressCode).HasMaxLength(50);
+        b.Property(x => x.TestStatus).HasMaxLength(1000);
+        b.Property(x => x.FollowUpIntervalDays).HasDefaultValue(14);
         b.HasIndex(x => x.IsDeleted);
+        b.HasIndex(x => x.OwnerId);
     }
 }

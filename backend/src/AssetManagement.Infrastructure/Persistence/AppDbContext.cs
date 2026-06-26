@@ -26,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<ApprovalFlow> ApprovalFlows => Set<ApprovalFlow>();
     public DbSet<FlowRecord> FlowRecords => Set<FlowRecord>();
     public DbSet<TestProject> TestProjects => Set<TestProject>();
+    public DbSet<TestProjectOption> TestProjectOptions => Set<TestProjectOption>();
+    public DbSet<TestProjectFollowup> TestProjectFollowups => Set<TestProjectFollowup>();
     public DbSet<TestMaterial> TestMaterials => Set<TestMaterial>();
     public DbSet<MaterialFlow> MaterialFlows => Set<MaterialFlow>();
     public DbSet<MaterialFlowRecord> MaterialFlowRecords => Set<MaterialFlowRecord>();

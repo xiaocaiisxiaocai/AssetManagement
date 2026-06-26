@@ -228,8 +228,17 @@ function statusMeta(status: MaterialStatus) {
   return statusOptions.find((item) => item.value === status) ?? statusOptions[0]!;
 }
 
+function isReturned(row: MaterialItem) {
+  return row.status === 1;
+}
+
+function canOperate(row: MaterialItem) {
+  return !row.isDeleted && !isReturned(row);
+}
+
 function tableRowClassName({ row }: { row: MaterialItem }) {
-  return row.isDeleted ? 'material-row-deleted' : '';
+  if (row.isDeleted) return 'material-row-deleted';
+  return isReturned(row) ? 'material-row-returned' : '';
 }
 
 function onSaved() {
@@ -366,7 +375,7 @@ onMounted(async () => {
                 详情
               </ElButton>
               <ElButton
-                v-if="canEdit"
+                v-if="canEdit && canOperate(row)"
                 link
                 size="small"
                 type="primary"
@@ -375,7 +384,7 @@ onMounted(async () => {
                 编辑
               </ElButton>
               <ElButton
-                v-if="canTransfer && !row.hasPendingFlow"
+                v-if="canTransfer && canOperate(row) && !row.hasPendingFlow"
                 link
                 size="small"
                 type="info"
@@ -384,7 +393,7 @@ onMounted(async () => {
                 转移
               </ElButton>
               <ElButton
-                v-if="canEdit && row.status === 0"
+                v-if="canEdit && canOperate(row) && !row.hasPendingFlow"
                 link
                 size="small"
                 type="warning"
@@ -393,7 +402,7 @@ onMounted(async () => {
                 退回厂商
               </ElButton>
               <ElButton
-                v-if="canDelete"
+                v-if="canDelete && canOperate(row)"
                 link
                 size="small"
                 type="danger"
@@ -477,5 +486,9 @@ onMounted(async () => {
 :deep(.material-row-deleted td.el-table__cell) {
   color: var(--el-text-color-disabled);
   background-color: #f3f4f6 !important;
+}
+
+:deep(.material-row-returned td.el-table__cell) {
+  color: var(--el-text-color-secondary);
 }
 </style>
