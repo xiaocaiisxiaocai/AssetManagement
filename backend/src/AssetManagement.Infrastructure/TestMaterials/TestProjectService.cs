@@ -226,6 +226,54 @@ public class TestProjectService : ITestProjectService
         await _db.SaveChangesAsync();
     }
 
+    public async Task<TestProjectStatsDto> GetStatsAsync()
+    {
+        var year = DateTime.UtcNow.Year;
+        var projects = await _db.TestProjects
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .ToListAsync();
+
+        var typeOptions = await _db.TestProjectOptions.AsNoTracking()
+            .Where(x => x.Kind == OptionKindProjectType && x.IsActive)
+            .ToDictionaryAsync(x => x.Code, x => x.Label);
+
+        int closed = projects.Count(x => x.ProgressCode == "closed");
+        int landed = projects.Count(x => x.ProgressCode == "landing");
+        int inProgress = projects.Count - closed - landed;
+
+        var typeDist = projects
+            .Where(x => !string.IsNullOrEmpty(x.ProjectTypeCode))
+            .GroupBy(x => x.ProjectTypeCode!)
+            .Select(g => new TypeDistItem
+            {
+                Label = typeOptions.GetValueOrDefault(g.Key, g.Key),
+                Count = g.Count()
+            })
+            .ToList();
+        var unknownCount = projects.Count(x => string.IsNullOrEmpty(x.ProjectTypeCode));
+        if (unknownCount > 0)
+            typeDist.Add(new TypeDistItem { Label = "未分类", Count = unknownCount });
+
+        // 当年各月：结案数（ClosedDate 在该月）和落地数（ProgressCode=landing 且 ClosedDate 在该月作为落地参考）
+        var monthlyStat = Enumerable.Range(1, 12).Select(m => new MonthlyStatItem
+        {
+            Month = m,
+            ClosedCount = projects.Count(x => x.ClosedDate?.Year == year && x.ClosedDate?.Month == m),
+            LandedCount = projects.Count(x => x.ProgressCode == "landing" && x.ClosedDate?.Year == year && x.ClosedDate?.Month == m)
+        }).ToList();
+
+        return new TestProjectStatsDto
+        {
+            Total = projects.Count,
+            Closed = closed,
+            InProgress = inProgress,
+            Landed = landed,
+            TypeDist = typeDist,
+            MonthlyStat = monthlyStat
+        };
+    }
+
     private async Task<List<TestProjectDto>> ToDtos(IEnumerable<TestProject> projects, Dictionary<int, int> counts, int? currentUserId)
     {
         var list = projects.ToList();

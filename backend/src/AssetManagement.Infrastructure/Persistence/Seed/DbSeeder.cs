@@ -409,9 +409,8 @@ public static class DbSeeder
         if (adminRole != null && !db.RoleMenus.Any(x => x.RoleId == adminRole.Id && x.MenuId == rootMenu.Id))
             db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = rootMenu.Id });
 
+        EnsureChild("MaterialHome", "项目总览", "/material/home", "/material/home/index", 16, "material:view");
         EnsureChild("MaterialProjects", "测试项目", "/material/projects", "/material/projects/index", 17, "project:manage");
-        EnsureChild("MaterialList", "料件清单", "/material/list", "/material/list/index", 18, "material:view");
-        EnsureChild("MaterialTransfers", "流转审批", "/material/transfers", "/material/transfers/index", 19, "material:approve");
         db.SaveChanges();
 
         // 把根菜单 + 子菜单授予 dept_admin / employee(按其权限码可见性)

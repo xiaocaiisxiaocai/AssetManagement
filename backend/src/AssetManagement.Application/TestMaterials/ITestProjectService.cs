@@ -16,4 +16,28 @@ public interface ITestProjectService
     Task<TestProjectFollowupDto> CreateFollowupAsync(int projectId, SaveTestProjectFollowupRequest request, int currentUserId);
     Task<TestProjectFollowupDto> UpdateFollowupAsync(int projectId, int followupId, SaveTestProjectFollowupRequest request, int currentUserId);
     Task DeleteFollowupAsync(int projectId, int followupId, int currentUserId);
+    Task<TestProjectStatsDto> GetStatsAsync();
+}
+
+public class TestProjectStatsDto
+{
+    public int Total { get; set; }
+    public int Closed { get; set; }
+    public int InProgress { get; set; }
+    public int Landed { get; set; }
+    public List<TypeDistItem> TypeDist { get; set; } = new();
+    public List<MonthlyStatItem> MonthlyStat { get; set; } = new();
+}
+
+public class TypeDistItem
+{
+    public string Label { get; set; } = "";
+    public int Count { get; set; }
+}
+
+public class MonthlyStatItem
+{
+    public int Month { get; set; }
+    public int ClosedCount { get; set; }
+    public int LandedCount { get; set; }
 }

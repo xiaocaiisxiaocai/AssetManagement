@@ -13,6 +13,11 @@ public class TestProjectController : ControllerBase
     private readonly ITestProjectService _service;
     public TestProjectController(ITestProjectService service) => _service = service;
 
+    [HttpGet("stats")]
+    [HasPermission("material:view")]
+    public async Task<ApiResult<TestProjectStatsDto>> Stats()
+        => ApiResult<TestProjectStatsDto>.Ok(await _service.GetStatsAsync());
+
     [HttpGet]
     [HasPermission("material:view")]
     public async Task<ApiResult<List<TestProjectDto>>> List([FromQuery] string? deleteStatus)

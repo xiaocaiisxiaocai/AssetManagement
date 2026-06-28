@@ -176,3 +176,15 @@ export const deleteTestProjectFollowupApi = (
       `/test-projects/${projectId}/followups/${followupId}`,
     ),
   );
+
+export interface TestProjectStats {
+  total: number;
+  closed: number;
+  inProgress: number;
+  landed: number;
+  typeDist: { label: string; count: number }[];
+  monthlyStat: { month: number; closedCount: number; landedCount: number }[];
+}
+
+export const getTestProjectStatsApi = () =>
+  unwrap(requestClient.get<ApiResult<TestProjectStats>>('/test-projects/stats'));
