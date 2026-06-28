@@ -61,7 +61,8 @@ builder.Services.AddScoped<AuditActionFilter>();
 builder.Services.AddControllers(o => o.Filters.Add<AuditActionFilter>());
 builder.Services.AddDbContext<AppDbContext>(o =>
 {
-    o.UseSqlite(builder.Configuration.GetConnectionString("Default"));
+    var connStr = builder.Configuration.GetConnectionString("Default");
+    o.UseMySql(connStr, ServerVersion.AutoDetect(connStr));
 
     // 默认不跟踪查询，提升只读查询性能
     o.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);

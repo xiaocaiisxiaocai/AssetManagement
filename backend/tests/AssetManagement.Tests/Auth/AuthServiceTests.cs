@@ -4,8 +4,8 @@ using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace AssetManagement.Tests.Auth;
 
@@ -64,12 +64,13 @@ public class AuthServiceTests
 
     private sealed class AuthFixture : IAsyncDisposable
     {
-        private readonly SqliteConnection _connection;
+        private const string BaseConnStr = "Server=localhost;Port=3306;User=root;Password=abc+123;CharSet=utf8mb4;";
+        private readonly string _dbName;
         private int _userId;
 
-        private AuthFixture(SqliteConnection connection, AppDbContext db)
+        private AuthFixture(string dbName, AppDbContext db)
         {
-            _connection = connection;
+            _dbName = dbName;
             Db = db;
         }
 
@@ -77,10 +78,20 @@ public class AuthServiceTests
 
         public static async Task<AuthFixture> Create()
         {
-            var connection = new SqliteConnection("DataSource=:memory:");
-            await connection.OpenAsync();
+            var dbName = $"assetmgmt_auth_{Guid.NewGuid():N}";
+
+            // 建库
+            await using (var conn = new MySqlConnection(BaseConnStr))
+            {
+                await conn.OpenAsync();
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"CREATE DATABASE `{dbName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;";
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            var connStr = $"{BaseConnStr}Database={dbName};";
             var options = new DbContextOptionsBuilder<AppDbContext>()
-                .UseSqlite(connection)
+                .UseMySql(connStr, ServerVersion.AutoDetect(connStr))
                 .Options;
             var db = new AppDbContext(options);
             await db.Database.EnsureCreatedAsync();
@@ -104,7 +115,7 @@ public class AuthServiceTests
             db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
             await db.SaveChangesAsync();
 
-            var fixture = new AuthFixture(connection, db);
+            var fixture = new AuthFixture(dbName, db);
             fixture._userId = user.Id;
             return fixture;
         }
@@ -124,7 +135,12 @@ public class AuthServiceTests
         public async ValueTask DisposeAsync()
         {
             await Db.DisposeAsync();
-            await _connection.DisposeAsync();
+            // 清理测试库
+            await using var conn = new MySqlConnection(BaseConnStr);
+            await conn.OpenAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"DROP DATABASE IF EXISTS `{_dbName}`;";
+            await cmd.ExecuteNonQueryAsync();
         }
     }
 

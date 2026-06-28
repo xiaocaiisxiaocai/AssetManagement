@@ -14,7 +14,7 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         b.Property(x => x.Title).HasMaxLength(200).IsRequired();
         b.Property(x => x.Body).HasMaxLength(500).IsRequired();
         b.Property(x => x.IdempotencyKey).HasMaxLength(100);
-        b.HasIndex(x => x.IdempotencyKey).IsUnique().HasFilter("[IdempotencyKey] IS NOT NULL");
+        b.HasIndex(x => x.IdempotencyKey).IsUnique();
         b.HasIndex(x => new { x.UserId, x.IsRead });
     }
 }

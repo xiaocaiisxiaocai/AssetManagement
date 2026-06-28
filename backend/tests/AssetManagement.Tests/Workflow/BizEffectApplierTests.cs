@@ -7,19 +7,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AssetManagement.Tests.Workflow;
 
-public class BizEffectApplierTests : IDisposable
+public class BizEffectApplierTests : MySqlFixtureBase
 {
-    private readonly AppDbContext _db;
     private readonly BizEffectApplier _applier;
 
     public BizEffectApplierTests()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite($"DataSource=file:biz_effect_audit_{Guid.NewGuid():N}?mode=memory&cache=shared")
-            .Options;
-        _db = new AppDbContext(options);
-        _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
         _applier = new BizEffectApplier(_db);
     }
 
@@ -69,10 +62,4 @@ public class BizEffectApplierTests : IDisposable
         log.Detail.Should().Contain("Borrowed");
     }
 
-    public void Dispose()
-    {
-        _db.Database.CloseConnection();
-        _db.Dispose();
-        GC.SuppressFinalize(this);
-    }
 }

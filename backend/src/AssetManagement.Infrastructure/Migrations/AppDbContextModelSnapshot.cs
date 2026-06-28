@@ -3,6 +3,7 @@ using System;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -15,96 +16,102 @@ namespace AssetManagement.Infrastructure.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.28");
+            modelBuilder
+                .HasAnnotation("ProductVersion", "8.0.28")
+                .HasAnnotation("Relational:MaxIdentifierLength", 64);
+
+            MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
             modelBuilder.Entity("AssetManagement.Domain.Entities.ApprovalFlow", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Applicant")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("ApplicantDept")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int>("ApplicantId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("ApplyTime")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int>("AssetId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("AssetName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("AssetNo")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("BizType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("BpmnTokens")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("ConfirmedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("CurrentNodeIds")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("Deadline")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("FlowNo")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(500)");
 
                     b.Property<string>("ReturnDate")
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int unsigned");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("Transferee")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("TransfereeDept")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int?>("TransfereeId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int>("WorkflowId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -124,56 +131,58 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("AssetNo")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Brand")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int>("CategoryId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int?>("CustodianId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int?>("DepartmentId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("ImageUrls")
                         .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(2000)");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<int?>("LocationId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("Model")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int>("Quantity")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -195,30 +204,32 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("CodeSeg")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<int?>("ParentId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("Remark")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(500)");
 
                     b.HasKey("Id");
 
@@ -236,38 +247,40 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("ActionType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("Detail")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("Ip")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<DateTime>("OccurredAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Summary")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(500)");
 
                     b.Property<string>("TargetId")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("TargetType")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int?>("UserId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -282,26 +295,28 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<int?>("ManagerId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int?>("ParentId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -317,26 +332,28 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("Comment")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(500)");
 
                     b.Property<int>("FlowId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("OperatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Operator")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("Id");
 
@@ -351,12 +368,14 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("Id");
 
@@ -367,27 +386,29 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Applicant")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("ApplicantDept")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int>("ApplicantId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("ApplyTime")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("BizType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("BpmnTokens")
                         .IsRequired()
@@ -398,52 +419,52 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("Deadline")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("FlowNo")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<int>("MaterialId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("MaterialName")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("MaterialNo")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(500)");
 
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int unsigned");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("Transferee")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("TransfereeDept")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int?>("TransfereeId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int>("WorkflowId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -463,26 +484,28 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("Comment")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(500)");
 
                     b.Property<int>("FlowId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("OperatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Operator")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("Id");
 
@@ -495,44 +518,46 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Component")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("Icon")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int?>("ParentId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("Path")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("PermissionCode")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int>("Sort")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(20)");
 
                     b.HasKey("Id");
 
@@ -547,44 +572,45 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Body")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(500)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int>("FlowId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<bool>("IsRead")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(30)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(30)");
 
                     b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
                     b.HasIndex("IdempotencyKey")
-                        .IsUnique()
-                        .HasFilter("[IdempotencyKey] IS NOT NULL");
+                        .IsUnique();
 
                     b.HasIndex("UserId", "IsRead");
 
@@ -595,21 +621,23 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Module")
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("Id");
 
@@ -623,20 +651,22 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("Id");
 
@@ -649,10 +679,10 @@ namespace AssetManagement.Infrastructure.Migrations
             modelBuilder.Entity("AssetManagement.Domain.Entities.RoleMenu", b =>
                 {
                     b.Property<int>("RoleId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int>("MenuId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("RoleId", "MenuId");
 
@@ -664,10 +694,10 @@ namespace AssetManagement.Infrastructure.Migrations
             modelBuilder.Entity("AssetManagement.Domain.Entities.RolePermission", b =>
                 {
                     b.Property<int>("RoleId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int>("PermissionId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("RoleId", "PermissionId");
 
@@ -680,21 +710,23 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Description")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Value")
                         .IsRequired()
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(500)");
 
                     b.HasKey("Id");
 
@@ -708,67 +740,69 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Brand")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int?>("CustodianId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int?>("DepartmentId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("ImageUrls")
                         .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(2000)");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<int?>("LocationId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("MaterialNo")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Model")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int>("ProjectId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int>("Quantity")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("ReceivedDate")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Remark")
                         .HasMaxLength(500)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(500)");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("VendorName")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("Id");
 
@@ -790,54 +824,56 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<DateTime?>("ClosedDate")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Code")
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int>("FollowUpIntervalDays")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("int")
                         .HasDefaultValue(14);
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int?>("OwnerId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("PlannedFinishDate")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("ProgressCode")
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("ProjectTypeCode")
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<DateTime?>("StartDate")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("TestStatus")
                         .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(1000)");
 
                     b.HasKey("Id");
 
@@ -852,27 +888,29 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(2000)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime>("DueDate")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime>("FilledAt")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("datetime(6)");
 
                     b.Property<int>("FilledById")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int>("ProjectId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -887,28 +925,30 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("Label")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<int>("Sort")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -922,39 +962,41 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<int?>("DepartmentId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("Email")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("EmployeeNo")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<int?>("SupervisorId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -967,10 +1009,10 @@ namespace AssetManagement.Infrastructure.Migrations
             modelBuilder.Entity("AssetManagement.Domain.Entities.UserRole", b =>
                 {
                     b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int>("RoleId")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.HasKey("UserId", "RoleId");
 
@@ -983,12 +1025,14 @@ namespace AssetManagement.Infrastructure.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("BizType")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(50)");
 
                     b.Property<string>("BpmnXml")
                         .HasColumnType("TEXT");
@@ -996,7 +1040,7 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("varchar(100)");
 
                     b.HasKey("Id");
 
