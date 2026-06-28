@@ -103,7 +103,7 @@ onMounted(loadData);
           <p class="page-subtitle">借用资产归还确认</p>
         </div>
         <div class="page-actions">
-          <span class="table-total">共 <span style="font-size: 20px; font-weight: 600; color: #3b82f6;">{{ total }}</span> 件待确认</span>
+          <span class="table-total">共 <span style="font-size: 20px; font-weight: 600; color: var(--el-color-primary);">{{ total }}</span> 件待确认</span>
         </div>
       </div>
 

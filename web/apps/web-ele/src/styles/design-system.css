@@ -169,7 +169,7 @@
 
 .table-panel .el-table__expand-icon,
 .table-panel-with-toolbar .el-table__expand-icon {
-  color: #3b82f6;
+  color: var(--el-color-primary);
 }
 
 /* ========== 空状态文本 ========== */
@@ -263,15 +263,15 @@
 }
 
 .stat-value-success {
-  color: #10b981;
+  color: var(--el-color-success);
 }
 
 .stat-value-warning {
-  color: #f59e0b;
+  color: var(--el-color-warning);
 }
 
 .stat-value-danger {
-  color: #ef4444;
+  color: var(--el-color-danger);
 }
 
 /* ========== 响应式 ========== */

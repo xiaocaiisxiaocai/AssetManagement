@@ -30,6 +30,7 @@ public class ApprovalFlowConfiguration : IEntityTypeConfiguration<ApprovalFlow>
         b.HasIndex(x => x.AssetId);
         b.HasIndex(x => x.ApplicantId);
         b.HasIndex(x => x.Status);
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         // BPMN 当前活跃节点列表（JSON 序列化）
         b.Property(x => x.CurrentNodeIds)

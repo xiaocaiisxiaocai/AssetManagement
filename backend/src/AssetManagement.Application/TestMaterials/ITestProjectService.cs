@@ -15,4 +15,5 @@ public interface ITestProjectService
     Task<List<TestProjectFollowupDto>> ListFollowupsAsync(int projectId);
     Task<TestProjectFollowupDto> CreateFollowupAsync(int projectId, SaveTestProjectFollowupRequest request, int currentUserId);
     Task<TestProjectFollowupDto> UpdateFollowupAsync(int projectId, int followupId, SaveTestProjectFollowupRequest request, int currentUserId);
+    Task DeleteFollowupAsync(int projectId, int followupId, int currentUserId);
 }

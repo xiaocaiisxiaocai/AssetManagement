@@ -68,17 +68,17 @@ async function submit() {
       <ElFormItem label="资产名称">
         <ElInput :model-value="asset.name" disabled />
       </ElFormItem>
-      <ElFormItem label="归还日期">
+      <ElFormItem label="归还日期" required>
         <ElDatePicker
           v-model="form.returnDate"
           clearable
           format="YYYY-MM-DD"
-          placeholder="选择归还日期"
+          placeholder="选择归还日期（必填）"
           style="width: 100%"
           type="date"
         />
       </ElFormItem>
-      <ElFormItem label="借用原因">
+      <ElFormItem label="借用原因" required>
         <ElInput
           v-model="form.reason"
           :maxlength="200"

@@ -58,6 +58,12 @@ public class AuditActionFilter : IAsyncActionFilter
             return;
         }
 
+        // Action 本身抛出了异常时跳过审计写入，避免在 faulted ChangeTracker 上二次提交
+        if (executed.Exception != null && !executed.ExceptionHandled)
+        {
+            return;
+        }
+
         var userIdText = context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
         int? userId = int.TryParse(userIdText, out var value) ? value : null;
         // 从路由 {id} 捕获目标实体主键,便于按实体回溯其操作日志(如资产详情)

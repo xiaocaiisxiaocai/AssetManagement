@@ -41,7 +41,7 @@ async function handleLogin(values: any) {
   try {
     await authStore.authLogin(values);
   } catch {
-    // 登录失败的错误提示已由请求拦截器(request.ts)统一弹出,此处无需重复弹框
+    // 错误提示已由请求拦截器(request.ts)统一弹出
   }
 }
 </script>

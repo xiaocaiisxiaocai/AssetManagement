@@ -3,6 +3,7 @@ using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
+using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +29,7 @@ public class TestMaterialService : ITestMaterialService
     {
         var page = Math.Max(query.Page, 1);
         var pageSize = Math.Clamp(query.PageSize, 1, 200);
-        var q = ApplyQuery(_db.TestMaterials.AsQueryable(), query);
+        var q = await ApplyQueryAsync(_db.TestMaterials.AsQueryable(), query);
         var total = await q.CountAsync();
         var items = await q.OrderByDescending(x => x.Id)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
@@ -46,7 +47,7 @@ public class TestMaterialService : ITestMaterialService
         var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
-        EnsureCanAccess(m);
+        await EnsureCanAccessAsync(m);
         return (await ToDtos(new[] { m })).Single();
     }
 
@@ -55,7 +56,7 @@ public class TestMaterialService : ITestMaterialService
         // 详情允许查看已删除料件(供主清单已删除行的"详情"按钮)
         var entity = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
-        EnsureCanAccess(entity);
+        await EnsureCanAccessAsync(entity);
         var material = (await ToDtos(new[] { entity })).Single();
 
         var flows = await _db.MaterialFlows
@@ -99,7 +100,7 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task<TestMaterialDto> CreateAsync(SaveTestMaterialRequest request)
     {
-        EnsureCanAssignDepartment(request.DepartmentId);
+        await EnsureCanAssignDepartmentAsync(request.DepartmentId);
         if (!await _db.TestProjects.AnyAsync(x => x.Id == request.ProjectId && !x.IsDeleted))
             throw new BizException(4046, "测试项目不存在");
 
@@ -140,9 +141,12 @@ public class TestMaterialService : ITestMaterialService
     {
         var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
-        EnsureCanAccess(m);
+        if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
+        await EnsureCanAccessAsync(m);
         EnsureInUse(m, "已退回厂商的料件不能编辑");
-        EnsureCanAssignDepartment(request.DepartmentId);
+        await EnsureCanAssignDepartmentAsync(request.DepartmentId);
+        if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
+            throw new BizException(4092, "该料件有进行中的流转,不能编辑");
         if (!await _db.TestProjects.AnyAsync(x => x.Id == request.ProjectId && !x.IsDeleted))
             throw new BizException(4046, "测试项目不存在");
 
@@ -167,7 +171,7 @@ public class TestMaterialService : ITestMaterialService
         var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
-        EnsureCanAccess(m);
+        await EnsureCanAccessAsync(m);
         EnsureInUse(m, "已退回厂商的料件不能删除");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能删除");
@@ -180,7 +184,7 @@ public class TestMaterialService : ITestMaterialService
     {
         var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
-        EnsureCanAccess(m);
+        await EnsureCanAccessAsync(m);
         if (!m.IsDeleted) throw new BizException(4099, "料件未删除,无需恢复");
         m.IsDeleted = false;
         m.DeletedAt = null;
@@ -191,7 +195,7 @@ public class TestMaterialService : ITestMaterialService
     {
         var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
-        EnsureCanAccess(m);
+        await EnsureCanAccessAsync(m);
         if (!m.IsDeleted) throw new BizException(4097, "请先删除料件后再彻底删除");
         _db.TestMaterials.Remove(m);
         await _db.SaveChangesAsync();
@@ -202,7 +206,7 @@ public class TestMaterialService : ITestMaterialService
         var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
-        EnsureCanAccess(m);
+        await EnsureCanAccessAsync(m);
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能退回厂商");
         m.Status = MaterialStatus.ReturnedToVendor;
@@ -211,7 +215,7 @@ public class TestMaterialService : ITestMaterialService
     }
 
     // ===== 部门隔离(逻辑比照 AssetService.ApplyQuery) =====
-    private IQueryable<TestMaterial> ApplyQuery(IQueryable<TestMaterial> q, TestMaterialQuery query)
+    private async Task<IQueryable<TestMaterial>> ApplyQueryAsync(IQueryable<TestMaterial> q, TestMaterialQuery query)
     {
         var deleteStatus = query.DeleteStatus?.Trim().ToLowerInvariant();
         q = deleteStatus switch
@@ -221,7 +225,7 @@ public class TestMaterialService : ITestMaterialService
             _ => q.Where(x => !x.IsDeleted)
         };
 
-        var allowed = AllowedDepartmentIds();
+        var allowed = await AllowedDepartmentIdsAsync();
         if (allowed != null)
             q = q.Where(x => x.DepartmentId.HasValue && allowed.Contains(x.DepartmentId.Value));
 
@@ -239,23 +243,24 @@ public class TestMaterialService : ITestMaterialService
         if (query.Status.HasValue) q = q.Where(x => x.Status == query.Status.Value);
         if (query.DepartmentId.HasValue)
         {
-            var ids = DescendantDepartmentIds(query.DepartmentId.Value);
+            var ids = await DescendantDepartmentIdsAsync(query.DepartmentId.Value);
             q = q.Where(x => x.DepartmentId.HasValue && ids.Contains(x.DepartmentId.Value));
         }
         return q;
     }
 
-    private int[] DescendantDepartmentIds(int rootId)
+    // TODO: 与 AssetService.DescendantDepartmentIdsAsync 逻辑一致，共用同一缓存 key；如两处逻辑发生变化须保持同步，后续可提取到共享帮助类
+    private async Task<int[]> DescendantDepartmentIdsAsync(int rootId)
     {
-        var departments = _cache.GetOrCreate(DepartmentTreeCacheKey, entry =>
+        var departments = await _cache.GetOrCreateAsync(DepartmentTreeCacheKey, async entry =>
         {
-            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
-            return _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToList();
-        })!;
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(AppConstants.DepartmentTreeCacheMinutes);
+            return await _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToListAsync();
+        });
         var ids = new List<int> { rootId };
         void Walk(int parentId)
         {
-            foreach (var child in departments.Where(x => x.ParentId == parentId))
+            foreach (var child in departments!.Where(x => x.ParentId == parentId))
             {
                 ids.Add(child.Id);
                 Walk(child.Id);
@@ -265,7 +270,7 @@ public class TestMaterialService : ITestMaterialService
         return ids.ToArray();
     }
 
-    private int[]? AllowedDepartmentIds()
+    private async Task<int[]?> AllowedDepartmentIdsAsync()
     {
         var user = _http.HttpContext?.User;
         if (user is null) return null;
@@ -275,21 +280,21 @@ public class TestMaterialService : ITestMaterialService
         {
             var deptIdClaim = user.FindFirst("departmentId")?.Value;
             if (int.TryParse(deptIdClaim, out var deptId))
-                return DescendantDepartmentIds(deptId);
+                return await DescendantDepartmentIdsAsync(deptId);
         }
         return null;
     }
 
-    private void EnsureCanAccess(TestMaterial m)
+    private async Task EnsureCanAccessAsync(TestMaterial m)
     {
-        var allowed = AllowedDepartmentIds();
+        var allowed = await AllowedDepartmentIdsAsync();
         if (allowed != null && (!m.DepartmentId.HasValue || !allowed.Contains(m.DepartmentId.Value)))
             throw new BizException(4047, "无权访问该测试料件");
     }
 
-    private void EnsureCanAssignDepartment(int? departmentId)
+    private async Task EnsureCanAssignDepartmentAsync(int? departmentId)
     {
-        var allowed = AllowedDepartmentIds();
+        var allowed = await AllowedDepartmentIdsAsync();
         if (allowed != null && (!departmentId.HasValue || !allowed.Contains(departmentId.Value)))
             throw new BizException(4047, "无权将料件归属到该部门");
     }
@@ -354,17 +359,7 @@ public class TestMaterialService : ITestMaterialService
         }).ToList();
     }
 
-    private static string? JoinImages(IEnumerable<string>? images)
-    {
-        if (images is null) return null;
-        var listed = images.Select(x => x?.Trim()).Where(x => !string.IsNullOrEmpty(x)).Select(x => x!).ToList();
-        if (listed.Count == 0) return null;
-        if (listed.Count > 5) throw new BizException(4152, "最多上传 5 张照片");
-        return string.Join(',', listed);
-    }
+    private static string? JoinImages(IEnumerable<string>? images) => ImageHelpers.Join(images);
 
-    private static List<string> SplitImages(string? imageUrls)
-        => string.IsNullOrWhiteSpace(imageUrls)
-            ? new List<string>()
-            : imageUrls.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+    private static List<string> SplitImages(string? imageUrls) => ImageHelpers.Split(imageUrls);
 }

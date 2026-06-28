@@ -47,14 +47,22 @@ public class TestProjectController : ControllerBase
         => ApiResult<List<TestProjectFollowupDto>>.Ok(await _service.ListFollowupsAsync(id));
 
     [HttpPost("{id:int}/followups")]
-    [HasPermission("material:view")]
+    [HasPermission("project:manage")]
     public async Task<ApiResult<TestProjectFollowupDto>> CreateFollowup(int id, SaveTestProjectFollowupRequest request)
         => ApiResult<TestProjectFollowupDto>.Ok(await _service.CreateFollowupAsync(id, request, CurrentUserId()));
 
     [HttpPut("{id:int}/followups/{followupId:int}")]
-    [HasPermission("material:view")]
+    [HasPermission("project:manage")]
     public async Task<ApiResult<TestProjectFollowupDto>> UpdateFollowup(int id, int followupId, SaveTestProjectFollowupRequest request)
         => ApiResult<TestProjectFollowupDto>.Ok(await _service.UpdateFollowupAsync(id, followupId, request, CurrentUserId()));
+
+    [HttpDelete("{id:int}/followups/{followupId:int}")]
+    [HasPermission("project:manage")]
+    public async Task<ApiResult<object?>> DeleteFollowup(int id, int followupId)
+    {
+        await _service.DeleteFollowupAsync(id, followupId, CurrentUserId());
+        return ApiResult.Ok();
+    }
 
     [HttpPost]
     [HasPermission("project:manage")]

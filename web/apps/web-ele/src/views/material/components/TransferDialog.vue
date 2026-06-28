@@ -54,6 +54,8 @@ async function submit() {
     );
     visible.value = false;
     emit('done');
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '提交失败');
   } finally {
     saving.value = false;
   }

@@ -796,13 +796,13 @@ onMounted(async () => {
 }
 
 .asset-path a {
-  color: #3b82f6;
+  color: var(--el-color-primary);
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 .asset-path a:hover {
-  color: #2563eb;
+  color: var(--el-color-primary-dark-2);
 }
 
 .asset-head-actions {
@@ -832,8 +832,8 @@ onMounted(async () => {
 
 .asset-root-card:hover,
 .asset-root-card:focus-visible {
-  border-color: #3b82f6;
-  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+  border-color: var(--el-color-primary);
+  box-shadow: 0 8px 24px var(--el-color-primary-light-7);
   outline: none;
   transform: translateY(-4px);
 }
@@ -844,7 +844,7 @@ onMounted(async () => {
   justify-content: center;
   min-height: 120px;
   color: #fff;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
   position: relative;
   overflow: hidden;
 }
@@ -898,18 +898,18 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 500;
   line-height: 20px;
-  color: #f59e0b;
+  color: var(--el-color-warning);
   white-space: nowrap;
 }
 
 .asset-row-warning::before {
   margin-right: 4px;
   content: "●";
-  color: #fbbf24;
+  color: var(--el-color-warning-light-3);
 }
 
 .asset-enter-button {
-  color: #3b82f6;
+  color: var(--el-color-primary);
   white-space: nowrap;
   font-weight: 500;
   font-size: 14px;
@@ -918,7 +918,7 @@ onMounted(async () => {
 }
 
 .asset-enter-button:hover {
-  color: #2563eb;
+  color: var(--el-color-primary-dark-2);
 }
 
 .asset-enter-button {
@@ -968,8 +968,8 @@ onMounted(async () => {
 
 .asset-class-row:hover,
 .asset-class-row:focus-visible {
-  border-color: #3b82f6;
-  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+  border-color: var(--el-color-primary);
+  box-shadow: 0 8px 24px var(--el-color-primary-light-7);
   outline: none;
   transform: translateY(-4px);
 }
@@ -981,7 +981,7 @@ onMounted(async () => {
   min-width: 0;
   padding: 12px 16px;
   color: #fff;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
   position: relative;
   overflow: hidden;
 }
@@ -1117,7 +1117,7 @@ onMounted(async () => {
 
 .asset-table-panel :deep(.asset-row-deleted td.el-table__cell) {
   color: var(--asset-page-muted);
-  background-color: #f3f4f6 !important;
+  background-color: var(--el-fill-color-light) !important;
 }
 
 .asset-table-panel :deep(.asset-row-deleted .el-tag:not(.el-tag--danger)) {
@@ -1125,7 +1125,7 @@ onMounted(async () => {
 }
 
 .asset-table-panel :deep(.el-table--enable-row-hover .el-table__body tr.asset-row-deleted:hover > td) {
-  background-color: #e5e7eb !important;
+  background-color: var(--el-fill-color) !important;
 }
 
 .asset-table-panel :deep(.el-table .el-table__cell) {

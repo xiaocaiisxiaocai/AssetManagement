@@ -28,4 +28,7 @@ public class MaterialFlow : IBpmnFlowInstance
 
     public DateTime ApplyTime { get; set; }
     public DateTime Deadline { get; set; }
+
+    /// <summary>乐观并发令牌，防止两个审批人同时操作同一流转单</summary>
+    public uint RowVersion { get; set; }
 }

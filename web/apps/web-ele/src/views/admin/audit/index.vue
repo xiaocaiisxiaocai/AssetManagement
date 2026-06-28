@@ -137,9 +137,9 @@ onMounted(loadData);
               placeholder="全部操作"
               style="width: 130px"
             >
-              <ElOption label="新增" value="POST" />
-              <ElOption label="修改" value="PUT" />
-              <ElOption label="删除" value="DELETE" />
+              <ElOption label="POST" value="POST" />
+              <ElOption label="PUT" value="PUT" />
+              <ElOption label="DELETE" value="DELETE" />
               <ElOption label="催办" value="remind" />
             </ElSelect>
           </ElFormItem>

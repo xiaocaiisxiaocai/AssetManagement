@@ -191,7 +191,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **标准兼容**: 使用 Camunda 扩展属性存储审批人配置
 - **纯函数引擎**: `BpmnEngine` 只操作内存状态，不访问数据库
 
-#### 迁移说明
+#### 迁移说明（已完成，仅作参考）
 
 从旧引擎迁移到 BPMN 的关键变更：
 - `Workflow.Nodes` → `Workflow.BpmnXml`
@@ -200,6 +200,53 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - 种子数据已转换为 BPMN XML
 
 参考文档: `docs/BPMN-*.md`（6 份详细文档）
+
+## 站内通知模块（2026-06-28 新增 / 2026-06-28 扩展）
+
+所有核心业务动作（审批、流转、到期）均会生成站内通知，前端铃铛 5 分钟轮询展示。
+
+### 架构
+
+- **`Domain/Entities/Notification.cs`**：通知实体（`Id`、`Type`、`Title`、`Body`、`FlowId`、`UserId`、`IsRead`、`CreatedAt`、`IdempotencyKey`）。
+- **`Application/Notifications/INotificationService.cs`**：接口，含 `GetMyNotificationsAsync`/`GetUnreadCountAsync`/`MarkReadAsync`/`MarkAllReadAsync`/`CreateAsync`/`CreateBatchAsync`（`CreateNotificationRequest` 带可选幂等键）。
+- **`Infrastructure/Notifications/NotificationService.cs`**：实现，`CreateAsync`/`CreateBatchAsync` 做幂等检查（相同 `IdempotencyKey` 静默跳过）。
+- **`Infrastructure/Notifications/OverdueNotificationWorker.cs`**：`BackgroundService`，每天午夜运行，扫描借用超期/即将到期，生成 `overdue`/`due_soon_1d`/`due_soon_3d` 通知。幂等键 `{type}_{flowId}_{yyyyMMdd}`。
+- **`Infrastructure/Notifications/PendingApprovalReminderWorker.cs`**：`BackgroundService`，每天早 9 点运行，扫描等待超过 1 天的待审批资产流和料件流，向审批人发催办通知。幂等键 `pending_remind_{flowId}_{yyyyMMdd}_{userId}`。
+- **`Infrastructure/Workflow/WorkflowService.cs`**：在 `StartAsync`/`ApproveAsync`/`RejectAsync`/`ConfirmReturnAsync` 中注入 `INotificationService`，触发对应通知。
+- **`Infrastructure/TestMaterials/MaterialFlowService.cs`**：在 `InitiateTransferAsync`/`ApproveAsync`/`RejectAsync` 中注入 `INotificationService`，触发对应通知。
+- **`Api/Controllers/NotificationController.cs`**：REST 接口（路由 `api/notifications`），`[Authorize]` 鉴权。
+
+### 通知类型
+
+| Type | 触发时机 | 接收人 |
+|------|---------|-------|
+| `overdue` | 借用已逾期（每日午夜扫描） | 借用人 |
+| `due_soon_1d` | 借用明天到期（每日午夜扫描） | 借用人 |
+| `due_soon_3d` | 借用 3 天后到期（每日午夜扫描） | 借用人 |
+| `approval_pending` | 资产流程发起 / 流转进入下一审批节点 | 待审批节点的审批人 |
+| `approval_approved` | 资产审批流程全部通过 | 申请人 |
+| `approval_rejected` | 资产审批被驳回 | 申请人 |
+| `return_confirmed` | 资产确认归还入库 | 借用人 |
+| `material_transferred` | 料件直接转移完成（无审批模式） | 接收人 |
+| `material_approval_pending` | 料件流转审批发起 / 进入下一审批节点 | 待审批节点的审批人 |
+| `material_approved` | 料件流转审批全部通过 | 申请人 |
+| `material_rejected` | 料件流转审批被驳回 | 申请人 |
+| `approval_reminder` | 资产流程等待超过 1 天（每日早 9 点催办） | 审批人 |
+| `material_approval_reminder` | 料件流转等待超过 1 天（每日早 9 点催办） | 审批人 |
+
+### 接口
+
+| 方法 | 路由 | 说明 |
+|------|------|------|
+| `GET` | `/api/notifications` | 获取我的通知（`?unreadOnly=true` 过滤未读）|
+| `GET` | `/api/notifications/unread-count` | 未读数量 |
+| `POST` | `/api/notifications/{id}/read` | 标记单条已读 |
+| `POST` | `/api/notifications/read-all` | 全部标记已读 |
+
+### 前端集成
+
+- **`api/notification.ts`**：封装以上四个接口。
+- **`layouts/basic.vue`**：页面加载时拉取通知列表，之后每 **5 分钟**轮询一次。铃铛右上角红点表示有未读；点击通知调 `markReadApi` 标记已读；「全部已读」调 `markAllReadApi`。复用 `@vben/layouts` 的 `Notification` 组件，无需额外 UI 组件。
 
 ## 后端测试
 
@@ -226,7 +273,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 | **扩展基础数据(分类/部门/位置)** | (1) Domain: `AssetCategory`/`Department`/`Location` 实体(分类编码生成在 `Services/CategoryCodeService`) (2) Application: 复用 `IBaseDataService`(三类基础数据共用同一粗粒度服务)+ DTO (3) Infrastructure: 实现 + EntityTypeConfiguration (4) DbSeeder: 种子数据 (5) Api: 对应控制器(如 `AssetCategoryController`) (6) 迁移 (7) 前端页面(如 `views/admin/categories`)+ 菜单注册 |
 | **后端新增权限** | (1) DbSeeder: `Permission` 表加行 + 角色-权限映射 (2) Api: action 标注 `[HasPermission("code")]` (3) 迁移 (4) 前端菜单由后端下发,无需改前端代码 |
 | **前端新页面映射后端菜单** | (1) 后端 DbSeeder 注册 Menu(name/path/component) + Permission (2) 前端在 `views/<module>/` 创建页面,Component 路径须与后端 menu.Component 一致 (3) 登录后菜单自动下发,无需硬编码路由 |
-| **新增报表/导出** | (1) Application: `IReportService` 加方法 + DTO (2) Infrastructure: `Reports/ReportService` 实现查询(注意复用 `AssetService.ApplyQuery` 的部门隔离逻辑) (3) Api: `ReportController`(路由 `api/reports`)加 action,统一 `[HasPermission("report:view")]`,导出走 `.../export` 后缀返回 Excel (4) 前端: `views/report/` 加页面 + `api/report.ts` | | `ApprovalFlow.CurrentNodeIds`(活跃节点列表) + `BpmnTokens`(Token 状态字典,JSON 存储);调试时可在数据库直接查看或通过 `ApprovalController` 返回的流程详情分析执行路径 |
+| **新增报表/导出** | (1) Application: `IReportService` 加方法 + DTO (2) Infrastructure: `Reports/ReportService` 实现查询(注意复用 `AssetService.ApplyQuery` 的部门隔离逻辑) (3) Api: `ReportController`(路由 `api/reports`)加 action,统一 `[HasPermission("report:view")]`,导出走 `.../export` 后缀返回 Excel (4) 前端: `views/report/` 加页面 + `api/report.ts` |
 | **新增资产附件字段** | (1) Domain: `Asset` 实体加字段 (2) Infrastructure: `EntityTypeConfiguration` 配置长度/映射 (3) Application: DTO 加字段并在 Service 映射 (4) 迁移 (5) 前端: `api/asset.ts` 加类型,表单加上传组件 |
 | **资产批量导入(Excel)** | `AssetImportController`(路由 `api/assets/import`)三段式:`GET .../template` 下模板 → `POST .../validate` 上传预览校验 → `POST .../confirm` 确认落库;实现在 `IAssetService.BuildImportTemplate`/`ValidateImportAsync`/`ConfirmImportAsync`。模板下载用 `asset:view`,校验/确认用 `asset:create` |
 | **查询流转历史或审计日志** | 流转历史: `ApprovalFlows` 表按 `AssetId` 筛选; 审计日志: `AuditLogs` 表按 `TargetType=="Asset" && TargetId==资产ID` 筛选。参考 `AssetService.GetDetailAsync` 实现 |
@@ -276,7 +323,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - 前端: 浏览器 DevTools Console + Network 面板
 - 审计: `AuditLogs` 表记录所有 CUD 操作,可通过 `views/admin/audit` 查询
 
-
+## 编码约定
 
 - **路径分隔符**:Windows 环境下文件路径用反斜杠 `\`。
 - 后端 C#:`Nullable` + `ImplicitUsings` 开启;控制器保持瘦,逻辑下沉到 service。
@@ -287,9 +334,9 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-当前完成度约 **98%**,五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **95 个** `[Fact]`/`[Theory]` 全部通过。
+当前完成度约 **99%**,五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **95 个** `[Fact]`/`[Theory]` 全部通过。
 
-最新里程碑(2026-06-17 ~ 2026-06-25):
+最新里程碑(2026-06-17 ~ 2026-06-28):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)
 - ✅ 资产详情页及流转时间线(`GET /api/assets/{id}/detail`)
 - ✅ 资产照片附件上传与回显(`Asset.ImageUrls` + `FileStorageService`)
@@ -299,5 +346,6 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - ✅ 前端 UI 统一优化(样式规范与布局改进、登录跳转修复)
 - ✅ **资产/分类删除子系统重构**(删除即软删除并保留在主清单、`asset:restore` 撤销删除 + `asset:purge` 彻底删除、详情接口支持已删除项、`AssetDetailDialog` 详情页重构)
 - ✅ **测试料件模块**(2026-06-25,独立模块,包含测试项目/料件管理/流转审批,临时编号 `TM-YYYYMMDD-XXX`,可选审批,9 个权限码,7 个单元测试 + 7 个集成测试,Playwright 端到端验证通过)
+- ✅ **全面站内通知系统**(2026-06-28，借用到期提醒 + 审批任务通知 + 审批结果通知 + 资产转让接收通知 + 料件流转通知，共 13 种通知类型；`PendingApprovalReminderWorker` 每日早 9 点催办超 1 天未处理流程；`INotificationService.CreateAsync/CreateBatchAsync` 支持幂等键防重复；铃铛 UI 5 分钟轮询，支持已读/全部已读)
 
 系统已进入生产部署准备阶段。详见 `docs/plans/M7-进度分析与待办事项.md`、`docs/plans/M8-测试料件模块设计.md` 与 `docs/BPMN-*.md`。

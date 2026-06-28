@@ -145,26 +145,32 @@ export const initiateTransferApi = (data: {
 }) =>
   unwrap(requestClient.post<ApiResult<MaterialFlowItem>>('/material-flows', data));
 
-export const listPendingFlowsApi = () =>
+export const listPendingFlowsApi = (projectId?: number) =>
   unwrap(
-    requestClient.get<ApiResult<MaterialFlowItem[]>>('/material-flows/pending'),
+    requestClient.get<ApiResult<MaterialFlowItem[]>>('/material-flows/pending', {
+      params: projectId != null ? { projectId } : undefined,
+    }),
   );
 
-export const listMyFlowsApi = () =>
-  unwrap(requestClient.get<ApiResult<MaterialFlowItem[]>>('/material-flows/mine'));
+export const listMyFlowsApi = (projectId?: number) =>
+  unwrap(
+    requestClient.get<ApiResult<MaterialFlowItem[]>>('/material-flows/mine', {
+      params: projectId != null ? { projectId } : undefined,
+    }),
+  );
 
-export const approveFlowApi = (id: number, opinion?: string) =>
+export const approveFlowApi = (id: number, opinion?: string, nodeId?: string) =>
   unwrap(
     requestClient.post<ApiResult<MaterialFlowItem>>(
       `/material-flows/${id}/approve`,
-      { opinion },
+      { opinion, nodeId },
     ),
   );
 
-export const rejectFlowApi = (id: number, reason: string) =>
+export const rejectFlowApi = (id: number, reason: string, nodeId?: string) =>
   unwrap(
     requestClient.post<ApiResult<MaterialFlowItem>>(
       `/material-flows/${id}/reject`,
-      { reason },
+      { reason, nodeId },
     ),
   );

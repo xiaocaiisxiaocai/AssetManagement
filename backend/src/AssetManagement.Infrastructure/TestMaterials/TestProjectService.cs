@@ -63,6 +63,7 @@ public class TestProjectService : ITestProjectService
     {
         var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "测试项目不存在");
+        if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
         var name = (request.Name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
         await ValidateProjectReferences(request);
@@ -109,7 +110,7 @@ public class TestProjectService : ITestProjectService
             ?? throw new BizException(4046, "测试项目不存在");
         if (!project.IsDeleted) throw new BizException(4097, "请先删除项目后再彻底删除");
         if (await _db.TestMaterials.AnyAsync(x => x.ProjectId == id))
-            throw new BizException(4092, "该项目下仍有测试料件,不能彻底删除");
+            throw new BizException(4092, "该项目下仍有测试料件(含已删除),不能彻底删除");
         _db.TestProjects.Remove(project);
         await _db.SaveChangesAsync();
     }
@@ -212,6 +213,17 @@ public class TestProjectService : ITestProjectService
         followup.FilledAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return (await ToFollowupDtos(new[] { followup })).Single();
+    }
+
+    public async Task DeleteFollowupAsync(int projectId, int followupId, int currentUserId)
+    {
+        var project = await LoadProject(projectId);
+        await EnsureCanWriteFollowup(project, currentUserId);
+        var followup = await _db.TestProjectFollowups.AsTracking()
+            .SingleOrDefaultAsync(x => x.Id == followupId && x.ProjectId == projectId)
+            ?? throw new BizException(4046, "跟进记录不存在");
+        _db.TestProjectFollowups.Remove(followup);
+        await _db.SaveChangesAsync();
     }
 
     private async Task<List<TestProjectDto>> ToDtos(IEnumerable<TestProject> projects, Dictionary<int, int> counts, int? currentUserId)

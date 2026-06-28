@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { NotificationItem } from '@vben/layouts';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
 import { VBEN_DOC_URL, VBEN_GITHUB_URL } from '@vben/constants';
@@ -18,47 +18,72 @@ import { openWindow } from '@vben/utils';
 import { createIconifyIcon } from '@vben/icons';
 import { $t } from '#/locales';
 import { useAuthStore } from '#/store';
+import {
+  getNotificationsApi,
+  markAllReadApi,
+  markReadApi,
+  type NotificationDto,
+} from '#/api/notification';
 import LoginForm from '#/views/_core/authentication/login.vue';
 import Password from './password.vue';
+
 const passwordRef = ref<InstanceType<typeof Password>>();
 const passkeyIcon = createIconifyIcon('material-symbols:passkey-rounded');
-const notifications = ref<NotificationItem[]>([
-  {
-    avatar: 'https://avatar.vercel.sh/vercel.svg?text=VB',
-    date: '3小时前',
-    isRead: true,
-    message: '描述信息描述信息描述信息',
-    title: '收到了11111份新周报',
-  },
-  {
-    avatar: 'https://avatar.vercel.sh/1',
-    date: '刚刚',
-    isRead: false,
-    message: '描述信息描述信息描述信息',
-    title: '朱偏右 回复了你',
-  },
-  {
-    avatar: 'https://avatar.vercel.sh/1',
-    date: '2024-01-01',
-    isRead: false,
-    message: '描述信息描述信息描述信息',
-    title: '曲丽丽 评论了你',
-  },
-  {
-    avatar: 'https://avatar.vercel.sh/satori',
-    date: '1天前',
-    isRead: false,
-    message: '描述信息描述信息描述信息',
-    title: '代办提醒',
-  },
-]);
+
+// 通知数据（从后端获取）
+const rawNotifications = ref<NotificationDto[]>([]);
+const notifications = computed<NotificationItem[]>(() =>
+  rawNotifications.value.map((n) => ({
+    avatar: typeIcon(n.type),
+    date: formatDate(n.createdAt),
+    isRead: n.isRead,
+    message: n.body,
+    title: n.title,
+    id: n.id,
+  })),
+);
+
+function typeIcon(type: string): string {
+  if (type === 'overdue') return 'https://avatar.vercel.sh/alert?text=逾';
+  if (type === 'due_soon_1d') return 'https://avatar.vercel.sh/warn?text=急';
+  return 'https://avatar.vercel.sh/info?text=提';
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - d.getTime()) / 1000);
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+  return d.toLocaleDateString('zh-CN');
+}
+
+async function loadNotifications() {
+  try {
+    rawNotifications.value = await getNotificationsApi();
+  } catch {
+    // 静默失败，不影响页面
+  }
+}
+
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+  loadNotifications();
+  pollTimer = setInterval(loadNotifications, 5 * 60 * 1000); // 5 分钟轮询
+});
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer);
+});
 
 const userStore = useUserStore();
 const authStore = useAuthStore();
 const accessStore = useAccessStore();
 const { destroyWatermark, updateWatermark } = useWatermark();
 const showDot = computed(() =>
-  notifications.value.some((item) => !item.isRead),
+  rawNotifications.value.some((item) => !item.isRead),
 );
 
 const menus = computed(() => [
@@ -107,11 +132,33 @@ async function handleLogout() {
 }
 
 function handleNoticeClear() {
-  notifications.value = [];
+  rawNotifications.value = [];
 }
 
-function handleMakeAll() {
-  notifications.value.forEach((item) => (item.isRead = true));
+async function handleMakeAll() {
+  try {
+    await markAllReadApi();
+    rawNotifications.value = rawNotifications.value.map((n) => ({
+      ...n,
+      isRead: true,
+    }));
+  } catch {
+    // 静默失败
+  }
+}
+
+async function handleNoticeRead(item: NotificationItem) {
+  // 通过 title + message 匹配原始通知以获取 id
+  const target = rawNotifications.value.find(
+    (n) => n.title === item.title && n.body === item.message && !n.isRead,
+  );
+  if (!target) return;
+  try {
+    await markReadApi(target.id);
+    target.isRead = true;
+  } catch {
+    // 静默失败
+  }
 }
 watch(
   () => preferences.app.watermark,
@@ -148,6 +195,7 @@ watch(
         :notifications="notifications"
         @clear="handleNoticeClear"
         @make-all="handleMakeAll"
+        @read="handleNoticeRead"
       />
     </template>
     <template #extra>

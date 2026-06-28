@@ -1,0 +1,89 @@
+using AssetManagement.Application.Common;
+using AssetManagement.Application.Notifications;
+using AssetManagement.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace AssetManagement.Infrastructure.Notifications;
+
+public class NotificationService : INotificationService
+{
+    private readonly AppDbContext _db;
+
+    public NotificationService(AppDbContext db) => _db = db;
+
+    public async Task<List<NotificationDto>> GetMyNotificationsAsync(int userId, bool unreadOnly = false)
+    {
+        var q = _db.Notifications.Where(x => x.UserId == userId);
+        if (unreadOnly) q = q.Where(x => !x.IsRead);
+        var list = await q.OrderByDescending(x => x.CreatedAt).Take(50).ToListAsync();
+        return list.Select(ToDto).ToList();
+    }
+
+    public async Task<int> GetUnreadCountAsync(int userId)
+        => await _db.Notifications.CountAsync(x => x.UserId == userId && !x.IsRead);
+
+    public async Task MarkReadAsync(int id, int userId)
+    {
+        var n = await _db.Notifications.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId)
+            ?? throw new BizException(4004, "通知不存在");
+        n.IsRead = true;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task MarkAllReadAsync(int userId)
+    {
+        await _db.Notifications
+            .Where(x => x.UserId == userId && !x.IsRead)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsRead, true));
+    }
+
+    public async Task CreateAsync(CreateNotificationRequest request)
+    {
+        if (!string.IsNullOrEmpty(request.IdempotencyKey))
+        {
+            if (await _db.Notifications.AnyAsync(n => n.IdempotencyKey == request.IdempotencyKey))
+                return;
+        }
+        _db.Notifications.Add(ToEntity(request));
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task CreateBatchAsync(IEnumerable<CreateNotificationRequest> requests)
+    {
+        var toAdd = new List<Domain.Entities.Notification>();
+        foreach (var req in requests)
+        {
+            if (!string.IsNullOrEmpty(req.IdempotencyKey) &&
+                await _db.Notifications.AnyAsync(n => n.IdempotencyKey == req.IdempotencyKey))
+                continue;
+            toAdd.Add(ToEntity(req));
+        }
+        if (toAdd.Count > 0)
+        {
+            _db.Notifications.AddRange(toAdd);
+            await _db.SaveChangesAsync();
+        }
+    }
+
+    private static Domain.Entities.Notification ToEntity(CreateNotificationRequest r) => new()
+    {
+        Type = r.Type,
+        Title = r.Title,
+        Body = r.Body,
+        FlowId = r.FlowId,
+        UserId = r.UserId,
+        IdempotencyKey = r.IdempotencyKey,
+        CreatedAt = DateTime.UtcNow,
+    };
+
+    private static NotificationDto ToDto(Domain.Entities.Notification n) => new()
+    {
+        Id = n.Id,
+        Type = n.Type,
+        Title = n.Title,
+        Body = n.Body,
+        FlowId = n.FlowId,
+        IsRead = n.IsRead,
+        CreatedAt = n.CreatedAt,
+    };
+}

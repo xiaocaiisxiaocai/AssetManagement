@@ -3,6 +3,7 @@ using System;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AssetManagement.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260628113009_AddRowVersionToConcurrentFlows")]
+    partial class AddRowVersionToConcurrentFlows
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.28");
@@ -561,6 +564,7 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("IdempotencyKey")
+                        .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
@@ -583,8 +587,7 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("IdempotencyKey")
-                        .IsUnique()
-                        .HasFilter("[IdempotencyKey] IS NOT NULL");
+                        .IsUnique();
 
                     b.HasIndex("UserId", "IsRead");
 

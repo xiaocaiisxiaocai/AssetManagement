@@ -63,6 +63,7 @@ import {
   createTestProjectFollowupApi,
   createTestProjectOptionApi,
   deleteTestProjectApi,
+  deleteTestProjectFollowupApi,
   deleteTestProjectOptionApi,
   listTestProjectFollowupsApi,
   listTestProjectOptionsApi,
@@ -319,6 +320,7 @@ function openCreate() {
   editingId.value = null;
   resetProjectForm();
   dialogVisible.value = true;
+  void Promise.all([loadUsers(), loadBaseOptions()]);
 }
 
 function openEdit(row: TestProjectItem) {
@@ -338,6 +340,7 @@ function openEdit(row: TestProjectItem) {
     testStatus: row.testStatus ?? '',
   });
   dialogVisible.value = true;
+  void Promise.all([loadUsers(), loadBaseOptions()]);
 }
 
 function buildProjectPayload(): SaveTestProjectPayload {
@@ -369,6 +372,8 @@ async function save() {
     ElMessage.success('保存成功');
     dialogVisible.value = false;
     await loadData();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '保存失败');
   } finally {
     saving.value = false;
   }
@@ -382,15 +387,23 @@ async function remove(row: TestProjectItem) {
   } catch {
     return;
   }
-  await deleteTestProjectApi(row.id);
-  ElMessage.success('已删除');
-  await loadData();
+  try {
+    await deleteTestProjectApi(row.id);
+    ElMessage.success('已删除');
+    await loadData();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '删除失败');
+  }
 }
 
 async function restore(row: TestProjectItem) {
-  await restoreTestProjectApi(row.id);
-  ElMessage.success('已恢复');
-  await loadData();
+  try {
+    await restoreTestProjectApi(row.id);
+    ElMessage.success('已恢复');
+    await loadData();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '恢复失败');
+  }
 }
 
 async function purge(row: TestProjectItem) {
@@ -403,9 +416,13 @@ async function purge(row: TestProjectItem) {
   } catch {
     return;
   }
-  await purgeTestProjectApi(row.id);
-  ElMessage.success('已彻底删除');
-  await loadData();
+  try {
+    await purgeTestProjectApi(row.id);
+    ElMessage.success('已彻底删除');
+    await loadData();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '彻底删除失败');
+  }
 }
 
 function resetOptionForm(kind: OptionKind = activeOptionKind.value) {
@@ -462,6 +479,8 @@ async function saveOption() {
     resetOptionForm(optionForm.kind);
     await loadOptions();
     await loadData();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '保存失败');
   } finally {
     optionSaving.value = false;
   }
@@ -477,11 +496,15 @@ async function removeOption(row: TestProjectOption) {
   } catch {
     return;
   }
-  await deleteTestProjectOptionApi(row.id);
-  ElMessage.success('配置已删除');
-  if (optionEditingId.value === row.id) resetOptionForm(row.kind);
-  await loadOptions();
-  await loadData();
+  try {
+    await deleteTestProjectOptionApi(row.id);
+    ElMessage.success('配置已删除');
+    if (optionEditingId.value === row.id) resetOptionForm(row.kind);
+    await loadOptions();
+    await loadData();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '删除失败');
+  }
 }
 
 async function openFollowups(row: TestProjectItem) {
@@ -549,6 +572,26 @@ async function saveFollowup() {
     await loadData();
   } finally {
     followupSaving.value = false;
+  }
+}
+
+async function deleteFollowup(row: TestProjectFollowup) {
+  const project = currentProject.value;
+  if (!project) return;
+  try {
+    await ElMessageBox.confirm('确认删除该跟进记录？', '删除确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
+  try {
+    await deleteTestProjectFollowupApi(project.id, row.id);
+    ElMessage.success('已删除');
+    if (editingFollowupId.value === row.id) cancelFollowupEdit();
+    await loadFollowups(project.id);
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '删除失败');
   }
 }
 
@@ -629,9 +672,13 @@ async function onReturnMaterial(row: MaterialItem) {
   } catch {
     return;
   }
-  await returnMaterialApi(row.id);
-  ElMessage.success('已标记为退回厂商');
-  await afterMaterialChanged();
+  try {
+    await returnMaterialApi(row.id);
+    ElMessage.success('已标记为退回厂商');
+    await afterMaterialChanged();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '退回厂商失败');
+  }
 }
 
 async function removeMaterial(row: MaterialItem) {
@@ -644,9 +691,13 @@ async function removeMaterial(row: MaterialItem) {
   } catch {
     return;
   }
-  await deleteMaterialApi(row.id);
-  ElMessage.success('已删除');
-  await afterMaterialChanged();
+  try {
+    await deleteMaterialApi(row.id);
+    ElMessage.success('已删除');
+    await afterMaterialChanged();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '删除失败');
+  }
 }
 
 async function restoreMaterial(row: MaterialItem) {
@@ -657,9 +708,13 @@ async function restoreMaterial(row: MaterialItem) {
   } catch {
     return;
   }
-  await restoreMaterialApi(row.id);
-  ElMessage.success('已恢复');
-  await afterMaterialChanged();
+  try {
+    await restoreMaterialApi(row.id);
+    ElMessage.success('已恢复');
+    await afterMaterialChanged();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '恢复失败');
+  }
 }
 
 async function purgeMaterial(row: MaterialItem) {
@@ -672,9 +727,13 @@ async function purgeMaterial(row: MaterialItem) {
   } catch {
     return;
   }
-  await purgeMaterialApi(row.id);
-  ElMessage.success('已彻底删除');
-  await afterMaterialChanged();
+  try {
+    await purgeMaterialApi(row.id);
+    ElMessage.success('已彻底删除');
+    await afterMaterialChanged();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '彻底删除失败');
+  }
 }
 
 function isReturned(row: MaterialItem) {
@@ -691,7 +750,7 @@ function materialRowClassName({ row }: { row: MaterialItem }) {
 }
 
 async function afterMaterialChanged() {
-  await Promise.all([loadProjectMaterials(), loadData()]);
+  await loadProjectMaterials();
   if (activeProjectTab.value === 'flows') await loadProjectFlows();
 }
 
@@ -701,19 +760,11 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
   if (loadMine) myFlowLoading.value = true;
   else pendingFlowLoading.value = true;
   try {
-    const [materialResult, flows] = await Promise.all([
-      listMaterialsApi({
-        deleteStatus: 'all',
-        page: 1,
-        pageSize: 1000,
-        projectId,
-      }),
-      loadMine ? listMyFlowsApi() : listPendingFlowsApi(),
-    ]);
-    const materialIds = new Set(materialResult.items.map((item) => item.id));
-    const scopedFlows = flows.filter((flow) => materialIds.has(flow.materialId));
-    if (loadMine) myFlows.value = scopedFlows;
-    else pendingFlows.value = scopedFlows;
+    const flows = await (loadMine
+      ? listMyFlowsApi(projectId)
+      : listPendingFlowsApi(projectId));
+    if (loadMine) myFlows.value = flows;
+    else pendingFlows.value = flows;
   } finally {
     if (loadMine) myFlowLoading.value = false;
     else pendingFlowLoading.value = false;
@@ -730,9 +781,13 @@ async function approveFlow(row: MaterialFlowItem) {
   } catch {
     return;
   }
-  await approveFlowApi(row.id, '同意');
-  ElMessage.success('已通过');
-  await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
+  try {
+    await approveFlowApi(row.id, '同意');
+    ElMessage.success('已通过');
+    await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '操作失败');
+  }
 }
 
 async function rejectFlow(row: MaterialFlowItem) {
@@ -745,9 +800,13 @@ async function rejectFlow(row: MaterialFlowItem) {
   } catch {
     return;
   }
-  await rejectFlowApi(row.id, reason);
-  ElMessage.success('已驳回');
-  await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
+  try {
+    await rejectFlowApi(row.id, reason);
+    ElMessage.success('已驳回');
+    await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '操作失败');
+  }
 }
 
 function onProjectTabChange(name: number | string) {
@@ -768,7 +827,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadOptions(), loadUsers(), loadBaseOptions(), loadData()]);
+  await Promise.all([loadOptions(), loadData()]);
 });
 </script>
 
@@ -1145,6 +1204,15 @@ onMounted(async () => {
                     >
                       编辑
                     </ElButton>
+                    <ElButton
+                      v-if="currentProject.canWriteFollowUp"
+                      link
+                      size="small"
+                      type="danger"
+                      @click="deleteFollowup(item)"
+                    >
+                      删除
+                    </ElButton>
                   </ElTimelineItem>
                 </ElTimeline>
               </div>
@@ -1459,12 +1527,12 @@ onMounted(async () => {
 
 :deep(.project-row-deleted td.el-table__cell) {
   color: var(--el-text-color-disabled);
-  background-color: #f3f4f6 !important;
+  background-color: var(--el-fill-color-light) !important;
 }
 
 :deep(.material-row-deleted td.el-table__cell) {
   color: var(--el-text-color-disabled);
-  background-color: #f3f4f6 !important;
+  background-color: var(--el-fill-color-light) !important;
 }
 
 :deep(.material-row-returned td.el-table__cell) {

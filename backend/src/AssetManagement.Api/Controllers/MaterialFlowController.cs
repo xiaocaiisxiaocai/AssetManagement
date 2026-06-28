@@ -20,13 +20,13 @@ public class MaterialFlowController : ControllerBase
 
     [HttpGet("pending")]
     [HasPermission("material:approve")]
-    public async Task<ApiResult<List<MaterialFlowDto>>> Pending()
-        => ApiResult<List<MaterialFlowDto>>.Ok(await _service.PendingAsync(CurrentUserId()));
+    public async Task<ApiResult<List<MaterialFlowDto>>> Pending([FromQuery] int? projectId = null)
+        => ApiResult<List<MaterialFlowDto>>.Ok(await _service.PendingAsync(CurrentUserId(), projectId));
 
     [HttpGet("mine")]
     [HasPermission("material:transfer")]
-    public async Task<ApiResult<List<MaterialFlowDto>>> Mine()
-        => ApiResult<List<MaterialFlowDto>>.Ok(await _service.MineAsync(CurrentUserId()));
+    public async Task<ApiResult<List<MaterialFlowDto>>> Mine([FromQuery] int? projectId = null)
+        => ApiResult<List<MaterialFlowDto>>.Ok(await _service.MineAsync(CurrentUserId(), projectId));
 
     [HttpGet("{id:int}")]
     [HasPermission("material:view")]

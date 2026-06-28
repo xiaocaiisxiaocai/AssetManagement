@@ -166,3 +166,13 @@ export const updateTestProjectFollowupApi = (
       data,
     ),
   );
+
+export const deleteTestProjectFollowupApi = (
+  projectId: number,
+  followupId: number,
+) =>
+  unwrap(
+    requestClient.delete<ApiResult<null>>(
+      `/test-projects/${projectId}/followups/${followupId}`,
+    ),
+  );

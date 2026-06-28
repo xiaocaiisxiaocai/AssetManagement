@@ -29,6 +29,7 @@ public class MaterialFlowConfiguration : IEntityTypeConfiguration<MaterialFlow>
         b.HasIndex(x => x.MaterialId);
         b.HasIndex(x => x.ApplicantId);
         b.HasIndex(x => x.Status);
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         b.Property(x => x.CurrentNodeIds)
             .HasConversion(

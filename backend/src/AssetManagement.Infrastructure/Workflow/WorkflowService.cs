@@ -1,4 +1,5 @@
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Notifications;
 using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
@@ -12,11 +13,13 @@ public class WorkflowService : IWorkflowService
 {
     private readonly AppDbContext _db;
     private readonly IBizEffectApplier _bizEffectApplier;
+    private readonly INotificationService _notifications;
 
-    public WorkflowService(AppDbContext db, IBizEffectApplier bizEffectApplier)
+    public WorkflowService(AppDbContext db, IBizEffectApplier bizEffectApplier, INotificationService notifications)
     {
         _db = db;
         _bizEffectApplier = bizEffectApplier;
+        _notifications = notifications;
     }
 
     public async Task<List<WorkflowDto>> GetWorkflowsAsync()
@@ -42,7 +45,7 @@ public class WorkflowService : IWorkflowService
     {
         var workflow = await LoadWorkflow(id);
         await ApplyWorkflowDefinition(workflow, request);
-
+        _db.Entry(workflow).State = EntityState.Modified;
         await _db.SaveChangesAsync();
         return ToWorkflowDto(workflow);
     }
@@ -80,12 +83,6 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4055, "资产当前不可用,无法发起该流程");
         }
 
-        // 防止并发发起
-        if (await _db.ApprovalFlows.AnyAsync(x => x.AssetId == asset.Id && x.Status == "pending"))
-        {
-            throw new BizException(4056, "该资产已有进行中的审批,请勿重复发起");
-        }
-
         var applicant = await _db.Users.FindAsync(applicantId)
             ?? throw new BizException(4041, "用户不存在");
         var transferee = request.TransfereeId.HasValue
@@ -94,6 +91,12 @@ public class WorkflowService : IWorkflowService
 
         // 解析 BPMN 流程定义
         var bpmnProcess = BpmnParser.Parse(workflow.BpmnXml);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // 防重检查放事务内，防止并发请求同时通过检查后各自插入
+        if (await _db.ApprovalFlows.AnyAsync(x => x.AssetId == asset.Id && x.Status == "pending"))
+            throw new BizException(4056, "该资产已有进行中的审批,请勿重复发起");
 
         var flow = new ApprovalFlow
         {
@@ -122,6 +125,11 @@ public class WorkflowService : IWorkflowService
         _db.ApprovalFlows.Add(flow);
         await _db.SaveChangesAsync();
         await AddRecord(flow.Id, "start", applicant.Name, request.Reason);
+        await tx.CommitAsync();
+
+        // 通知当前待审批节点的审批人
+        await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{asset.Name} 的{BizTypeLabel(workflow.BizType)}申请");
+
         return ToFlowDto(flow);
     }
 
@@ -129,16 +137,45 @@ public class WorkflowService : IWorkflowService
     {
         var user = await LoadUser(userId);
         var isAdmin = IsAdmin(user);
+
+        // dept_admin 只能看到申请人属于其管辖部门（含子部门）的流程
+        int[]? allowedDeptIds = null;
+        if (!isAdmin && user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin") && user.DepartmentId.HasValue)
+        {
+            allowedDeptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
+        }
+
         var flows = await _db.ApprovalFlows
             .Where(x => x.Status == "pending")
             .OrderByDescending(x => x.Id)
             .ToListAsync();
 
+        if (allowedDeptIds != null)
+        {
+            // 用申请人的部门做隔离：ApplicantDept 是名称，需通过 ApplicantId -> User.DepartmentId 关联
+            var applicantIds = flows.Select(f => f.ApplicantId).Distinct().ToArray();
+            var applicantDeptMap = await _db.Users
+                .Where(u => applicantIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.DepartmentId })
+                .ToDictionaryAsync(u => u.Id, u => u.DepartmentId);
+            flows = flows
+                .Where(f => applicantDeptMap.TryGetValue(f.ApplicantId, out var deptId)
+                            && deptId.HasValue
+                            && allowedDeptIds.Contains(deptId.Value))
+                .ToList();
+        }
+
+        // 预取所有涉及的工作流定义，避免 N+1 查询
+        var workflowIds = flows.Select(f => f.WorkflowId).Distinct().ToArray();
+        var workflowMap = await _db.Workflows
+            .Where(w => workflowIds.Contains(w.Id))
+            .ToDictionaryAsync(w => w.Id, w => w);
+
         // 筛选当前用户可以审批的流程
         var result = new List<ApprovalFlowDto>();
         foreach (var flow in flows)
         {
-            if (isAdmin || await CanApprove(flow, user))
+            if (isAdmin || await CanApprove(flow, user, workflowMap))
             {
                 result.Add(ToFlowDto(flow));
             }
@@ -209,9 +246,34 @@ public class WorkflowService : IWorkflowService
             await _bizEffectApplier.ApplyAsync(flow, userId);
         }
 
-        await _db.SaveChangesAsync();
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
+        }
         await AddRecord(id, "approve", user.Name, $"节点 {nodeId}: {request.Opinion}");
         await tx.CommitAsync();
+
+        // 流程完成 → 通知申请人；未完成 → 通知下一审批节点的审批人
+        if (flow.Status == "approved")
+        {
+            await _notifications.CreateAsync(new CreateNotificationRequest
+            {
+                Type = "approval_approved",
+                Title = $"审批通过：{flow.AssetName}",
+                Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请已通过审批。",
+                FlowId = id,
+                UserId = flow.ApplicantId,
+            });
+        }
+        else if (flow.Status == "pending")
+        {
+            await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{flow.AssetName} 的{BizTypeLabel(flow.BizType)}申请");
+        }
 
         return ToFlowDto(flow);
     }
@@ -242,9 +304,27 @@ public class WorkflowService : IWorkflowService
         await using var tx = await _db.Database.BeginTransactionAsync();
         BpmnEngine.Reject(flow, nodeId, user.Name, request.Reason);
 
-        await _db.SaveChangesAsync();
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
+        }
         await AddRecord(id, "reject", user.Name, request.Reason);
         await tx.CommitAsync();
+
+        // 通知申请人审批被驳回
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "approval_rejected",
+            Title = $"审批驳回：{flow.AssetName}",
+            Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请被驳回。原因：{request.Reason}",
+            FlowId = id,
+            UserId = flow.ApplicantId,
+        });
 
         return ToFlowDto(flow);
     }
@@ -317,6 +397,16 @@ public class WorkflowService : IWorkflowService
 
         await _db.SaveChangesAsync();
         await AddRecord(id, "confirm_return", user.Name, "确认归还入库");
+
+        // 通知借用人资产已确认归还
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "return_confirmed",
+            Title = $"归还确认：{flow.AssetName}",
+            Body = $"您借用的 {flow.AssetName}（{flow.AssetNo}）已确认归还入库。",
+            FlowId = id,
+            UserId = flow.ApplicantId,
+        });
 
         return ToFlowDto(flow);
     }
@@ -392,14 +482,18 @@ public class WorkflowService : IWorkflowService
         }
     }
 
-    private async Task<bool> CanApprove(ApprovalFlow flow, User user)
+    private async Task<bool> CanApprove(ApprovalFlow flow, User user, Dictionary<int, WorkflowEntity>? workflowMap = null)
     {
         // 检查用户是否可以审批流程中的任一活跃节点
         foreach (var nodeId in flow.CurrentNodeIds)
         {
             if (flow.BpmnTokens.TryGetValue(nodeId, out var token) && token.Status == BpmnTokenStatus.Active)
             {
-                var workflow = await _db.Workflows.FindAsync(flow.WorkflowId);
+                WorkflowEntity? workflow;
+                if (workflowMap != null)
+                    workflowMap.TryGetValue(flow.WorkflowId, out workflow);
+                else
+                    workflow = await _db.Workflows.FindAsync(flow.WorkflowId);
                 if (workflow?.BpmnXml == null) continue;
 
                 var bpmnProcess = BpmnParser.Parse(workflow.BpmnXml);
@@ -517,6 +611,132 @@ public class WorkflowService : IWorkflowService
 
     private bool IsAdmin(User user)
         => user.UserRoles.Any(ur => ur.Role?.Code == "admin");
+
+    /// <summary>
+    /// 通知流程当前所有活跃 UserTask 节点对应的审批人
+    /// </summary>
+    private async Task NotifyCurrentApproversAsync(ApprovalFlow flow, BpmnProcess process, string bodyPrefix)
+    {
+        var requests = new List<CreateNotificationRequest>();
+        foreach (var nodeId in flow.CurrentNodeIds)
+        {
+            if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) ||
+                token.Status != BpmnTokenStatus.Active) continue;
+
+            var node = process.FindNode(nodeId);
+            if (node?.Type != BpmnNodeType.UserTask) continue;
+
+            var approverIds = await ResolveApproverUserIdsAsync(node, flow);
+            var dateStr = DateTime.Today.ToString("yyyyMMdd");
+            foreach (var approverUserId in approverIds)
+            {
+                requests.Add(new CreateNotificationRequest
+                {
+                    Type = "approval_pending",
+                    Title = $"待审批：{flow.AssetName}",
+                    Body = bodyPrefix,
+                    FlowId = flow.Id,
+                    UserId = approverUserId,
+                    IdempotencyKey = $"approval_pending_{flow.Id}_{nodeId}_{approverUserId}_{dateStr}",
+                });
+            }
+        }
+        if (requests.Count > 0)
+            await _notifications.CreateBatchAsync(requests);
+    }
+
+    /// <summary>
+    /// 解析 BPMN UserTask 节点的审批人列表，返回用户 ID 集合
+    /// </summary>
+    private async Task<List<int>> ResolveApproverUserIdsAsync(BpmnNode node, ApprovalFlow flow)
+    {
+        var result = new List<int>();
+        var assignee = node.Properties.GetValueOrDefault("assignee");
+        var candidateUsers = node.Properties.GetValueOrDefault("candidateUsers");
+        var candidateGroups = node.Properties.GetValueOrDefault("candidateGroups");
+
+        if (!string.IsNullOrEmpty(assignee))
+        {
+            if (assignee == "deptManager")
+            {
+                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                if (applicant?.DepartmentId is not null)
+                {
+                    var dept = await _db.Departments.FindAsync(applicant.DepartmentId.Value);
+                    if (dept?.ManagerId is not null) result.Add(dept.ManagerId.Value);
+                    // 同部门 dept_admin 也收通知
+                    var deptAdmins = await _db.Users
+                        .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+                        .Where(u => u.DepartmentId == applicant.DepartmentId &&
+                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "dept_admin"))
+                        .Select(u => u.Id)
+                        .ToListAsync();
+                    foreach (var uid in deptAdmins)
+                        if (!result.Contains(uid)) result.Add(uid);
+                }
+            }
+            else if (assignee == "supervisor")
+            {
+                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                if (applicant?.SupervisorId is not null) result.Add(applicant.SupervisorId.Value);
+            }
+            else if (int.TryParse(assignee, out var uid))
+            {
+                result.Add(uid);
+            }
+            else
+            {
+                var u = await _db.Users.FirstOrDefaultAsync(x => x.Name == assignee || x.EmployeeNo == assignee);
+                if (u is not null) result.Add(u.Id);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(candidateUsers))
+        {
+            foreach (var part in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var p = part.Trim();
+                if (int.TryParse(p, out var uid)) { if (!result.Contains(uid)) result.Add(uid); }
+                else
+                {
+                    var u = await _db.Users.FirstOrDefaultAsync(x => x.Name == p);
+                    if (u is not null && !result.Contains(u.Id)) result.Add(u.Id);
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(candidateGroups))
+        {
+            var groups = candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(g => g.Trim()).ToArray();
+            var groupUsers = await _db.Users
+                .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+                .Where(u => u.UserRoles.Any(ur => ur.Role != null &&
+                    groups.Any(g => g == ur.Role.Code || g == ur.Role.Name)))
+                .Select(u => u.Id)
+                .ToListAsync();
+            foreach (var uid in groupUsers)
+                if (!result.Contains(uid)) result.Add(uid);
+        }
+
+        return result;
+    }
+
+    private async Task<int[]> DescendantDepartmentIdsAsync(int rootId)
+    {
+        var all = await _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToListAsync();
+        var ids = new List<int> { rootId };
+        void Walk(int parentId)
+        {
+            foreach (var child in all.Where(x => x.ParentId == parentId))
+            {
+                ids.Add(child.Id);
+                Walk(child.Id);
+            }
+        }
+        Walk(rootId);
+        return ids.ToArray();
+    }
 
     private async Task<string?> DepartmentName(int? deptId)
     {

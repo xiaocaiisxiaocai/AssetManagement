@@ -10,6 +10,8 @@ using Xunit;
 
 namespace AssetManagement.Tests.TestMaterials;
 
+// 每个测试方法开头均显式调用 SetApprovalSwitch 设定开关状态，确保测试方法间无顺序依赖。
+// TestWebAppFactory 使用独立 in-memory SQLite，保证本类与其他测试类的数据库完全隔离。
 public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;

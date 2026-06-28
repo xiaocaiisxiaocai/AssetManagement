@@ -273,25 +273,25 @@ onMounted(loadData);
 }
 
 .workspace-stat-card:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+  border-color: var(--el-color-primary);
+  box-shadow: 0 4px 12px var(--el-color-primary-light-7);
   transform: translateY(-2px);
 }
 
 .workspace-stat-primary .stat-value {
-  color: #3b82f6;
+  color: var(--el-color-primary);
 }
 
 .workspace-stat-success .stat-value {
-  color: #10b981;
+  color: var(--el-color-success);
 }
 
 .workspace-stat-warning .stat-value {
-  color: #f59e0b;
+  color: var(--el-color-warning);
 }
 
 .workspace-stat-danger .stat-value {
-  color: #ef4444;
+  color: var(--el-color-danger);
 }
 
 /* 仪表板布局 */
@@ -392,7 +392,7 @@ onMounted(loadData);
 }
 
 .workspace-todo-item:hover {
-  border-color: #3b82f6;
+  border-color: var(--el-color-primary);
   background: var(--asset-page-surface-soft);
 }
 
@@ -406,7 +406,7 @@ onMounted(loadData);
   font-size: 20px;
   font-weight: 600;
   line-height: 28px;
-  color: #3b82f6;
+  color: var(--el-color-primary);
 }
 
 /* 快捷入口 */
@@ -427,13 +427,13 @@ onMounted(loadData);
   background: var(--asset-page-surface);
   font-size: 14px;
   line-height: 20px;
-  color: #3b82f6;
+  color: var(--el-color-primary);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .workspace-shortcut-item:hover {
-  border-color: #3b82f6;
+  border-color: var(--el-color-primary);
   background: var(--asset-page-surface-soft);
 }
 

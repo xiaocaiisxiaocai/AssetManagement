@@ -9,7 +9,9 @@ using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Reports;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Application.Workflow;
+using AssetManagement.Application.Notifications;
 using AssetManagement.Infrastructure.Audit;
+using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Assets;
 using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.BaseData;
@@ -23,6 +25,7 @@ using AssetManagement.Infrastructure.Workflow;
 using AssetManagement.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -97,6 +100,9 @@ builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
 builder.Services.AddScoped<ITestProjectService, TestProjectService>();
 builder.Services.AddScoped<ITestMaterialService, TestMaterialService>();
 builder.Services.AddScoped<IMaterialFlowService, MaterialFlowService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddHostedService<OverdueNotificationWorker>();
+builder.Services.AddHostedService<PendingApprovalReminderWorker>();
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
 // 生产环境纵深防御:禁止以占位符或弱密钥(<32 字符)启动,密钥应通过环境变量 Jwt__Key 注入
@@ -191,6 +197,13 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ExceptionMiddleware>();
+
+// 反向代理场景（Nginx/Caddy）：解析 X-Forwarded-For / X-Forwarded-Proto，
+// 确保 HttpContext.Connection.RemoteIpAddress 和 Request.Scheme 为真实客户端 IP
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
 if (corsOrigins is { Length: > 0 })
 {

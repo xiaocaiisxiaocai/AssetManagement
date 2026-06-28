@@ -166,30 +166,32 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     public async Task Only_project_owner_or_admin_can_write_followup()
     {
         await Login();
-        var owner = await CreateUserInDb("1902", "跟进负责人");
-        var outsider = await CreateUserInDb("1903", "无关人员");
+        var manager = await CreateManagerInDb("1902", "部门管理员");
+        var outsider = await CreateUserInDb("1903", "无关员工");
         var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
             Name = "权限跟进项目",
             ProjectTypeCode = "prototype",
             ProgressCode = "testing",
-            OwnerId = owner.Id,
+            OwnerId = manager.Id,
             StartDate = DateTime.UtcNow.Date,
             FollowUpIntervalDays = 14
         });
 
+        // 无 project:manage 权限的普通员工应被拒绝（403）
         await Login(outsider.EmployeeNo, "123456");
         var denied = await _client.PostAsJsonAsync($"/api/test-projects/{project.Data!.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "我不应该能填" });
-        var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
-        deniedBody!.Code.Should().Be(4031);
+        denied.StatusCode.Should().Be(System.Net.HttpStatusCode.Forbidden);
 
-        await Login(owner.EmployeeNo, "123456");
-        var ownerFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
+        // 有 project:manage 权限的部门管理员可以写跟进
+        await Login(manager.EmployeeNo, "123456");
+        var managerFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
             $"/api/test-projects/{project.Data.Id}/followups",
-            new SaveTestProjectFollowupRequest { Content = "负责人填写本期落地情况" });
-        ownerFollowup.Data!.FilledByName.Should().Be("跟进负责人");
+            new SaveTestProjectFollowupRequest { Content = "管理员填写本期落地情况" });
+        managerFollowup.Data!.FilledByName.Should().Be("部门管理员");
 
+        // 系统管理员也可以写跟进
         await Login();
         var adminFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
             $"/api/test-projects/{project.Data.Id}/followups",
@@ -209,6 +211,25 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             password
         });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.Data!.Token);
+    }
+
+    private async Task<User> CreateManagerInDb(string employeeNo, string name)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var managerRole = db.Roles.Single(x => x.Code == "dept_admin");
+        var user = new User
+        {
+            EmployeeNo = employeeNo,
+            Name = name,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = managerRole.Id });
+        await db.SaveChangesAsync();
+        return user;
     }
 
     private async Task<User> CreateUserInDb(string employeeNo, string name)
