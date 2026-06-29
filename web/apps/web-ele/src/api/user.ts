@@ -18,7 +18,6 @@ export interface UserDto {
   employeeNo: string;
   name: string;
   email?: string | null;
-  phone?: string | null;
   isActive: boolean;
   roleIds: number[];
   roleNames?: string[];
@@ -29,7 +28,6 @@ export type UserPayload = {
   employeeNo?: string;
   name: string;
   email?: string | null;
-  phone?: string | null;
   roleIds: number[];
   supervisorId?: null | number;
 };

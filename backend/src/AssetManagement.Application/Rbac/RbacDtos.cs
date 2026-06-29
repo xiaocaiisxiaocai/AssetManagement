@@ -11,6 +11,7 @@ public record UserDto
     public int? DepartmentId { get; init; }
     public int? SupervisorId { get; init; }
     public int[] RoleIds { get; init; } = Array.Empty<int>();
+    public string[] RoleNames { get; init; } = Array.Empty<string>();
 }
 
 public record CreateUserRequest

@@ -50,8 +50,7 @@ const form = reactive({
   employeeNo: '',
   name: '',
   email: '',
-  phone: '',
-  roleIds: [] as number[],
+  roleId: undefined as number | undefined,
   supervisorId: undefined as number | undefined,
 });
 
@@ -83,8 +82,7 @@ function openCreate() {
     employeeNo: '',
     name: '',
     email: '',
-    phone: '',
-    roleIds: [],
+    roleId: undefined,
     supervisorId: undefined,
   });
   dialogVisible.value = true;
@@ -96,8 +94,7 @@ function openEdit(row: UserDto) {
     employeeNo: row.employeeNo,
     name: row.name,
     email: row.email ?? '',
-    phone: row.phone ?? '',
-    roleIds: row.roleIds ?? [],
+    roleId: row.roleIds?.[0],
     supervisorId: row.supervisorId ?? undefined,
   });
   dialogVisible.value = true;
@@ -112,14 +109,17 @@ async function save() {
     ElMessage.warning('新增用户需要填写工号');
     return;
   }
+  if (!form.roleId) {
+    ElMessage.warning('请选择角色');
+    return;
+  }
 
   saving.value = true;
   try {
     const payload = {
       name: form.name,
       email: form.email || null,
-      phone: form.phone || null,
-      roleIds: form.roleIds,
+      roleIds: form.roleId ? [form.roleId] : [],
       supervisorId: form.supervisorId ?? null,
     };
 
@@ -303,15 +303,10 @@ onMounted(async () => {
           <ElFormItem label="邮箱">
             <ElInput v-model="form.email" clearable placeholder="请输入邮箱" type="email" />
           </ElFormItem>
-          <ElFormItem label="电话">
-            <ElInput v-model="form.phone" clearable placeholder="请输入电话" />
-          </ElFormItem>
-          <ElFormItem label="角色">
+          <ElFormItem label="角色" required>
             <ElSelect
-              v-model="form.roleIds"
-              clearable
+              v-model="form.roleId"
               filterable
-              multiple
               placeholder="选择角色"
               style="width: 100%"
             >

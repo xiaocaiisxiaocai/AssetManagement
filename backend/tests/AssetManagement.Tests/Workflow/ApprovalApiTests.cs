@@ -4,6 +4,8 @@ using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Notifications;
+using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
@@ -177,6 +179,90 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Transfer_receiver_dept_manager_gets_second_node_pending_and_notification()
+    {
+        await Login();
+
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
+        var employeeRole = roles.Data.Items.Single(r => r.Code == "employee");
+        var deptAdminRole = roles.Data.Items.Single(r => r.Code == "dept_admin");
+
+        var sourceDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { Name = Unique("SRC") });
+        var targetDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { Name = Unique("DST") });
+
+        var supervisorNo = Unique("SUP");
+        var supervisor = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = supervisorNo,
+            Name = Unique("主管"),
+            Password = "123456",
+            DepartmentId = sourceDept.Data!.Id,
+            RoleIds = new[] { supervisorRole.Id }
+        });
+        var receiverAdminNo = Unique("RDA");
+        var receiverAdmin = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = receiverAdminNo,
+            Name = Unique("接收管理员"),
+            Password = "123456",
+            DepartmentId = targetDept.Data!.Id,
+            RoleIds = new[] { deptAdminRole.Id }
+        });
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{targetDept.Data.Id}", new UpdateDepartmentRequest
+        {
+            Name = targetDept.Data.Name,
+            ManagerId = receiverAdmin.Data!.Id,
+            IsActive = true
+        });
+
+        var applicantNo = Unique("APP");
+        var applicant = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = applicantNo,
+            Name = Unique("申请人"),
+            Password = "123456",
+            DepartmentId = sourceDept.Data.Id,
+            SupervisorId = supervisor.Data!.Id,
+            RoleIds = new[] { employeeRole.Id }
+        });
+        var receiverNo = Unique("RCV");
+        var receiver = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = receiverNo,
+            Name = Unique("接收人"),
+            Password = "123456",
+            DepartmentId = targetDept.Data.Id,
+            SupervisorId = receiverAdmin.Data.Id,
+            RoleIds = new[] { employeeRole.Id }
+        });
+
+        var asset = await CreateAsset(sourceDept.Data.Id, applicant.Data!.Id);
+
+        Auth(await LoginToken(applicantNo, "123456"));
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "transfer",
+            AssetId = asset.Id,
+            TransfereeId = receiver.Data!.Id,
+            Reason = "转让到接收部门"
+        });
+
+        Auth(await LoginToken(supervisorNo, "123456"));
+        var step1 = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
+            new ApprovalActionRequest { NodeId = "Task_supervisor", Opinion = "同意" });
+        step1.Data!.CurrentNodeIds.Should().Contain("Task_receiver");
+
+        Auth(await LoginToken(receiverAdminNo, "123456"));
+        var pending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
+        pending!.Data.Should().Contain(x => x.Id == flow.Data.Id,
+            "转让第二节点的 deptManager 应按接收人部门解析，而不是申请人部门");
+
+        var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
+        notifications!.Data.Should().Contain(x => x.Type == "approval_pending" && x.FlowId == flow.Data.Id);
+    }
+
+    [Fact]
     public async Task Exclusive_gateway_routes_based_on_condition()
     {
         // 测试 BPMN ExclusiveGateway 根据条件选择不同分支
@@ -245,7 +331,19 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.Data!.Token);
     }
 
+    private void Auth(string token)
+        => _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+    private async Task<string> LoginToken(string employeeNo, string password)
+    {
+        var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new { employeeNo, password });
+        return body.Data!.Token;
+    }
+
     private async Task<AssetDto> CreateAsset()
+        => await CreateAsset(null, null);
+
+    private async Task<AssetDto> CreateAsset(int? departmentId, int? custodianId)
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
@@ -260,6 +358,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "测试资产",
             CategoryId = child.Data!.Id,
+            DepartmentId = departmentId,
+            CustodianId = custodianId
         });
         return asset.Data!;
     }

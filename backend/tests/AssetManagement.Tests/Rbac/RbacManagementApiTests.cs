@@ -22,17 +22,82 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
 
         var created = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = employeeNo,
             Name = "测试用户",
-            RoleIds = Array.Empty<int>()
+            RoleIds = new[] { roleId }
         });
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={employeeNo}");
 
         created.Code.Should().Be(0);
         list!.Data!.Items.Should().Contain(x => x.EmployeeNo == employeeNo && x.Name == "测试用户");
+    }
+
+    [Fact]
+    public async Task User_list_returns_role_names()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = "列表展示角色",
+            IsActive = true
+        });
+
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "角色展示用户",
+            RoleIds = new[] { role.Data!.Id }
+        });
+
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={employeeNo}");
+
+        list!.Data!.Items.Single().RoleNames.Should().Equal("列表展示角色");
+    }
+
+    [Fact]
+    public async Task Create_user_without_password_uses_default_123456()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
+
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "默认密码用户",
+            RoleIds = new[] { roleId }
+        });
+
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "123456"
+        });
+
+        login.Code.Should().Be(0);
+        login.Data!.Token.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task Create_user_requires_role()
+    {
+        await Login();
+
+        var created = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("u"),
+            Name = "无角色用户",
+            RoleIds = Array.Empty<int>()
+        });
+
+        created.Code.Should().Be(4001);
+        created.Message.Should().Be("请选择角色");
     }
 
     [Fact]
@@ -80,7 +145,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var permissionCode = Unique("demo:run");
         var roleCode = Unique("demo_role");
         var employeeNo = Unique("u");
-        var password = employeeNo[^6..];
+        var password = "123456";
 
         var permission = await Post<ApiResult<PermissionDto>>("/api/permissions", new PermissionDto
         {
@@ -154,11 +219,12 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
         var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = employeeNo,
             Name = "状态测试用户",
-            RoleIds = Array.Empty<int>()
+            RoleIds = new[] { roleId }
         });
 
         await Post<ApiResult<object?>>($"/api/users/{user.Data!.Id}/toggle-status", new { isActive = false });
@@ -166,6 +232,55 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={employeeNo}");
 
         list!.Data!.Items.Single().IsActive.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Disabled_user_cannot_login()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "禁用登录用户",
+            RoleIds = new[] { roleId }
+        });
+        await Post<ApiResult<object?>>($"/api/users/{user.Data!.Id}/toggle-status", new { isActive = false });
+
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "123456"
+        });
+
+        login.Code.Should().Be(4011);
+        login.Data.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Reset_password_uses_default_123456()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "重置密码用户",
+            Password = "old-password",
+            RoleIds = new[] { roleId }
+        });
+
+        await Post<ApiResult<object?>>($"/api/users/{user.Data!.Id}/reset-password", new { });
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "123456"
+        });
+
+        login.Code.Should().Be(0);
+        login.Data!.Token.Should().NotBeNullOrWhiteSpace();
     }
 
     private async Task Login()
@@ -181,7 +296,6 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     private async Task<T> Post<T>(string url, object body)
     {
         var res = await _client.PostAsJsonAsync(url, body);
-        res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }
 
@@ -194,4 +308,15 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}";
+
+    private async Task<int> CreateRoleId()
+    {
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = "测试角色",
+            IsActive = true
+        });
+        return role.Data!.Id;
+    }
 }

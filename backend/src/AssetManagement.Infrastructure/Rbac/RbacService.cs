@@ -8,6 +8,7 @@ namespace AssetManagement.Infrastructure.Rbac;
 
 public class RbacService : IRbacService
 {
+    private const string DefaultUserPassword = "123456";
     private readonly AppDbContext _db;
 
     public RbacService(AppDbContext db)
@@ -19,6 +20,7 @@ public class RbacService : IRbacService
     {
         var query = _db.Users
             .Include(x => x.UserRoles)
+            .ThenInclude(x => x.Role)
             .AsQueryable();
         if (!string.IsNullOrWhiteSpace(keyword))
         {
@@ -39,9 +41,10 @@ public class RbacService : IRbacService
 
     public async Task<UserDto> CreateUserAsync(CreateUserRequest request)
     {
+        EnsureSingleRole(request.RoleIds);
         var password = !string.IsNullOrWhiteSpace(request.Password)
             ? request.Password
-            : DefaultPassword(request.EmployeeNo);
+            : DefaultUserPassword;
 
         var user = new User
         {
@@ -62,6 +65,7 @@ public class RbacService : IRbacService
 
     public async Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request)
     {
+        EnsureSingleRole(request.RoleIds);
         var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
         user.Name = request.Name.Trim();
@@ -78,7 +82,7 @@ public class RbacService : IRbacService
     {
         var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultPassword(user.EmployeeNo));
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultUserPassword);
         await _db.SaveChangesAsync();
     }
 
@@ -233,6 +237,14 @@ public class RbacService : IRbacService
         await _db.SaveChangesAsync();
     }
 
+    private static void EnsureSingleRole(IEnumerable<int> roleIds)
+    {
+        if (roleIds.Distinct().Count() != 1)
+        {
+            throw new BizException(4001, "请选择角色");
+        }
+    }
+
     private async Task RewriteRolePermissions(int roleId, IEnumerable<int> permissionIds)
     {
         if (!await _db.Roles.AnyAsync(x => x.Id == roleId))
@@ -267,7 +279,10 @@ public class RbacService : IRbacService
 
     private async Task<UserDto> LoadUserDto(int id)
     {
-        var user = await _db.Users.Include(x => x.UserRoles).SingleAsync(x => x.Id == id);
+        var user = await _db.Users
+            .Include(x => x.UserRoles)
+            .ThenInclude(x => x.Role)
+            .SingleAsync(x => x.Id == id);
         return ToUserDto(user);
     }
 
@@ -281,9 +296,6 @@ public class RbacService : IRbacService
         return ToRoleDto(role);
     }
 
-    private static string DefaultPassword(string employeeNo)
-        => employeeNo.Length <= 6 ? employeeNo.PadLeft(6, '0') : employeeNo[^6..];
-
     private static UserDto ToUserDto(User x) => new()
     {
         Id = x.Id,
@@ -294,7 +306,11 @@ public class RbacService : IRbacService
         IsActive = x.IsActive,
         DepartmentId = x.DepartmentId,
         SupervisorId = x.SupervisorId,
-        RoleIds = x.UserRoles.Select(r => r.RoleId).ToArray()
+        RoleIds = x.UserRoles.Select(r => r.RoleId).ToArray(),
+        RoleNames = x.UserRoles
+            .Where(r => r.Role is not null)
+            .Select(r => r.Role.Name)
+            .ToArray()
     };
 
     private static RoleDto ToRoleDto(Role x) => new()

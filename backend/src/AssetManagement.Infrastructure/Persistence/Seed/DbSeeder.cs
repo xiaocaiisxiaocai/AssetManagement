@@ -100,18 +100,10 @@ public static class DbSeeder
             MenuId = x.Id
         }));
 
-        // 非 admin 角色的默认权限与菜单（参照需求文档权限矩阵）
-        var rolePermissionMap = new Dictionary<string, string[]>
-        {
-            ["warehouse"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:delete", "approval:handle", "approval:view", "approval:create", "report:view", "admin:audit", "admin:setting", "workflow:design" },
-            ["supervisor"] = new[] { "asset:view", "approval:handle", "approval:view", "approval:create", "report:view" },
-            ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:restore", "approval:handle", "approval:view", "approval:create", "report:view" },
-            ["employee"] = new[] { "asset:view", "approval:view", "approval:create" }
-        };
         var allMenusForSeed = db.Menus.ToList();
         var homeMenu = allMenusForSeed.Single(x => x.Name == "Home");
         var homeWorkspaceMenu = allMenusForSeed.Single(x => x.Name == "HomeWorkspace");
-        foreach (var pair in rolePermissionMap)
+        foreach (var pair in CoreRolePermissionMap())
         {
             var role = db.Roles.Single(x => x.Code == pair.Key);
             var perms = db.Permissions.Where(p => pair.Value.Contains(p.Code)).ToList();
@@ -172,6 +164,8 @@ public static class DbSeeder
 
     private static void SeedIncremental(AppDbContext db)
     {
+        EnsureCoreRolePermissions(db);
+
         var defaultWorkflows = DefaultWorkflows();
         if (!db.Workflows.Any())
         {
@@ -371,6 +365,63 @@ public static class DbSeeder
         db.SaveChanges();
     }
 
+    private static Dictionary<string, string[]> CoreRolePermissionMap() => new()
+    {
+        ["warehouse"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:delete", "approval:handle", "approval:view", "approval:create", "report:view", "admin:audit", "admin:setting", "workflow:design" },
+        ["supervisor"] = new[] { "asset:view", "approval:handle", "approval:view", "approval:create", "report:view" },
+        ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:restore", "approval:handle", "approval:view", "approval:create", "report:view" },
+        ["employee"] = new[] { "asset:view", "approval:view", "approval:create" }
+    };
+
+    private static void EnsureCoreRolePermissions(AppDbContext db)
+    {
+        var requiredPermissions = new[]
+        {
+            ("asset:view", "查看资产", "asset"),
+            ("asset:create", "新增资产", "asset"),
+            ("asset:edit", "编辑资产", "asset"),
+            ("asset:delete", "删除资产", "asset"),
+            ("approval:handle", "处理审批", "approval"),
+            ("approval:view", "查看审批", "approval"),
+            ("approval:create", "发起审批", "approval"),
+            ("report:view", "查看报表", "report"),
+            ("admin:audit", "审计日志", "admin"),
+            ("admin:setting", "系统参数", "admin"),
+            ("workflow:design", "流程设计", "workflow")
+        };
+
+        foreach (var (code, name, module) in requiredPermissions)
+        {
+            var permission = db.Permissions.SingleOrDefault(x => x.Code == code);
+            if (permission is null)
+            {
+                db.Permissions.Add(new Permission { Code = code, Name = name, Module = module });
+            }
+            else
+            {
+                permission.Name = name;
+                permission.Module = module;
+            }
+        }
+        db.SaveChanges();
+
+        foreach (var (roleCode, permissionCodes) in CoreRolePermissionMap())
+        {
+            var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
+            if (role is null) continue;
+
+            var permissions = db.Permissions.Where(x => permissionCodes.Contains(x.Code)).ToList();
+            foreach (var permission in permissions)
+            {
+                if (!db.RolePermissions.Any(x => x.RoleId == role.Id && x.PermissionId == permission.Id))
+                {
+                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id });
+                }
+            }
+        }
+        db.SaveChanges();
+    }
+
     public static void SeedTestMaterialModule(AppDbContext db)
     {
         // ---- 1. 权限码 ----
@@ -426,7 +477,7 @@ public static class DbSeeder
         }
         db.SaveChanges();
 
-        // ---- 3. 菜单(一级入口"新产品新技术跟进"+ 单一项目入口)----
+        // ---- 3. 菜单(一级入口"新产品新技术"+ 单一项目入口)----
         var adminRole = db.Roles.SingleOrDefault(x => x.Code == "admin");
         var rootMenu = db.Menus.SingleOrDefault(x => x.Name == "Material");
         if (rootMenu is null)
@@ -434,7 +485,7 @@ public static class DbSeeder
             rootMenu = new Menu
             {
                 Name = "Material",
-                Title = "新产品新技术跟进",
+                Title = "新产品新技术",
                 Path = "/material",
                 Component = "BasicLayout",
                 Icon = "lucide:flask-conical",
@@ -445,7 +496,7 @@ public static class DbSeeder
         }
         else
         {
-            rootMenu.Title = "新产品新技术跟进";
+            rootMenu.Title = "新产品新技术";
             rootMenu.Path = "/material";
             rootMenu.Component = "BasicLayout";
             rootMenu.Icon = "lucide:flask-conical";
@@ -667,19 +718,44 @@ public static class DbSeeder
     <bpmn:startEvent id=""StartEvent_1"" name=""发起转让申请"">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:userTask id=""Task_supervisor"" name=""直属主管审批"" camunda:assignee=""supervisor"">
+    <bpmn:exclusiveGateway id=""Gateway_applicantRole"" name=""申请人角色判断"">
       <bpmn:incoming>Flow_1</bpmn:incoming>
-      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+      <bpmn:outgoing>Flow_admin</bpmn:outgoing>
+      <bpmn:outgoing>Flow_supervisorRole</bpmn:outgoing>
+      <bpmn:outgoing>Flow_employeeDefault</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id=""Task_adminRole"" name=""仓库管理员审批"" camunda:candidateGroups=""warehouse"">
+      <bpmn:incoming>Flow_admin</bpmn:incoming>
+      <bpmn:outgoing>Flow_admin_to_receiver</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id=""Task_supervisorRole"" name=""部门负责人审批"" camunda:assignee=""deptManager"">
+      <bpmn:incoming>Flow_supervisorRole</bpmn:incoming>
+      <bpmn:outgoing>Flow_supervisor_to_receiver</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id=""Task_supervisor"" name=""直属主管审批"" camunda:assignee=""supervisor"">
+      <bpmn:incoming>Flow_employeeDefault</bpmn:incoming>
+      <bpmn:outgoing>Flow_supervisor_to_receiver</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:userTask id=""Task_receiver"" name=""接收部门负责人审批"" camunda:assignee=""deptManager"">
-      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:incoming>Flow_admin_to_receiver</bpmn:incoming>
+      <bpmn:incoming>Flow_supervisor_to_receiver</bpmn:incoming>
+      <bpmn:incoming>Flow_employee_to_receiver</bpmn:incoming>
       <bpmn:outgoing>Flow_3</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:endEvent id=""EndEvent_1"" name=""流程结束"">
       <bpmn:incoming>Flow_3</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Task_supervisor"" />
-    <bpmn:sequenceFlow id=""Flow_2"" sourceRef=""Task_supervisor"" targetRef=""Task_receiver"" />
+    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Gateway_applicantRole"" />
+    <bpmn:sequenceFlow id=""Flow_admin"" sourceRef=""Gateway_applicantRole"" targetRef=""Task_adminRole"">
+      <bpmn:conditionExpression>${applicantRole} == ""admin""</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id=""Flow_supervisorRole"" sourceRef=""Gateway_applicantRole"" targetRef=""Task_supervisorRole"">
+      <bpmn:conditionExpression>${applicantRole} == ""supervisor""</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id=""Flow_employeeDefault"" sourceRef=""Gateway_applicantRole"" targetRef=""Task_supervisor"" />
+    <bpmn:sequenceFlow id=""Flow_admin_to_receiver"" sourceRef=""Task_adminRole"" targetRef=""Task_receiver"" />
+    <bpmn:sequenceFlow id=""Flow_supervisor_to_receiver"" sourceRef=""Task_supervisorRole"" targetRef=""Task_receiver"" />
+    <bpmn:sequenceFlow id=""Flow_employee_to_receiver"" sourceRef=""Task_supervisor"" targetRef=""Task_receiver"" />
     <bpmn:sequenceFlow id=""Flow_3"" sourceRef=""Task_receiver"" targetRef=""EndEvent_1"" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">

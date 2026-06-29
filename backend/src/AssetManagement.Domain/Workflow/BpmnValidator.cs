@@ -138,11 +138,7 @@ public static class BpmnValidator
 
                 if (!string.IsNullOrWhiteSpace(expr))
                 {
-                    // 检查是否是有效的条件表达式格式
-                    // 支持: ${applicantDept} == "..." 或 applicantDept == "..."
-                    var hasValidSyntax = expr.Contains("applicantDept") && expr.Contains("==");
-
-                    if (!hasValidSyntax)
+                    if (!IsValidConditionExpression(expr))
                     {
                         errors.Add($"SequenceFlow '{flowId}' 的条件表达式语法可能不正确: {expr}");
                     }
@@ -167,8 +163,8 @@ public static class BpmnValidator
             return true; // 空表达式视为有效（默认分支）
         }
 
-        // 只允许申请部门等值判断，金额条件已下线。
-        var pattern = @"^\$\{applicantDept\}\s*==\s*[""'][^""']+[""']$";
+        // 只允许工作流已注入的字符串上下文变量，避免任意表达式执行。
+        var pattern = @"^\$\{(applicantDept|applicantRole)\}\s*(==|!=)\s*[""'][^""']+[""']$";
         return System.Text.RegularExpressions.Regex.IsMatch(expression.Trim(), pattern);
     }
 

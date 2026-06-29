@@ -35,7 +35,12 @@ public class MaterialFlowService : IMaterialFlowService
         if (material.Status != MaterialStatus.InUse)
             throw new BizException(4098, "已退回厂商的料件不能转移");
 
-        var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId) ?? throw new BizException(4041, "用户不存在");
+        var applicant = await _db.Users
+            .Include(x => x.UserRoles)
+            .ThenInclude(x => x.Role)
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == applicantId)
+            ?? throw new BizException(4041, "用户不存在");
         var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId)
             ?? throw new BizException(4041, "受让人不存在");
 
@@ -138,7 +143,8 @@ public class MaterialFlowService : IMaterialFlowService
                 Reason = request.Reason,
                 Status = "pending",
                 ApplyTime = DateTime.UtcNow,
-                Deadline = DateTime.UtcNow.AddDays(2)
+                Deadline = DateTime.UtcNow.AddDays(2),
+                Context = BuildWorkflowContext(applicant)
             };
             BpmnEngine.Start(flow, process);
             _db.MaterialFlows.Add(flow);
@@ -496,6 +502,23 @@ public class MaterialFlowService : IMaterialFlowService
         if (!deptId.HasValue) return null;
         var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == deptId.Value);
         return dept?.Name;
+    }
+
+    private static Dictionary<string, string> BuildWorkflowContext(User applicant)
+    {
+        var roleCodes = applicant.UserRoles
+            .Select(x => x.Role?.Code)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .OrderBy(x => x)
+            .Cast<string>()
+            .ToArray();
+
+        return new Dictionary<string, string>
+        {
+            ["applicantRole"] = roleCodes.FirstOrDefault() ?? "",
+            ["applicantRoles"] = string.Join(",", roleCodes)
+        };
     }
 
     private async Task AddRecord(int flowId, string action, string actor, string? remark)

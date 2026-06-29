@@ -15,4 +15,7 @@ export const overridesPreferences = defineOverridesPreferences({
     checkUpdatesInterval: 30,
     name: '资产管理系统',
   },
+  logo: {
+    source: '/images/saa.png',
+  },
 });

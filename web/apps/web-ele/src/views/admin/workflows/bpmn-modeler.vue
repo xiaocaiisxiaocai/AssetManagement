@@ -377,6 +377,15 @@ onUnmounted(() => {
   border: 1px solid var(--el-border-color);
   background: var(--el-bg-color);
   overflow: hidden;
+  --workflow-canvas-bg: var(--el-bg-color);
+  --workflow-node-bg: var(--el-bg-color-overlay);
+  --workflow-node-stroke: var(--el-border-color-darker);
+  --workflow-node-text: var(--el-text-color-primary);
+  --workflow-flow-stroke: var(--el-text-color-secondary);
+  --workflow-label-text: var(--el-text-color-regular);
+  --workflow-tool-bg: var(--el-bg-color-overlay);
+  --workflow-tool-border: var(--el-border-color);
+  --workflow-tool-icon: var(--el-text-color-primary);
 }
 
 .bpmn-modeler-wrapper .properties-panel {
@@ -399,6 +408,75 @@ onUnmounted(() => {
 
 .bpmn-modeler-wrapper .help-text li {
   margin: 3px 0;
+}
+
+/* bpmn-js 默认按浅色画布渲染，暗色主题下需要显式提高流程图元素对比度 */
+.dark .bpmn-modeler-wrapper .bpmn-container {
+  --workflow-canvas-bg: #181a20;
+  --workflow-node-bg: #f5f7fa;
+  --workflow-node-stroke: #d8dde6;
+  --workflow-node-text: #1f2937;
+  --workflow-flow-stroke: #d7dde8;
+  --workflow-label-text: #e5e7eb;
+  --workflow-tool-bg: #f8fafc;
+  --workflow-tool-border: #d8dde6;
+  --workflow-tool-icon: #111827;
+}
+
+.bpmn-container .viewport,
+.bpmn-container .djs-container {
+  background: var(--workflow-canvas-bg);
+}
+
+.bpmn-container .djs-shape .djs-visual > rect,
+.bpmn-container .djs-shape .djs-visual > circle,
+.bpmn-container .djs-shape .djs-visual > ellipse,
+.bpmn-container .djs-shape .djs-visual > polygon,
+.bpmn-container .djs-shape .djs-visual > path {
+  fill: var(--workflow-node-bg) !important;
+  stroke: var(--workflow-node-stroke) !important;
+}
+
+.bpmn-container .djs-shape .djs-visual text,
+.bpmn-container .djs-label .djs-visual text {
+  fill: var(--workflow-node-text) !important;
+  stroke: none !important;
+}
+
+.bpmn-container .djs-connection .djs-visual > path,
+.bpmn-container .djs-connection .djs-visual > polyline,
+.bpmn-container .djs-connection .djs-visual marker path {
+  stroke: var(--workflow-flow-stroke) !important;
+}
+
+.bpmn-container .djs-connection .djs-visual marker path {
+  fill: var(--workflow-flow-stroke) !important;
+}
+
+.bpmn-container .djs-element.djs-label .djs-visual text {
+  fill: var(--workflow-label-text) !important;
+}
+
+.bpmn-container .djs-element[data-element-id$="_label"] .djs-visual text,
+.bpmn-container .djs-element[data-element-id$="_label"] .djs-visual tspan {
+  fill: var(--workflow-label-text) !important;
+}
+
+.bpmn-container .djs-palette,
+.bpmn-container .djs-context-pad {
+  background: var(--workflow-tool-bg);
+  border-color: var(--workflow-tool-border);
+}
+
+.bpmn-container .djs-palette .entry,
+.bpmn-container .djs-context-pad .entry {
+  color: var(--workflow-tool-icon);
+}
+
+.bpmn-container .djs-palette .entry:hover,
+.bpmn-container .djs-context-pad .entry:hover {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 
 /* 只固定连线可视层宽度，保留 bpmn-js 较宽的命中层用于拖拽和点击 */

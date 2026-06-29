@@ -104,6 +104,19 @@ public class SourceConventionTests
     }
 
     [Fact]
+    public void Incremental_seed_repairs_existing_core_role_permissions()
+    {
+        var root = FindRepositoryRoot();
+        var seedFile = Path.Combine(root, "backend", "src", "AssetManagement.Infrastructure", "Persistence", "Seed", "DbSeeder.cs");
+        var source = File.ReadAllText(seedFile);
+        var incrementalSource = source[source.IndexOf("private static void SeedIncremental", StringComparison.Ordinal)..];
+
+        incrementalSource.Should().Contain("EnsureCoreRolePermissions(db)", "已有库只会进入增量种子，必须补齐基础角色权限矩阵");
+        source.Should().Contain("[\"employee\"] = new[] { \"asset:view\", \"approval:view\", \"approval:create\" }",
+            "普通员工必须能发起资产审批，否则不同权限流程测试和实际员工借用申请都会被 403 拦截");
+    }
+
+    [Fact]
     public void Seeder_restores_query_tracking_behavior_after_seed()
     {
         var root = FindRepositoryRoot();

@@ -91,7 +91,11 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4055, "资产当前不可用,无法发起该流程");
         }
 
-        var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId)
+        var applicant = await _db.Users
+            .Include(x => x.UserRoles)
+            .ThenInclude(x => x.Role)
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == applicantId)
             ?? throw new BizException(4041, "用户不存在");
         var transferee = request.TransfereeId.HasValue
             ? await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId.Value)
@@ -124,7 +128,8 @@ public class WorkflowService : IWorkflowService
             ReturnDate = workflow.BizType == "borrow" ? request.ReturnDate : null,
             Status = "pending",
             ApplyTime = DateTime.UtcNow,
-            Deadline = DateTime.UtcNow.AddDays(2)
+            Deadline = DateTime.UtcNow.AddDays(2),
+            Context = BuildWorkflowContext(applicant)
         };
 
         // 启动 BPMN 流程引擎
@@ -153,7 +158,7 @@ public class WorkflowService : IWorkflowService
         var user = await LoadUser(userId);
         var isAdmin = IsAdmin(user);
 
-        // dept_admin 只能看到申请人属于其管辖部门（含子部门）的流程
+        // dept_admin 只能看到自己管辖部门相关的流程；转让接收节点还要看接收人部门。
         int[]? allowedDeptIds = null;
         if (!isAdmin && user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin") && user.DepartmentId.HasValue)
         {
@@ -167,16 +172,18 @@ public class WorkflowService : IWorkflowService
 
         if (allowedDeptIds != null)
         {
-            // 用申请人的部门做隔离：ApplicantDept 是名称，需通过 ApplicantId -> User.DepartmentId 关联
-            var applicantIds = flows.Select(f => f.ApplicantId).Distinct().ToArray();
-            var applicantDeptMap = await _db.Users
-                .Where(u => applicantIds.Contains(u.Id))
+            var relatedUserIds = flows
+                .SelectMany(f => new[] { f.ApplicantId, f.TransfereeId ?? 0 })
+                .Where(id => id > 0)
+                .Distinct()
+                .ToArray();
+            var userDeptMap = await _db.Users
+                .Where(u => relatedUserIds.Contains(u.Id))
                 .Select(u => new { u.Id, u.DepartmentId })
                 .ToDictionaryAsync(u => u.Id, u => u.DepartmentId);
             flows = flows
-                .Where(f => applicantDeptMap.TryGetValue(f.ApplicantId, out var deptId)
-                            && deptId.HasValue
-                            && allowedDeptIds.Contains(deptId.Value))
+                .Where(f => IsDeptInScope(userDeptMap.GetValueOrDefault(f.ApplicantId), allowedDeptIds)
+                            || (f.TransfereeId.HasValue && IsDeptInScope(userDeptMap.GetValueOrDefault(f.TransfereeId.Value), allowedDeptIds)))
                 .ToList();
         }
 
@@ -598,14 +605,14 @@ public class WorkflowService : IWorkflowService
         {
             if (assignee == "deptManager")
             {
-                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
-                if (applicant?.DepartmentId is null)
+                var targetDeptId = await ResolveDeptManagerTargetDepartmentIdAsync(node, flow);
+                if (targetDeptId is null)
                 {
                     return false;
                 }
 
-                var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-                var isSameDeptAdmin = user.DepartmentId == applicant.DepartmentId &&
+                var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetDeptId.Value);
+                var isSameDeptAdmin = user.DepartmentId == targetDeptId &&
                                       user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin");
                 var isDepartmentManager = department?.ManagerId == user.Id;
                 return isSameDeptAdmin || isDepartmentManager;
@@ -700,15 +707,14 @@ public class WorkflowService : IWorkflowService
         {
             if (assignee == "deptManager")
             {
-                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
-                if (applicant?.DepartmentId is not null)
+                var targetDeptId = await ResolveDeptManagerTargetDepartmentIdAsync(node, flow);
+                if (targetDeptId is not null)
                 {
-                    var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
+                    var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetDeptId.Value);
                     if (dept?.ManagerId is not null) result.Add(dept.ManagerId.Value);
-                    // 同部门 dept_admin 也收通知
                     var deptAdmins = await _db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.DepartmentId == applicant.DepartmentId &&
+                        .Where(u => u.DepartmentId == targetDeptId &&
                                     u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "dept_admin"))
                         .Select(u => u.Id)
                         .ToListAsync();
@@ -785,6 +791,38 @@ public class WorkflowService : IWorkflowService
         var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == deptId.Value);
         return dept?.Name;
     }
+
+    private static Dictionary<string, string> BuildWorkflowContext(User applicant)
+    {
+        var roleCodes = applicant.UserRoles
+            .Select(x => x.Role?.Code)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .OrderBy(x => x)
+            .Cast<string>()
+            .ToArray();
+
+        return new Dictionary<string, string>
+        {
+            ["applicantRole"] = roleCodes.FirstOrDefault() ?? "",
+            ["applicantRoles"] = string.Join(",", roleCodes)
+        };
+    }
+
+    private async Task<int?> ResolveDeptManagerTargetDepartmentIdAsync(BpmnNode node, ApprovalFlow flow)
+    {
+        if (flow.BizType == "transfer" && node.Id == "Task_receiver" && flow.TransfereeId.HasValue)
+        {
+            var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.TransfereeId.Value);
+            return transferee?.DepartmentId;
+        }
+
+        var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
+        return applicant?.DepartmentId;
+    }
+
+    private static bool IsDeptInScope(int? deptId, int[] allowedDeptIds)
+        => deptId.HasValue && allowedDeptIds.Contains(deptId.Value);
 
     private async Task AddRecord(int flowId, string action, string actor, string? remark)
     {

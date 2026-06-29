@@ -52,6 +52,81 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public void Applicant_role_condition_can_route_workflow_branch()
+    {
+        var process = BpmnParser.Parse(ApplicantRoleGatewayBpmn("supervisor", "Task_SupervisorPath", "Task_Default"));
+        var flow = new TestFlow
+        {
+            Context = new Dictionary<string, string>
+            {
+                ["applicantRole"] = "supervisor"
+            }
+        };
+
+        BpmnEngine.Start(flow, process);
+
+        flow.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_SupervisorPath");
+        flow.BpmnTokens.Should().NotContainKey("Task_Default");
+    }
+
+    [Fact]
+    public async Task Applicant_role_condition_routes_supervisor_to_dept_manager()
+    {
+        await Login();
+        var deptAdminRole = await Role("dept_admin");
+        var supervisorRole = await Role("supervisor");
+        var dept = await CreateDepartment("主管转借部门");
+        var deptAdmin = await CreateUser("部门管理员", deptAdminRole.Id, dept.Data!.Id);
+        var applicant = await CreateUser("主管申请人", supervisorRole.Id, dept.Data.Id);
+        var workflow = await CreateWorkflow("role_branch", ApplicantRoleWorkflowBpmn("supervisor", "deptManager", "warehouse"));
+        var asset = await CreateAsset();
+
+        Auth(await LoginToken(applicant.Data!.EmployeeNo, "123456"));
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = workflow.Data!.BizType,
+            AssetId = asset.Data!.Id,
+            Reason = "测试申请人角色分支"
+        });
+
+        flow.Data!.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_SupervisorRole");
+
+        Auth(await LoginToken(deptAdmin.Data!.EmployeeNo, "123456"));
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
+            new ApprovalActionRequest { Opinion = "同意" });
+
+        approved.Data!.Status.Should().Be("approved");
+    }
+
+    [Fact]
+    public async Task Applicant_role_condition_routes_admin_to_configured_role()
+    {
+        await Login();
+        var warehouseRole = await Role("warehouse");
+        var adminRole = await Role("admin");
+        var warehouse = await CreateUser("仓库审批人", warehouseRole.Id);
+        var applicant = await CreateUser("管理员申请人", adminRole.Id);
+        var workflow = await CreateWorkflow("admin_branch", ApplicantRoleToRoleWorkflowBpmn("admin", "warehouse", "supervisor"));
+        var asset = await CreateAsset();
+
+        Auth(await LoginToken(applicant.Data!.EmployeeNo, "123456"));
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = workflow.Data!.BizType,
+            AssetId = asset.Data!.Id,
+            Reason = "测试管理员角色分支"
+        });
+
+        flow.Data!.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_SupervisorRole");
+
+        Auth(await LoginToken(warehouse.Data!.EmployeeNo, "123456"));
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
+            new ApprovalActionRequest { Opinion = "同意" });
+
+        approved.Data!.Status.Should().Be("approved");
+    }
+
+    [Fact]
     public void Invalid_condition_does_not_default_to_true()
     {
         var process = BpmnParser.Parse(InvalidConditionGatewayBpmn());
@@ -153,7 +228,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     }
 
     private Task<ApiResult<WorkflowDto>> CreateWorkflow(string prefix, string bpmnXml)
-        => Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        => PostOk<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
         {
             Name = $"{prefix}测试流程",
             BizType = Unique(prefix),
@@ -185,6 +260,15 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }
 
+    private async Task<T> PostOk<T>(string url, object body) where T : class
+    {
+        var result = await Post<T>(url, body);
+        var code = (int?)result.GetType().GetProperty("Code")?.GetValue(result);
+        var message = (string?)result.GetType().GetProperty("Message")?.GetValue(result);
+        code.Should().Be(0, message);
+        return result;
+    }
+
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, 50)];
 
@@ -204,6 +288,66 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     <bpmn:sequenceFlow id="Flow_Default" sourceRef="Gateway_Dept" targetRef="{{defaultTaskId}}" />
     <bpmn:sequenceFlow id="Flow_2" sourceRef="{{matchedTaskId}}" targetRef="End" />
     <bpmn:sequenceFlow id="Flow_3" sourceRef="{{defaultTaskId}}" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string ApplicantRoleGatewayBpmn(string role, string matchedTaskId, string defaultTaskId) => $$"""
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="Process_Role" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:exclusiveGateway id="Gateway_Role" />
+    <bpmn:userTask id="{{matchedTaskId}}" name="角色匹配审批" camunda:assignee="系统管理员" />
+    <bpmn:userTask id="{{defaultTaskId}}" name="默认审批" camunda:assignee="系统管理员" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Gateway_Role" />
+    <bpmn:sequenceFlow id="Flow_Matched" sourceRef="Gateway_Role" targetRef="{{matchedTaskId}}">
+      <bpmn:conditionExpression>${applicantRole} == "{{role}}"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Default" sourceRef="Gateway_Role" targetRef="{{defaultTaskId}}" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="{{matchedTaskId}}" targetRef="End" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="{{defaultTaskId}}" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string ApplicantRoleWorkflowBpmn(string roleCode, string matchedAssignee, string defaultRoleCode) => $$"""
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="Process_RoleApproval" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:exclusiveGateway id="Gateway_Role" />
+    <bpmn:userTask id="Task_SupervisorRole" name="角色分支审批" camunda:assignee="{{matchedAssignee}}" />
+    <bpmn:userTask id="Task_DefaultRole" name="默认角色审批" camunda:candidateGroups="{{defaultRoleCode}}" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Gateway_Role" />
+    <bpmn:sequenceFlow id="Flow_Matched" sourceRef="Gateway_Role" targetRef="Task_SupervisorRole">
+      <bpmn:conditionExpression>${applicantRole} == "{{roleCode}}"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Default" sourceRef="Gateway_Role" targetRef="Task_DefaultRole" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_SupervisorRole" targetRef="End" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_DefaultRole" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string ApplicantRoleToRoleWorkflowBpmn(string roleCode, string matchedRoleCode, string defaultRoleCode) => $$"""
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="Process_RoleApproval" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:exclusiveGateway id="Gateway_Role" />
+    <bpmn:userTask id="Task_SupervisorRole" name="角色分支审批" camunda:candidateGroups="{{matchedRoleCode}}" />
+    <bpmn:userTask id="Task_DefaultRole" name="默认角色审批" camunda:candidateGroups="{{defaultRoleCode}}" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Gateway_Role" />
+    <bpmn:sequenceFlow id="Flow_Matched" sourceRef="Gateway_Role" targetRef="Task_SupervisorRole">
+      <bpmn:conditionExpression>${applicantRole} == "{{roleCode}}"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Default" sourceRef="Gateway_Role" targetRef="Task_DefaultRole" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_SupervisorRole" targetRef="End" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_DefaultRole" targetRef="End" />
   </bpmn:process>
 </bpmn:definitions>
 """;

@@ -345,6 +345,22 @@ public static class BpmnEngine
             return string.Equals(flow.ApplicantDept, right, StringComparison.Ordinal);
         }
 
+        var stringMatch = Regex.Match(condition, @"^\$\{(\w+)\}\s*(==|!=)\s*['""](.+?)['""]$");
+        if (stringMatch.Success)
+        {
+            var varName = stringMatch.Groups[1].Value;
+            var op = stringMatch.Groups[2].Value;
+            var right = stringMatch.Groups[3].Value;
+            if (flow.Context is null || !flow.Context.TryGetValue(varName, out var left))
+            {
+                throw new InvalidOperationException($"无法识别的条件表达式: {condition}");
+            }
+
+            return op == "=="
+                ? string.Equals(left, right, StringComparison.Ordinal)
+                : !string.Equals(left, right, StringComparison.Ordinal);
+        }
+
         var numMatch = Regex.Match(condition, @"^\$\{(\w+)\}\s*(>=|<=|!=|==|>|<)\s*(\d+(?:\.\d+)?)$");
         if (numMatch.Success)
         {

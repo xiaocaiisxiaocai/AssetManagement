@@ -1,4 +1,4 @@
-import { initPreferences } from '@vben/preferences';
+import { initPreferences, updatePreferences } from '@vben/preferences';
 import { unmountGlobalLoading } from '@vben/utils';
 
 import { overridesPreferences } from './preferences';
@@ -17,6 +17,15 @@ async function initApplication() {
   await initPreferences({
     namespace,
     overrides: overridesPreferences,
+  });
+  // 品牌信息不作为用户偏好，避免旧缓存继续显示模板默认名称和 Logo。
+  updatePreferences({
+    app: {
+      name: '资产管理系统',
+    },
+    logo: {
+      source: '/images/saa.png',
+    },
   });
 
   // 启动应用并挂载

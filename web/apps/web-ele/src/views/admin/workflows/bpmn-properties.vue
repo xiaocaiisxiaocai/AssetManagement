@@ -72,8 +72,10 @@ const assigneeTypes = [
 ];
 const conditionFields = [
   { label: '申请部门', value: 'applicantDept' },
+  { label: '申请人角色', value: 'applicantRole' },
 ];
 const conditionOperators = computed(() => [{ label: '等于', value: '==' }]);
+const conditionValueOptions = computed(() => getConditionValueOptions(conditionField.value));
 
 // 判断元素类型
 const isUserTask = computed(() => elementType.value === 'bpmn:UserTask');
@@ -223,13 +225,13 @@ function loadElement() {
 }
 
 function parseCondition(expression: string): ParsedCondition {
-  const deptMatch = expression.match(/^\$\{applicantDept\}\s*==\s*["'](.+)["']$/);
-  if (deptMatch) {
+  const stringMatch = expression.match(/^\$\{(applicantDept|applicantRole)\}\s*(==|!=)\s*["'](.+)["']$/);
+  if (stringMatch) {
     return {
       expression,
-      field: 'applicantDept',
-      operator: '==',
-      value: deptMatch[1] || '',
+      field: stringMatch[1] || 'applicantDept',
+      operator: stringMatch[2] || '==',
+      value: stringMatch[3] || '',
     };
   }
 
@@ -252,7 +254,14 @@ function buildExpression(value: string) {
   if (!value.trim()) return '';
 
   const trimmed = value.trim();
-  return `\${applicantDept} == "${trimmed}"`;
+  return `\${${conditionField.value}} ${conditionOperator.value} "${trimmed}"`;
+}
+
+function buildExpressionByField(field: string, operator: string, value: string) {
+  if (!value.trim()) return '';
+
+  const trimmed = value.trim();
+  return `\${${field}} ${operator} "${trimmed}"`;
 }
 
 function buildConditionExpression() {
@@ -279,7 +288,7 @@ function loadGatewayConditions(): GatewayCondition[] {
 function updateGatewayCondition(item: GatewayCondition) {
   if (isLoadingElement.value || !props.modeler) return;
 
-  item.expression = buildExpression(item.value);
+  item.expression = buildExpressionByField(item.field, item.operator, item.value);
 
   const modeling = props.modeler.get('modeling');
   const moddle = props.modeler.get('moddle');
@@ -299,6 +308,21 @@ function updateGatewayCondition(item: GatewayCondition) {
   if (Object.keys(updates).length > 0) {
     modeling.updateProperties(item.flow, updates);
   }
+}
+
+function getConditionValueOptions(field: string) {
+  if (field === 'applicantRole') {
+    return roleOptions.value.map((role) => ({
+      label: `${role.name}（${role.code}）`,
+      value: role.code,
+    }));
+  }
+
+  return departmentOptions.value;
+}
+
+function conditionValuePlaceholder(field: string) {
+  return field === 'applicantRole' ? '选择申请人角色' : '选择申请部门';
 }
 
 // 更新元素属性
@@ -463,8 +487,8 @@ onMounted(() => {
 
           <ElFormItem label="签核方式">
             <ElRadioGroup v-model="approvalMode" size="small">
-              <ElRadioButton label="any">任一人通过</ElRadioButton>
-              <ElRadioButton :disabled="assigneeType !== 'usernames'" label="all">
+              <ElRadioButton value="any">任一人通过</ElRadioButton>
+              <ElRadioButton :disabled="assigneeType !== 'usernames'" value="all">
                 全部人通过
               </ElRadioButton>
             </ElRadioGroup>
@@ -508,11 +532,11 @@ onMounted(() => {
                 v-model="conditionValue"
                 clearable
                 filterable
-                placeholder="选择申请部门"
+                :placeholder="conditionValuePlaceholder(conditionField)"
                 style="width: 100%"
               >
                 <ElOption
-                  v-for="item in departmentOptions"
+                  v-for="item in conditionValueOptions"
                   :key="item.value"
                   :label="item.label"
                   :value="item.value"
@@ -532,6 +556,7 @@ onMounted(() => {
             <ElText type="info" size="small">
               <div>支持表达式：</div>
               <div>• ${`${applicantDept}`} == "信息部" - 申请部门判断</div>
+              <div>• ${`${applicantRole}`} == "supervisor" - 申请人角色判断</div>
               <div>• 留空表示默认流向</div>
             </ElText>
           </ElFormItem>
@@ -609,15 +634,15 @@ onMounted(() => {
                     v-model="item.value"
                     clearable
                     filterable
-                    placeholder="选择申请部门"
+                    :placeholder="conditionValuePlaceholder(item.field)"
                     style="width: 100%"
                     @change="updateGatewayCondition(item)"
                   >
                     <ElOption
-                      v-for="department in departmentOptions"
-                      :key="department.value"
-                      :label="department.label"
-                      :value="department.value"
+                      v-for="option in getConditionValueOptions(item.field)"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
                     />
                   </ElSelect>
                 </div>
