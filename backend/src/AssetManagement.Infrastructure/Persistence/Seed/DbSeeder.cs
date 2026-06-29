@@ -342,6 +342,8 @@ public static class DbSeeder
         {
             ["admin"] = materialPermissions.Select(p => p.Item1).ToArray(),
             ["dept_admin"] = new[] { "material:view", "material:create", "material:edit", "material:transfer", "material:restore", "material:approve", "project:manage" },
+            ["supervisor"] = new[] { "material:view", "material:approve", "material:transfer" },
+            ["warehouse"] = new[] { "material:view", "material:create", "material:edit", "material:transfer" },
             ["employee"] = new[] { "material:view" },
         };
         foreach (var (roleCode, codes) in roleGrants)

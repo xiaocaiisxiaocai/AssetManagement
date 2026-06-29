@@ -239,9 +239,13 @@ async function remove(row: AssetItem) {
   if (deletingAssetIds.value.includes(row.id)) {
     return;
   }
-  await ElMessageBox.confirm(`确认删除资产「${row.name}」？删除后仍显示在清单中，可由管理员彻底删除。`, '删除确认', {
-    type: 'warning',
-  });
+  try {
+    await ElMessageBox.confirm(`确认删除资产「${row.name}」？删除后仍显示在清单中，可由管理员彻底删除。`, '删除确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
   deletingAssetIds.value = [...deletingAssetIds.value, row.id];
   try {
     await deleteAssetApi(row.id);
@@ -251,6 +255,8 @@ async function remove(row: AssetItem) {
     }
     ElMessage.success('已删除');
     await Promise.all([loadData(), loadHierarchyAssets()]);
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     deletingAssetIds.value = deletingAssetIds.value.filter((id) => id !== row.id);
   }
@@ -352,8 +358,12 @@ function drillToCategoryPath(index: number) {
 }
 
 async function exportAssets() {
-  const response = await exportAssetsApi(buildQuery());
-  downloadBlob(response.data, 'assets.xlsx');
+  try {
+    const response = await exportAssetsApi(buildQuery());
+    downloadBlob(response.data, 'assets.xlsx');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  }
 }
 
 function openImport() {
