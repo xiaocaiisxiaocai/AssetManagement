@@ -48,8 +48,8 @@ async function loadData() {
     ]);
     flows.value = pending;
     users.value = userPage.items.filter((user) => user.isActive);
-  } catch (error: any) {
-    ElMessage.error(error.message || '加载失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     loading.value = false;
   }
@@ -155,8 +155,8 @@ async function addSign() {
     if (index >= 0) flows.value[index] = updated;
     ElMessage.success('已加签');
     addSignVisible.value = false;
-  } catch (error: any) {
-    ElMessage.error(error.message || '加签失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     addSignLoading.value = false;
   }
@@ -180,8 +180,8 @@ async function approve() {
     ElMessage.success('已通过');
     detailVisible.value = false;
     await loadData();
-  } catch (error: any) {
-    ElMessage.error(error.message || '审批失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     actionLoading.value = false;
   }
@@ -199,8 +199,8 @@ async function reject() {
     ElMessage.success('已驳回');
     detailVisible.value = false;
     await loadData();
-  } catch (error: any) {
-    ElMessage.error(error.message || '驳回失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     actionLoading.value = false;
   }

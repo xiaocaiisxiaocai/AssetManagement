@@ -57,6 +57,10 @@ public class WorkflowService : IWorkflowService
         {
             throw new BizException(4093, "已有审批实例使用该流程，不能删除");
         }
+        if (await _db.MaterialFlows.AnyAsync(x => x.WorkflowId == id))
+        {
+            throw new BizException(4093, "已有料件流转实例使用该流程，不能删除");
+        }
 
         _db.Workflows.Remove(workflow);
         await _db.SaveChangesAsync();

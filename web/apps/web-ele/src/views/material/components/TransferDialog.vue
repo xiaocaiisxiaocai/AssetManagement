@@ -54,8 +54,8 @@ async function submit() {
     );
     visible.value = false;
     emit('done');
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '提交失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     saving.value = false;
   }

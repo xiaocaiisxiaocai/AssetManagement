@@ -57,8 +57,8 @@ const loadWorkflows = async () => {
   loading.value = true;
   try {
     workflows.value = await getWorkflowsApi();
-  } catch (error: any) {
-    ElMessage.error(error.message || '加载工作流失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     loading.value = false;
   }
@@ -119,8 +119,8 @@ const handleFormSave = async () => {
 
     formDialogVisible.value = false;
     await loadWorkflows();
-  } catch (error: any) {
-    ElMessage.error(error.message || '保存失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     formSaving.value = false;
   }
@@ -138,7 +138,7 @@ const handleDelete = async (workflow: WorkflowItem) => {
     await loadWorkflows();
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error.message || '删除失败');
+    // 其他错误已由 request.ts 拦截器统一弹出
   }
 };
 
@@ -154,8 +154,8 @@ const handleSave = async (bpmnXml: string) => {
     ElMessage.success('保存成功');
     dialogVisible.value = false;
     await loadWorkflows();
-  } catch (error: any) {
-    ElMessage.error(error.message || '保存失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 };
 

@@ -45,8 +45,8 @@ async function loadData() {
     ]);
     flows.value = mine;
     assets.value = assetPage.items;
-  } catch (error: any) {
-    ElMessage.error(error.message || '加载我的申请失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     loading.value = false;
   }
@@ -78,8 +78,8 @@ async function submit() {
     ElMessage.success('申请已提交');
     dialogVisible.value = false;
     await loadData();
-  } catch (error: any) {
-    ElMessage.error(error.message || '提交申请失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     saving.value = false;
   }

@@ -373,8 +373,8 @@ async function save() {
     ElMessage.success('保存成功');
     dialogVisible.value = false;
     await loadData();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '保存失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     saving.value = false;
   }
@@ -392,18 +392,25 @@ async function remove(row: TestProjectItem) {
     await deleteTestProjectApi(row.id);
     ElMessage.success('已删除');
     await loadData();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '删除失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
 async function restore(row: TestProjectItem) {
   try {
+    await ElMessageBox.confirm(`确认撤销删除项目「${row.name}」？`, '撤销删除', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
+  try {
     await restoreTestProjectApi(row.id);
     ElMessage.success('已恢复');
     await loadData();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '恢复失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -421,8 +428,8 @@ async function purge(row: TestProjectItem) {
     await purgeTestProjectApi(row.id);
     ElMessage.success('已彻底删除');
     await loadData();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '彻底删除失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -480,8 +487,8 @@ async function saveOption() {
     resetOptionForm(optionForm.kind);
     await loadOptions();
     await loadData();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '保存失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     optionSaving.value = false;
   }
@@ -503,8 +510,8 @@ async function removeOption(row: TestProjectOption) {
     if (optionEditingId.value === row.id) resetOptionForm(row.kind);
     await loadOptions();
     await loadData();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '删除失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -571,8 +578,8 @@ async function saveFollowup() {
     cancelFollowupEdit();
     await loadFollowups(project.id);
     await loadData();
-  } catch (e: any) {
-    ElMessage.error(e?.message ?? '保存失败，请重试');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     followupSaving.value = false;
   }
@@ -593,8 +600,8 @@ async function deleteFollowup(row: TestProjectFollowup) {
     ElMessage.success('已删除');
     if (editingFollowupId.value === row.id) cancelFollowupEdit();
     await loadFollowups(project.id);
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '删除失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -679,8 +686,8 @@ async function onReturnMaterial(row: MaterialItem) {
     await returnMaterialApi(row.id);
     ElMessage.success('已标记为退回厂商');
     await afterMaterialChanged();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '退回厂商失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -698,8 +705,8 @@ async function removeMaterial(row: MaterialItem) {
     await deleteMaterialApi(row.id);
     ElMessage.success('已删除');
     await afterMaterialChanged();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '删除失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -715,8 +722,8 @@ async function restoreMaterial(row: MaterialItem) {
     await restoreMaterialApi(row.id);
     ElMessage.success('已恢复');
     await afterMaterialChanged();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '恢复失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -734,8 +741,8 @@ async function purgeMaterial(row: MaterialItem) {
     await purgeMaterialApi(row.id);
     ElMessage.success('已彻底删除');
     await afterMaterialChanged();
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '彻底删除失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -788,8 +795,8 @@ async function approveFlow(row: MaterialFlowItem) {
     await approveFlowApi(row.id, '同意');
     ElMessage.success('已通过');
     await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '操作失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -807,8 +814,8 @@ async function rejectFlow(row: MaterialFlowItem) {
     await rejectFlowApi(row.id, reason);
     ElMessage.success('已驳回');
     await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '操作失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 

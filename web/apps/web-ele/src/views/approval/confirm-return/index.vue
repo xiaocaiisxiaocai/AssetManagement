@@ -65,9 +65,8 @@ async function confirmReturn(row: ApprovalFlow) {
     await confirmReturnApi(row.id);
     ElMessage.success('确认入库成功，资产已恢复在库状态');
     await loadData();
-  } catch (err: any) {
-    const message = err?.response?.data?.message || '确认入库失败';
-    ElMessage.error(message);
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     confirming.value = false;
   }

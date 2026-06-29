@@ -62,8 +62,8 @@ async function submit() {
     visible.value = false;
     emit('submitted');
     router.push('/approval/mine');
-  } catch (e: any) {
-    ElMessage.error(e?.message ?? '提交失败，请重试');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     saving.value = false;
   }

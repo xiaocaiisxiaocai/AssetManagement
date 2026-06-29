@@ -76,8 +76,17 @@ function resetQuery() {
 }
 
 async function exportReport() {
-  const response = await exportAuditLogsApi(buildQuery());
-  downloadBlob(response.data, 'audit-logs.xlsx');
+  try {
+    const response = await exportAuditLogsApi(buildQuery());
+    downloadBlob(response.data, 'audit-logs.xlsx');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  }
+}
+
+function actionTypeLabel(type: string): string {
+  const map: Record<string, string> = { POST: '新增', PUT: '修改', DELETE: '删除', remind: '催办' };
+  return map[type] ?? type;
 }
 
 function actionType(type: string): TagType | undefined {
@@ -137,9 +146,9 @@ onMounted(loadData);
               placeholder="全部操作"
               style="width: 130px"
             >
-              <ElOption label="POST" value="POST" />
-              <ElOption label="PUT" value="PUT" />
-              <ElOption label="DELETE" value="DELETE" />
+              <ElOption label="新增" value="POST" />
+              <ElOption label="修改" value="PUT" />
+              <ElOption label="删除" value="DELETE" />
               <ElOption label="催办" value="remind" />
             </ElSelect>
           </ElFormItem>
@@ -166,7 +175,7 @@ onMounted(loadData);
           </ElTableColumn>
           <ElTableColumn label="操作" width="100" align="center">
             <template #default="{ row }">
-              <ElTag :type="actionType(row.actionType)" size="small">{{ row.actionType }}</ElTag>
+              <ElTag :type="actionType(row.actionType)" size="small">{{ actionTypeLabel(row.actionType) }}</ElTag>
             </template>
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="模块" min-width="120" prop="targetType" />
