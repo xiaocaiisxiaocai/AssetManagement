@@ -136,6 +136,7 @@ const canEditMaterial = computed(() => hasAccessByCodes(['material:edit']));
 const canDeleteMaterial = computed(() => hasAccessByCodes(['material:delete']));
 const canTransferMaterial = computed(() => hasAccessByCodes(['material:transfer']));
 const canRestoreMaterial = computed(() => hasAccessByCodes(['material:restore']));
+const canApproveMaterial = computed(() => hasAccessByCodes(['material:approve']));
 
 const loading = ref(false);
 const projects = ref<TestProjectItem[]>([]);
@@ -1388,10 +1389,10 @@ onMounted(async () => {
                     <ElTableColumn label="原因" min-width="150" prop="reason" show-overflow-tooltip />
                     <ElTableColumn align="center" label="操作" width="140">
                       <template #default="{ row }">
-                        <ElButton link size="small" type="success" @click="approveFlow(row)">
+                        <ElButton v-if="canApproveMaterial" link size="small" type="success" @click="approveFlow(row)">
                           通过
                         </ElButton>
-                        <ElButton link size="small" type="danger" @click="rejectFlow(row)">
+                        <ElButton v-if="canApproveMaterial" link size="small" type="danger" @click="rejectFlow(row)">
                           驳回
                         </ElButton>
                       </template>

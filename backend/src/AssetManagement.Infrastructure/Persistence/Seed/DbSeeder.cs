@@ -410,7 +410,7 @@ public static class DbSeeder
             db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = rootMenu.Id });
 
         EnsureChild("MaterialHome", "项目总览", "/material/home", "/material/home/index", 16, "material:view");
-        EnsureChild("MaterialProjects", "测试项目", "/material/projects", "/material/projects/index", 17, "project:manage");
+        EnsureChild("MaterialProjects", "测试项目", "/material/projects", "/material/projects/index", 17, "material:view");
         db.SaveChanges();
 
         // 把根菜单 + 子菜单授予 dept_admin / employee(按其权限码可见性)

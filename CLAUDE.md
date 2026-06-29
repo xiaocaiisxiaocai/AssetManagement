@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 部门资产管理系统的全栈实现仓库,包含四个并存的部分:
 
-- `backend/` — **正式后端**:ASP.NET Core 8 + EF Core + SQLite,DDD 四层架构,JWT + 权限码鉴权,可配置审批工作流引擎。当前活跃开发对象。
+- `backend/` — **正式后端**:ASP.NET Core 8 + EF Core + MySQL 5.7,DDD 四层架构,JWT + 权限码鉴权,可配置审批工作流引擎。当前活跃开发对象。
 - `web/` — **正式前端**:基于 vue-vben-admin 5.x 的 monorepo(pnpm + turbo)。实际开发的应用是 `apps/web-ele`(Vue 3 + Element Plus);`web-antd`、`web-naive` 为上游模板自带,**不使用**。
 - `docs/` — 需求/设计/实施规划文档(`.md` 与 `.pdf` 并存,**修改以 `.md` 为准**)。审批与多部门设计见 `docs/审批工作流设计.md`、`docs/多部门预留设计.md`;路线图见 `docs/全栈实施规划.md` 与 `docs/plans/`。**注意**:`docs/` 下有大量过程性报告(`BPMN-*报告.md`、`*-报告-2026-06-2x.md`、`*测试报告*.md` 等)属历史快照,**仅供追溯,勿当作现行规范**;权威设计以 `审批工作流设计.md`、`架构设计文档.md`、`全栈实施规划.md` 与 `docs/plans/` 为准。
 - `prototype/` — 早期纯静态 HTML 原型(零依赖),仅作参考,新功能不在此实现。
-- `deploy/` — 内网部署说明、生产配置样例、SQLite 备份脚本(部署方案见 `deploy/README-部署.md`)。
+- `deploy/` — 内网部署说明、生产配置样例、数据库备份脚本(部署方案见 `deploy/README-部署.md`)。
 
 > **本文件是单一信息源**:根目录另有 `AGENTS.md`(面向 Codex / Copilot / Cursor 等其他 AI 代理的快速入口),它**仅摘录**本文件最常用的部分并声明以 `CLAUDE.md` 为准。更新架构说明、开发场景速查或约定时,**只改本文件**;`AGENTS.md` 保持精简摘要,避免双份维护漂移。
 
@@ -251,7 +251,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 ## 后端测试
 
 - xUnit + FluentAssertions;集成测试用 `Microsoft.AspNetCore.Mvc.Testing` 的 `TestWebAppFactory`。
-- **每个测试类用独立的 in-memory SQLite**(见提交 `b1f3915`,修复共享文件库导致的 flaky),避免跨类数据污染。
+- **每个测试类用独立的 MySQL 数据库**(GUID 后缀,见 `MySqlFixtureBase`/`TestWebAppFactory`),避免跨类数据污染。
 - 纯领域逻辑(引擎、编号生成、类别编码)有独立单元测试,无需 Web 工厂。
 
 ## 前端约定(apps/web-ele)
@@ -314,7 +314,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
    - 检查: `FileStorageService` 是否注册为 Singleton(`Program.cs`)
 
 7. **测试失败(Flaky)**
-   - 确认: 每个测试类使用独立的 in-memory SQLite(见 `TestWebAppFactory`)
+   - 确认: 每个测试类使用独立的 MySQL 数据库(GUID 后缀,见 `MySqlFixtureBase`/`TestWebAppFactory`)
    - 确认: 测试间没有共享状态(避免 `static` 字段或单例服务污染)
    - 重现: `dotnet test --filter "Name=<test_name>"` 单独运行失败的测试
 
@@ -334,7 +334,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-当前完成度约 **99%**,五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **95 个** `[Fact]`/`[Theory]` 全部通过。
+当前完成度约 **99%**,五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **103 个** `[Fact]`/`[Theory]` 全部通过。
 
 最新里程碑(2026-06-17 ~ 2026-06-28):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)
