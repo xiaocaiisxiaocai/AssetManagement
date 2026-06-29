@@ -307,7 +307,7 @@ public class TestMaterialService : ITestMaterialService
 
     private async Task<string> NextMaterialNo()
     {
-        var today = DateTime.Now.Date;
+        var today = DateTime.UtcNow.Date;
         var prefix = $"TM-{today:yyyyMMdd}-";
         var countToday = await _db.TestMaterials.CountAsync(x => x.MaterialNo.StartsWith(prefix));
         return MaterialNoGenerator.Next(today, countToday);

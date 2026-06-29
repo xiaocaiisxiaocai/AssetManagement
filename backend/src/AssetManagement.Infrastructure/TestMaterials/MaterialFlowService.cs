@@ -321,7 +321,7 @@ public class MaterialFlowService : IMaterialFlowService
     // 每次重试递增 offset 强制生成不同编号，配合调用方的 retry 循环解决。
     private async Task<string> NextFlowNoAsync(int offset = 0)
     {
-        var today = DateTime.Now.Date;
+        var today = DateTime.UtcNow.Date;
         var prefix = $"MF-{today:yyyyMMdd}-";
         var count = await _db.MaterialFlows.CountAsync(x => x.FlowNo.StartsWith(prefix));
         return FlowNoGenerator.Next(today, count + offset);

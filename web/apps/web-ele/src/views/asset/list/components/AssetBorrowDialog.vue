@@ -3,6 +3,8 @@ import type { AssetItem } from '#/api/asset';
 
 import { reactive, ref, watch } from 'vue';
 
+import { useRouter } from 'vue-router';
+
 import {
   ElButton,
   ElDatePicker,
@@ -14,6 +16,8 @@ import {
 } from 'element-plus';
 
 import { startApprovalApi } from '#/api/workflow';
+
+const router = useRouter();
 
 const props = defineProps<{ asset: AssetItem | null }>();
 const emit = defineEmits<{ submitted: [] }>();
@@ -52,7 +56,9 @@ async function submit() {
     ElMessage.success('借用申请已提交');
     visible.value = false;
     emit('submitted');
-    window.location.href = '/#/approval/mine';
+    router.push('/approval/mine');
+  } catch (e: any) {
+    ElMessage.error(e?.message ?? '提交失败，请重试');
   } finally {
     saving.value = false;
   }
