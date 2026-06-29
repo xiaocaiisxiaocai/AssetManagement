@@ -76,6 +76,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         });
 
         // 作为研发部部门管理员登录
+        deptAdmin1.Data.Should().NotBeNull();
         var token1 = await Login(deptAdmin1.Data.EmployeeNo, "123456");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token1);
 
@@ -85,6 +86,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         list1.Data.Items.Should().NotContain(a => a.Id == asset2.Data!.Id);
 
         // 作为市场部部门管理员登录
+        deptAdmin2.Data.Should().NotBeNull();
         var token2 = await Login(deptAdmin2.Data.EmployeeNo, "123456");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token2);
 

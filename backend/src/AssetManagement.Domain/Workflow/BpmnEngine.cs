@@ -266,6 +266,7 @@ public static class BpmnEngine
                     NodeId = toNodeId,
                     NodeName = toNode.Name,
                     Status = BpmnTokenStatus.Active,
+                    StartedAt = DateTime.UtcNow,
                     SignStates = BuildSignStates(toNode)
                 };
                 flow.CurrentNodeIds.Add(toNodeId);

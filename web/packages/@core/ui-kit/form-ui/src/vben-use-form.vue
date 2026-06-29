@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { ExtendedFormApi, VbenFormProps } from './types';
+import type { ExtendedFormApi } from './form-api';
+import type { VbenFormProps } from './types';
 
 // import { toRaw, watch } from 'vue';
 

@@ -4,8 +4,10 @@ using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Domain.Workflow;
+using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Infrastructure.TestMaterials;
@@ -14,13 +16,15 @@ public class MaterialFlowService : IMaterialFlowService
 {
     private readonly AppDbContext _db;
     private readonly INotificationService _notifications;
+    private readonly ILogger<MaterialFlowService> _logger;
     public const string ApprovalSwitchKey = "material.transfer.approval.enabled";
     public const string MaterialBizType = "material_transfer";
 
-    public MaterialFlowService(AppDbContext db, INotificationService notifications)
+    public MaterialFlowService(AppDbContext db, INotificationService notifications, ILogger<MaterialFlowService> logger)
     {
         _db = db;
         _notifications = notifications;
+        _logger = logger;
     }
 
     public async Task<MaterialFlowDto> InitiateTransferAsync(InitiateTransferRequest request, int applicantId)
@@ -31,8 +35,8 @@ public class MaterialFlowService : IMaterialFlowService
         if (material.Status != MaterialStatus.InUse)
             throw new BizException(4098, "已退回厂商的料件不能转移");
 
-        var applicant = await _db.Users.FindAsync(applicantId) ?? throw new BizException(4041, "用户不存在");
-        var transferee = await _db.Users.FindAsync(request.TransfereeId)
+        var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId) ?? throw new BizException(4041, "用户不存在");
+        var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId)
             ?? throw new BizException(4041, "受让人不存在");
 
         var approvalEnabled = await IsApprovalEnabled();
@@ -95,7 +99,10 @@ public class MaterialFlowService : IMaterialFlowService
                         UserId = transferee.Id,
                     });
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "通知发送失败，不影响料件直接转移结果");
+                }
 
                 return ToDto(directFlow);
             }
@@ -148,9 +155,16 @@ public class MaterialFlowService : IMaterialFlowService
             await AddRecord(flow.Id, "start", applicant.Name, request.Reason);
             await bpmnTx.CommitAsync();
 
-            // 通知当前待审批节点的审批人
-            await NotifyCurrentApproversAsync(flow, process,
-                $"您有新的料件流转待审批：{material.Name}（{material.MaterialNo}）转移给 {transferee.Name}");
+            // 业务已提交，通知失败只记告警，避免把成功发起回滚成接口失败。
+            try
+            {
+                await NotifyCurrentApproversAsync(flow, process,
+                    $"您有新的料件流转待审批：{material.Name}（{material.MaterialNo}）转移给 {transferee.Name}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "通知发送失败，不影响料件流转发起结果");
+            }
 
             return ToDto(flow);
         }
@@ -242,7 +256,7 @@ public class MaterialFlowService : IMaterialFlowService
             if (flow.TransfereeId.HasValue)
             {
                 material.CustodianId = flow.TransfereeId.Value;
-                var transferee = await _db.Users.FindAsync(flow.TransfereeId.Value);
+                var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.TransfereeId.Value);
                 if (transferee is not null)
                     material.DepartmentId = transferee.DepartmentId;
             }
@@ -282,7 +296,10 @@ public class MaterialFlowService : IMaterialFlowService
                     $"您有新的料件流转待审批：{flow.MaterialName}（{flow.MaterialNo}）转移给 {flow.Transferee}");
             }
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "通知发送失败，不影响料件流转审批结果");
+        }
 
         return ToDto(flow);
     }
@@ -321,7 +338,10 @@ public class MaterialFlowService : IMaterialFlowService
                 UserId = flow.ApplicantId,
             });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "通知发送失败，不影响料件流转驳回结果");
+        }
 
         return ToDto(flow);
     }
@@ -382,7 +402,7 @@ public class MaterialFlowService : IMaterialFlowService
                     if (workflowMap != null)
                         workflowMap.TryGetValue(flow.WorkflowId, out workflow);
                     else
-                        workflow = await _db.Workflows.FindAsync(flow.WorkflowId);
+                        workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
                     if (workflow?.BpmnXml == null) continue;
                     process = BpmnParser.Parse(workflow.BpmnXml);
                 }
@@ -425,9 +445,9 @@ public class MaterialFlowService : IMaterialFlowService
         {
             if (assignee == "deptManager")
             {
-                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 if (applicant?.DepartmentId is null) return false;
-                var department = await _db.Departments.FindAsync(applicant.DepartmentId.Value);
+                var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
                 var isSameDeptAdmin = user.DepartmentId == applicant.DepartmentId &&
                                       user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin");
                 var isDepartmentManager = department?.ManagerId == user.Id;
@@ -435,7 +455,7 @@ public class MaterialFlowService : IMaterialFlowService
             }
             if (assignee == "supervisor")
             {
-                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 return applicant?.SupervisorId == user.Id;
             }
             if (int.TryParse(assignee, out var uid)) return user.Id == uid;
@@ -474,7 +494,7 @@ public class MaterialFlowService : IMaterialFlowService
     private async Task<string?> DepartmentName(int? deptId)
     {
         if (!deptId.HasValue) return null;
-        var dept = await _db.Departments.FindAsync(deptId.Value);
+        var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == deptId.Value);
         return dept?.Name;
     }
 
@@ -503,7 +523,7 @@ public class MaterialFlowService : IMaterialFlowService
             if (node?.Type != BpmnNodeType.UserTask) continue;
 
             var approverIds = await ResolveApproverUserIdsAsync(node, flow);
-            var dateStr = DateTime.Today.ToString("yyyyMMdd");
+            var nodeVersion = token.StartedAt ?? flow.ApplyTime;
             foreach (var uid in approverIds)
             {
                 requests.Add(new CreateNotificationRequest
@@ -513,7 +533,7 @@ public class MaterialFlowService : IMaterialFlowService
                     Body = bodyText,
                     FlowId = flow.Id,
                     UserId = uid,
-                    IdempotencyKey = $"material_approval_pending_{flow.Id}_{nodeId}_{uid}_{dateStr}",
+                    IdempotencyKey = NotificationIdempotencyKeys.PendingApproval("material_approval_pending", flow.Id, nodeId, uid, nodeVersion),
                 });
             }
         }
@@ -532,10 +552,10 @@ public class MaterialFlowService : IMaterialFlowService
         {
             if (assignee == "deptManager")
             {
-                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 if (applicant?.DepartmentId is not null)
                 {
-                    var dept = await _db.Departments.FindAsync(applicant.DepartmentId.Value);
+                    var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
                     if (dept?.ManagerId is not null) result.Add(dept.ManagerId.Value);
                     var deptAdmins = await _db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
@@ -548,7 +568,7 @@ public class MaterialFlowService : IMaterialFlowService
             }
             else if (assignee == "supervisor")
             {
-                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 if (applicant?.SupervisorId is not null) result.Add(applicant.SupervisorId.Value);
             }
             else if (int.TryParse(assignee, out var uid)) result.Add(uid);

@@ -8,6 +8,8 @@ import type {
 
 import type { FormActions, FormSchema, VbenFormProps } from './types';
 
+import type { Ref } from 'vue';
+
 import { toRaw } from 'vue';
 
 import { Store } from '@vben-core/shared/store';
@@ -21,6 +23,12 @@ import {
   mergeWithArrayOverride,
   StateHandler,
 } from '@vben-core/shared/utils';
+
+export type ExtendedFormApi = {
+  useStore: <T = NoInfer<VbenFormProps>>(
+    selector?: (state: NoInfer<VbenFormProps>) => T,
+  ) => Readonly<Ref<T>>;
+} & FormApi;
 
 function getDefaultState(): VbenFormProps {
   return {

@@ -3,6 +3,7 @@ using AssetManagement.Application.Notifications;
 using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
+using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -90,10 +91,10 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4055, "资产当前不可用,无法发起该流程");
         }
 
-        var applicant = await _db.Users.FindAsync(applicantId)
+        var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId)
             ?? throw new BizException(4041, "用户不存在");
         var transferee = request.TransfereeId.HasValue
-            ? await _db.Users.FindAsync(request.TransfereeId.Value)
+            ? await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId.Value)
             : null;
 
         // 解析 BPMN 流程定义
@@ -134,8 +135,15 @@ public class WorkflowService : IWorkflowService
         await AddRecord(flow.Id, "start", applicant.Name, request.Reason);
         await tx.CommitAsync();
 
-        // 通知当前待审批节点的审批人
-        await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{asset.Name} 的{BizTypeLabel(workflow.BizType)}申请");
+        // 业务已提交，通知失败只记告警，避免把成功发起回滚成接口失败。
+        try
+        {
+            await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{asset.Name} 的{BizTypeLabel(workflow.BizType)}申请");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "通知发送失败，不影响审批发起结果");
+        }
 
         return ToFlowDto(flow);
     }
@@ -526,7 +534,7 @@ public class WorkflowService : IWorkflowService
                 if (workflowMap != null)
                     workflowMap.TryGetValue(flow.WorkflowId, out workflow);
                 else
-                    workflow = await _db.Workflows.FindAsync(flow.WorkflowId);
+                    workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
                 if (workflow?.BpmnXml == null) continue;
 
                 var bpmnProcess = BpmnParser.Parse(workflow.BpmnXml);
@@ -590,13 +598,13 @@ public class WorkflowService : IWorkflowService
         {
             if (assignee == "deptManager")
             {
-                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 if (applicant?.DepartmentId is null)
                 {
                     return false;
                 }
 
-                var department = await _db.Departments.FindAsync(applicant.DepartmentId.Value);
+                var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
                 var isSameDeptAdmin = user.DepartmentId == applicant.DepartmentId &&
                                       user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin");
                 var isDepartmentManager = department?.ManagerId == user.Id;
@@ -604,7 +612,7 @@ public class WorkflowService : IWorkflowService
             }
             else if (assignee == "supervisor")
             {
-                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 return applicant?.SupervisorId == user.Id;
             }
             else if (int.TryParse(assignee, out var userId))
@@ -660,7 +668,7 @@ public class WorkflowService : IWorkflowService
             if (node?.Type != BpmnNodeType.UserTask) continue;
 
             var approverIds = await ResolveApproverUserIdsAsync(node, flow);
-            var dateStr = DateTime.Today.ToString("yyyyMMdd");
+            var nodeVersion = token.StartedAt ?? flow.ApplyTime;
             foreach (var approverUserId in approverIds)
             {
                 requests.Add(new CreateNotificationRequest
@@ -670,7 +678,7 @@ public class WorkflowService : IWorkflowService
                     Body = bodyPrefix,
                     FlowId = flow.Id,
                     UserId = approverUserId,
-                    IdempotencyKey = $"approval_pending_{flow.Id}_{nodeId}_{approverUserId}_{dateStr}",
+                    IdempotencyKey = NotificationIdempotencyKeys.PendingApproval("approval_pending", flow.Id, nodeId, approverUserId, nodeVersion),
                 });
             }
         }
@@ -692,10 +700,10 @@ public class WorkflowService : IWorkflowService
         {
             if (assignee == "deptManager")
             {
-                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 if (applicant?.DepartmentId is not null)
                 {
-                    var dept = await _db.Departments.FindAsync(applicant.DepartmentId.Value);
+                    var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
                     if (dept?.ManagerId is not null) result.Add(dept.ManagerId.Value);
                     // 同部门 dept_admin 也收通知
                     var deptAdmins = await _db.Users
@@ -710,7 +718,7 @@ public class WorkflowService : IWorkflowService
             }
             else if (assignee == "supervisor")
             {
-                var applicant = await _db.Users.FindAsync(flow.ApplicantId);
+                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 if (applicant?.SupervisorId is not null) result.Add(applicant.SupervisorId.Value);
             }
             else if (int.TryParse(assignee, out var uid))
@@ -774,7 +782,7 @@ public class WorkflowService : IWorkflowService
     private async Task<string?> DepartmentName(int? deptId)
     {
         if (!deptId.HasValue) return null;
-        var dept = await _db.Departments.FindAsync(deptId.Value);
+        var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == deptId.Value);
         return dept?.Name;
     }
 

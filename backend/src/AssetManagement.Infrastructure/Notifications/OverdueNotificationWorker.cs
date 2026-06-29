@@ -50,7 +50,7 @@ public class OverdueNotificationWorker : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var today = DateOnly.FromDateTime(DateTime.Today);
+        var today = DateOnly.FromDateTime(DateTime.Now);
 
         // 查询所有审批通过、未入库、有归还日期的借用流程（排除已删除资产）
         var flows = await db.ApprovalFlows
@@ -77,7 +77,7 @@ public class OverdueNotificationWorker : BackgroundService
         {
             if (!DateOnly.TryParse(flow.ReturnDate, out var returnDate)) continue;
 
-            var daysLeft = (returnDate.ToDateTime(TimeOnly.MinValue) - DateTime.Today).Days;
+            var daysLeft = (returnDate.ToDateTime(TimeOnly.MinValue) - DateTime.Now.Date).Days;
 
             string? type = daysLeft switch
             {

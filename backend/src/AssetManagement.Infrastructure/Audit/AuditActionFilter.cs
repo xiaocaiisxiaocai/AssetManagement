@@ -127,7 +127,7 @@ public class AuditActionFilter : IAsyncActionFilter
             return null;
         }
 
-        var entity = await _db.FindAsync(entityType.ClrType, keyValue);
+        var entity = await QueryEntitySnapshot(entityType.ClrType, keyProperty.Name, keyValue);
         if (entity is null)
         {
             return null;
@@ -137,6 +137,34 @@ public class AuditActionFilter : IAsyncActionFilter
             .Where(x => !x.IsShadowProperty() && x.PropertyInfo is not null && !IsSensitive(x.Name))
             .OrderBy(x => x.Name)
             .ToDictionary(x => x.Name, x => NormalizeValue(x.PropertyInfo!.GetValue(entity)));
+    }
+
+    private async Task<object?> QueryEntitySnapshot(Type entityClrType, string keyPropertyName, object keyValue)
+    {
+        var method = typeof(AuditActionFilter)
+            .GetMethod(nameof(QueryEntitySnapshotTyped), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .MakeGenericMethod(entityClrType);
+        var task = (Task<object?>)method.Invoke(this, [keyPropertyName, keyValue])!;
+        return await task;
+    }
+
+    private async Task<object?> QueryEntitySnapshotTyped<TEntity>(string keyPropertyName, object keyValue)
+        where TEntity : class
+    {
+        var parameter = System.Linq.Expressions.Expression.Parameter(typeof(TEntity), "x");
+        var property = System.Linq.Expressions.Expression.Call(
+            typeof(EF),
+            nameof(EF.Property),
+            [keyValue.GetType()],
+            parameter,
+            System.Linq.Expressions.Expression.Constant(keyPropertyName));
+        var equals = System.Linq.Expressions.Expression.Equal(
+            property,
+            System.Linq.Expressions.Expression.Constant(keyValue));
+        var predicate = System.Linq.Expressions.Expression.Lambda(equals, parameter);
+
+        var typedPredicate = (System.Linq.Expressions.Expression<Func<TEntity, bool>>)predicate;
+        return await _db.Set<TEntity>().AsNoTracking().FirstOrDefaultAsync(typedPredicate);
     }
 
     private static object? ConvertKey(string targetId, Type keyType)

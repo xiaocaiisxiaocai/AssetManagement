@@ -59,7 +59,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         var notificationSvc = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
         var threshold = DateTime.UtcNow.AddDays(-1);
-        var todayStr = DateTime.UtcNow.Date.ToString("yyyyMMdd");
+        var todayStr = DateTime.Now.Date.ToString("yyyyMMdd");
 
         var requests = new List<CreateNotificationRequest>();
 
@@ -81,7 +81,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         List<CreateNotificationRequest> requests)
     {
         var pendingFlows = await db.ApprovalFlows
-            .Where(f => f.Status == "pending" && f.ApplyTime < threshold)
+            .Where(f => f.Status == "pending")
             .ToListAsync();
 
         var workflowIds = pendingFlows.Select(f => f.WorkflowId).Distinct().ToArray();
@@ -91,6 +91,9 @@ public class PendingApprovalReminderWorker : BackgroundService
 
         foreach (var flow in pendingFlows)
         {
+            if (!HasCurrentNodeWaitedLongEnough(flow.CurrentNodeIds, flow.BpmnTokens, flow.ApplyTime, threshold))
+                continue;
+
             if (!workflowMap.TryGetValue(flow.WorkflowId, out var wf) ||
                 string.IsNullOrEmpty(wf.BpmnXml)) continue;
 
@@ -118,7 +121,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         List<CreateNotificationRequest> requests)
     {
         var pendingFlows = await db.MaterialFlows
-            .Where(f => f.Status == "pending" && f.ApplyTime < threshold)
+            .Where(f => f.Status == "pending")
             .ToListAsync();
 
         var workflowIds = pendingFlows.Select(f => f.WorkflowId).Distinct()
@@ -129,6 +132,9 @@ public class PendingApprovalReminderWorker : BackgroundService
 
         foreach (var flow in pendingFlows)
         {
+            if (!HasCurrentNodeWaitedLongEnough(flow.CurrentNodeIds, flow.BpmnTokens, flow.ApplyTime, threshold))
+                continue;
+
             if (!workflowMap.TryGetValue(flow.WorkflowId, out var wf) ||
                 string.IsNullOrEmpty(wf.BpmnXml)) continue;
 
@@ -170,6 +176,25 @@ public class PendingApprovalReminderWorker : BackgroundService
         return result;
     }
 
+    private static bool HasCurrentNodeWaitedLongEnough(
+        IEnumerable<string> currentNodeIds,
+        IReadOnlyDictionary<string, BpmnToken> tokens,
+        DateTime fallbackApplyTime,
+        DateTime threshold)
+    {
+        foreach (var nodeId in currentNodeIds)
+        {
+            if (!tokens.TryGetValue(nodeId, out var token) || token.Status != BpmnTokenStatus.Active)
+                continue;
+
+            var startedAt = token.StartedAt ?? fallbackApplyTime;
+            if (startedAt < threshold)
+                return true;
+        }
+
+        return false;
+    }
+
     private static async Task<List<int>> ResolveApproversForMaterialFlowAsync(
         AppDbContext db, MaterialFlow flow, BpmnProcess process)
     {
@@ -200,10 +225,10 @@ public class PendingApprovalReminderWorker : BackgroundService
         {
             if (assignee == "deptManager")
             {
-                var applicant = await db.Users.FindAsync(applicantId);
+                var applicant = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId);
                 if (applicant?.DepartmentId is not null)
                 {
-                    var dept = await db.Departments.FindAsync(applicant.DepartmentId.Value);
+                    var dept = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
                     if (dept?.ManagerId is not null) result.Add(dept.ManagerId.Value);
                     var deptAdmins = await db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
@@ -216,7 +241,7 @@ public class PendingApprovalReminderWorker : BackgroundService
             }
             else if (assignee == "supervisor")
             {
-                var applicant = await db.Users.FindAsync(applicantId);
+                var applicant = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId);
                 if (applicant?.SupervisorId is not null) result.Add(applicant.SupervisorId.Value);
             }
             else if (int.TryParse(assignee, out var uid)) result.Add(uid);

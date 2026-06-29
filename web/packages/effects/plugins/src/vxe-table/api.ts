@@ -3,6 +3,8 @@ import type { VxeGridInstance } from 'vxe-table';
 
 import type { VxeGridProps } from './types';
 
+import type { Ref } from 'vue';
+
 import { toRaw } from 'vue';
 
 import { Store } from '@vben-core/shared/store';
@@ -13,6 +15,12 @@ import {
   mergeWithArrayOverride,
   StateHandler,
 } from '@vben-core/shared/utils';
+
+export type ExtendedVxeGridApi = {
+  useStore: <T = NoInfer<VxeGridProps>>(
+    selector?: (state: NoInfer<VxeGridProps>) => T,
+  ) => Readonly<Ref<T>>;
+} & VxeGridApi;
 
 function getDefaultState(): VxeGridProps {
   return {

@@ -1,5 +1,6 @@
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
+using Microsoft.EntityFrameworkCore;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Infrastructure.Persistence.Seed;
@@ -8,17 +9,23 @@ public static class DbSeeder
 {
     public static void Seed(AppDbContext db)
     {
-        if (db.Users.Any())
-        {
-            SeedIncremental(db);
-            SeedTestMaterialModule(db);
-            return;
-        }
+        var originalTrackingBehavior = db.ChangeTracker.QueryTrackingBehavior;
+        // 启动时的 DbContext 全局 NoTracking，种子需要更新已有行，必须显式开启跟踪。
+        db.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
 
-        using var tx = db.Database.BeginTransaction();
-
-        var permissions = new[]
+        try
         {
+            if (db.Users.Any())
+            {
+                SeedIncremental(db);
+                SeedTestMaterialModule(db);
+                return;
+            }
+
+            using var tx = db.Database.BeginTransaction();
+
+            var permissions = new[]
+            {
             new Permission { Code = "asset:view", Name = "查看资产", Module = "asset" },
             new Permission { Code = "asset:create", Name = "新增资产", Module = "asset" },
             new Permission { Code = "asset:edit", Name = "编辑资产", Module = "asset" },
@@ -155,7 +162,12 @@ public static class DbSeeder
         db.SaveChanges();
         tx.Commit();
 
-        SeedTestMaterialModule(db);
+            SeedTestMaterialModule(db);
+        }
+        finally
+        {
+            db.ChangeTracker.QueryTrackingBehavior = originalTrackingBehavior;
+        }
     }
 
     private static void SeedIncremental(AppDbContext db)
@@ -235,25 +247,75 @@ public static class DbSeeder
             }
         }
 
-        if (!db.Menus.Any(x => x.Name == "ReportOverdue"))
+        var reportMenu = db.Menus.SingleOrDefault(x => x.Name == "Report");
+        if (reportMenu is null)
         {
-            var menu = new Menu { Id = 22, ParentId = 7, Name = "ReportOverdue", Title = "逾期资产", Path = "/report/overdue", Component = "/report/overdue/index", Sort = 33, PermissionCode = "report:view" };
-            db.Menus.Add(menu);
-            var adminRole = db.Roles.SingleOrDefault(x => x.Code == "admin");
-            if (adminRole is not null)
+            reportMenu = new Menu
             {
-                db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = menu.Id });
-            }
+                Name = "Report",
+                Title = "报表统计",
+                Path = "/report",
+                Component = "BasicLayout",
+                Icon = "lucide:chart-column",
+                Sort = 30
+            };
+            db.Menus.Add(reportMenu);
             db.SaveChanges();
         }
+        else
+        {
+            reportMenu.Title = "报表统计";
+            reportMenu.Path = "/report";
+            reportMenu.Component = "BasicLayout";
+            reportMenu.Icon = "lucide:chart-column";
+            reportMenu.Sort = 30;
+            reportMenu.ParentId = null;
+        }
 
-        var nextMenuId = 24; // Home=24, HomeWorkspace=25（与全量种子固定 ID 一致）
+        var reportAdminRole = db.Roles.SingleOrDefault(x => x.Code == "admin");
+        if (reportAdminRole is not null
+            && !db.RoleMenus.Any(x => x.RoleId == reportAdminRole.Id && x.MenuId == reportMenu.Id))
+        {
+            db.RoleMenus.Add(new RoleMenu { RoleId = reportAdminRole.Id, MenuId = reportMenu.Id });
+        }
+
+        var reportOverdueMenu = db.Menus.SingleOrDefault(x => x.Name == "ReportOverdue");
+        if (reportOverdueMenu is null)
+        {
+            reportOverdueMenu = new Menu
+            {
+                ParentId = reportMenu.Id,
+                Name = "ReportOverdue",
+                Title = "逾期资产",
+                Path = "/report/overdue",
+                Component = "/report/overdue/index",
+                Sort = 33,
+                PermissionCode = "report:view"
+            };
+            db.Menus.Add(reportOverdueMenu);
+            db.SaveChanges();
+        }
+        else
+        {
+            reportOverdueMenu.ParentId = reportMenu.Id;
+            reportOverdueMenu.Title = "逾期资产";
+            reportOverdueMenu.Path = "/report/overdue";
+            reportOverdueMenu.Component = "/report/overdue/index";
+            reportOverdueMenu.Sort = 33;
+            reportOverdueMenu.PermissionCode = "report:view";
+        }
+
+        if (reportAdminRole is not null
+            && !db.RoleMenus.Any(x => x.RoleId == reportAdminRole.Id && x.MenuId == reportOverdueMenu.Id))
+        {
+            db.RoleMenus.Add(new RoleMenu { RoleId = reportAdminRole.Id, MenuId = reportOverdueMenu.Id });
+        }
+
         var existingHome = db.Menus.SingleOrDefault(x => x.Name == "Home");
         if (existingHome is null)
         {
             existingHome = new Menu
             {
-                Id = nextMenuId++,
                 Name = "Home",
                 Title = "首页",
                 Path = "/home-root",
@@ -262,6 +324,7 @@ public static class DbSeeder
                 Sort = 1
             };
             db.Menus.Add(existingHome);
+            db.SaveChanges();
             foreach (var role in db.Roles.ToList())
             {
                 db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHome.Id });
@@ -282,7 +345,6 @@ public static class DbSeeder
         {
             existingHomeWorkspace = new Menu
             {
-                Id = nextMenuId++,
                 ParentId = existingHome.Id,
                 Name = "HomeWorkspace",
                 Title = "首页",
@@ -291,6 +353,7 @@ public static class DbSeeder
                 Sort = 1
             };
             db.Menus.Add(existingHomeWorkspace);
+            db.SaveChanges();
             foreach (var role in db.Roles.ToList())
             {
                 db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHomeWorkspace.Id });
@@ -370,7 +433,12 @@ public static class DbSeeder
         {
             rootMenu = new Menu
             {
-                Component = "BasicLayout", Icon = "lucide:flask-conical", Sort = 15
+                Name = "Material",
+                Title = "新产品新技术跟进",
+                Path = "/material",
+                Component = "BasicLayout",
+                Icon = "lucide:flask-conical",
+                Sort = 15
             };
             db.Menus.Add(rootMenu);
             db.SaveChanges();
@@ -378,6 +446,11 @@ public static class DbSeeder
         else
         {
             rootMenu.Title = "新产品新技术跟进";
+            rootMenu.Path = "/material";
+            rootMenu.Component = "BasicLayout";
+            rootMenu.Icon = "lucide:flask-conical";
+            rootMenu.Sort = 15;
+            rootMenu.ParentId = null;
         }
         db.SaveChanges();
 

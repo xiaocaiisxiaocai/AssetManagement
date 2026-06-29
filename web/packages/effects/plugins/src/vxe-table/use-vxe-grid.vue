@@ -9,7 +9,8 @@ import type {
   VxeToolbarPropTypes,
 } from 'vxe-table';
 
-import type { ExtendedVxeGridApi, VxeGridProps } from './types';
+import type { ExtendedVxeGridApi } from './api';
+import type { VxeGridProps } from './types';
 
 import {
   computed,
