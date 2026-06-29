@@ -37,4 +37,7 @@ public class ApprovalFlow : IBpmnFlowInstance
 
     /// <summary>乐观并发令牌，防止两个审批人同时操作同一流程单</summary>
     public uint RowVersion { get; set; }
+
+    /// <summary>条件表达式上下文变量（如 amount、quantity），供 BpmnEngine 条件求值使用</summary>
+    public Dictionary<string, string>? Context { get; set; }
 }

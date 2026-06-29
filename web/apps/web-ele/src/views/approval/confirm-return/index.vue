@@ -1,8 +1,7 @@
 <script lang="ts" setup>
 import type { ApprovalFlow } from '#/api/workflow';
 
-import { computed, onMounted, reactive, ref } from 'vue';
-import { useDebounceFn } from '@vueuse/core';
+import { onMounted, reactive, ref } from 'vue';
 
 import { getPendingReturnsApi, confirmReturnApi } from '#/api/workflow';
 
@@ -19,7 +18,7 @@ import {
 defineOptions({ name: 'ConfirmReturn' });
 
 const loading = ref(false);
-const confirming = ref(false);
+const confirmingIds = ref(new Set<number>());
 const flows = ref<ApprovalFlow[]>([]);
 const total = ref(0);
 
@@ -28,39 +27,40 @@ const query = reactive({
   pageSize: 20,
 });
 
-const pendingFlows = computed(() => {
-  const allFlows = flows.value.filter(
-    (f) => f.bizType === 'borrow' && f.status === 'approved' && !f.confirmedAt
-  );
-  return allFlows;
-});
+const allFlowsCache = ref<ApprovalFlow[]>([]);
 
 async function loadData() {
   loading.value = true;
   try {
     const allFlows = await getPendingReturnsApi();
-    const pending = allFlows.filter(
+    allFlowsCache.value = allFlows.filter(
       (f) => f.bizType === 'borrow' && f.status === 'approved' && !f.confirmedAt
     );
-    flows.value = pending;
-    total.value = pending.length;
+    total.value = allFlowsCache.value.length;
+    query.page = 1;
+    updatePage();
   } finally {
     loading.value = false;
   }
 }
 
-async function confirmReturn(row: ApprovalFlow) {
-  await ElMessageBox.confirm(
-    `确认资产「${row.assetName}」已由「${row.applicant}」归还入库？`,
-    '确认入库',
-    {
-      type: 'warning',
-      confirmButtonText: '确认',
-      cancelButtonText: '取消',
-    }
-  );
+function updatePage() {
+  const start = (query.page - 1) * query.pageSize;
+  flows.value = allFlowsCache.value.slice(start, start + query.pageSize);
+}
 
-  confirming.value = true;
+async function confirmReturn(row: ApprovalFlow) {
+  try {
+    await ElMessageBox.confirm(
+      `确认资产「${row.assetName}」已由「${row.applicant}」归还入库？`,
+      '确认入库',
+      { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
+    );
+  } catch {
+    return;
+  }
+
+  confirmingIds.value.add(row.id);
   try {
     await confirmReturnApi(row.id);
     ElMessage.success('确认入库成功，资产已恢复在库状态');
@@ -68,14 +68,12 @@ async function confirmReturn(row: ApprovalFlow) {
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
-    confirming.value = false;
+    confirmingIds.value.delete(row.id);
   }
 }
 
-// 防抖版本的确认入库方法,防止用户快速点击导致重复确认
-const debouncedConfirmReturn = useDebounceFn(confirmReturn, 300);
-
-function formatTime(time: string | Date) {
+function formatTime(time: string | Date | null | undefined) {
+  if (!time) return '-';
   const date = new Date(time);
   return date.toLocaleString('zh-CN', {
     year: 'numeric',
@@ -106,7 +104,7 @@ onMounted(loadData);
         </div>
       </div>
 
-      <div v-if="pendingFlows.length === 0" class="table-panel" style="padding: 60px 20px; text-align: center;">
+      <div v-if="flows.length === 0" class="table-panel" style="padding: 60px 20px; text-align: center;">
         <div class="empty-text" style="font-size: 16px;">暂无待确认的资产</div>
       </div>
 
@@ -115,7 +113,7 @@ onMounted(loadData);
           <span class="table-total">共 {{ total }} 件资产</span>
         </div>
 
-        <ElTable v-loading="loading" :data="pendingFlows" border>
+        <ElTable v-loading="loading" :data="flows" border>
           <ElTableColumn label="流程编号" min-width="160" prop="flowNo" />
           <ElTableColumn class-name="hide-on-mobile" label="资产编号" min-width="140" prop="assetNo" />
           <ElTableColumn label="资产名称" min-width="200" prop="assetName" />
@@ -136,11 +134,11 @@ onMounted(loadData);
           <ElTableColumn fixed="right" label="操作" width="120" align="center">
             <template #default="{ row }">
               <ElButton
-                :loading="confirming"
+                :loading="confirmingIds.has(row.id)"
                 link
                 type="primary"
                 size="small"
-                @click="debouncedConfirmReturn(row)"
+                @click="confirmReturn(row)"
               >
                 确认入库
               </ElButton>
@@ -155,6 +153,7 @@ onMounted(loadData);
             :total="total"
             background
             layout="prev, pager, next, jumper"
+            @current-change="updatePage"
           />
         </div>
       </div>

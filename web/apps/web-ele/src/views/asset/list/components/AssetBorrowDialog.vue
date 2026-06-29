@@ -79,6 +79,7 @@ async function submit() {
           v-model="form.returnDate"
           clearable
           format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD"
           placeholder="选择归还日期（必填）"
           style="width: 100%"
           type="date"

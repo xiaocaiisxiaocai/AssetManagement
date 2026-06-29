@@ -42,6 +42,10 @@ async function submit() {
     ElMessage.warning('请选择受让人');
     return;
   }
+  if (props.material.custodianId && form.transfereeId === props.material.custodianId) {
+    ElMessage.warning('受让人不能是当前保管人');
+    return;
+  }
   saving.value = true;
   try {
     const flow = await initiateTransferApi({

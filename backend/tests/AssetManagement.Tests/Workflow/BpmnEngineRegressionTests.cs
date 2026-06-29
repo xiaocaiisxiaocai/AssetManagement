@@ -259,5 +259,6 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         public List<string> CurrentNodeIds { get; set; } = new();
         public string Status { get; set; } = "pending";
         public string? ApplicantDept { get; init; }
+        public Dictionary<string, string>? Context { get; set; }
     }
 }

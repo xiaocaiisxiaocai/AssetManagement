@@ -45,23 +45,36 @@ public class NotificationService : INotificationService
                 return;
         }
         _db.Notifications.Add(ToEntity(request));
-        await _db.SaveChangesAsync();
+        try { await _db.SaveChangesAsync(); }
+        catch (DbUpdateException) { } // 唯一索引冲突静默忽略（并发重复）
     }
 
     public async Task CreateBatchAsync(IEnumerable<CreateNotificationRequest> requests)
     {
-        var toAdd = new List<Domain.Entities.Notification>();
-        foreach (var req in requests)
-        {
-            if (!string.IsNullOrEmpty(req.IdempotencyKey) &&
-                await _db.Notifications.AnyAsync(n => n.IdempotencyKey == req.IdempotencyKey))
-                continue;
-            toAdd.Add(ToEntity(req));
-        }
+        var requestList = requests.ToList();
+        var keys = requestList
+            .Where(r => !string.IsNullOrEmpty(r.IdempotencyKey))
+            .Select(r => r.IdempotencyKey!)
+            .ToList();
+
+        var existingKeys = keys.Count > 0
+            ? (await _db.Notifications
+                .Where(n => n.IdempotencyKey != null && keys.Contains(n.IdempotencyKey))
+                .Select(n => n.IdempotencyKey!)
+                .ToListAsync())
+                .ToHashSet()
+            : new HashSet<string>();
+
+        var toAdd = requestList
+            .Where(r => string.IsNullOrEmpty(r.IdempotencyKey) || !existingKeys.Contains(r.IdempotencyKey))
+            .Select(ToEntity)
+            .ToList();
+
         if (toAdd.Count > 0)
         {
             _db.Notifications.AddRange(toAdd);
-            await _db.SaveChangesAsync();
+            try { await _db.SaveChangesAsync(); }
+            catch (DbUpdateException) { } // 唯一索引冲突静默忽略
         }
     }
 

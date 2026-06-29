@@ -11,6 +11,7 @@ public interface IBpmnFlowInstance
     List<string> CurrentNodeIds { get; set; }
     string Status { get; set; }
     string? ApplicantDept { get; }
+    Dictionary<string, string>? Context { get; }
 }
 
 /// <summary>
@@ -158,14 +159,26 @@ public static class BpmnEngine
     /// </summary>
     private static void HandleExclusiveGateway(IBpmnFlowInstance flow, BpmnProcess process, List<BpmnFlow> outgoingFlows)
     {
-        // 按顺序评估条件，走第一个满足的分支
+        // 优先走有条件且满足的分支，无条件分支作为兜底默认
+        BpmnFlow? defaultFlow = null;
         foreach (var outFlow in outgoingFlows)
         {
-            if (string.IsNullOrEmpty(outFlow.ConditionExpression) || EvaluateCondition(flow, outFlow.ConditionExpression))
+            if (string.IsNullOrEmpty(outFlow.ConditionExpression))
+            {
+                defaultFlow ??= outFlow;
+                continue;
+            }
+            if (EvaluateCondition(flow, outFlow.ConditionExpression))
             {
                 MoveToken(flow, process, outFlow.TargetRef);
                 return;
             }
+        }
+
+        if (defaultFlow != null)
+        {
+            MoveToken(flow, process, defaultFlow.TargetRef);
+            return;
         }
 
         throw new InvalidOperationException("排他网关没有满足条件的分支");
@@ -239,7 +252,7 @@ public static class BpmnEngine
     /// <summary>
     /// 移动 Token 到目标节点
     /// </summary>
-    private static void MoveToken(IBpmnFlowInstance flow, BpmnProcess process, string toNodeId)
+    private static void MoveToken(IBpmnFlowInstance flow, BpmnProcess process, string toNodeId, HashSet<string>? visited = null)
     {
         var toNode = process.FindNode(toNodeId)
             ?? throw new InvalidOperationException($"节点 {toNodeId} 不存在");
@@ -259,7 +272,10 @@ public static class BpmnEngine
                 break;
 
             case BpmnNodeType.ServiceTask:
-                // 服务任务：自动完成
+                // 服务任务：自动完成，检测循环防止无限递归
+                visited ??= new HashSet<string>();
+                if (!visited.Add(toNodeId))
+                    throw new InvalidOperationException($"检测到 ServiceTask 循环: {toNodeId}");
                 flow.BpmnTokens[toNodeId] = new BpmnToken
                 {
                     NodeId = toNodeId,
@@ -326,6 +342,24 @@ public static class BpmnEngine
         {
             var right = deptMatch.Groups[1].Value;
             return string.Equals(flow.ApplicantDept, right, StringComparison.Ordinal);
+        }
+
+        var numMatch = Regex.Match(condition, @"^\$\{(\w+)\}\s*(>=|<=|!=|==|>|<)\s*(\d+(?:\.\d+)?)$");
+        if (numMatch.Success)
+        {
+            var varName = numMatch.Groups[1].Value;
+            var op = numMatch.Groups[2].Value;
+            var right = decimal.Parse(numMatch.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture);
+            var rawVal = flow.Context?.GetValueOrDefault(varName);
+            if (!decimal.TryParse(rawVal, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var left))
+                return false;
+            return op switch
+            {
+                ">" => left > right, "<" => left < right,
+                ">=" => left >= right, "<=" => left <= right,
+                "==" => left == right, "!=" => left != right,
+                _ => throw new InvalidOperationException($"不支持的运算符: {op}")
+            };
         }
 
         throw new InvalidOperationException($"无法识别的条件表达式: {condition}");

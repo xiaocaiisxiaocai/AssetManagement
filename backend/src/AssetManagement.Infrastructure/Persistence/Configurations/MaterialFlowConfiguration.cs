@@ -50,5 +50,11 @@ public class MaterialFlowConfiguration : IEntityTypeConfiguration<MaterialFlow>
                 (l, r) => JsonSerializer.Serialize(l, JsonOptions) == JsonSerializer.Serialize(r, JsonOptions),
                 v => JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
                 v => JsonSerializer.Deserialize<Dictionary<string, BpmnToken>>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions) ?? new()));
+
+        b.Property(x => x.Context)
+            .HasConversion(
+                v => v == null ? null : JsonSerializer.Serialize(v, JsonOptions),
+                v => v == null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(v, JsonOptions))
+            .HasColumnType("TEXT");
     }
 }

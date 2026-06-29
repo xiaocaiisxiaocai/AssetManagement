@@ -16,6 +16,7 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
+  ElInputNumber,
   ElMessage,
   ElOption,
   ElSelect,
@@ -203,7 +204,7 @@ const debouncedSave = useDebounceFn(save, 300);
         </div>
       </ElFormItem>
       <ElFormItem label="数量">
-        <ElInput v-model.number="form.quantity" />
+        <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
       </ElFormItem>
       <ElFormItem label="归属部门">
         <ElSelect

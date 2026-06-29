@@ -25,6 +25,7 @@ public static class DbSeeder
             new Permission { Code = "asset:restore", Name = "恢复资产/分类", Module = "asset" },
             new Permission { Code = "approval:handle", Name = "处理审批", Module = "approval" },
             new Permission { Code = "approval:view", Name = "查看审批", Module = "approval" },
+            new Permission { Code = "approval:create", Name = "发起审批", Module = "approval" },
             new Permission { Code = "report:view", Name = "查看报表", Module = "report" },
             new Permission { Code = "admin:user", Name = "用户管理", Module = "admin" },
             new Permission { Code = "admin:role", Name = "角色管理", Module = "admin" },
@@ -93,10 +94,10 @@ public static class DbSeeder
         // 非 admin 角色的默认权限与菜单（参照需求文档权限矩阵）
         var rolePermissionMap = new Dictionary<string, string[]>
         {
-            ["warehouse"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:delete", "approval:handle", "approval:view", "report:view", "admin:audit", "admin:setting", "workflow:design" },
-            ["supervisor"] = new[] { "asset:view", "approval:handle", "approval:view", "report:view" },
-            ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:restore", "approval:handle", "approval:view", "report:view" },
-            ["employee"] = new[] { "asset:view", "approval:view" }
+            ["warehouse"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:delete", "approval:handle", "approval:view", "approval:create", "report:view", "admin:audit", "admin:setting", "workflow:design" },
+            ["supervisor"] = new[] { "asset:view", "approval:handle", "approval:view", "approval:create", "report:view" },
+            ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:restore", "approval:handle", "approval:view", "approval:create", "report:view" },
+            ["employee"] = new[] { "asset:view", "approval:view", "approval:create" }
         };
         var allMenusForSeed = db.Menus.ToList();
         var homeMenu = allMenusForSeed.Single(x => x.Name == "Home");

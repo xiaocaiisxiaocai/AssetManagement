@@ -67,6 +67,10 @@ async function submit() {
     ElMessage.warning('请选择资产');
     return;
   }
+  if (showReturnDate.value && !form.returnDate) {
+    ElMessage.warning('请选择归还日期');
+    return;
+  }
   saving.value = true;
   try {
     await startApprovalApi({
@@ -170,7 +174,7 @@ onMounted(loadData);
             </ElSelect>
           </ElFormItem>
           <ElFormItem v-if="showReturnDate" label="归还日期" required>
-            <ElInput v-model="form.returnDate" placeholder="YYYY-MM-DD，借用时填写" />
+            <ElDatePicker v-model="form.returnDate" type="date" value-format="YYYY-MM-DD" placeholder="选择归还日期" style="width: 100%" />
           </ElFormItem>
           <ElFormItem label="申请事由">
             <ElInput v-model="form.reason" :rows="3" type="textarea" placeholder="请输入申请事由" />

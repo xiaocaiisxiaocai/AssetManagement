@@ -261,5 +261,6 @@ public class BpmnEngineTests
         public List<string> CurrentNodeIds { get; set; } = new();
         public string Status { get; set; } = "pending";
         public string? ApplicantDept { get; set; }
+        public Dictionary<string, string>? Context { get; set; }
     }
 }

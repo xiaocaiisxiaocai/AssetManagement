@@ -5,6 +5,7 @@ using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Infrastructure.Workflow;
@@ -14,12 +15,14 @@ public class WorkflowService : IWorkflowService
     private readonly AppDbContext _db;
     private readonly IBizEffectApplier _bizEffectApplier;
     private readonly INotificationService _notifications;
+    private readonly ILogger<WorkflowService> _logger;
 
-    public WorkflowService(AppDbContext db, IBizEffectApplier bizEffectApplier, INotificationService notifications)
+    public WorkflowService(AppDbContext db, IBizEffectApplier bizEffectApplier, INotificationService notifications, ILogger<WorkflowService> logger)
     {
         _db = db;
         _bizEffectApplier = bizEffectApplier;
         _notifications = notifications;
+        _logger = logger;
     }
 
     public async Task<List<WorkflowDto>> GetWorkflowsAsync()
@@ -104,7 +107,7 @@ public class WorkflowService : IWorkflowService
 
         var flow = new ApprovalFlow
         {
-            FlowNo = $"APV-{DateTime.Now:yyyyMMddHHmmss}-{Random.Shared.Next(100, 999)}",
+            FlowNo = $"APV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
             BizType = workflow.BizType,
             WorkflowId = workflow.Id,
             AssetId = asset.Id,
@@ -263,20 +266,27 @@ public class WorkflowService : IWorkflowService
         await tx.CommitAsync();
 
         // 流程完成 → 通知申请人；未完成 → 通知下一审批节点的审批人
-        if (flow.Status == "approved")
+        try
         {
-            await _notifications.CreateAsync(new CreateNotificationRequest
+            if (flow.Status == "approved")
             {
-                Type = "approval_approved",
-                Title = $"审批通过：{flow.AssetName}",
-                Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请已通过审批。",
-                FlowId = id,
-                UserId = flow.ApplicantId,
-            });
+                await _notifications.CreateAsync(new CreateNotificationRequest
+                {
+                    Type = "approval_approved",
+                    Title = $"审批通过：{flow.AssetName}",
+                    Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请已通过审批。",
+                    FlowId = id,
+                    UserId = flow.ApplicantId,
+                });
+            }
+            else if (flow.Status == "pending")
+            {
+                await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{flow.AssetName} 的{BizTypeLabel(flow.BizType)}申请");
+            }
         }
-        else if (flow.Status == "pending")
+        catch (Exception ex)
         {
-            await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{flow.AssetName} 的{BizTypeLabel(flow.BizType)}申请");
+            _logger.LogWarning(ex, "通知发送失败，不影响审批结果");
         }
 
         return ToFlowDto(flow);
@@ -321,14 +331,21 @@ public class WorkflowService : IWorkflowService
         await tx.CommitAsync();
 
         // 通知申请人审批被驳回
-        await _notifications.CreateAsync(new CreateNotificationRequest
+        try
         {
-            Type = "approval_rejected",
-            Title = $"审批驳回：{flow.AssetName}",
-            Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请被驳回。原因：{request.Reason}",
-            FlowId = id,
-            UserId = flow.ApplicantId,
-        });
+            await _notifications.CreateAsync(new CreateNotificationRequest
+            {
+                Type = "approval_rejected",
+                Title = $"审批驳回：{flow.AssetName}",
+                Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请被驳回。原因：{request.Reason}",
+                FlowId = id,
+                UserId = flow.ApplicantId,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "通知发送失败，不影响审批结果");
+        }
 
         return ToFlowDto(flow);
     }
@@ -390,6 +407,8 @@ public class WorkflowService : IWorkflowService
         }
 
         var user = await LoadUser(userId);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         flow.ConfirmedAt = DateTime.UtcNow;
 
         var asset = await _db.Assets.FindAsync(flow.AssetId);
@@ -401,16 +420,24 @@ public class WorkflowService : IWorkflowService
 
         await _db.SaveChangesAsync();
         await AddRecord(id, "confirm_return", user.Name, "确认归还入库");
+        await tx.CommitAsync();
 
         // 通知借用人资产已确认归还
-        await _notifications.CreateAsync(new CreateNotificationRequest
+        try
         {
-            Type = "return_confirmed",
-            Title = $"归还确认：{flow.AssetName}",
-            Body = $"您借用的 {flow.AssetName}（{flow.AssetNo}）已确认归还入库。",
-            FlowId = id,
-            UserId = flow.ApplicantId,
-        });
+            await _notifications.CreateAsync(new CreateNotificationRequest
+            {
+                Type = "return_confirmed",
+                Title = $"归还确认：{flow.AssetName}",
+                Body = $"您借用的 {flow.AssetName}（{flow.AssetNo}）已确认归还入库。",
+                FlowId = id,
+                UserId = flow.ApplicantId,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "通知发送失败，不影响入库结果");
+        }
 
         return ToFlowDto(flow);
     }

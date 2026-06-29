@@ -20,6 +20,9 @@ public class MaterialFlow : IBpmnFlowInstance
     public string? Reason { get; set; }
     public string Status { get; set; } = "pending";
 
+    /// <summary>标记为直接转移（跳过审批），区分审批转移</summary>
+    public bool DirectTransfer { get; set; }
+
     /// <summary>当前活跃的节点 ID 列表（BPMN 支持并行）</summary>
     public List<string> CurrentNodeIds { get; set; } = new();
 
@@ -31,4 +34,7 @@ public class MaterialFlow : IBpmnFlowInstance
 
     /// <summary>乐观并发令牌，防止两个审批人同时操作同一流转单</summary>
     public uint RowVersion { get; set; }
+
+    /// <summary>条件表达式上下文变量，供 BpmnEngine 条件求值使用</summary>
+    public Dictionary<string, string>? Context { get; set; }
 }

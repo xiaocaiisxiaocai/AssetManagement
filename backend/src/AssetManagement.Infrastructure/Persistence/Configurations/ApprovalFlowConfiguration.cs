@@ -53,5 +53,12 @@ public class ApprovalFlowConfiguration : IEntityTypeConfiguration<ApprovalFlow>
                 (l, r) => JsonSerializer.Serialize(l, JsonOptions) == JsonSerializer.Serialize(r, JsonOptions),
                 v => JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
                 v => JsonSerializer.Deserialize<Dictionary<string, BpmnToken>>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions) ?? new()));
+
+        // 条件表达式上下文（JSON 序列化，不映射为导航属性）
+        b.Property(x => x.Context)
+            .HasConversion(
+                v => v == null ? null : JsonSerializer.Serialize(v, JsonOptions),
+                v => v == null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(v, JsonOptions))
+            .HasColumnType("TEXT");
     }
 }

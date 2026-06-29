@@ -131,8 +131,13 @@ async function handleLogout() {
   await authStore.logout(false);
 }
 
-function handleNoticeClear() {
-  rawNotifications.value = [];
+async function handleNoticeClear() {
+  try {
+    await markAllReadApi();
+    rawNotifications.value = rawNotifications.value.map((n) => ({ ...n, isRead: true }));
+  } catch {
+    // 静默失败
+  }
 }
 
 async function handleMakeAll() {
@@ -148,14 +153,11 @@ async function handleMakeAll() {
 }
 
 async function handleNoticeRead(item: NotificationItem) {
-  // 通过 title + message 匹配原始通知以获取 id
-  const target = rawNotifications.value.find(
-    (n) => n.title === item.title && n.body === item.message && !n.isRead,
-  );
-  if (!target) return;
+  if (!item.id || item.isRead) return;
   try {
-    await markReadApi(target.id);
-    target.isRead = true;
+    await markReadApi(item.id as number);
+    const target = rawNotifications.value.find((n) => n.id === item.id);
+    if (target) target.isRead = true;
   } catch {
     // 静默失败
   }

@@ -364,6 +364,7 @@ async function save() {
     ElMessage.warning('请填写项目名称');
     return;
   }
+  if (saving.value) return;
   saving.value = true;
   try {
     const payload = buildProjectPayload();
@@ -517,6 +518,8 @@ async function removeOption(row: TestProjectOption) {
 
 async function openFollowups(row: TestProjectItem) {
   currentProject.value = row;
+  pendingFlows.value = [];
+  myFlows.value = [];
   activeProjectTab.value = 'followups';
   editingFollowupId.value = null;
   Object.assign(followupForm, {
@@ -761,7 +764,11 @@ function materialRowClassName({ row }: { row: MaterialItem }) {
 
 async function afterMaterialChanged() {
   await loadProjectMaterials();
-  if (activeProjectTab.value === 'flows') await loadProjectFlows();
+  if (currentProject.value?.id) {
+    const id = currentProject.value.id;
+    void listPendingFlowsApi(id).then((v) => { pendingFlows.value = v; }).catch(() => {});
+    void listMyFlowsApi(id).then((v) => { myFlows.value = v; }).catch(() => {});
+  }
 }
 
 async function loadProjectFlows(projectId = currentProject.value?.id) {
@@ -1381,7 +1388,7 @@ onMounted(async () => {
                   :total="materialTotal"
                   background
                   layout="total, prev, pager, next"
-                  @current-change="loadProjectMaterials()"
+                  @current-change="() => loadProjectMaterials(currentProject?.id)"
                 />
               </div>
             </ElTabPane>

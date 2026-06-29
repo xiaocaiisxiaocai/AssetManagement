@@ -260,28 +260,44 @@ async function remove(row: AssetItem) {
 const debouncedRemove = useDebounceFn(remove, 300);
 
 async function purge(row: AssetItem) {
-  await ElMessageBox.confirm(
-    `彻底删除资产「${row.name}」后不可恢复，确认继续？`,
-    '彻底删除确认',
-    { type: 'warning' },
-  );
-  await purgeAssetApi(row.id);
-  ElMessage.success('已彻底删除');
-  await loadData();
+  try {
+    await ElMessageBox.confirm(
+      `彻底删除资产「${row.name}」后不可恢复，确认继续？`,
+      '彻底删除确认',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await purgeAssetApi(row.id);
+    ElMessage.success('已彻底删除');
+    await loadData();
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  }
 }
 
 const debouncedPurge = useDebounceFn(purge, 300);
 
-async function restore(row: AssetItem) {
-  await ElMessageBox.confirm(`确认撤销删除资产「${row.name}」？将恢复为正常资产。`, '撤销删除确认', {
-    type: 'warning',
-  });
-  await restoreAssetApi(row.id);
-  ElMessage.success('已恢复');
-  await Promise.all([loadData(), loadHierarchyAssets()]);
+async function restoreAsset(row: AssetItem) {
+  try {
+    await ElMessageBox.confirm(`确认撤销删除资产「${row.name}」？将恢复为正常资产。`, '撤销删除确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
+  try {
+    await restoreAssetApi(row.id);
+    ElMessage.success('已恢复');
+    await Promise.all([loadData(), loadHierarchyAssets()]);
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  }
 }
 
-const debouncedRestore = useDebounceFn(restore, 300);
+const debouncedRestore = useDebounceFn(restoreAsset, 300);
 
 function getHierarchyContext() {
   let nodes = categories.value;

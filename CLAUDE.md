@@ -16,37 +16,100 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用命令
 
-后端(在仓库根目录执行):
+### 环境检查
 
 ```powershell
+# 验证 dotnet 版本(需 8.0+)
+dotnet --version
+
+# 验证 pnpm 版本(需 8.0+)
+pnpm --version
+
+# 验证 MySQL 连接(修改连接字符串为实际值)
+mysql -h localhost -u root -p123456
+```
+
+### 后端(在仓库根目录执行)
+
+```powershell
+# 构建
 dotnet build .\backend\AssetManagement.sln
-dotnet run --project backend\src\AssetManagement.Api      # 启动 API,默认 http://localhost:5000
+
+# 运行 API 服务
+dotnet run --project backend\src\AssetManagement.Api      # 监听 http://localhost:5000
+
+# 运行全部测试
 dotnet test .\backend\tests\AssetManagement.Tests --no-build
-dotnet test .\backend\tests\AssetManagement.Tests --filter "FullyQualifiedName~ApprovalApiTests"   # 单个测试类
-dotnet test .\backend\tests\AssetManagement.Tests --filter "Name=Health_returns_ok"                 # 单个测试方法
+
+# 运行单个测试类
+dotnet test .\backend\tests\AssetManagement.Tests --filter "FullyQualifiedName~ApprovalApiTests"
+
+# 运行单个测试方法
+dotnet test .\backend\tests\AssetManagement.Tests --filter "Name=Health_returns_ok"
+
+# 健康检查
+curl http://localhost:5000/api/health
 ```
 
-EF Core 迁移(`dotnet-ef` 已固定 8.0.28,通过 `backend/dotnet-tools.json` 管理):
+### EF Core 迁移
+
+⚠️ **重要**: `dotnet-ef` 固定在 8.0.28,通过 `backend\dotnet-tools.json` 管理;必须在 `backend\` 目录执行
 
 ```powershell
-# ⚠️ 工具清单在 backend\dotnet-tools.json(非标准 .config\ 位置,isRoot=true)
-# dotnet ef 必须在 backend\ 目录下执行,否则会报"找不到 dotnet-ef"
 cd backend
+
+# 新增迁移(自动生成类)
 dotnet ef migrations add <Name> --project src\AssetManagement.Infrastructure --startup-project src\AssetManagement.Api
-# 无需手动 update:Program.cs 启动时自动 db.Database.Migrate() + DbSeeder.Seed()
+
+# 无需手动执行 Update:Program.cs 自动在启动时调用 db.Database.Migrate() + DbSeeder.Seed()
+
+# 移除最后一个迁移
+dotnet ef migrations remove
 ```
 
-前端(在 `web/` 目录执行,**必须用 pnpm**):
+### 前端(在 `web/` 目录执行,**必须用 pnpm**)
 
 ```powershell
+# 安装依赖
 pnpm install
-pnpm -F @vben/web-ele dev                       # 开发服务器,端口 5777
-pnpm -F @vben/web-ele run typecheck             # 类型检查
-pnpm --filter @vben/web-ele... run build        # 构建(带 ... 以构建依赖包)
-pnpm check                                       # monorepo 全局检查(圆形依赖/类型/拼写/dep 版本)
+
+# 启动开发服务器(带 HMR 热重载)
+pnpm -F @vben/web-ele dev                       # 监听 http://localhost:5777
+
+# 类型检查
+pnpm -F @vben/web-ele run typecheck
+
+# 生产构建(含依赖包)
+pnpm --filter @vben/web-ele... run build
+
+# monorepo 全局检查(圆形依赖/类型检查/拼写/依赖版本)
+pnpm check
+
+# 构建并本地预览(需先构建)
+pnpm -F @vben/web-ele run preview
 ```
 
-健康检查:`GET http://localhost:5000/api/health`。默认账号 `1001 / 123456`。
+### 集成测试(端到端)
+
+```powershell
+# 1. 启动后端 API(守留在运行状态)
+dotnet run --project backend\src\AssetManagement.Api
+
+# 2. 在新终端启动前端开发服务器(守留在运行状态)
+cd web
+pnpm -F @vben/web-ele dev
+
+# 3. 在第三个终端运行 E2E 测试
+cd web
+node e2e-comprehensive-test.js
+```
+
+### 数据库配置
+
+MySQL 连接字符串位置:
+- **开发环境**: `backend\src\AssetManagement.Api\appsettings.Development.json` → `ConnectionStrings:DefaultConnection`
+- **生产环境**: `deploy\appsettings.Production.json` → 需替换占位符
+- **默认凭证**: 用户 `1001` 密码 `123456`(已在 `DbSeeder` 种子数据中)
 
 ## 前后端集成约定(关键)
 
@@ -201,7 +264,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 参考文档: `docs/BPMN-*.md`（6 份详细文档）
 
-## 站内通知模块（2026-06-28 新增 / 2026-06-28 扩展）
+## 站内通知模块（2026-06-28 新增）
 
 所有核心业务动作（审批、流转、到期）均会生成站内通知，前端铃铛 5 分钟轮询展示。
 
@@ -334,7 +397,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-当前完成度约 **99%**,五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **103 个** `[Fact]`/`[Theory]` 全部通过。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **103 个** `[Fact]`/`[Theory]` 全部通过。
 
 最新里程碑(2026-06-17 ~ 2026-06-28):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)

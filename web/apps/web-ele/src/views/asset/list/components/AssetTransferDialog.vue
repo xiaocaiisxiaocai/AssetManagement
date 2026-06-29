@@ -46,6 +46,10 @@ async function submit() {
     ElMessage.warning('请选择受让人');
     return;
   }
+  if (props.asset.custodianId && form.transfereeId === props.asset.custodianId) {
+    ElMessage.warning('受让人不能是当前持有人');
+    return;
+  }
   if (!form.reason || form.reason.length < 10 || form.reason.length > 200) {
     ElMessage.warning('转让原因需要 10-200 字');
     return;

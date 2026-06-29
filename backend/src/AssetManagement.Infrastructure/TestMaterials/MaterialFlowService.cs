@@ -62,6 +62,7 @@ public class MaterialFlowService : IMaterialFlowService
                     TransfereeDept = await DepartmentName(transferee.DepartmentId),
                     Reason = request.Reason,
                     Status = "approved",
+                    DirectTransfer = true,
                     ApplyTime = DateTime.UtcNow,
                     Deadline = DateTime.UtcNow
                 };
@@ -83,18 +84,20 @@ public class MaterialFlowService : IMaterialFlowService
                 await tx.CommitAsync();
 
                 // 通知接收人（直接转移，无需审批）
-                await _notifications.CreateAsync(new CreateNotificationRequest
+                try
                 {
-                    Type = "material_transferred",
-                    Title = $"料件已转移给您：{material.Name}",
-                    Body = $"料件 {material.MaterialNo}（{material.Name}）已由 {applicant.Name} 直接转移给您。备注：{request.Reason}",
-                    FlowId = directFlow.Id,
-                    UserId = transferee.Id,
-                });
+                    await _notifications.CreateAsync(new CreateNotificationRequest
+                    {
+                        Type = "material_transferred",
+                        Title = $"料件已转移给您：{material.Name}",
+                        Body = $"料件 {material.MaterialNo}（{material.Name}）已由 {applicant.Name} 直接转移给您。备注：{request.Reason}",
+                        FlowId = directFlow.Id,
+                        UserId = transferee.Id,
+                    });
+                }
+                catch { }
 
-                var dto = ToDto(directFlow);
-                dto.DirectTransfer = true;
-                return dto;
+                return ToDto(directFlow);
             }
         }
 

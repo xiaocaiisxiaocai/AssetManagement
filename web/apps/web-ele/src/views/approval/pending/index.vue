@@ -172,6 +172,7 @@ async function approve() {
     if (selected.value.currentNodeIds.length > 1 && nodeId) {
       payload.nodeId = nodeId;
     } else if (selected.value.currentNodeIds.length > 1) {
+      actionLoading.value = false;
       ElMessage.warning('请选择要处理的并行节点');
       return;
     }
@@ -188,7 +189,11 @@ async function approve() {
 }
 
 async function reject() {
-  if (!selected.value || !opinion.value.trim()) {
+  if (!selected.value) {
+    ElMessage.warning('请选择要驳回的记录');
+    return;
+  }
+  if (!opinion.value.trim()) {
     ElMessage.warning('请填写驳回理由');
     return;
   }
@@ -259,9 +264,10 @@ onMounted(() => {
               <span v-if="row.currentNodeIds.length === 1">
                 {{ row.bpmnTokens[row.currentNodeIds[0]]?.nodeName || '-' }}
               </span>
-              <ElTag v-else type="info" size="small">
+              <ElTag v-else-if="row.currentNodeIds.length > 1" type="info" size="small">
                 {{ row.currentNodeIds.length }} 个并行节点
               </ElTag>
+              <span v-else>-</span>
             </template>
           </ElTableColumn>
           <ElTableColumn label="操作" width="120" fixed="right" align="center">
