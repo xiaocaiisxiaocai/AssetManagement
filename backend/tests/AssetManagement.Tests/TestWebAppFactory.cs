@@ -1,61 +1,68 @@
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Infrastructure.Persistence.Seed;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MySqlConnector;
 
 /// <summary>
-/// 集成测试工厂：每个测试类（IClassFixture）一个实例，使用各自独立、保持打开的
-/// SQLite 内存库，替换掉基于 appsettings 文件库的注册，彻底隔离测试、消除并发建库竞争。
-/// 放在全局命名空间，便于无论测试类在哪个命名空间都能直接引用。
+/// 集成测试工厂：每个测试类（IClassFixture）一个实例，使用各自独立的 MySQL 测试库
+/// （assetmgmt_test_{随机后缀}），测试结束后自动 DROP，彻底隔离测试数据。
 /// </summary>
 public class TestWebAppFactory : WebApplicationFactory<Program>
 {
-    private readonly SqliteConnection _connection;
+    private readonly string _dbName;
+    private readonly string _baseConnStr = "Server=localhost;Port=3306;User=root;Password=abc+123;CharSet=utf8mb4;";
 
     public TestWebAppFactory()
     {
-        // DataSource=:memory: 的内存库随连接生命周期存在，必须保持连接打开
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
+        _dbName = $"assetmgmt_test_{Guid.NewGuid():N}";
+        // 建库
+        using var conn = new MySqlConnection(_baseConnStr);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"CREATE DATABASE `{_dbName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;";
+        cmd.ExecuteNonQuery();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // 附件存储指向独立临时目录,避免测试写入项目目录、并隔离各测试运行
         builder.ConfigureAppConfiguration((_, cfg) =>
         {
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Attachment:Path"] = Path.Combine(Path.GetTempPath(), "amtest-uploads", Guid.NewGuid().ToString("N"))
+                ["Attachment:Path"] = Path.Combine(Path.GetTempPath(), "amtest-uploads", Guid.NewGuid().ToString("N")),
+                ["ConnectionStrings:Default"] = $"{_baseConnStr}Database={_dbName};"
             });
         });
 
         builder.ConfigureServices(services =>
         {
-            // 移除原 AppDbContext（基于 appsettings 的共享文件库）注册
             var toRemove = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>)
                          || d.ServiceType == typeof(AppDbContext))
                 .ToList();
             foreach (var descriptor in toRemove)
-            {
                 services.Remove(descriptor);
-            }
 
-            // 改用本工厂实例独占的内存库
-            services.AddDbContext<AppDbContext>(o => o.UseSqlite(_connection));
+            var connStr = $"{_baseConnStr}Database={_dbName};";
+            services.AddDbContext<AppDbContext>(o =>
+                o.UseMySql(connStr, ServerVersion.AutoDetect(connStr))
+                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking));
         });
     }
 
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing)
-        {
-            _connection.Dispose();
-        }
+        if (!disposing) return;
+        // 清理测试库
+        using var conn = new MySqlConnection(_baseConnStr);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"DROP DATABASE IF EXISTS `{_dbName}`;";
+        cmd.ExecuteNonQuery();
     }
 }

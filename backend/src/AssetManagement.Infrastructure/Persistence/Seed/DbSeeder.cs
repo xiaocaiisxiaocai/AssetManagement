@@ -1,5 +1,6 @@
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
+using Microsoft.EntityFrameworkCore;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Infrastructure.Persistence.Seed;
@@ -8,14 +9,23 @@ public static class DbSeeder
 {
     public static void Seed(AppDbContext db)
     {
-        if (db.Users.Any())
-        {
-            SeedIncremental(db);
-            return;
-        }
+        var originalTrackingBehavior = db.ChangeTracker.QueryTrackingBehavior;
+        // 启动时的 DbContext 全局 NoTracking，种子需要更新已有行，必须显式开启跟踪。
+        db.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
 
-        var permissions = new[]
+        try
         {
+            if (db.Users.Any())
+            {
+                SeedIncremental(db);
+                SeedTestMaterialModule(db);
+                return;
+            }
+
+            using var tx = db.Database.BeginTransaction();
+
+            var permissions = new[]
+            {
             new Permission { Code = "asset:view", Name = "查看资产", Module = "asset" },
             new Permission { Code = "asset:create", Name = "新增资产", Module = "asset" },
             new Permission { Code = "asset:edit", Name = "编辑资产", Module = "asset" },
@@ -24,6 +34,7 @@ public static class DbSeeder
             new Permission { Code = "asset:restore", Name = "恢复资产/分类", Module = "asset" },
             new Permission { Code = "approval:handle", Name = "处理审批", Module = "approval" },
             new Permission { Code = "approval:view", Name = "查看审批", Module = "approval" },
+            new Permission { Code = "approval:create", Name = "发起审批", Module = "approval" },
             new Permission { Code = "report:view", Name = "查看报表", Module = "report" },
             new Permission { Code = "admin:user", Name = "用户管理", Module = "admin" },
             new Permission { Code = "admin:role", Name = "角色管理", Module = "admin" },
@@ -92,10 +103,10 @@ public static class DbSeeder
         // 非 admin 角色的默认权限与菜单（参照需求文档权限矩阵）
         var rolePermissionMap = new Dictionary<string, string[]>
         {
-            ["warehouse"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:delete", "approval:handle", "approval:view", "report:view", "admin:audit", "admin:setting", "workflow:design" },
-            ["supervisor"] = new[] { "asset:view", "approval:handle", "approval:view", "report:view" },
-            ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:restore", "approval:handle", "approval:view", "report:view" },
-            ["employee"] = new[] { "asset:view", "approval:view" }
+            ["warehouse"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:delete", "approval:handle", "approval:view", "approval:create", "report:view", "admin:audit", "admin:setting", "workflow:design" },
+            ["supervisor"] = new[] { "asset:view", "approval:handle", "approval:view", "approval:create", "report:view" },
+            ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:restore", "approval:handle", "approval:view", "approval:create", "report:view" },
+            ["employee"] = new[] { "asset:view", "approval:view", "approval:create" }
         };
         var allMenusForSeed = db.Menus.ToList();
         var homeMenu = allMenusForSeed.Single(x => x.Name == "Home");
@@ -149,6 +160,14 @@ public static class DbSeeder
         );
         db.Workflows.AddRange(DefaultWorkflows());
         db.SaveChanges();
+        tx.Commit();
+
+            SeedTestMaterialModule(db);
+        }
+        finally
+        {
+            db.ChangeTracker.QueryTrackingBehavior = originalTrackingBehavior;
+        }
     }
 
     private static void SeedIncremental(AppDbContext db)
@@ -228,24 +247,75 @@ public static class DbSeeder
             }
         }
 
-        if (!db.Menus.Any(x => x.Name == "ReportOverdue"))
+        var reportMenu = db.Menus.SingleOrDefault(x => x.Name == "Report");
+        if (reportMenu is null)
         {
-            var menu = new Menu { Id = db.Menus.Max(x => x.Id) + 1, ParentId = 7, Name = "ReportOverdue", Title = "逾期资产", Path = "/report/overdue", Component = "/report/overdue/index", Sort = 33, PermissionCode = "report:view" };
-            db.Menus.Add(menu);
-            var adminRole = db.Roles.SingleOrDefault(x => x.Code == "admin");
-            if (adminRole is not null)
+            reportMenu = new Menu
             {
-                db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = menu.Id });
-            }
+                Name = "Report",
+                Title = "报表统计",
+                Path = "/report",
+                Component = "BasicLayout",
+                Icon = "lucide:chart-column",
+                Sort = 30
+            };
+            db.Menus.Add(reportMenu);
+            db.SaveChanges();
+        }
+        else
+        {
+            reportMenu.Title = "报表统计";
+            reportMenu.Path = "/report";
+            reportMenu.Component = "BasicLayout";
+            reportMenu.Icon = "lucide:chart-column";
+            reportMenu.Sort = 30;
+            reportMenu.ParentId = null;
         }
 
-        var nextMenuId = db.Menus.Any() ? db.Menus.Max(x => x.Id) + 1 : 1;
+        var reportAdminRole = db.Roles.SingleOrDefault(x => x.Code == "admin");
+        if (reportAdminRole is not null
+            && !db.RoleMenus.Any(x => x.RoleId == reportAdminRole.Id && x.MenuId == reportMenu.Id))
+        {
+            db.RoleMenus.Add(new RoleMenu { RoleId = reportAdminRole.Id, MenuId = reportMenu.Id });
+        }
+
+        var reportOverdueMenu = db.Menus.SingleOrDefault(x => x.Name == "ReportOverdue");
+        if (reportOverdueMenu is null)
+        {
+            reportOverdueMenu = new Menu
+            {
+                ParentId = reportMenu.Id,
+                Name = "ReportOverdue",
+                Title = "逾期资产",
+                Path = "/report/overdue",
+                Component = "/report/overdue/index",
+                Sort = 33,
+                PermissionCode = "report:view"
+            };
+            db.Menus.Add(reportOverdueMenu);
+            db.SaveChanges();
+        }
+        else
+        {
+            reportOverdueMenu.ParentId = reportMenu.Id;
+            reportOverdueMenu.Title = "逾期资产";
+            reportOverdueMenu.Path = "/report/overdue";
+            reportOverdueMenu.Component = "/report/overdue/index";
+            reportOverdueMenu.Sort = 33;
+            reportOverdueMenu.PermissionCode = "report:view";
+        }
+
+        if (reportAdminRole is not null
+            && !db.RoleMenus.Any(x => x.RoleId == reportAdminRole.Id && x.MenuId == reportOverdueMenu.Id))
+        {
+            db.RoleMenus.Add(new RoleMenu { RoleId = reportAdminRole.Id, MenuId = reportOverdueMenu.Id });
+        }
+
         var existingHome = db.Menus.SingleOrDefault(x => x.Name == "Home");
         if (existingHome is null)
         {
             existingHome = new Menu
             {
-                Id = nextMenuId++,
                 Name = "Home",
                 Title = "首页",
                 Path = "/home-root",
@@ -254,6 +324,7 @@ public static class DbSeeder
                 Sort = 1
             };
             db.Menus.Add(existingHome);
+            db.SaveChanges();
             foreach (var role in db.Roles.ToList())
             {
                 db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHome.Id });
@@ -274,7 +345,6 @@ public static class DbSeeder
         {
             existingHomeWorkspace = new Menu
             {
-                Id = nextMenuId++,
                 ParentId = existingHome.Id,
                 Name = "HomeWorkspace",
                 Title = "首页",
@@ -283,6 +353,7 @@ public static class DbSeeder
                 Sort = 1
             };
             db.Menus.Add(existingHomeWorkspace);
+            db.SaveChanges();
             foreach (var role in db.Roles.ToList())
             {
                 db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHomeWorkspace.Id });
@@ -299,6 +370,237 @@ public static class DbSeeder
 
         db.SaveChanges();
     }
+
+    public static void SeedTestMaterialModule(AppDbContext db)
+    {
+        // ---- 1. 权限码 ----
+        var materialPermissions = new[]
+        {
+            ("material:view", "查看测试料件"),
+            ("material:create", "新增测试料件"),
+            ("material:edit", "编辑测试料件"),
+            ("material:delete", "删除测试料件"),
+            ("material:restore", "恢复测试料件/项目"),
+            ("material:purge", "彻底删除测试料件/项目"),
+            ("material:transfer", "发起料件流转"),
+            ("material:approve", "审批料件流转"),
+            ("project:manage", "管理测试项目"),
+        };
+        var permByCode = new Dictionary<string, Permission>();
+        foreach (var (code, name) in materialPermissions)
+        {
+            var perm = db.Permissions.SingleOrDefault(x => x.Code == code);
+            if (perm is null)
+            {
+                perm = new Permission { Code = code, Name = name, Module = "material" };
+                db.Permissions.Add(perm);
+            }
+            else
+            {
+                perm.Name = name;
+                perm.Module = "material";
+            }
+            permByCode[code] = perm;
+        }
+        db.SaveChanges();
+
+        // ---- 2. 角色-权限映射 ----
+        var roleGrants = new Dictionary<string, string[]>
+        {
+            ["admin"] = materialPermissions.Select(p => p.Item1).ToArray(),
+            ["dept_admin"] = new[] { "material:view", "material:create", "material:edit", "material:transfer", "material:restore", "material:approve", "project:manage" },
+            ["supervisor"] = new[] { "material:view", "material:approve", "material:transfer" },
+            ["warehouse"] = new[] { "material:view", "material:create", "material:edit", "material:transfer" },
+            ["employee"] = new[] { "material:view" },
+        };
+        foreach (var (roleCode, codes) in roleGrants)
+        {
+            var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
+            if (role is null) continue;
+            foreach (var code in codes)
+            {
+                var perm = permByCode[code];
+                if (!db.RolePermissions.Any(x => x.RoleId == role.Id && x.PermissionId == perm.Id))
+                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
+            }
+        }
+        db.SaveChanges();
+
+        // ---- 3. 菜单(一级入口"新产品新技术跟进"+ 单一项目入口)----
+        var adminRole = db.Roles.SingleOrDefault(x => x.Code == "admin");
+        var rootMenu = db.Menus.SingleOrDefault(x => x.Name == "Material");
+        if (rootMenu is null)
+        {
+            rootMenu = new Menu
+            {
+                Name = "Material",
+                Title = "新产品新技术跟进",
+                Path = "/material",
+                Component = "BasicLayout",
+                Icon = "lucide:flask-conical",
+                Sort = 15
+            };
+            db.Menus.Add(rootMenu);
+            db.SaveChanges();
+        }
+        else
+        {
+            rootMenu.Title = "新产品新技术跟进";
+            rootMenu.Path = "/material";
+            rootMenu.Component = "BasicLayout";
+            rootMenu.Icon = "lucide:flask-conical";
+            rootMenu.Sort = 15;
+            rootMenu.ParentId = null;
+        }
+        db.SaveChanges();
+
+        void EnsureChild(string name, string title, string path, string component, int sort, string permCode)
+        {
+            var existing = db.Menus.SingleOrDefault(x => x.Name == name);
+            if (existing is not null)
+            {
+                existing.ParentId = rootMenu.Id;
+                existing.Title = title;
+                existing.Path = path;
+                existing.Component = component;
+                existing.Sort = sort;
+                existing.PermissionCode = permCode;
+                if (adminRole != null && !db.RoleMenus.Any(x => x.RoleId == adminRole.Id && x.MenuId == existing.Id))
+                    db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = existing.Id });
+                return;
+            }
+            var menu = new Menu
+            {
+                ParentId = rootMenu.Id,
+                Name = name, Title = title, Path = path, Component = component,
+                Sort = sort, PermissionCode = permCode
+            };
+            db.Menus.Add(menu);
+            db.SaveChanges();
+            if (adminRole != null && !db.RoleMenus.Any(x => x.RoleId == adminRole.Id && x.MenuId == menu.Id))
+                db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = menu.Id });
+        }
+
+        // 根菜单也要授予 admin(否则子菜单无父路由)
+        if (adminRole != null && !db.RoleMenus.Any(x => x.RoleId == adminRole.Id && x.MenuId == rootMenu.Id))
+            db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = rootMenu.Id });
+
+        EnsureChild("MaterialHome", "项目总览", "/material/home", "/material/home/index", 16, "material:view");
+        EnsureChild("MaterialProjects", "测试项目", "/material/projects", "/material/projects/index", 17, "material:view");
+        db.SaveChanges();
+
+        // 把根菜单 + 子菜单授予 dept_admin / employee(按其权限码可见性)
+        foreach (var roleCode in new[] { "dept_admin", "employee" })
+        {
+            var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
+            if (role is null) continue;
+            var grantedCodes = roleGrants.GetValueOrDefault(roleCode, Array.Empty<string>()).ToHashSet();
+            var childMenus = db.Menus.Where(x => x.ParentId == rootMenu.Id && x.PermissionCode != null && grantedCodes.Contains(x.PermissionCode!)).ToList();
+            if (childMenus.Count == 0) continue;
+            if (!db.RoleMenus.Any(x => x.RoleId == role.Id && x.MenuId == rootMenu.Id))
+                db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = rootMenu.Id });
+            foreach (var menu in childMenus)
+                if (!db.RoleMenus.Any(x => x.RoleId == role.Id && x.MenuId == menu.Id))
+                    db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = menu.Id });
+        }
+        db.SaveChanges();
+
+        // ---- 4. 系统参数:流转审批全局开关(默认关闭)----
+        if (!db.SystemSettings.Any(x => x.Key == "material.transfer.approval.enabled"))
+        {
+            db.SystemSettings.Add(new SystemSetting
+            {
+                Key = "material.transfer.approval.enabled",
+                Value = "false",
+                Description = "是否启用测试料件转移审批(false=直接转移)"
+            });
+        }
+
+        // ---- 4.1 测试项目配置项 ----
+        EnsureProjectOption(db, "project_type", "prototype", "样机测试", 1);
+        EnsureProjectOption(db, "project_type", "trial", "试产验证", 2);
+        EnsureProjectOption(db, "project_type", "issue", "问题验证", 3);
+        EnsureProjectOption(db, "project_progress", "planning", "计划中", 1);
+        EnsureProjectOption(db, "project_progress", "testing", "测试中", 2);
+        EnsureProjectOption(db, "project_progress", "landing", "落地跟进", 3);
+        EnsureProjectOption(db, "project_progress", "closed", "已结案", 4);
+
+        // ---- 5. 默认 BPMN 工作流模板(material_transfer)----
+        if (!db.Workflows.Any(x => x.BizType == "material_transfer"))
+        {
+            db.Workflows.Add(new WorkflowEntity
+            {
+                Name = "测试料件流转流程",
+                BizType = "material_transfer",
+                BpmnXml = MaterialTransferBpmnXml
+            });
+        }
+        db.SaveChanges();
+    }
+
+    private static void EnsureProjectOption(AppDbContext db, string kind, string code, string label, int sort)
+    {
+        var option = db.TestProjectOptions.SingleOrDefault(x => x.Kind == kind && x.Code == code);
+        if (option is null)
+        {
+            db.TestProjectOptions.Add(new TestProjectOption
+            {
+                Kind = kind,
+                Code = code,
+                Label = label,
+                Sort = sort,
+                IsActive = true
+            });
+            return;
+        }
+
+        option.Label = label;
+        option.Sort = sort;
+    }
+
+    private const string MaterialTransferBpmnXml = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+<bpmn:definitions xmlns:bpmn=""http://www.omg.org/spec/BPMN/20100524/MODEL""
+                  xmlns:bpmndi=""http://www.omg.org/spec/BPMN/20100524/DI""
+                  xmlns:dc=""http://www.omg.org/spec/DD/20100524/DC""
+                  xmlns:di=""http://www.omg.org/spec/DD/20100524/DI""
+                  xmlns:camunda=""http://camunda.org/schema/1.0/bpmn""
+                  id=""Definitions_material_transfer"">
+  <bpmn:process id=""Process_material_transfer"" isExecutable=""true"">
+    <bpmn:startEvent id=""StartEvent_1"" name=""发起料件流转"">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id=""Task_deptManager"" name=""部门负责人审批"" camunda:assignee=""deptManager"">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id=""EndEvent_1"" name=""流程结束"">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Task_deptManager"" />
+    <bpmn:sequenceFlow id=""Flow_2"" sourceRef=""Task_deptManager"" targetRef=""EndEvent_1"" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
+    <bpmndi:BPMNPlane id=""BPMNPlane_1"" bpmnElement=""Process_material_transfer"">
+      <bpmndi:BPMNShape id=""StartEvent_1_di"" bpmnElement=""StartEvent_1"">
+        <dc:Bounds x=""152"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Task_deptManager_di"" bpmnElement=""Task_deptManager"">
+        <dc:Bounds x=""240"" y=""80"" width=""100"" height=""80"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""EndEvent_1_di"" bpmnElement=""EndEvent_1"">
+        <dc:Bounds x=""392"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id=""Flow_1_di"" bpmnElement=""Flow_1"">
+        <di:waypoint x=""188"" y=""120"" />
+        <di:waypoint x=""240"" y=""120"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_2_di"" bpmnElement=""Flow_2"">
+        <di:waypoint x=""340"" y=""120"" />
+        <di:waypoint x=""392"" y=""120"" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>";
 
     private static WorkflowEntity[] DefaultWorkflows() => new[]
     {

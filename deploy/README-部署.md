@@ -1,11 +1,12 @@
 # 部门资产管理系统部署说明
 
-适用场景：Windows Server 内网单机部署，后端 .NET 8 + SQLite，前端静态文件同源或独立站点托管。
+适用场景：Windows Server 内网单机部署，后端 .NET 8 + MySQL 5.7，前端静态文件同源或独立站点托管。
 
 ## 1. 环境要求
 
 - Windows Server 2019/2022 或等价内网 Windows 主机。
 - .NET 8 Runtime；若使用 IIS，安装 ASP.NET Core Hosting Bundle。
+- **MySQL 5.7+**（独立安装，程序不内嵌）：需提前创建数据库 `assetmgmt`，并授予应用账号读写权限。
 - Node.js 20+ 与 pnpm，仅构建前端时需要。
 - 部署目录示例：`C:\asset-management`。
 
@@ -20,12 +21,16 @@ dotnet publish backend/src/AssetManagement.Api -c Release -o deploy/api --self-c
 复制 `deploy/appsettings.Production.json` 到发布目录 `deploy/api/appsettings.Production.json`，并至少修改：
 
 - `Jwt:Key`：替换为 32 位以上随机字符串。
-- `ConnectionStrings:Default`：默认 `Data Source=Data/assetmgmt.db`，表示数据库在发布目录下 `Data` 文件夹。
+- `ConnectionStrings:Default`：替换 `REPLACE_MYSQL_HOST`、`REPLACE_MYSQL_USER`、`REPLACE_MYSQL_PASSWORD` 为实际 MySQL 连接信息。
+  示例：`Server=localhost;Port=3306;Database=assetmgmt;User=assetmgmt_user;Password=YourStrongPassword;CharSet=utf8mb4;`
 
-首次启动前创建数据目录：
+提前在 MySQL 中创建数据库与用户：
 
-```powershell
-New-Item -ItemType Directory -Force C:\asset-management\Data
+```sql
+CREATE DATABASE IF NOT EXISTS assetmgmt CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'assetmgmt_user'@'localhost' IDENTIFIED BY 'YourStrongPassword';
+GRANT ALL PRIVILEGES ON assetmgmt.* TO 'assetmgmt_user'@'localhost';
+FLUSH PRIVILEGES;
 ```
 
 程序启动时会自动执行 EF Core `Migrate()` 并写入种子数据，包括管理员、角色权限、菜单、系统参数和默认审批流。
@@ -74,31 +79,25 @@ pnpm --filter @vben/web-ele... run build
 
 当前前端使用 hash 路由，独立静态托管不需要额外 history fallback。
 
-## 5. SQLite 备份与恢复
+## 5. 数据库备份与恢复
 
-备份脚本：`deploy/backup.ps1`。
-
-示例：
+使用 MySQL 自带的 `mysqldump` 工具备份：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\deploy\backup.ps1 `
-  -DbPath "C:\asset-management\Data\assetmgmt.db" `
-  -BackupRoot "\\nas\asset-management-backup" `
-  -KeepDays 30
+mysqldump -u assetmgmt_user -p assetmgmt > "\\nas\backup\assetmgmt_$(Get-Date -Format 'yyyyMMdd_HHmmss').sql"
 ```
 
-可用 Windows 计划任务定期执行脚本。该定时任务属于运维层文件备份，不是应用内定时任务。
-
-恢复步骤：
+可用 Windows 计划任务定期执行。恢复步骤：
 
 1. 停止后端服务。
-2. 备份当前 `assetmgmt.db`。
-3. 将目标备份文件复制回 `Data\assetmgmt.db`。
-4. 启动后端服务并访问 `/api/health`。
+2. 恢复备份：`mysql -u assetmgmt_user -p assetmgmt < backup_file.sql`
+3. 启动后端服务并访问 `/api/health`。
+
+> 旧版 SQLite 备份脚本（`backup.ps1`、`backup-database.*`）已废弃，仅作历史存档。
 
 ## 6. 常见问题
 
 - 登录后菜单缺失：确认数据库种子已执行，管理员角色包含菜单权限；已有库升级时重启后端会补增量菜单。
 - 前端接口 404：确认生产环境 `VITE_GLOB_API_URL=/api`，且反代或同源路径正确。
-- 数据库无法写入：确认服务账号对部署目录和 `Data` 目录有写权限。
+- 数据库连接失败：确认 MySQL 已启动、连接字符串正确、防火墙允许 3306 端口、数据库账号权限已授予。
 - 端口无法访问：检查 Windows 防火墙和 IIS/Kestrel 监听地址。

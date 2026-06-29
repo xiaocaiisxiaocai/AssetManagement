@@ -6,11 +6,11 @@
 
 部门资产管理系统的**全栈**仓库(非静态原型):
 
-- `backend/` — 正式后端:ASP.NET Core 8 + EF Core + SQLite,DDD 四层架构(Api → Infrastructure → Application → Domain),JWT + 权限码鉴权,可配置审批工作流引擎。**当前活跃开发对象**。
+- `backend/` — 正式后端:ASP.NET Core 8 + EF Core + MySQL 5.7,DDD 四层架构(Api → Infrastructure → Application → Domain),JWT + 权限码鉴权,可配置审批工作流引擎。**当前活跃开发对象**。
 - `web/` — 正式前端:基于 vue-vben-admin 5.x 的 monorepo(pnpm + turbo)。实际开发的应用是 `apps/web-ele`(Vue 3 + Element Plus);`web-antd`、`web-naive` 为上游模板自带,**不使用**。
 - `docs/` — 需求/设计/实施规划文档(`.md` 与 `.pdf` 并存,**修改以 `.md` 为准**)。
 - `prototype/` — 早期纯静态 HTML 原型,**仅作参考,新功能不在此实现**。
-- `deploy/` — 内网部署说明、生产配置样例、SQLite 备份脚本。
+- `deploy/` — 内网部署说明、生产配置样例、数据库备份脚本。
 
 ## 常用命令
 

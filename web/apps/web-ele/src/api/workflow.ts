@@ -27,9 +27,12 @@ export interface BpmnToken {
 // 工作流定义（BPMN 模式）
 export interface WorkflowItem {
   bizType: string;
+  bizTypeLabel: string;
   id: number;
   name: string;
   bpmnXml?: string | null; // BPMN 2.0 XML
+  bpmnStatus: 'configured' | 'empty' | 'invalid';
+  bpmnValidationErrors: string[];
 }
 
 export interface SaveWorkflowPayload {

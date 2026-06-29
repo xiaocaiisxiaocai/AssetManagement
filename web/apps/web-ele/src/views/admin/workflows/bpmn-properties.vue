@@ -644,8 +644,8 @@ onMounted(() => {
   height: 100%;
   overflow-y: auto;
   padding: 10px;
-  background: #fafafa;
-  border-left: 1px solid #ddd;
+  background: var(--el-fill-color-lighter);
+  border-left: 1px solid var(--el-border-color);
 }
 
 .empty-state {
@@ -656,7 +656,7 @@ onMounted(() => {
 }
 
 .properties-form {
-  background: #fff;
+  background: var(--el-bg-color);
   padding: 15px;
   border-radius: 4px;
 }
@@ -675,14 +675,14 @@ onMounted(() => {
 .branch-condition {
   padding: 10px;
   margin-bottom: 10px;
-  background: #f7f8fa;
-  border: 1px solid #e5e7eb;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color);
   border-radius: 4px;
 }
 
 .empty-branch {
   padding: 10px;
-  background: #f7f8fa;
+  background: var(--el-fill-color-light);
   border-radius: 4px;
 }
 </style>

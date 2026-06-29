@@ -356,8 +356,8 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   padding: 10px;
-  background: #f5f5f5;
-  border-bottom: 1px solid #ddd;
+  background: var(--el-fill-color-light);
+  border-bottom: 1px solid var(--el-border-color);
 }
 
 .bpmn-modeler-wrapper .toolbar-left,
@@ -374,8 +374,8 @@ onUnmounted(() => {
 
 .bpmn-modeler-wrapper .bpmn-container {
   flex: 1;
-  border: 1px solid #ddd;
-  background: #fff;
+  border: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
   overflow: hidden;
 }
 
@@ -386,10 +386,10 @@ onUnmounted(() => {
 
 .bpmn-modeler-wrapper .help-text {
   padding: 10px;
-  background: #f9f9f9;
-  border-top: 1px solid #ddd;
+  background: var(--el-fill-color-lighter);
+  border-top: 1px solid var(--el-border-color);
   font-size: 12px;
-  color: #666;
+  color: var(--el-text-color-secondary);
 }
 
 .bpmn-modeler-wrapper .help-text ul {

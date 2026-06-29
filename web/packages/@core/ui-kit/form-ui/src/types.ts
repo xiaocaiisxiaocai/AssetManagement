@@ -3,9 +3,7 @@ import type { ClassType } from '@vben-core/typings';
 import type { FieldOptions, FormContext, GenericObject } from 'vee-validate';
 import type { ZodTypeAny } from 'zod';
 
-import type { FormApi } from './form-api';
-
-import type { Component, HtmlHTMLAttributes, Ref } from 'vue';
+import type { Component, HtmlHTMLAttributes } from 'vue';
 
 export type FormLayout = 'horizontal' | 'vertical';
 
@@ -371,12 +369,6 @@ export interface VbenFormProps<
    */
   submitOnEnter?: boolean;
 }
-
-export type ExtendedFormApi = {
-  useStore: <T = NoInfer<VbenFormProps>>(
-    selector?: (state: NoInfer<VbenFormProps>) => T,
-  ) => Readonly<Ref<T>>;
-} & FormApi;
 
 export interface VbenFormAdapterOptions<
   T extends BaseFormComponentType = BaseFormComponentType,

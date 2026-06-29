@@ -48,8 +48,8 @@ async function loadData() {
     ]);
     flows.value = pending;
     users.value = userPage.items.filter((user) => user.isActive);
-  } catch (error: any) {
-    ElMessage.error(error.message || '加载失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     loading.value = false;
   }
@@ -155,8 +155,8 @@ async function addSign() {
     if (index >= 0) flows.value[index] = updated;
     ElMessage.success('已加签');
     addSignVisible.value = false;
-  } catch (error: any) {
-    ElMessage.error(error.message || '加签失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     addSignLoading.value = false;
   }
@@ -172,6 +172,7 @@ async function approve() {
     if (selected.value.currentNodeIds.length > 1 && nodeId) {
       payload.nodeId = nodeId;
     } else if (selected.value.currentNodeIds.length > 1) {
+      actionLoading.value = false;
       ElMessage.warning('请选择要处理的并行节点');
       return;
     }
@@ -180,15 +181,19 @@ async function approve() {
     ElMessage.success('已通过');
     detailVisible.value = false;
     await loadData();
-  } catch (error: any) {
-    ElMessage.error(error.message || '审批失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     actionLoading.value = false;
   }
 }
 
 async function reject() {
-  if (!selected.value || !opinion.value.trim()) {
+  if (!selected.value) {
+    ElMessage.warning('请选择要驳回的记录');
+    return;
+  }
+  if (!opinion.value.trim()) {
     ElMessage.warning('请填写驳回理由');
     return;
   }
@@ -199,8 +204,8 @@ async function reject() {
     ElMessage.success('已驳回');
     detailVisible.value = false;
     await loadData();
-  } catch (error: any) {
-    ElMessage.error(error.message || '驳回失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     actionLoading.value = false;
   }
@@ -259,9 +264,10 @@ onMounted(() => {
               <span v-if="row.currentNodeIds.length === 1">
                 {{ row.bpmnTokens[row.currentNodeIds[0]]?.nodeName || '-' }}
               </span>
-              <ElTag v-else type="info" size="small">
+              <ElTag v-else-if="row.currentNodeIds.length > 1" type="info" size="small">
                 {{ row.currentNodeIds.length }} 个并行节点
               </ElTag>
+              <span v-else>-</span>
             </template>
           </ElTableColumn>
           <ElTableColumn label="操作" width="120" fixed="right" align="center">

@@ -1,4 +1,5 @@
 export { setupVbenVxeTable } from './init';
+export type { ExtendedVxeGridApi } from './api';
 export type { VxeTableGridOptions } from './types';
 export * from './use-vxe-grid';
 

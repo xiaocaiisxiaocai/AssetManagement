@@ -101,6 +101,11 @@ public class BpmnToken
     public BpmnTokenStatus Status { get; set; }
 
     /// <summary>
+    /// 节点开始等待处理的时间。催办按当前节点停留时间计算，而不是整单申请时间。
+    /// </summary>
+    public DateTime? StartedAt { get; set; }
+
+    /// <summary>
     /// 审批人（UserTask 完成后记录）
     /// </summary>
     public string? Approver { get; set; }

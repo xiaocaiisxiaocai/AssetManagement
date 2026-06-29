@@ -4,6 +4,8 @@ import type { UserDto } from '#/api/user';
 
 import { reactive, ref, watch } from 'vue';
 
+import { useRouter } from 'vue-router';
+
 import {
   ElButton,
   ElDialog,
@@ -16,6 +18,8 @@ import {
 } from 'element-plus';
 
 import { startApprovalApi } from '#/api/workflow';
+
+const router = useRouter();
 
 const props = defineProps<{ asset: AssetItem | null; users: UserDto[] }>();
 const emit = defineEmits<{ submitted: [] }>();
@@ -42,6 +46,10 @@ async function submit() {
     ElMessage.warning('请选择受让人');
     return;
   }
+  if (props.asset.custodianId && form.transfereeId === props.asset.custodianId) {
+    ElMessage.warning('受让人不能是当前持有人');
+    return;
+  }
   if (!form.reason || form.reason.length < 10 || form.reason.length > 200) {
     ElMessage.warning('转让原因需要 10-200 字');
     return;
@@ -57,7 +65,9 @@ async function submit() {
     ElMessage.success('转让申请已提交');
     visible.value = false;
     emit('submitted');
-    window.location.href = '/#/approval/mine';
+    router.push('/approval/mine');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     saving.value = false;
   }

@@ -3,6 +3,8 @@ import type { AssetItem } from '#/api/asset';
 
 import { reactive, ref, watch } from 'vue';
 
+import { useRouter } from 'vue-router';
+
 import {
   ElButton,
   ElDatePicker,
@@ -14,6 +16,8 @@ import {
 } from 'element-plus';
 
 import { startApprovalApi } from '#/api/workflow';
+
+const router = useRouter();
 
 const props = defineProps<{ asset: AssetItem | null }>();
 const emit = defineEmits<{ submitted: [] }>();
@@ -52,7 +56,9 @@ async function submit() {
     ElMessage.success('借用申请已提交');
     visible.value = false;
     emit('submitted');
-    window.location.href = '/#/approval/mine';
+    router.push('/approval/mine');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     saving.value = false;
   }
@@ -68,17 +74,18 @@ async function submit() {
       <ElFormItem label="资产名称">
         <ElInput :model-value="asset.name" disabled />
       </ElFormItem>
-      <ElFormItem label="归还日期">
+      <ElFormItem label="归还日期" required>
         <ElDatePicker
           v-model="form.returnDate"
           clearable
           format="YYYY-MM-DD"
-          placeholder="选择归还日期"
+          value-format="YYYY-MM-DD"
+          placeholder="选择归还日期（必填）"
           style="width: 100%"
           type="date"
         />
       </ElFormItem>
-      <ElFormItem label="借用原因">
+      <ElFormItem label="借用原因" required>
         <ElInput
           v-model="form.reason"
           :maxlength="200"

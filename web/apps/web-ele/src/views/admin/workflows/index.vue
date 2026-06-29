@@ -8,6 +8,8 @@ import {
   ElInput,
   ElMessage,
   ElMessageBox,
+  ElOption,
+  ElSelect,
   ElTable,
   ElTableColumn,
   ElTag,
@@ -38,12 +40,25 @@ const workflowForm = ref<SaveWorkflowPayload>({
   name: '',
 });
 
+const bizTypeOptions = [
+  { label: '资产借用', value: 'borrow' },
+  { label: '资产转让', value: 'transfer' },
+  { label: '资产归还', value: 'return' },
+  { label: '测试料件流转', value: 'material_transfer' },
+];
+
+const bpmnStatusMap = {
+  configured: { label: '已配置', type: 'success' },
+  empty: { label: '未配置', type: 'warning' },
+  invalid: { label: '配置异常', type: 'danger' },
+} as const;
+
 const loadWorkflows = async () => {
   loading.value = true;
   try {
     workflows.value = await getWorkflowsApi();
-  } catch (error: any) {
-    ElMessage.error(error.message || '加载工作流失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     loading.value = false;
   }
@@ -104,8 +119,8 @@ const handleFormSave = async () => {
 
     formDialogVisible.value = false;
     await loadWorkflows();
-  } catch (error: any) {
-    ElMessage.error(error.message || '保存失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     formSaving.value = false;
   }
@@ -123,7 +138,7 @@ const handleDelete = async (workflow: WorkflowItem) => {
     await loadWorkflows();
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error.message || '删除失败');
+    // 其他错误已由 request.ts 拦截器统一弹出
   }
 };
 
@@ -139,10 +154,16 @@ const handleSave = async (bpmnXml: string) => {
     ElMessage.success('保存成功');
     dialogVisible.value = false;
     await loadWorkflows();
-  } catch (error: any) {
-    ElMessage.error(error.message || '保存失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 };
+
+const bizTypeLabel = (workflow: WorkflowItem) =>
+  workflow.bizTypeLabel || workflow.bizType;
+
+const bpmnStatusMeta = (status: WorkflowItem['bpmnStatus']) =>
+  bpmnStatusMap[status] ?? bpmnStatusMap.empty;
 
 onMounted(() => {
   loadWorkflows();
@@ -169,16 +190,18 @@ onMounted(() => {
           <ElTableColumn prop="name" label="名称" min-width="180" />
           <ElTableColumn prop="bizType" label="业务类型" width="120" align="center">
             <template #default="{ row }">
-              <ElTag v-if="row.bizType === 'borrow'" type="success" size="small">借用</ElTag>
-              <ElTag v-else-if="row.bizType === 'transfer'" type="warning" size="small">转让</ElTag>
-              <ElTag v-else-if="row.bizType === 'return'" type="info" size="small">归还</ElTag>
-              <ElTag v-else size="small">{{ row.bizType }}</ElTag>
+              <ElTag size="small">{{ bizTypeLabel(row) }}</ElTag>
             </template>
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="BPMN 状态" width="120" align="center">
             <template #default="{ row }">
-              <ElTag v-if="row.bpmnXml" type="success" size="small">已配置</ElTag>
-              <ElTag v-else type="warning" size="small">未配置</ElTag>
+              <ElTag
+                :title="row.bpmnValidationErrors?.join('；')"
+                :type="bpmnStatusMeta(row.bpmnStatus).type"
+                size="small"
+              >
+                {{ bpmnStatusMeta(row.bpmnStatus).label }}
+              </ElTag>
             </template>
           </ElTableColumn>
           <ElTableColumn label="操作" width="240" align="center" fixed="right">
@@ -208,7 +231,20 @@ onMounted(() => {
             <ElInput v-model="workflowForm.name" placeholder="如：资产借用流程" />
           </ElFormItem>
           <ElFormItem label="业务类型" required>
-            <ElInput v-model="workflowForm.bizType" placeholder="如：borrow、transfer、return" />
+            <ElSelect
+              v-model="workflowForm.bizType"
+              allow-create
+              filterable
+              placeholder="请选择业务类型"
+              style="width: 100%"
+            >
+              <ElOption
+                v-for="item in bizTypeOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </ElSelect>
           </ElFormItem>
         </ElForm>
 

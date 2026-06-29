@@ -8,10 +8,11 @@
     "stub": "pnpm unbuild --stub"
   },
   "files": [
+    "cli",
     "dist"
   ],
   "bin": {
-    "vsh": "./bin/vsh.mjs"
+    "vsh": "./cli/vsh.mjs"
   },
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",

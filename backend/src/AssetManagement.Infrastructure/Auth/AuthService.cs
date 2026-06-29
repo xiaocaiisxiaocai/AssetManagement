@@ -110,20 +110,14 @@ public class AuthService : IAuthService
     {
         var context = _httpContextAccessor.HttpContext;
         if (context == null) return "unknown";
-
-        // 优先从代理头获取真实 IP
-        var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(forwardedFor))
+        // 反向代理场景：优先读 X-Forwarded-For，取第一个非空 IP（最左侧为真实客户端 IP）
+        var forwarded = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwarded))
         {
-            return forwardedFor.Split(',')[0].Trim();
+            var ip = forwarded.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                              .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            if (!string.IsNullOrWhiteSpace(ip)) return ip;
         }
-
-        var realIp = context.Request.Headers["X-Real-IP"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(realIp))
-        {
-            return realIp;
-        }
-
         return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
 
@@ -178,7 +172,7 @@ public class AuthService : IAuthService
 
     public async Task ChangePasswordAsync(int userId, ChangePasswordRequest request)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId && x.IsActive)
+        var user = await _db.Users.AsTracking().FirstOrDefaultAsync(x => x.Id == userId && x.IsActive)
             ?? throw new BizException(4041, "用户不存在或已停用");
 
         if (!BCrypt.Net.BCrypt.Verify(request.OldPassword, user.PasswordHash))
@@ -187,7 +181,6 @@ public class AuthService : IAuthService
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-        _db.Users.Update(user);
         await _db.SaveChangesAsync();
     }
 

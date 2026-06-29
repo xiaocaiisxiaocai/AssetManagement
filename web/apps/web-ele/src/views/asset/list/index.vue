@@ -239,9 +239,13 @@ async function remove(row: AssetItem) {
   if (deletingAssetIds.value.includes(row.id)) {
     return;
   }
-  await ElMessageBox.confirm(`确认删除资产「${row.name}」？删除后仍显示在清单中，可由管理员彻底删除。`, '删除确认', {
-    type: 'warning',
-  });
+  try {
+    await ElMessageBox.confirm(`确认删除资产「${row.name}」？删除后仍显示在清单中，可由管理员彻底删除。`, '删除确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
   deletingAssetIds.value = [...deletingAssetIds.value, row.id];
   try {
     await deleteAssetApi(row.id);
@@ -251,6 +255,8 @@ async function remove(row: AssetItem) {
     }
     ElMessage.success('已删除');
     await Promise.all([loadData(), loadHierarchyAssets()]);
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     deletingAssetIds.value = deletingAssetIds.value.filter((id) => id !== row.id);
   }
@@ -260,28 +266,44 @@ async function remove(row: AssetItem) {
 const debouncedRemove = useDebounceFn(remove, 300);
 
 async function purge(row: AssetItem) {
-  await ElMessageBox.confirm(
-    `彻底删除资产「${row.name}」后不可恢复，确认继续？`,
-    '彻底删除确认',
-    { type: 'warning' },
-  );
-  await purgeAssetApi(row.id);
-  ElMessage.success('已彻底删除');
-  await loadData();
+  try {
+    await ElMessageBox.confirm(
+      `彻底删除资产「${row.name}」后不可恢复，确认继续？`,
+      '彻底删除确认',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await purgeAssetApi(row.id);
+    ElMessage.success('已彻底删除');
+    await loadData();
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  }
 }
 
 const debouncedPurge = useDebounceFn(purge, 300);
 
-async function restore(row: AssetItem) {
-  await ElMessageBox.confirm(`确认撤销删除资产「${row.name}」？将恢复为正常资产。`, '撤销删除确认', {
-    type: 'warning',
-  });
-  await restoreAssetApi(row.id);
-  ElMessage.success('已恢复');
-  await Promise.all([loadData(), loadHierarchyAssets()]);
+async function restoreAsset(row: AssetItem) {
+  try {
+    await ElMessageBox.confirm(`确认撤销删除资产「${row.name}」？将恢复为正常资产。`, '撤销删除确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
+  try {
+    await restoreAssetApi(row.id);
+    ElMessage.success('已恢复');
+    await Promise.all([loadData(), loadHierarchyAssets()]);
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  }
 }
 
-const debouncedRestore = useDebounceFn(restore, 300);
+const debouncedRestore = useDebounceFn(restoreAsset, 300);
 
 function getHierarchyContext() {
   let nodes = categories.value;
@@ -336,8 +358,12 @@ function drillToCategoryPath(index: number) {
 }
 
 async function exportAssets() {
-  const response = await exportAssetsApi(buildQuery());
-  downloadBlob(response.data, 'assets.xlsx');
+  try {
+    const response = await exportAssetsApi(buildQuery());
+    downloadBlob(response.data, 'assets.xlsx');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  }
 }
 
 function openImport() {
@@ -796,13 +822,13 @@ onMounted(async () => {
 }
 
 .asset-path a {
-  color: #3b82f6;
+  color: var(--el-color-primary);
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 .asset-path a:hover {
-  color: #2563eb;
+  color: var(--el-color-primary-dark-2);
 }
 
 .asset-head-actions {
@@ -832,8 +858,8 @@ onMounted(async () => {
 
 .asset-root-card:hover,
 .asset-root-card:focus-visible {
-  border-color: #3b82f6;
-  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+  border-color: var(--el-color-primary);
+  box-shadow: 0 8px 24px var(--el-color-primary-light-7);
   outline: none;
   transform: translateY(-4px);
 }
@@ -844,7 +870,7 @@ onMounted(async () => {
   justify-content: center;
   min-height: 120px;
   color: #fff;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
   position: relative;
   overflow: hidden;
 }
@@ -898,18 +924,18 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 500;
   line-height: 20px;
-  color: #f59e0b;
+  color: var(--el-color-warning);
   white-space: nowrap;
 }
 
 .asset-row-warning::before {
   margin-right: 4px;
   content: "●";
-  color: #fbbf24;
+  color: var(--el-color-warning-light-3);
 }
 
 .asset-enter-button {
-  color: #3b82f6;
+  color: var(--el-color-primary);
   white-space: nowrap;
   font-weight: 500;
   font-size: 14px;
@@ -918,7 +944,7 @@ onMounted(async () => {
 }
 
 .asset-enter-button:hover {
-  color: #2563eb;
+  color: var(--el-color-primary-dark-2);
 }
 
 .asset-enter-button {
@@ -968,8 +994,8 @@ onMounted(async () => {
 
 .asset-class-row:hover,
 .asset-class-row:focus-visible {
-  border-color: #3b82f6;
-  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
+  border-color: var(--el-color-primary);
+  box-shadow: 0 8px 24px var(--el-color-primary-light-7);
   outline: none;
   transform: translateY(-4px);
 }
@@ -981,7 +1007,7 @@ onMounted(async () => {
   min-width: 0;
   padding: 12px 16px;
   color: #fff;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
   position: relative;
   overflow: hidden;
 }
@@ -1117,7 +1143,7 @@ onMounted(async () => {
 
 .asset-table-panel :deep(.asset-row-deleted td.el-table__cell) {
   color: var(--asset-page-muted);
-  background-color: #f3f4f6 !important;
+  background-color: var(--el-fill-color-light) !important;
 }
 
 .asset-table-panel :deep(.asset-row-deleted .el-tag:not(.el-tag--danger)) {
@@ -1125,7 +1151,7 @@ onMounted(async () => {
 }
 
 .asset-table-panel :deep(.el-table--enable-row-hover .el-table__body tr.asset-row-deleted:hover > td) {
-  background-color: #e5e7eb !important;
+  background-color: var(--el-fill-color) !important;
 }
 
 .asset-table-panel :deep(.el-table .el-table__cell) {

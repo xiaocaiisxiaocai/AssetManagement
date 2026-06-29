@@ -18,7 +18,7 @@ public class ApprovalController : ControllerBase
     }
 
     [HttpPost]
-    [HasPermission("approval:view")]
+    [HasPermission("approval:create")]
     public async Task<ApiResult<ApprovalFlowDto>> Start(StartApprovalRequest request)
         => ApiResult<ApprovalFlowDto>.Ok(await _service.StartAsync(request, CurrentUserId()));
 

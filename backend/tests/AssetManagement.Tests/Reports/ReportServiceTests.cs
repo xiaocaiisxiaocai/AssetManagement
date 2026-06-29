@@ -8,27 +8,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AssetManagement.Tests.Reports;
 
-public class ReportServiceTests : IDisposable
+public class ReportServiceTests : MySqlFixtureBase
 {
-    private readonly AppDbContext _db;
     private readonly ReportService _service;
 
     public ReportServiceTests()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite($"DataSource=file:report_test_{Guid.NewGuid():N}?mode=memory&cache=shared")
-            .Options;
-        _db = new AppDbContext(options);
-        _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
         _service = new ReportService(_db);
-    }
-
-    public void Dispose()
-    {
-        _db.Database.CloseConnection();
-        _db.Dispose();
-        GC.SuppressFinalize(this);
     }
 
     [Fact]

@@ -78,7 +78,6 @@ const fromItems: VxeFormItemProps<any>[] = [
 ];
 const showPopup = ref(false);
 const handleSubmit =async () => {
-  // TODO: 调用接口修改密码
   const { oldPassword, newPassword } = fromData.value;
   await changePassword({ oldPassword, newPassword });
   showPopup.value = false;

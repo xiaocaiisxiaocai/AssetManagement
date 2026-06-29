@@ -57,7 +57,6 @@ const query = reactive({
 const form = reactive({
   code: '',
   name: '',
-  description: '',
   isActive: true,
 });
 
@@ -104,7 +103,6 @@ function openCreate() {
   Object.assign(form, {
     code: '',
     name: '',
-    description: '',
     isActive: true,
   });
   dialogVisible.value = true;
@@ -115,7 +113,6 @@ function openEdit(row: RoleDto) {
   Object.assign(form, {
     code: row.code,
     name: row.name,
-    description: row.description ?? '',
     isActive: row.isActive,
   });
   dialogVisible.value = true;
@@ -135,7 +132,6 @@ async function save() {
   try {
     const payload = {
       name: form.name,
-      description: form.description || null,
       isActive: form.isActive,
     };
 
@@ -268,7 +264,6 @@ onMounted(async () => {
         <ElTable v-loading="loading" :data="roles" border>
           <ElTableColumn label="角色编码" min-width="130" prop="code" />
           <ElTableColumn label="角色名称" min-width="160" prop="name" />
-          <ElTableColumn class-name="hide-on-mobile" label="描述" min-width="200" prop="description" />
           <ElTableColumn label="权限数" width="100" align="center">
             <template #default="{ row }">
               {{ row.permissionIds?.length ?? 0 }}
@@ -324,15 +319,6 @@ onMounted(async () => {
           </ElFormItem>
           <ElFormItem label="角色名称" required>
             <ElInput v-model="form.name" placeholder="请输入角色名称" />
-          </ElFormItem>
-          <ElFormItem label="描述">
-            <ElInput
-              v-model="form.description"
-              clearable
-              placeholder="请输入角色描述"
-              :rows="3"
-              type="textarea"
-            />
           </ElFormItem>
           <ElFormItem label="启用状态">
             <ElSwitch v-model="form.isActive" />

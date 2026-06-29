@@ -7,8 +7,11 @@ using AssetManagement.Application.Common;
 using AssetManagement.Application.Files;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Reports;
+using AssetManagement.Application.TestMaterials;
 using AssetManagement.Application.Workflow;
+using AssetManagement.Application.Notifications;
 using AssetManagement.Infrastructure.Audit;
+using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Assets;
 using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.BaseData;
@@ -17,10 +20,12 @@ using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Persistence.Seed;
 using AssetManagement.Infrastructure.Reports;
 using AssetManagement.Infrastructure.Rbac;
+using AssetManagement.Infrastructure.TestMaterials;
 using AssetManagement.Infrastructure.Workflow;
 using AssetManagement.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -56,7 +61,8 @@ builder.Services.AddScoped<AuditActionFilter>();
 builder.Services.AddControllers(o => o.Filters.Add<AuditActionFilter>());
 builder.Services.AddDbContext<AppDbContext>(o =>
 {
-    o.UseSqlite(builder.Configuration.GetConnectionString("Default"));
+    var connStr = builder.Configuration.GetConnectionString("Default");
+    o.UseMySql(connStr, ServerVersion.AutoDetect(connStr));
 
     // 默认不跟踪查询，提升只读查询性能
     o.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
@@ -92,6 +98,12 @@ builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 builder.Services.AddScoped<IBizEffectApplier, BizEffectApplier>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
+builder.Services.AddScoped<ITestProjectService, TestProjectService>();
+builder.Services.AddScoped<ITestMaterialService, TestMaterialService>();
+builder.Services.AddScoped<IMaterialFlowService, MaterialFlowService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddHostedService<OverdueNotificationWorker>();
+builder.Services.AddHostedService<PendingApprovalReminderWorker>();
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
 // 生产环境纵深防御:禁止以占位符或弱密钥(<32 字符)启动,密钥应通过环境变量 Jwt__Key 注入
@@ -186,6 +198,13 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ExceptionMiddleware>();
+
+// 反向代理场景（Nginx/Caddy）：解析 X-Forwarded-For / X-Forwarded-Proto，
+// 确保 HttpContext.Connection.RemoteIpAddress 和 Request.Scheme 为真实客户端 IP
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
 if (corsOrigins is { Length: > 0 })
 {

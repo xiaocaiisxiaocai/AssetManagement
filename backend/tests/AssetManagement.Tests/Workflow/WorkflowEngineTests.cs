@@ -27,6 +27,18 @@ public class BpmnEngineTests
     }
 
     [Fact]
+    public void Start_records_active_user_task_started_time()
+    {
+        var bpmn = SimpleLinearBpmn();
+        var process = BpmnParser.Parse(bpmn);
+        var flow = new TestFlow();
+
+        BpmnEngine.Start(flow, process);
+
+        flow.BpmnTokens["Task_Review"].StartedAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public void Approve_advances_to_next_task()
     {
         var bpmn = TwoTaskBpmn();
@@ -261,5 +273,6 @@ public class BpmnEngineTests
         public List<string> CurrentNodeIds { get; set; } = new();
         public string Status { get; set; } = "pending";
         public string? ApplicantDept { get; set; }
+        public Dictionary<string, string>? Context { get; set; }
     }
 }

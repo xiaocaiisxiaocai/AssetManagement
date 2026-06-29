@@ -7,10 +7,6 @@ import type {
   VxeUIExport,
 } from 'vxe-table';
 
-import type { VxeGridApi } from './api';
-
-import type { Ref } from 'vue';
-
 import { useVbenForm } from '@vben-core/form-ui';
 
 export interface VxePaginationInfo {
@@ -63,12 +59,6 @@ export interface VxeGridProps {
    */
   showSearchForm?: boolean;
 }
-
-export type ExtendedVxeGridApi = {
-  useStore: <T = NoInfer<VxeGridProps>>(
-    selector?: (state: NoInfer<VxeGridProps>) => T,
-  ) => Readonly<Ref<T>>;
-} & VxeGridApi;
 
 export interface SetupVxeTable {
   configVxeTable: (ui: VxeUIExport) => void;

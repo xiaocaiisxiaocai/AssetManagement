@@ -9,6 +9,7 @@ import { getMineApprovalsApi, startApprovalApi } from '#/api/workflow';
 
 import {
   ElButton,
+  ElDatePicker,
   ElDialog,
   ElForm,
   ElFormItem,
@@ -41,12 +42,12 @@ async function loadData() {
   try {
     const [mine, assetPage] = await Promise.all([
       getMineApprovalsApi(),
-      getAssetListApi({ page: 1, pageSize: 200 }),
+      getAssetListApi({ page: 1, pageSize: 500 }),
     ]);
     flows.value = mine;
     assets.value = assetPage.items;
-  } catch (error: any) {
-    ElMessage.error(error.message || '加载我的申请失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     loading.value = false;
   }
@@ -67,6 +68,10 @@ async function submit() {
     ElMessage.warning('请选择资产');
     return;
   }
+  if (showReturnDate.value && !form.returnDate) {
+    ElMessage.warning('请选择归还日期');
+    return;
+  }
   saving.value = true;
   try {
     await startApprovalApi({
@@ -78,8 +83,8 @@ async function submit() {
     ElMessage.success('申请已提交');
     dialogVisible.value = false;
     await loadData();
-  } catch (error: any) {
-    ElMessage.error(error.message || '提交申请失败');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   } finally {
     saving.value = false;
   }
@@ -170,7 +175,7 @@ onMounted(loadData);
             </ElSelect>
           </ElFormItem>
           <ElFormItem v-if="showReturnDate" label="归还日期" required>
-            <ElInput v-model="form.returnDate" placeholder="YYYY-MM-DD，借用时填写" />
+            <ElDatePicker v-model="form.returnDate" type="date" value-format="YYYY-MM-DD" placeholder="选择归还日期" style="width: 100%" />
           </ElFormItem>
           <ElFormItem label="申请事由">
             <ElInput v-model="form.reason" :rows="3" type="textarea" placeholder="请输入申请事由" />
