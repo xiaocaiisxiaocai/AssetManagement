@@ -188,8 +188,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var employeeRole = roles.Data.Items.Single(r => r.Code == "employee");
         var deptAdminRole = roles.Data.Items.Single(r => r.Code == "dept_admin");
 
-        var sourceDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { Name = Unique("SRC") });
-        var targetDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { Name = Unique("DST") });
+        var sourceDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { ManagerId = 1, Name = Unique("SRC") });
+        var targetDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { ManagerId = 1, Name = Unique("DST") });
 
         var supervisorNo = Unique("SUP");
         var supervisor = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -199,6 +199,12 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             Password = "123456",
             DepartmentId = sourceDept.Data!.Id,
             RoleIds = new[] { supervisorRole.Id }
+        });
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{sourceDept.Data.Id}", new UpdateDepartmentRequest
+        {
+            Name = sourceDept.Data.Name,
+            ManagerId = supervisor.Data!.Id,
+            IsActive = true
         });
         var receiverAdminNo = Unique("RDA");
         var receiverAdmin = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -260,6 +266,61 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
 
         var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
         notifications!.Data.Should().Contain(x => x.Type == "approval_pending" && x.FlowId == flow.Data.Id);
+    }
+
+    [Fact]
+    public async Task Supervisor_node_resolves_department_manager_without_user_supervisor()
+    {
+        await Login();
+
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
+        var employeeRole = roles.Data.Items.Single(r => r.Code == "employee");
+
+        var dept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { ManagerId = 1, Name = Unique("课别") });
+        var managerNo = Unique("MGR");
+        var manager = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = managerNo,
+            Name = Unique("课级主管"),
+            Password = "123456",
+            DepartmentId = dept.Data!.Id,
+            RoleIds = new[] { supervisorRole.Id }
+        });
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{dept.Data.Id}", new UpdateDepartmentRequest
+        {
+            Name = dept.Data.Name,
+            ManagerId = manager.Data!.Id,
+            IsActive = true
+        });
+
+        var applicantNo = Unique("APP");
+        var applicant = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = applicantNo,
+            Name = Unique("申请人"),
+            Password = "123456",
+            DepartmentId = dept.Data.Id,
+            RoleIds = new[] { employeeRole.Id }
+        });
+
+        var asset = await CreateAsset(dept.Data.Id, applicant.Data!.Id);
+        Auth(await LoginToken(applicantNo, "123456"));
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "按组织负责人审批"
+        });
+
+        Auth(await LoginToken(managerNo, "123456"));
+        var pending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
+        pending!.Data.Should().Contain(x => x.Id == flow.Data!.Id,
+            "直属主管节点应优先按申请人所属组织节点负责人解析");
+
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
+            new ApprovalActionRequest { Opinion = "同意" });
+        approved.Code.Should().Be(0);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { DepartmentNode, DepartmentPayload } from '#/api/base-data';
+import type { UserDto } from '#/api/user';
 
 import { onMounted, reactive, ref } from 'vue';
 
@@ -9,6 +10,7 @@ import {
   getDepartmentTreeApi,
   updateDepartmentApi,
 } from '#/api/base-data';
+import { getUserListApi } from '#/api/user';
 
 import {
   ElButton,
@@ -18,6 +20,8 @@ import {
   ElInput,
   ElMessage,
   ElMessageBox,
+  ElOption,
+  ElSelect,
   ElSwitch,
   ElTable,
   ElTableColumn,
@@ -31,11 +35,22 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const departments = ref<DepartmentNode[]>([]);
-const form = reactive<DepartmentPayload>({
+const userOptions = ref<UserDto[]>([]);
+type DepartmentForm = Omit<DepartmentPayload, 'managerId'> & {
+  managerId?: number;
+};
+
+const form = reactive<DepartmentForm>({
   isActive: true,
+  managerId: undefined,
   name: '',
   parentId: null,
 });
+
+async function loadUsers() {
+  const result = await getUserListApi('', 1, 500);
+  userOptions.value = result.items.filter((user) => user.isActive);
+}
 
 async function loadData() {
   loading.value = true;
@@ -50,6 +65,7 @@ function openCreate(parent?: DepartmentNode) {
   editingId.value = null;
   Object.assign(form, {
     isActive: true,
+    managerId: undefined,
     name: '',
     parentId: parent?.id ?? null,
   });
@@ -60,6 +76,7 @@ function openEdit(row: DepartmentNode) {
   editingId.value = row.id;
   Object.assign(form, {
     isActive: row.isActive,
+    managerId: row.managerId ?? undefined,
     name: row.name,
     parentId: row.parentId ?? null,
   });
@@ -71,12 +88,20 @@ async function save() {
     ElMessage.warning('请填写部门名称');
     return;
   }
+  if (!form.managerId) {
+    ElMessage.warning('请选择负责人');
+    return;
+  }
   saving.value = true;
   try {
+    const payload: DepartmentPayload = {
+      ...form,
+      managerId: form.managerId ?? null,
+    };
     if (editingId.value) {
-      await updateDepartmentApi(editingId.value, form);
+      await updateDepartmentApi(editingId.value, payload);
     } else {
-      await createDepartmentApi(form);
+      await createDepartmentApi(payload);
     }
     ElMessage.success('保存成功');
     dialogVisible.value = false;
@@ -95,7 +120,9 @@ async function remove(row: DepartmentNode) {
   await loadData();
 }
 
-onMounted(loadData);
+onMounted(async () => {
+  await Promise.all([loadUsers(), loadData()]);
+});
 </script>
 
 <template>
@@ -146,10 +173,25 @@ onMounted(loadData);
       >
         <ElForm label-width="100px">
           <ElFormItem label="上级 ID">
-            <ElInput v-model.number="form.parentId" clearable placeholder="留空为顶级部门" />
+            <ElInput v-model.number="form.parentId" clearable placeholder="留空为事业部/顶级组织" />
           </ElFormItem>
           <ElFormItem label="部门名称" required>
             <ElInput v-model="form.name" placeholder="请输入部门名称" />
+          </ElFormItem>
+          <ElFormItem label="负责人" required>
+            <ElSelect
+              v-model="form.managerId"
+              filterable
+              placeholder="选择该组织节点负责人"
+              style="width: 100%"
+            >
+              <ElOption
+                v-for="user in userOptions"
+                :key="user.id"
+                :label="`${user.name}（${user.employeeNo}）`"
+                :value="user.id"
+              />
+            </ElSelect>
           </ElFormItem>
           <ElFormItem label="启用状态">
             <ElSwitch v-model="form.isActive" />

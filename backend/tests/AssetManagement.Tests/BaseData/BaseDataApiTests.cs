@@ -19,15 +19,33 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Department_create_requires_manager()
+    {
+        await Login();
+
+        var res = await _client.PostAsJsonAsync("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("部门")
+        });
+
+        res.EnsureSuccessStatusCode();
+        var body = await res.Content.ReadFromJsonAsync<ApiResult<DepartmentNodeDto>>();
+        body!.Code.Should().Be(4001);
+        body.Message.Should().Contain("负责人");
+    }
+
+    [Fact]
     public async Task Department_tree_returns_nested_children()
     {
         await Login();
         var parent = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             Name = "研发部"
         });
         var child = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             ParentId = parent.Data!.Id,
             Name = "硬件组"
         });
@@ -44,6 +62,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         await Login();
         var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             Name = Unique("部门")
         });
 

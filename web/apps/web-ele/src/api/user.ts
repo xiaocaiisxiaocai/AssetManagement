@@ -29,7 +29,6 @@ export type UserPayload = {
   name: string;
   email?: string | null;
   roleIds: number[];
-  supervisorId?: null | number;
 };
 
 async function unwrap<T>(request: Promise<ApiResult<T>>) {

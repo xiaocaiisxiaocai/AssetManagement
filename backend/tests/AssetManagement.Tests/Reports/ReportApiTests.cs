@@ -30,6 +30,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         var category = await CreateCategory();
         var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             Name = "报表部门"
         });
         await CreateAsset(category.Id, department.Data!.Id, "报表资产A", AssetStatus.Available);

@@ -37,7 +37,6 @@ const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const users = ref<UserDto[]>([]);
 const roles = ref<any[]>([]);
-const supervisorOptions = ref<UserDto[]>([]);
 const total = ref(0);
 
 const query = reactive({
@@ -51,18 +50,11 @@ const form = reactive({
   name: '',
   email: '',
   roleId: undefined as number | undefined,
-  supervisorId: undefined as number | undefined,
 });
 
 async function loadRoles() {
   const result = await getRoleListApi();
   roles.value = result.items;
-}
-
-async function loadSupervisors() {
-  // 加载候选上级(用于审批流"直属主管"节点解析)
-  const result = await getUserListApi('', 1, 200);
-  supervisorOptions.value = result.items;
 }
 
 async function loadData() {
@@ -83,7 +75,6 @@ function openCreate() {
     name: '',
     email: '',
     roleId: undefined,
-    supervisorId: undefined,
   });
   dialogVisible.value = true;
 }
@@ -95,7 +86,6 @@ function openEdit(row: UserDto) {
     name: row.name,
     email: row.email ?? '',
     roleId: row.roleIds?.[0],
-    supervisorId: row.supervisorId ?? undefined,
   });
   dialogVisible.value = true;
 }
@@ -120,7 +110,6 @@ async function save() {
       name: form.name,
       email: form.email || null,
       roleIds: form.roleId ? [form.roleId] : [],
-      supervisorId: form.supervisorId ?? null,
     };
 
     if (editingId.value) {
@@ -184,7 +173,6 @@ function reset() {
 
 onMounted(async () => {
   await loadRoles();
-  await loadSupervisors();
   await loadData();
 });
 </script>
@@ -315,22 +303,6 @@ onMounted(async () => {
                 :key="role.id"
                 :label="role.name"
                 :value="role.id"
-              />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem label="直属上级">
-            <ElSelect
-              v-model="form.supervisorId"
-              clearable
-              filterable
-              placeholder="选择直属上级(审批流直属主管节点据此解析)"
-              style="width: 100%"
-            >
-              <ElOption
-                v-for="u in supervisorOptions.filter((o) => o.id !== editingId)"
-                :key="u.id"
-                :label="`${u.name}（${u.employeeNo}）`"
-                :value="u.id"
               />
             </ElSelect>
           </ElFormItem>

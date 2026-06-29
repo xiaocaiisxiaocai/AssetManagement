@@ -40,6 +40,7 @@ public class BaseDataService : IBaseDataService
 
     public async Task<DepartmentNodeDto> CreateDepartmentAsync(CreateDepartmentRequest request)
     {
+        ValidateDepartmentRequest(request.Name, request.ManagerId);
         var department = new Department
         {
             ParentId = request.ParentId,
@@ -59,6 +60,7 @@ public class BaseDataService : IBaseDataService
 
     public async Task<DepartmentNodeDto> UpdateDepartmentAsync(int id, UpdateDepartmentRequest request)
     {
+        ValidateDepartmentRequest(request.Name, request.ManagerId);
         var department = await _db.Departments.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4045, "部门不存在");
         department.ParentId = request.ParentId;
@@ -71,6 +73,19 @@ public class BaseDataService : IBaseDataService
         _cache.Remove("department_tree");
 
         return ToDepartmentDto(department, null);
+    }
+
+    private static void ValidateDepartmentRequest(string name, int? managerId)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new BizException(4001, "部门名称不能为空");
+        }
+
+        if (managerId is null)
+        {
+            throw new BizException(4001, "请选择负责人");
+        }
     }
 
     public async Task DeleteDepartmentAsync(int id)
@@ -416,6 +431,7 @@ public class BaseDataService : IBaseDataService
         Id = x.Id,
         ParentId = x.ParentId,
         Name = x.Name,
+        ManagerId = x.ManagerId,
         ManagerName = managerName,
         AssetCount = 0,
         IsActive = x.IsActive

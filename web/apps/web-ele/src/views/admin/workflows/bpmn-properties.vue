@@ -64,7 +64,7 @@ interface GatewayCondition extends ParsedCondition {
 
 // 审批人类型选项
 const assigneeTypes = [
-  { label: '直属主管', value: 'supervisor' },
+  { label: '所属组织负责人', value: 'supervisor' },
   { label: '部门经理', value: 'deptManager' },
   { label: '指定用户名', value: 'username' },
   { label: '多个指定用户', value: 'usernames' },
@@ -496,7 +496,7 @@ onMounted(() => {
 
           <ElFormItem label="说明">
             <ElText type="info" size="small">
-              <div v-if="assigneeType === 'supervisor'">直属主管：自动解析为申请人的上级</div>
+              <div v-if="assigneeType === 'supervisor'">所属组织负责人：优先解析申请人所属组织节点负责人，未配置时兼容历史直属上级</div>
               <div v-else-if="assigneeType === 'deptManager'">部门经理：自动解析为申请人所在部门的管理员</div>
               <div v-else-if="assigneeType === 'username'">指定用户：填写用户姓名</div>
               <div v-else-if="assigneeType === 'usernames'">多个指定用户：可选择多人；“全部人通过”即会签</div>

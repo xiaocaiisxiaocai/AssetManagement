@@ -5,6 +5,7 @@ public record DepartmentNodeDto
     public int Id { get; init; }
     public int? ParentId { get; init; }
     public string Name { get; init; } = "";
+    public int? ManagerId { get; init; }
     public string? ManagerName { get; init; }
     public int AssetCount { get; init; }
     public bool IsActive { get; init; }

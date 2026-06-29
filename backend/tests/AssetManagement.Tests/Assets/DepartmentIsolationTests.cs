@@ -33,10 +33,12 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
         var dept1 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             Name = "研发部"
         });
         var dept2 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             Name = "市场部"
         });
 
@@ -116,10 +118,12 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
         var dept1 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             Name = "研发部"
         });
         var dept2 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             Name = "市场部"
         });
 

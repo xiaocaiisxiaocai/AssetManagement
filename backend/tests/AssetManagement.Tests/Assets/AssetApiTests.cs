@@ -49,10 +49,12 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var category = await CreateCategory();
         var parent = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             Name = "制造中心"
         });
         var child = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             ParentId = parent.Data!.Id,
             Name = "装配组"
         });

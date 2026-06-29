@@ -619,8 +619,8 @@ public class WorkflowService : IWorkflowService
             }
             else if (assignee == "supervisor")
             {
-                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
-                return applicant?.SupervisorId == user.Id;
+                var approverIds = await ResolveSupervisorApproverUserIdsAsync(flow);
+                return approverIds.Contains(user.Id);
             }
             else if (int.TryParse(assignee, out var userId))
             {
@@ -724,8 +724,10 @@ public class WorkflowService : IWorkflowService
             }
             else if (assignee == "supervisor")
             {
-                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
-                if (applicant?.SupervisorId is not null) result.Add(applicant.SupervisorId.Value);
+                foreach (var supervisorId in await ResolveSupervisorApproverUserIdsAsync(flow))
+                {
+                    if (!result.Contains(supervisorId)) result.Add(supervisorId);
+                }
             }
             else if (int.TryParse(assignee, out var uid))
             {
@@ -783,6 +785,28 @@ public class WorkflowService : IWorkflowService
         }
         Walk(rootId);
         return ids.ToArray();
+    }
+
+    private async Task<List<int>> ResolveSupervisorApproverUserIdsAsync(ApprovalFlow flow)
+    {
+        var result = new List<int>();
+        var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
+        if (applicant?.DepartmentId is not null)
+        {
+            var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
+            if (department?.ManagerId is not null)
+            {
+                result.Add(department.ManagerId.Value);
+            }
+        }
+
+        // 兼容旧数据：组织节点未配置负责人时，仍可使用历史维护的直属上级。
+        if (result.Count == 0 && applicant?.SupervisorId is not null)
+        {
+            result.Add(applicant.SupervisorId.Value);
+        }
+
+        return result;
     }
 
     private async Task<string?> DepartmentName(int? deptId)

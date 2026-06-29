@@ -16,6 +16,7 @@ export interface TreeNodeBase {
 export interface DepartmentNode extends TreeNodeBase {
   assetCount: number;
   isActive: boolean;
+  managerId?: null | number;
   managerName?: null | string;
   children: DepartmentNode[];
 }

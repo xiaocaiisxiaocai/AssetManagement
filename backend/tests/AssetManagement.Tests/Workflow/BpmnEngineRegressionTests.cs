@@ -147,6 +147,12 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         var employeeRole = await Role("employee");
         var supervisor = await CreateUser("直属主管", supervisorRole.Id, dept.Data!.Id);
         var otherSupervisor = await CreateUser("其他主管", supervisorRole.Id, dept.Data!.Id);
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{dept.Data.Id}", new UpdateDepartmentRequest
+        {
+            Name = dept.Data.Name,
+            ManagerId = supervisor.Data!.Id,
+            IsActive = true
+        });
         var applicant = await CreateUser("有上级员工", employeeRole.Id, dept.Data!.Id, supervisor.Data!.Id);
         var workflow = await CreateWorkflow("supervisor", SupervisorBpmn());
         var asset = await CreateAsset();
@@ -210,6 +216,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     private Task<ApiResult<DepartmentNodeDto>> CreateDepartment(string name)
         => Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = 1,
             Name = $"{name}{Guid.NewGuid():N}"[..20]
         });
 
@@ -256,6 +263,13 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     private async Task<T> Post<T>(string url, object body)
     {
         var res = await _client.PostAsJsonAsync(url, body);
+        res.EnsureSuccessStatusCode();
+        return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<T> Put<T>(string url, object body)
+    {
+        var res = await _client.PutAsJsonAsync(url, body);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }
