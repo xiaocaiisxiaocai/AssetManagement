@@ -62,7 +62,7 @@ public class RbacService : IRbacService
 
     public async Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request)
     {
-        var user = await _db.Users.FindAsync(id)
+        var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
         user.Name = request.Name.Trim();
         user.Email = request.Email;
@@ -76,7 +76,7 @@ public class RbacService : IRbacService
 
     public async Task ResetPasswordAsync(int id)
     {
-        var user = await _db.Users.FindAsync(id)
+        var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultPassword(user.EmployeeNo));
         await _db.SaveChangesAsync();
@@ -84,7 +84,7 @@ public class RbacService : IRbacService
 
     public async Task ToggleUserStatusAsync(int id, bool? isActive = null)
     {
-        var user = await _db.Users.FindAsync(id)
+        var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
         user.IsActive = isActive ?? !user.IsActive;
         await _db.SaveChangesAsync();
@@ -115,7 +115,7 @@ public class RbacService : IRbacService
 
     public async Task<RoleDto> UpdateRoleAsync(int id, RoleDto request)
     {
-        var role = await _db.Roles.FindAsync(id)
+        var role = await _db.Roles.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4042, "角色不存在");
         role.Name = request.Name.Trim();
         role.IsActive = request.IsActive;
@@ -127,7 +127,7 @@ public class RbacService : IRbacService
 
     public async Task DeleteRoleAsync(int id)
     {
-        var role = await _db.Roles.FindAsync(id)
+        var role = await _db.Roles.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4042, "角色不存在");
         _db.Roles.Remove(role);
         await _db.SaveChangesAsync();
@@ -158,7 +158,7 @@ public class RbacService : IRbacService
 
     public async Task<PermissionDto> UpdatePermissionAsync(int id, PermissionDto request)
     {
-        var permission = await _db.Permissions.FindAsync(id)
+        var permission = await _db.Permissions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4043, "权限不存在");
         permission.Code = request.Code.Trim();
         permission.Name = request.Name.Trim();
@@ -169,7 +169,7 @@ public class RbacService : IRbacService
 
     public async Task DeletePermissionAsync(int id)
     {
-        var permission = await _db.Permissions.FindAsync(id)
+        var permission = await _db.Permissions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4043, "权限不存在");
         _db.Permissions.Remove(permission);
         await _db.SaveChangesAsync();
@@ -202,7 +202,7 @@ public class RbacService : IRbacService
 
     public async Task<MenuDto> UpdateMenuAsync(int id, MenuDto request)
     {
-        var menu = await _db.Menus.FindAsync(id)
+        var menu = await _db.Menus.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4044, "菜单不存在");
         menu.ParentId = request.ParentId;
         menu.Name = request.Name.Trim();
@@ -219,7 +219,7 @@ public class RbacService : IRbacService
 
     public async Task DeleteMenuAsync(int id)
     {
-        var menu = await _db.Menus.FindAsync(id)
+        var menu = await _db.Menus.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4044, "菜单不存在");
         _db.Menus.Remove(menu);
         await _db.SaveChangesAsync();

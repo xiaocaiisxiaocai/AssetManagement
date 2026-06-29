@@ -77,7 +77,7 @@ public class WorkflowService : IWorkflowService
         if (string.IsNullOrWhiteSpace(workflow.BpmnXml))
             throw new BizException(4051, "流程定义不完整，缺少 BPMN XML");
 
-        var asset = await _db.Assets.FindAsync(request.AssetId)
+        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == request.AssetId)
             ?? throw new BizException(4048, "资产不存在");
         if (asset.IsDeleted)
         {
@@ -411,7 +411,7 @@ public class WorkflowService : IWorkflowService
         await using var tx = await _db.Database.BeginTransactionAsync();
         flow.ConfirmedAt = DateTime.UtcNow;
 
-        var asset = await _db.Assets.FindAsync(flow.AssetId);
+        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId);
         if (asset != null)
         {
             asset.Status = AssetStatus.Available;
@@ -445,7 +445,8 @@ public class WorkflowService : IWorkflowService
     // ========== 私有辅助方法 ==========
 
     private async Task<WorkflowEntity> LoadWorkflow(int id)
-        => await _db.Workflows.FindAsync(id) ?? throw new BizException(4049, "流程不存在");
+        => await _db.Workflows.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+           ?? throw new BizException(4049, "流程不存在");
 
     private async Task ApplyWorkflowDefinition(WorkflowEntity workflow, SaveWorkflowRequest request)
     {
@@ -499,7 +500,8 @@ public class WorkflowService : IWorkflowService
     }
 
     private async Task<ApprovalFlow> LoadFlow(int id)
-        => await _db.ApprovalFlows.FindAsync(id) ?? throw new BizException(4010, "审批工单不存在");
+        => await _db.ApprovalFlows.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+           ?? throw new BizException(4010, "审批工单不存在");
 
     private async Task<User> LoadUser(int id)
         => await _db.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role).SingleOrDefaultAsync(u => u.Id == id)

@@ -172,7 +172,7 @@ public class AuthService : IAuthService
 
     public async Task ChangePasswordAsync(int userId, ChangePasswordRequest request)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == userId && x.IsActive)
+        var user = await _db.Users.AsTracking().FirstOrDefaultAsync(x => x.Id == userId && x.IsActive)
             ?? throw new BizException(4041, "用户不存在或已停用");
 
         if (!BCrypt.Net.BCrypt.Verify(request.OldPassword, user.PasswordHash))
@@ -181,7 +181,6 @@ public class AuthService : IAuthService
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-        _db.Users.Update(user);
         await _db.SaveChangesAsync();
     }
 

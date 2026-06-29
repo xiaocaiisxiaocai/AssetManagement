@@ -44,9 +44,8 @@ const notifications = computed<NotificationItem[]>(() =>
 );
 
 function typeIcon(type: string): string {
-  if (type === 'overdue') return 'https://avatar.vercel.sh/alert?text=逾';
-  if (type === 'due_soon_1d') return 'https://avatar.vercel.sh/warn?text=急';
-  return 'https://avatar.vercel.sh/info?text=提';
+  const emoji = type === 'overdue' ? '⚠' : type.startsWith('due_soon') ? '⏰' : type.includes('rejected') ? '✗' : type.includes('approved') ? '✓' : '●';
+  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" rx="20" fill="#e5e7eb"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="18">${emoji}</text></svg>`)}`;
 }
 
 function formatDate(iso: string): string {
@@ -186,8 +185,7 @@ watch(
         :avatar="avatar"
         :menus="menus"
         :text="userStore.userInfo?.realName"
-        description="ann.vben@gmail.com"
-        tag-text="Pro"
+        :description="userStore.userInfo?.username"
         @logout="handleLogout"
       />
     </template>

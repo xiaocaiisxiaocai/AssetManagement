@@ -59,7 +59,7 @@ public class BaseDataService : IBaseDataService
 
     public async Task<DepartmentNodeDto> UpdateDepartmentAsync(int id, UpdateDepartmentRequest request)
     {
-        var department = await _db.Departments.FindAsync(id)
+        var department = await _db.Departments.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4045, "部门不存在");
         department.ParentId = request.ParentId;
         department.Name = request.Name.Trim();
@@ -80,7 +80,7 @@ public class BaseDataService : IBaseDataService
             throw new BizException(4090, "请先删除子部门");
         }
 
-        var department = await _db.Departments.FindAsync(id)
+        var department = await _db.Departments.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4045, "部门不存在");
         _db.Departments.Remove(department);
         await _db.SaveChangesAsync();
@@ -265,7 +265,7 @@ public class BaseDataService : IBaseDataService
 
     public async Task<LocationNodeDto> UpdateLocationAsync(int id, UpdateLocationRequest request)
     {
-        var location = await _db.Locations.FindAsync(id)
+        var location = await _db.Locations.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4047, "位置不存在");
         location.Name = request.Name.Trim();
         await _db.SaveChangesAsync();
@@ -274,7 +274,7 @@ public class BaseDataService : IBaseDataService
 
     public async Task DeleteLocationAsync(int id)
     {
-        var location = await _db.Locations.FindAsync(id)
+        var location = await _db.Locations.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4047, "位置不存在");
         _db.Locations.Remove(location);
         await _db.SaveChangesAsync();
@@ -291,7 +291,7 @@ public class BaseDataService : IBaseDataService
         foreach (var request in requests)
         {
             var key = request.Key.Trim();
-            var setting = await _db.SystemSettings.SingleOrDefaultAsync(x => x.Key == key);
+            var setting = await _db.SystemSettings.AsTracking().SingleOrDefaultAsync(x => x.Key == key);
             if (setting is null)
             {
                 setting = new SystemSetting { Key = key };

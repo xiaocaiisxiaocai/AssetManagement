@@ -147,7 +147,7 @@ public class TestProjectService : ITestProjectService
     public async Task<TestProjectOptionDto> UpdateOptionAsync(int id, SaveTestProjectOptionRequest request)
     {
         ValidateOptionRequest(request);
-        var option = await _db.TestProjectOptions.FindAsync(id)
+        var option = await _db.TestProjectOptions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "项目配置项不存在");
         option.Kind = request.Kind.Trim();
         option.Code = request.Code.Trim();
@@ -160,7 +160,7 @@ public class TestProjectService : ITestProjectService
 
     public async Task DeleteOptionAsync(int id)
     {
-        var option = await _db.TestProjectOptions.FindAsync(id)
+        var option = await _db.TestProjectOptions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "项目配置项不存在");
         _db.TestProjectOptions.Remove(option);
         await _db.SaveChangesAsync();

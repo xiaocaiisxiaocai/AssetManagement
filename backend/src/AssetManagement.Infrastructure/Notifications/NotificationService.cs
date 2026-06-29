@@ -24,10 +24,10 @@ public class NotificationService : INotificationService
 
     public async Task MarkReadAsync(int id, int userId)
     {
-        var n = await _db.Notifications.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId)
-            ?? throw new BizException(4004, "通知不存在");
-        n.IsRead = true;
-        await _db.SaveChangesAsync();
+        var affected = await _db.Notifications
+            .Where(x => x.Id == id && x.UserId == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsRead, true));
+        if (affected == 0) throw new BizException(4004, "通知不存在");
     }
 
     public async Task MarkAllReadAsync(int userId)

@@ -23,7 +23,7 @@ public class BizEffectApplier : IBizEffectApplier
 
     public async Task ApplyAsync(ApprovalFlow flow, int? operatorUserId = null)
     {
-        var asset = await _db.Assets.FindAsync(flow.AssetId);
+        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId);
         if (asset is null || asset.IsDeleted)
         {
             return;

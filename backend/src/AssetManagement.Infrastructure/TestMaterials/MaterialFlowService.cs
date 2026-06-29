@@ -345,10 +345,12 @@ public class MaterialFlowService : IMaterialFlowService
     }
 
     private async Task<MaterialFlow> LoadFlow(int id)
-        => await _db.MaterialFlows.FindAsync(id) ?? throw new BizException(4010, "流转单不存在");
+        => await _db.MaterialFlows.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+           ?? throw new BizException(4010, "流转单不存在");
 
     private async Task<WorkflowEntity> LoadWorkflow(int id)
-        => await _db.Workflows.FindAsync(id) ?? throw new BizException(4049, "流程不存在");
+        => await _db.Workflows.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+           ?? throw new BizException(4049, "流程不存在");
 
     private async Task<User> LoadUser(int id)
         => await _db.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role).SingleOrDefaultAsync(u => u.Id == id)

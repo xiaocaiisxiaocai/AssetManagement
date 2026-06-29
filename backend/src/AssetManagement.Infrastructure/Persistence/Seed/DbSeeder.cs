@@ -370,7 +370,6 @@ public static class DbSeeder
         {
             rootMenu = new Menu
             {
-                Id = 26,
                 Component = "BasicLayout", Icon = "lucide:flask-conical", Sort = 15
             };
             db.Menus.Add(rootMenu);
@@ -382,7 +381,6 @@ public static class DbSeeder
         }
         db.SaveChanges();
 
-        var nextChildMenuId = 27; // MaterialHome=27, MaterialProjects=28（接续根菜单 Id=26）
         void EnsureChild(string name, string title, string path, string component, int sort, string permCode)
         {
             var existing = db.Menus.SingleOrDefault(x => x.Name == name);
@@ -400,7 +398,6 @@ public static class DbSeeder
             }
             var menu = new Menu
             {
-                Id = nextChildMenuId++,
                 ParentId = rootMenu.Id,
                 Name = name, Title = title, Path = path, Component = component,
                 Sort = sort, PermissionCode = permCode

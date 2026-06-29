@@ -390,6 +390,8 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 - **路径分隔符**:Windows 环境下文件路径用反斜杠 `\`。
 - 后端 C#:`Nullable` + `ImplicitUsings` 开启;控制器保持瘦,逻辑下沉到 service。
+- **全局 NoTracking**:`Program.cs` 设置了 `QueryTrackingBehavior.NoTracking`。所有"查询实体后修改属性再 `SaveChanges`"的写路径必须显式加 `.AsTracking()`,再按场景使用 `SingleOrDefaultAsync(...)` / `FirstOrDefaultAsync(...)`;**禁止**使用 `FindAsync`（NoTracking 下不追踪修改）。`ExecuteUpdateAsync` / `ExecuteDeleteAsync` 无需 AsTracking。新增实体（`Add`）不受影响。
+- **DbSeeder 菜单 ID**:新增菜单时**不手动指定 `Id`**，让 MySQL 自增，避免测试库主键冲突。
 - 前端:TypeScript + Vue 3 `<script setup>`;遵循上游 Vben 的 ESLint/Prettier/Stylelint 配置。
 - 界面文案、文档、提交说明均用中文。提交遵循 Conventional Commits(如 `feat(web): ...`、`fix: ...`、`test: ...`)。
 - **不提交**:SQLite 库文件(`*.db`)、`web/dist/`、`dist.zip`、`bin/`、`obj/`、日志、真实员工数据、生产凭据、内网地址。
@@ -397,7 +399,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **103 个** `[Fact]`/`[Theory]` 全部通过。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **110 个** `[Fact]`/`[Theory]` 全部通过。
 
 最新里程碑(2026-06-17 ~ 2026-06-28):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)

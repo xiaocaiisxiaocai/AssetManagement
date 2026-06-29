@@ -49,7 +49,8 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
 
             var connStr = $"{_baseConnStr}Database={_dbName};";
             services.AddDbContext<AppDbContext>(o =>
-                o.UseMySql(connStr, ServerVersion.AutoDetect(connStr)));
+                o.UseMySql(connStr, ServerVersion.AutoDetect(connStr))
+                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking));
         });
     }
 

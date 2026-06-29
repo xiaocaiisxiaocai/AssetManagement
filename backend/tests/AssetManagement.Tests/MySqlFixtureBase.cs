@@ -13,6 +13,7 @@ public abstract class MySqlFixtureBase : IDisposable
     private const string BaseConnStr = "Server=localhost;Port=3306;User=root;Password=abc+123;CharSet=utf8mb4;";
     private readonly string _dbName;
     protected readonly AppDbContext _db;
+    protected string ConnectionString => $"{BaseConnStr}Database={_dbName};";
 
     protected MySqlFixtureBase()
     {
@@ -25,12 +26,21 @@ public abstract class MySqlFixtureBase : IDisposable
         cmd.CommandText = $"CREATE DATABASE `{_dbName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;";
         cmd.ExecuteNonQuery();
 
-        var connStr = $"{BaseConnStr}Database={_dbName};";
+        var connStr = ConnectionString;
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseMySql(connStr, ServerVersion.AutoDetect(connStr))
             .Options;
         _db = new AppDbContext(options);
         _db.Database.EnsureCreated();
+    }
+
+    protected AppDbContext CreateNoTrackingContext()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseMySql(ConnectionString, ServerVersion.AutoDetect(ConnectionString))
+            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+            .Options;
+        return new AppDbContext(options);
     }
 
     public void Dispose()

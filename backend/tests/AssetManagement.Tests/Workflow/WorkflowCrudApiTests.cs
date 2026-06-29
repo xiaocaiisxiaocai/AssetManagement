@@ -7,6 +7,7 @@ using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Workflow;
@@ -71,7 +72,7 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var materialWorkflow = db.Workflows.Single(x => x.BizType == "material_transfer");
+            var materialWorkflow = db.Workflows.AsTracking().Single(x => x.BizType == "material_transfer");
             materialWorkflow.BpmnXml = "<invalid>";
             await db.SaveChangesAsync();
         }

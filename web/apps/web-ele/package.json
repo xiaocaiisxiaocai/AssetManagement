@@ -1,18 +1,9 @@
 {
   "name": "@vben/web-ele",
   "version": "5.5.1",
-  "homepage": "https://vben.pro",
-  "bugs": "https://github.com/vbenjs/vue-vben-admin/issues",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/vbenjs/vue-vben-admin.git",
-    "directory": "apps/web-ele"
-  },
   "license": "MIT",
   "author": {
-    "name": "vben",
-    "email": "ann.vben@gmail.com",
-    "url": "https://github.com/anncwb"
+    "name": "部门资产管理"
   },
   "type": "module",
   "scripts": {
