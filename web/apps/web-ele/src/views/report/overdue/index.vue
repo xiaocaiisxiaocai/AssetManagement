@@ -15,7 +15,7 @@ import { ElButton, ElMessage, ElTable, ElTableColumn, ElTag } from 'element-plus
 defineOptions({ name: 'ReportOverdue' });
 
 const loading = ref(false);
-const reminding = ref(false);
+const remindingId = ref<number | null>(null);
 const rows = ref<OverdueReportRow[]>([]);
 const selectedRows = ref<OverdueReportRow[]>([]);
 const seriousCount = computed(() => rows.value.filter((row) => row.isSerious).length);
@@ -30,12 +30,12 @@ async function loadData() {
 }
 
 async function remind(row: OverdueReportRow) {
-  reminding.value = true;
+  remindingId.value = row.assetId;
   try {
     await remindOverdueApi(row.assetId);
     ElMessage.success('站内催办已记录');
   } finally {
-    reminding.value = false;
+    remindingId.value = null;
   }
 }
 
@@ -44,12 +44,12 @@ async function remindBatch() {
     ElMessage.warning('请先选择逾期资产');
     return;
   }
-  reminding.value = true;
+  remindingId.value = -1;
   try {
     await remindOverdueBatchApi(selectedRows.value.map((row) => row.assetId));
     ElMessage.success('批量催办已记录');
   } finally {
-    reminding.value = false;
+    remindingId.value = null;
   }
 }
 
@@ -84,7 +84,7 @@ onMounted(loadData);
         </div>
         <div class="page-actions">
           <ElButton @click="loadData">刷新</ElButton>
-          <ElButton :loading="reminding" type="warning" @click="remindBatch">批量催办</ElButton>
+          <ElButton :loading="remindingId === -1" type="warning" @click="remindBatch">批量催办</ElButton>
           <ElButton type="primary" @click="exportReport">导出</ElButton>
         </div>
       </div>
@@ -137,7 +137,7 @@ onMounted(loadData);
           </ElTableColumn>
           <ElTableColumn fixed="right" label="操作" width="110" align="center">
             <template #default="{ row }">
-              <ElButton :loading="reminding" link type="warning" size="small" @click="remind(row)">
+              <ElButton :loading="remindingId === row.assetId" link type="warning" size="small" @click="remind(row)">
                 催办
               </ElButton>
             </template>

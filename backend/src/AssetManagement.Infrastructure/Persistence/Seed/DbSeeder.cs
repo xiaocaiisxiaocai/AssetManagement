@@ -15,6 +15,8 @@ public static class DbSeeder
             return;
         }
 
+        using var tx = db.Database.BeginTransaction();
+
         var permissions = new[]
         {
             new Permission { Code = "asset:view", Name = "查看资产", Module = "asset" },
@@ -151,6 +153,7 @@ public static class DbSeeder
         );
         db.Workflows.AddRange(DefaultWorkflows());
         db.SaveChanges();
+        tx.Commit();
 
         SeedTestMaterialModule(db);
     }
@@ -234,16 +237,17 @@ public static class DbSeeder
 
         if (!db.Menus.Any(x => x.Name == "ReportOverdue"))
         {
-            var menu = new Menu { Id = db.Menus.Max(x => x.Id) + 1, ParentId = 7, Name = "ReportOverdue", Title = "逾期资产", Path = "/report/overdue", Component = "/report/overdue/index", Sort = 33, PermissionCode = "report:view" };
+            var menu = new Menu { Id = 22, ParentId = 7, Name = "ReportOverdue", Title = "逾期资产", Path = "/report/overdue", Component = "/report/overdue/index", Sort = 33, PermissionCode = "report:view" };
             db.Menus.Add(menu);
             var adminRole = db.Roles.SingleOrDefault(x => x.Code == "admin");
             if (adminRole is not null)
             {
                 db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = menu.Id });
             }
+            db.SaveChanges();
         }
 
-        var nextMenuId = db.Menus.Any() ? db.Menus.Max(x => x.Id) + 1 : 1;
+        var nextMenuId = 24; // Home=24, HomeWorkspace=25（与全量种子固定 ID 一致）
         var existingHome = db.Menus.SingleOrDefault(x => x.Name == "Home");
         if (existingHome is null)
         {
@@ -366,8 +370,7 @@ public static class DbSeeder
         {
             rootMenu = new Menu
             {
-                Id = db.Menus.Max(x => x.Id) + 1,
-                Name = "Material", Title = "新产品新技术跟进", Path = "/material",
+                Id = 26,
                 Component = "BasicLayout", Icon = "lucide:flask-conical", Sort = 15
             };
             db.Menus.Add(rootMenu);
@@ -379,6 +382,7 @@ public static class DbSeeder
         }
         db.SaveChanges();
 
+        var nextChildMenuId = 27; // MaterialHome=27, MaterialProjects=28（接续根菜单 Id=26）
         void EnsureChild(string name, string title, string path, string component, int sort, string permCode)
         {
             var existing = db.Menus.SingleOrDefault(x => x.Name == name);
@@ -390,14 +394,13 @@ public static class DbSeeder
                 existing.Component = component;
                 existing.Sort = sort;
                 existing.PermissionCode = permCode;
-                // 已有菜单也要确保 admin 有授权（防止菜单存在但 RoleMenu 缺失的情况）
                 if (adminRole != null && !db.RoleMenus.Any(x => x.RoleId == adminRole.Id && x.MenuId == existing.Id))
                     db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = existing.Id });
                 return;
             }
             var menu = new Menu
             {
-                Id = db.Menus.Max(x => x.Id) + 1,
+                Id = nextChildMenuId++,
                 ParentId = rootMenu.Id,
                 Name = name, Title = title, Path = path, Component = component,
                 Sort = sort, PermissionCode = permCode

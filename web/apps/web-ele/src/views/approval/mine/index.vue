@@ -42,7 +42,7 @@ async function loadData() {
   try {
     const [mine, assetPage] = await Promise.all([
       getMineApprovalsApi(),
-      getAssetListApi({ page: 1, pageSize: 200 }),
+      getAssetListApi({ page: 1, pageSize: 500 }),
     ]);
     flows.value = mine;
     assets.value = assetPage.items;

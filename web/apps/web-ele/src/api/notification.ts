@@ -1,5 +1,11 @@
 import { requestClient } from '#/api/request';
 
+interface ApiResult<T> {
+  code: number;
+  data: T;
+  message: string;
+}
+
 export interface NotificationDto {
   id: number;
   type: string; // due_soon_1d | due_soon_3d | overdue
@@ -10,20 +16,20 @@ export interface NotificationDto {
   createdAt: string;
 }
 
-export async function getNotificationsApi(unreadOnly = false): Promise<NotificationDto[]> {
-  const res = await requestClient.get<{ code: number; data: NotificationDto[] }>(
-    '/notifications',
-    { params: { unreadOnly } },
-  );
-  return res.data ?? [];
+async function unwrap<T>(request: Promise<ApiResult<T>>) {
+  const result = await request;
+  return result.data;
 }
 
-export async function getUnreadCountApi(): Promise<number> {
-  const res = await requestClient.get<{ code: number; data: number }>(
-    '/notifications/unread-count',
+export const getNotificationsApi = (unreadOnly = false) =>
+  unwrap(
+    requestClient.get<ApiResult<NotificationDto[]>>('/notifications', {
+      params: { unreadOnly },
+    }),
   );
-  return res.data ?? 0;
-}
+
+export const getUnreadCountApi = () =>
+  unwrap(requestClient.get<ApiResult<number>>('/notifications/unread-count'));
 
 export async function markReadApi(id: number): Promise<void> {
   await requestClient.post(`/notifications/${id}/read`);

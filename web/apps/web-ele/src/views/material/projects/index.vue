@@ -520,6 +520,8 @@ async function openFollowups(row: TestProjectItem) {
   currentProject.value = row;
   pendingFlows.value = [];
   myFlows.value = [];
+  flowActiveTab.value = 'pending';
+  resetMaterialQuery();
   activeProjectTab.value = 'followups';
   editingFollowupId.value = null;
   Object.assign(followupForm, {

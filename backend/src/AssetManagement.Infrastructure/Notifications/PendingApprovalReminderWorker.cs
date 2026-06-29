@@ -59,7 +59,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         var notificationSvc = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
         var threshold = DateTime.UtcNow.AddDays(-1);
-        var todayStr = DateTime.Today.ToString("yyyyMMdd");
+        var todayStr = DateTime.UtcNow.Date.ToString("yyyyMMdd");
 
         var requests = new List<CreateNotificationRequest>();
 

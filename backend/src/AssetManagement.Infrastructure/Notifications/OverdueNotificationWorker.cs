@@ -65,6 +65,14 @@ public class OverdueNotificationWorker : BackgroundService
         var notifications = new List<Notification>();
         var todayStr = today.ToString("yyyyMMdd");
 
+        // 一次性取出今日已有的幂等键，避免循环内 N+1 查询
+        var candidateKeys = flows.SelectMany(f => new[] { "overdue", "due_soon_1d", "due_soon_3d" }
+            .Select(t => $"{t}_{f.Id}_{todayStr}")).ToList();
+        var existingKeys = (await db.Notifications
+            .Where(n => n.IdempotencyKey != null && candidateKeys.Contains(n.IdempotencyKey!))
+            .Select(n => n.IdempotencyKey!)
+            .ToListAsync()).ToHashSet();
+
         foreach (var flow in flows)
         {
             if (!DateOnly.TryParse(flow.ReturnDate, out var returnDate)) continue;
@@ -82,7 +90,7 @@ public class OverdueNotificationWorker : BackgroundService
             if (type == null) continue;
 
             var key = $"{type}_{flow.Id}_{todayStr}";
-            if (await db.Notifications.AnyAsync(n => n.IdempotencyKey == key)) continue;
+            if (existingKeys.Contains(key)) continue;
 
             var (title, body) = BuildMessage(type, flow.AssetName, flow.AssetNo, returnDate);
             notifications.Add(new Notification

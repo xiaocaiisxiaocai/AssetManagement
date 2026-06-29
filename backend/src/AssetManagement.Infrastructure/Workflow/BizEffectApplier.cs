@@ -38,6 +38,7 @@ public class BizEffectApplier : IBizEffectApplier
                 asset.CustodianId = flow.ApplicantId;
                 break;
             case "transfer":
+                asset.Status = AssetStatus.Available;
                 asset.CustodianId = flow.TransfereeId;
                 if (flow.TransfereeId.HasValue)
                 {

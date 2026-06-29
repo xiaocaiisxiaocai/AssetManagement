@@ -261,24 +261,28 @@ public class MaterialFlowService : IMaterialFlowService
         await tx.CommitAsync();
 
         // 流程完成 → 通知申请人；未完成 → 通知下一审批节点审批人
-        if (flow.Status == "approved")
+        try
         {
-            await _notifications.CreateAsync(new CreateNotificationRequest
+            if (flow.Status == "approved")
             {
-                Type = "material_approved",
-                Title = $"料件流转审批通过：{flow.MaterialName}",
-                Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请已通过审批。",
-                FlowId = id,
-                UserId = flow.ApplicantId,
-            });
+                await _notifications.CreateAsync(new CreateNotificationRequest
+                {
+                    Type = "material_approved",
+                    Title = $"料件流转审批通过：{flow.MaterialName}",
+                    Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请已通过审批。",
+                    FlowId = id,
+                    UserId = flow.ApplicantId,
+                });
+            }
+            else if (flow.Status == "pending")
+            {
+                var wf = await LoadWorkflow(flow.WorkflowId);
+                var proc = BpmnParser.Parse(wf.BpmnXml!);
+                await NotifyCurrentApproversAsync(flow, proc,
+                    $"您有新的料件流转待审批：{flow.MaterialName}（{flow.MaterialNo}）转移给 {flow.Transferee}");
+            }
         }
-        else if (flow.Status == "pending")
-        {
-            var wf = await LoadWorkflow(flow.WorkflowId);
-            var proc = BpmnParser.Parse(wf.BpmnXml!);
-            await NotifyCurrentApproversAsync(flow, proc,
-                $"您有新的料件流转待审批：{flow.MaterialName}（{flow.MaterialNo}）转移给 {flow.Transferee}");
-        }
+        catch (Exception) { }
 
         return ToDto(flow);
     }
@@ -306,14 +310,18 @@ public class MaterialFlowService : IMaterialFlowService
         await tx.CommitAsync();
 
         // 通知申请人被驳回
-        await _notifications.CreateAsync(new CreateNotificationRequest
+        try
         {
-            Type = "material_rejected",
-            Title = $"料件流转审批驳回：{flow.MaterialName}",
-            Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请被驳回。原因：{request.Reason}",
-            FlowId = id,
-            UserId = flow.ApplicantId,
-        });
+            await _notifications.CreateAsync(new CreateNotificationRequest
+            {
+                Type = "material_rejected",
+                Title = $"料件流转审批驳回：{flow.MaterialName}",
+                Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请被驳回。原因：{request.Reason}",
+                FlowId = id,
+                UserId = flow.ApplicantId,
+            });
+        }
+        catch { }
 
         return ToDto(flow);
     }
@@ -593,6 +601,7 @@ public class MaterialFlowService : IMaterialFlowService
         TransfereeDept = f.TransfereeDept,
         Reason = f.Reason,
         Status = f.Status,
+        DirectTransfer = f.DirectTransfer,
         CurrentNodeIds = f.CurrentNodeIds,
         BpmnTokens = f.BpmnTokens,
         ApplyTime = f.ApplyTime,
