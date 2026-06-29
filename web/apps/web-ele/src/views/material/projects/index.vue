@@ -517,7 +517,7 @@ async function openFollowups(row: TestProjectItem) {
     dueDate: row.nextFollowUpDueDate ? row.nextFollowUpDueDate.slice(0, 10) : '',
   });
   followupDrawerVisible.value = true;
-  await Promise.all([loadFollowups(row.id), loadProjectMaterials(row.id)]);
+  await Promise.allSettled([loadFollowups(row.id), loadProjectMaterials(row.id)]);
 }
 
 async function loadFollowups(projectId: number) {
@@ -571,6 +571,8 @@ async function saveFollowup() {
     cancelFollowupEdit();
     await loadFollowups(project.id);
     await loadData();
+  } catch (e: any) {
+    ElMessage.error(e?.message ?? '保存失败，请重试');
   } finally {
     followupSaving.value = false;
   }

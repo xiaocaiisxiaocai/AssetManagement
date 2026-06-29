@@ -11,7 +11,7 @@ using Xunit;
 namespace AssetManagement.Tests.TestMaterials;
 
 // 每个测试方法开头均显式调用 SetApprovalSwitch 设定开关状态，确保测试方法间无顺序依赖。
-// TestWebAppFactory 使用独立 in-memory SQLite，保证本类与其他测试类的数据库完全隔离。
+// TestWebAppFactory 使用独立 MySQL 数据库(GUID 后缀)，保证本类与其他测试类的数据库完全隔离。
 public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
@@ -113,6 +113,54 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
 
         body!.Code.Should().Be(4098);
+    }
+
+    [Fact]
+    public async Task Approved_flow_cannot_be_approved_again()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var project = await CreateProject("重复审批项目");
+        var transferee = await CreateUser("0906", "受让人己");
+        var material = await CreateMaterial(project.Id, "重复审批样品");
+
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id, TransfereeId = transferee.Id, Reason = "发起审批"
+        });
+        await Post<ApiResult<MaterialFlowDto>>($"/api/material-flows/{flow.Data!.Id}/approve",
+            new MaterialApprovalRequest { Opinion = "同意" });
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/material-flows/{flow.Data.Id}/approve",
+            new MaterialApprovalRequest { Opinion = "重复审批" });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        body!.Code.Should().Be(4013, "已通过的流转单不应允许重复审批");
+    }
+
+    [Fact]
+    public async Task Approved_flow_cannot_be_rejected()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var project = await CreateProject("禁止驳回已通过项目");
+        var transferee = await CreateUser("0907", "受让人庚");
+        var material = await CreateMaterial(project.Id, "已通过样品");
+
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id, TransfereeId = transferee.Id, Reason = "发起审批"
+        });
+        await Post<ApiResult<MaterialFlowDto>>($"/api/material-flows/{flow.Data!.Id}/approve",
+            new MaterialApprovalRequest { Opinion = "同意" });
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/material-flows/{flow.Data.Id}/reject",
+            new MaterialRejectRequest { Reason = "想翻盘" });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        body!.Code.Should().Be(4013, "已通过的流转单不应允许驳回");
     }
 
     // ===== 辅助方法 =====

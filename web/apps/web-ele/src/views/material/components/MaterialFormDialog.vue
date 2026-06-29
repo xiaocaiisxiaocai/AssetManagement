@@ -157,6 +157,8 @@ async function save() {
     ElMessage.success('保存成功');
     visible.value = false;
     emit('saved');
+  } catch (e: any) {
+    ElMessage.error(e?.message ?? '保存失败，请重试');
   } finally {
     saving.value = false;
   }
