@@ -906,6 +906,8 @@ watch(
   gap: 20px;
   flex: 1;
   min-height: 0;
+  align-content: start;
+  align-items: start;
   overflow-y: auto;
   padding: 12px 0 20px;
 }
