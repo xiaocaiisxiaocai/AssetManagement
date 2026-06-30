@@ -183,16 +183,32 @@ onMounted(async () => {
           </ElTableColumn>
         </ElTable>
 
-        <div class="table-pagination">
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ total }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect
+              v-model="query.pageSize"
+              aria-label="借用明细每页条数"
+              style="width: 92px"
+              @change="search"
+            >
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
           <ElPagination
             v-model:current-page="query.page"
-            v-model:page-size="query.pageSize"
-            :page-sizes="pageSizeOptions"
+            :page-size="query.pageSize"
             :total="total"
             background
-            layout="total, sizes, prev, pager, next"
+            layout="prev, pager, next"
             @current-change="loadData"
-            @size-change="search"
           />
         </div>
       </div>

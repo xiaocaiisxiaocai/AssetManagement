@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { ApprovalFlow } from '#/api/workflow';
 import type { UserDto } from '#/api/user';
-import { onMounted, ref, computed } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import {
   addSignFlowApi,
@@ -11,6 +11,7 @@ import {
   rejectFlowApi,
 } from '#/api/workflow';
 import { getUserListApi } from '#/api/user';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import {
   ElButton,
   ElDialog,
@@ -18,6 +19,7 @@ import {
   ElDescriptionsItem,
   ElInput,
   ElOption,
+  ElPagination,
   ElSelect,
   ElTable,
   ElTableColumn,
@@ -35,9 +37,19 @@ const addSignVisible = ref(false);
 const selected = ref<ApprovalFlow | null>(null);
 const flows = ref<ApprovalFlow[]>([]);
 const users = ref<UserDto[]>([]);
+const pageSizeOptions = ref(createPageSizeOptions(20));
 const opinion = ref('同意');
 const addSignUser = ref('');
 const selectedNodeId = ref('');
+const query = reactive({
+  page: 1,
+  pageSize: 20,
+});
+
+const pagedFlows = computed(() => {
+  const start = (query.page - 1) * query.pageSize;
+  return flows.value.slice(start, start + query.pageSize);
+});
 
 async function loadData() {
   loading.value = true;
@@ -47,6 +59,9 @@ async function loadData() {
       getUserListApi('', 1, 200),
     ]);
     flows.value = pending;
+    if ((query.page - 1) * query.pageSize >= flows.value.length) {
+      query.page = 1;
+    }
     users.value = userPage.items.filter((user) => user.isActive);
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
@@ -215,6 +230,10 @@ async function reject() {
 const debouncedApprove = useDebounceFn(approve, 300);
 const debouncedReject = useDebounceFn(reject, 300);
 
+function onPageSizeChange() {
+  query.page = 1;
+}
+
 function getBizTypeLabel(type: string) {
   const map: Record<string, string> = {
     borrow: '借用',
@@ -224,8 +243,10 @@ function getBizTypeLabel(type: string) {
   return map[type] || type;
 }
 
-onMounted(() => {
-  loadData();
+onMounted(async () => {
+  query.pageSize = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
+  await loadData();
 });
 </script>
 
@@ -241,7 +262,7 @@ onMounted(() => {
       </div>
 
       <div class="pending-table-panel">
-        <ElTable :data="flows" v-loading="loading" border height="100%">
+        <ElTable :data="pagedFlows" v-loading="loading" border height="100%">
           <ElTableColumn prop="flowNo" label="流程单号" width="180" />
           <ElTableColumn prop="bizType" label="业务类型" width="120" align="center">
             <template #default="{ row }">
@@ -278,6 +299,28 @@ onMounted(() => {
             </template>
           </ElTableColumn>
         </ElTable>
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ flows.length }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
+          <ElPagination
+            v-model:current-page="query.page"
+            :page-size="query.pageSize"
+            :total="flows.length"
+            background
+            layout="prev, pager, next"
+          />
+        </div>
       </div>
 
       <!-- 审批对话框 -->

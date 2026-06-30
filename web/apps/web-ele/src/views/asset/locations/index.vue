@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { LocationNode, LocationPayload } from '#/api/base-data';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 import {
   createLocationApi,
@@ -9,6 +9,7 @@ import {
   getLocationTreeApi,
   updateLocationApi,
 } from '#/api/base-data';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 
 import {
   ElButton,
@@ -18,6 +19,9 @@ import {
   ElInput,
   ElMessage,
   ElMessageBox,
+  ElOption,
+  ElPagination,
+  ElSelect,
   ElTable,
   ElTableColumn,
 } from 'element-plus';
@@ -29,14 +33,27 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const locations = ref<LocationNode[]>([]);
+const pageSizeOptions = ref(createPageSizeOptions(20));
+const query = reactive({
+  page: 1,
+  pageSize: 20,
+});
 const form = reactive<LocationPayload>({
   name: '',
+});
+
+const pagedLocations = computed(() => {
+  const start = (query.page - 1) * query.pageSize;
+  return locations.value.slice(start, start + query.pageSize);
 });
 
 async function loadData() {
   loading.value = true;
   try {
     locations.value = await getLocationTreeApi();
+    if ((query.page - 1) * query.pageSize >= locations.value.length) {
+      query.page = 1;
+    }
   } finally {
     loading.value = false;
   }
@@ -87,7 +104,15 @@ async function remove(row: LocationNode) {
   await loadData();
 }
 
-onMounted(loadData);
+function onPageSizeChange() {
+  query.page = 1;
+}
+
+onMounted(async () => {
+  query.pageSize = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
+  await loadData();
+});
 </script>
 
 <template>
@@ -104,7 +129,7 @@ onMounted(loadData);
       <div class="table-panel">
         <ElTable
           v-loading="loading"
-          :data="locations"
+          :data="pagedLocations"
           row-key="id"
           border
           height="100%"
@@ -117,6 +142,28 @@ onMounted(loadData);
             </template>
           </ElTableColumn>
         </ElTable>
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ locations.length }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
+          <ElPagination
+            v-model:current-page="query.page"
+            :page-size="query.pageSize"
+            :total="locations.length"
+            background
+            layout="prev, pager, next"
+          />
+        </div>
       </div>
 
       <ElDialog

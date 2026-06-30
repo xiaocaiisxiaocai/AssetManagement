@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import { EchartsUI, type EchartsUIType, useEcharts } from '@vben/plugins/echarts';
 
@@ -28,12 +28,39 @@ const { renderEcharts: renderBarChart } = useEcharts(barChartRef);
 
 const MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
 
+let themeObserver: MutationObserver | undefined;
+
+function readCssColor(variableName: string, fallback: string) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
+  return value ? `hsl(${value})` : fallback;
+}
+
+function getChartTheme() {
+  const text = readCssColor('--foreground', '#1f2937');
+  const muted = readCssColor('--muted-foreground', '#6b7280');
+  const border = readCssColor('--border', '#e5e7eb');
+  return {
+    axisLine: border,
+    gridLine: border,
+    muted,
+    text,
+  };
+}
+
 function renderCharts(data: TestProjectStats) {
+  const theme = getChartTheme();
+  const titleTextStyle = { color: theme.text, fontSize: 14, fontWeight: 600 };
+  const legendTextStyle = { color: theme.muted };
+  const axisLabel = { color: theme.muted };
+  const splitLine = { lineStyle: { color: theme.gridLine } };
+  const axisLine = { lineStyle: { color: theme.axisLine } };
+
   // 类型分布饼图
   renderTypeChart({
-    title: { text: '测评类型分布', left: 'center', top: 8, textStyle: { fontSize: 14 } },
+    backgroundColor: 'transparent',
+    title: { text: '测评类型分布', left: 'center', top: 8, textStyle: titleTextStyle },
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { orient: 'vertical', right: 16, top: 'middle' },
+    legend: { orient: 'vertical', right: 16, top: 'middle', textStyle: legendTextStyle },
     series: [{
       type: 'pie',
       radius: ['38%', '62%'],
@@ -43,6 +70,7 @@ function renderCharts(data: TestProjectStats) {
         show: true,
         formatter: '{b}\n{c}; {d}%',
         fontSize: 12,
+        color: theme.muted,
       },
       data: data.typeDist.map(x => ({ name: x.label, value: x.count })),
       color: ['#1890ff', '#fa8c16', '#13c2c2', '#722ed1'],
@@ -51,9 +79,10 @@ function renderCharts(data: TestProjectStats) {
 
   // 状态分布饼图
   renderStatusChart({
-    title: { text: '进度状态分布', left: 'center', top: 8, textStyle: { fontSize: 14 } },
+    backgroundColor: 'transparent',
+    title: { text: '进度状态分布', left: 'center', top: 8, textStyle: titleTextStyle },
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { orient: 'vertical', right: 16, top: 'middle' },
+    legend: { orient: 'vertical', right: 16, top: 'middle', textStyle: legendTextStyle },
     series: [{
       type: 'pie',
       radius: ['38%', '62%'],
@@ -63,6 +92,7 @@ function renderCharts(data: TestProjectStats) {
         show: true,
         formatter: '{b}\n{c}; {d}%',
         fontSize: 12,
+        color: theme.muted,
       },
       data: [
         { name: '进行中', value: data.inProgress, itemStyle: { color: '#1890ff' } },
@@ -76,19 +106,20 @@ function renderCharts(data: TestProjectStats) {
   const closedData = data.monthlyStat.map(x => x.closedCount);
   const landedData = data.monthlyStat.map(x => x.landedCount);
   renderBarChart({
-    title: { text: '结案与落地数据统计', left: 'center', top: 8, textStyle: { fontSize: 14 } },
+    backgroundColor: 'transparent',
+    title: { text: '结案与落地数据统计', left: 'center', top: 8, textStyle: titleTextStyle },
     tooltip: { trigger: 'axis' },
-    legend: { bottom: 0, data: ['结案数量', '落地数量'] },
+    legend: { bottom: 0, data: ['结案数量', '落地数量'], textStyle: legendTextStyle },
     grid: { top: 50, left: 40, right: 20, bottom: 50 },
-    xAxis: { type: 'category', data: MONTHS },
-    yAxis: { type: 'value', minInterval: 1 },
+    xAxis: { type: 'category', data: MONTHS, axisLabel, axisLine },
+    yAxis: { type: 'value', minInterval: 1, axisLabel, splitLine },
     series: [
       {
         name: '结案数量',
         type: 'bar',
         data: closedData,
         itemStyle: { color: '#1890ff' },
-        label: { show: true, position: 'top', fontSize: 11,
+        label: { show: true, position: 'top', fontSize: 11, color: theme.muted,
           formatter: (p: any) => p.value > 0 ? String(p.value) : '' },
       },
       {
@@ -106,27 +137,38 @@ function renderCharts(data: TestProjectStats) {
 onMounted(async () => {
   const data = await getTestProjectStatsApi();
   stats.value = data;
+  await nextTick();
   renderCharts(data);
+  themeObserver = new MutationObserver(() => renderCharts(stats.value));
+  themeObserver.observe(document.documentElement, {
+    attributeFilter: ['class', 'data-theme', 'style'],
+    attributes: true,
+  });
+});
+
+onBeforeUnmount(() => {
+  themeObserver?.disconnect();
 });
 </script>
 
 <template>
-  <div class="p-4 space-y-4">
+  <re-page>
+    <div class="material-home-page p-4">
     <!-- 顶部统计卡片 -->
-    <div class="grid grid-cols-4 gap-0 border border-gray-200 rounded overflow-hidden">
-      <div class="stat-card border-r border-gray-200 border-l-4 border-l-blue-500">
+    <div class="summary-grid">
+      <div class="summary-card summary-card-blue">
         <div class="stat-num text-blue-500">{{ stats.total }}</div>
         <div class="stat-label">总测评数</div>
       </div>
-      <div class="stat-card border-r border-gray-200 border-l-4 border-l-green-500">
+      <div class="summary-card summary-card-green">
         <div class="stat-num text-green-500">{{ stats.closed }}</div>
         <div class="stat-label">已结案</div>
       </div>
-      <div class="stat-card border-r border-gray-200 border-l-4 border-l-purple-500">
+      <div class="summary-card summary-card-purple">
         <div class="stat-num text-purple-500">{{ stats.inProgress }}</div>
         <div class="stat-label">进行中</div>
       </div>
-      <div class="stat-card border-l-4 border-l-red-500">
+      <div class="summary-card summary-card-red">
         <div class="stat-num text-red-500">{{ stats.landed }}</div>
         <div class="stat-label">已落地</div>
       </div>
@@ -146,21 +188,93 @@ onMounted(async () => {
     <div class="chart-card">
       <EchartsUI ref="barChartRef" style="height: 280px;" />
     </div>
-  </div>
+    </div>
+  </re-page>
 </template>
 
 <style scoped>
-.stat-card {
-  @apply flex flex-col justify-center px-8 py-6 bg-white;
+.material-home-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+  height: calc(var(--vben-content-height, 100vh) - 32px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
+  background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
+}
+
+.summary-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 118px;
+  padding: 24px 32px;
+  border-right: 1px solid var(--asset-page-border);
+  border-left: 4px solid transparent;
+  background: var(--asset-page-surface);
+}
+
+.summary-card:last-child {
+  border-right: 0;
+}
+
+.summary-card-blue {
+  border-left-color: #3b82f6;
+}
+
+.summary-card-green {
+  border-left-color: #22c55e;
+}
+
+.summary-card-purple {
+  border-left-color: #8b5cf6;
+}
+
+.summary-card-red {
+  border-left-color: #ef4444;
 }
 .stat-num {
   @apply text-5xl font-bold leading-none mb-2;
 }
 .stat-label {
-  @apply text-sm text-gray-500 mt-1;
+  margin-top: 4px;
+  color: var(--asset-page-muted);
+  font-size: 14px;
+  line-height: 20px;
 }
 .chart-card {
-  @apply bg-white border border-gray-200 rounded p-3;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
+  background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
+}
+
+@media (max-width: 1024px) {
+  .summary-grid,
+  .grid-cols-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-card {
+    border-right: 0;
+    border-bottom: 1px solid var(--asset-page-border);
+  }
+
+  .summary-card:last-child {
+    border-bottom: 0;
+  }
 }
 </style>
-

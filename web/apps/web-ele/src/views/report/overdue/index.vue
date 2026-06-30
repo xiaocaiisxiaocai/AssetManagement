@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { OverdueReportRow } from '#/api/report';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 import {
   exportOverdueReportApi,
@@ -9,8 +9,18 @@ import {
   remindOverdueApi,
   remindOverdueBatchApi,
 } from '#/api/report';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 
-import { ElButton, ElMessage, ElTable, ElTableColumn, ElTag } from 'element-plus';
+import {
+  ElButton,
+  ElMessage,
+  ElOption,
+  ElPagination,
+  ElSelect,
+  ElTable,
+  ElTableColumn,
+  ElTag,
+} from 'element-plus';
 
 defineOptions({ name: 'ReportOverdue' });
 
@@ -18,12 +28,25 @@ const loading = ref(false);
 const remindingId = ref<number | null>(null);
 const rows = ref<OverdueReportRow[]>([]);
 const selectedRows = ref<OverdueReportRow[]>([]);
+const pageSizeOptions = ref(createPageSizeOptions(20));
+const query = reactive({
+  page: 1,
+  pageSize: 20,
+});
 const seriousCount = computed(() => rows.value.filter((row) => row.isSerious).length);
+const pagedRows = computed(() => {
+  const start = (query.page - 1) * query.pageSize;
+  return rows.value.slice(start, start + query.pageSize);
+});
 
 async function loadData() {
   loading.value = true;
   try {
     rows.value = await getOverdueReportApi();
+    selectedRows.value = [];
+    if ((query.page - 1) * query.pageSize >= rows.value.length) {
+      query.page = 1;
+    }
   } finally {
     loading.value = false;
   }
@@ -62,6 +85,11 @@ function onSelectionChange(selection: OverdueReportRow[]) {
   selectedRows.value = selection;
 }
 
+function onPageSizeChange() {
+  query.page = 1;
+  selectedRows.value = [];
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -71,7 +99,11 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-onMounted(loadData);
+onMounted(async () => {
+  query.pageSize = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
+  await loadData();
+});
 </script>
 
 <template>
@@ -107,7 +139,7 @@ onMounted(loadData);
       <div class="table-panel">
         <ElTable
           v-loading="loading"
-          :data="rows"
+          :data="pagedRows"
           border
           height="100%"
           row-key="assetId"
@@ -144,6 +176,28 @@ onMounted(loadData);
             </template>
           </ElTableColumn>
         </ElTable>
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ rows.length }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
+          <ElPagination
+            v-model:current-page="query.page"
+            :page-size="query.pageSize"
+            :total="rows.length"
+            background
+            layout="prev, pager, next"
+          />
+        </div>
       </div>
     </div>
   </re-page>

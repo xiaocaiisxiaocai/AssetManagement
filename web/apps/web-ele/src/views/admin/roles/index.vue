@@ -495,23 +495,6 @@ onMounted(async () => {
       </div>
 
       <div class="role-table-panel">
-        <div class="role-table-toolbar">
-          <span class="role-table-total">共 {{ total }} 条</span>
-          <ElSelect
-            v-model="query.pageSize"
-            aria-label="角色列表每页条数"
-            style="width: 140px"
-            @change="search"
-          >
-            <ElOption
-              v-for="size in pageSizeOptions"
-              :key="size"
-              :label="`每页 ${size} 条`"
-              :value="size"
-            />
-          </ElSelect>
-        </div>
-
         <ElTable v-loading="loading" :data="roles" border height="100%">
           <ElTableColumn label="角色编码" min-width="130" prop="code" />
           <ElTableColumn label="角色名称" min-width="160" prop="name" />
@@ -542,13 +525,31 @@ onMounted(async () => {
           </ElTableColumn>
         </ElTable>
 
-        <div class="role-pagination">
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ total }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect
+              v-model="query.pageSize"
+              aria-label="角色列表每页条数"
+              style="width: 92px"
+              @change="search"
+            >
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
           <ElPagination
             v-model:current-page="query.page"
             :page-size="query.pageSize"
             :total="total"
             background
-            layout="prev, pager, next, jumper"
+            layout="prev, pager, next"
             @current-change="loadData"
           />
         </div>
@@ -728,26 +729,12 @@ onMounted(async () => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
   min-height: 0;
+  overflow: hidden;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
-  padding: 20px;
-}
-
-.role-table-toolbar {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.role-table-total {
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--asset-page-muted);
 }
 
 .role-table-panel :deep(.el-table) {
@@ -780,12 +767,6 @@ onMounted(async () => {
 
 .role-table-panel :deep(.el-button + .el-button) {
   margin-left: 4px;
-}
-
-.role-pagination {
-  display: flex;
-  flex-shrink: 0;
-  justify-content: flex-end;
 }
 
 /* ========== 权限分配面板 ========== */

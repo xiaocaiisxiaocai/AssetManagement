@@ -115,13 +115,12 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
   min-height: 0;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
-  padding: 20px;
+  overflow: hidden;
 }
 
 .table-toolbar {
@@ -141,6 +140,32 @@
   display: flex;
   flex-shrink: 0;
   justify-content: flex-end;
+}
+
+.table-bottom-pager {
+  display: flex;
+  flex-shrink: 0;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  border-top: 1px solid var(--asset-page-border);
+  background: var(--asset-page-surface);
+}
+
+.table-bottom-pager-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.table-bottom-pager-divider {
+  color: var(--asset-page-border);
 }
 
 /* ========== 表格样式 ========== */
@@ -343,6 +368,10 @@
 
   .table-pagination {
     justify-content: flex-start;
+  }
+
+  .table-bottom-pager {
+    align-items: stretch;
   }
 
   .filter-form {

@@ -6,6 +6,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 
 import { getAssetListApi } from '#/api/asset';
 import { getMineApprovalsApi, startApprovalApi } from '#/api/workflow';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 
 import {
   ElButton,
@@ -16,6 +17,7 @@ import {
   ElInput,
   ElMessage,
   ElOption,
+  ElPagination,
   ElSelect,
   ElTable,
   ElTableColumn,
@@ -29,13 +31,22 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const flows = ref<ApprovalFlow[]>([]);
 const assets = ref<AssetItem[]>([]);
+const pageSizeOptions = ref(createPageSizeOptions(20));
 const form = reactive({
   assetId: undefined as number | undefined,
   bizType: 'borrow',
   reason: '',
   returnDate: '',
 });
+const query = reactive({
+  page: 1,
+  pageSize: 20,
+});
 const showReturnDate = computed(() => form.bizType === 'borrow');
+const pagedFlows = computed(() => {
+  const start = (query.page - 1) * query.pageSize;
+  return flows.value.slice(start, start + query.pageSize);
+});
 
 async function loadData() {
   loading.value = true;
@@ -45,6 +56,9 @@ async function loadData() {
       getAssetListApi({ page: 1, pageSize: 500 }),
     ]);
     flows.value = mine;
+    if ((query.page - 1) * query.pageSize >= flows.value.length) {
+      query.page = 1;
+    }
     assets.value = assetPage.items;
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
@@ -98,7 +112,15 @@ function statusText(status: string) {
   return { approved: '已通过', pending: '审批中', rejected: '已驳回' }[status] ?? status;
 }
 
-onMounted(loadData);
+function onPageSizeChange() {
+  query.page = 1;
+}
+
+onMounted(async () => {
+  query.pageSize = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
+  await loadData();
+});
 </script>
 
 <template>
@@ -117,7 +139,7 @@ onMounted(loadData);
       </div>
 
       <div class="mine-table-panel">
-        <ElTable v-loading="loading" :data="flows" border height="100%">
+        <ElTable v-loading="loading" :data="pagedFlows" border height="100%">
           <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
           <ElTableColumn label="类型" width="100" align="center">
             <template #default="{ row }">
@@ -153,6 +175,28 @@ onMounted(loadData);
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="申请事由" min-width="220" prop="reason" />
         </ElTable>
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ flows.length }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
+          <ElPagination
+            v-model:current-page="query.page"
+            :page-size="query.pageSize"
+            :total="flows.length"
+            background
+            layout="prev, pager, next"
+          />
+        </div>
       </div>
 
       <ElDialog v-model="dialogVisible" title="发起申请" width="540px">

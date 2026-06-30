@@ -46,7 +46,7 @@ import {
 } from 'element-plus';
 
 import { getDepartmentTreeApi, getLocationTreeApi } from '#/api/base-data';
-import { getDefaultPageSize } from '#/utils/runtime-settings';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import {
   approveFlowApi,
   deleteMaterialApi,
@@ -142,6 +142,11 @@ const canApproveMaterial = computed(() => hasAccessByCodes(['material:approve'])
 const loading = ref(false);
 const projects = ref<TestProjectItem[]>([]);
 const deleteStatus = ref<DeleteStatus>('all');
+const pageSizeOptions = ref(createPageSizeOptions(20));
+const projectQuery = reactive({
+  page: 1,
+  pageSize: 20,
+});
 
 const options = ref<TestProjectOption[]>([]);
 const users = ref<UserDto[]>([]);
@@ -206,6 +211,7 @@ const materialQuery = reactive({
   pageSize: 10,
   status: undefined as MaterialStatus | undefined,
 });
+const materialPageSizeOptions = ref(createPageSizeOptions(20));
 
 const flowActiveTab = ref('pending');
 const pendingFlowLoading = ref(false);
@@ -225,6 +231,10 @@ const locationOptions = computed<FlatOption[]>(() =>
 const currentProjectList = computed(() =>
   currentProject.value ? [currentProject.value] : projects.value,
 );
+const pagedProjects = computed(() => {
+  const start = (projectQuery.page - 1) * projectQuery.pageSize;
+  return projects.value.slice(start, start + projectQuery.pageSize);
+});
 
 function activeOptions(kind: OptionKind) {
   return options.value.filter((item) => item.kind === kind && item.isActive);
@@ -280,6 +290,9 @@ async function loadData() {
   loading.value = true;
   try {
     projects.value = await listTestProjectsApi(deleteStatus.value);
+    if ((projectQuery.page - 1) * projectQuery.pageSize >= projects.value.length) {
+      projectQuery.page = 1;
+    }
   } finally {
     loading.value = false;
   }
@@ -651,6 +664,15 @@ function resetMaterialQuery() {
   void loadProjectMaterials();
 }
 
+function onProjectPageSizeChange() {
+  projectQuery.page = 1;
+}
+
+function onMaterialPageSizeChange() {
+  materialQuery.page = 1;
+  void loadProjectMaterials();
+}
+
 function openCreateMaterial() {
   editingMaterial.value = null;
   materialFormVisible.value = true;
@@ -846,7 +868,11 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
 }
 
 onMounted(async () => {
-  materialQuery.pageSize = await getDefaultPageSize();
+  const defaultPageSize = await getDefaultPageSize();
+  projectQuery.pageSize = defaultPageSize;
+  materialQuery.pageSize = defaultPageSize;
+  pageSizeOptions.value = createPageSizeOptions(defaultPageSize);
+  materialPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   await Promise.all([loadOptions(), loadData()]);
 });
 </script>
@@ -874,7 +900,7 @@ onMounted(async () => {
       <div class="project-table-panel">
         <ElTable
           v-loading="loading"
-          :data="projects"
+          :data="pagedProjects"
           :row-class-name="tableRowClassName"
           border
           height="100%"
@@ -989,7 +1015,29 @@ onMounted(async () => {
             </template>
           </template>
         </ElTableColumn>
-        </ElTable>
+      </ElTable>
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ projects.length }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect v-model="projectQuery.pageSize" style="width: 92px" @change="onProjectPageSizeChange">
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
+          <ElPagination
+            v-model:current-page="projectQuery.page"
+            :page-size="projectQuery.pageSize"
+            :total="projects.length"
+            background
+            layout="prev, pager, next"
+          />
+        </div>
       </div>
 
       <ElDialog
@@ -1388,13 +1436,30 @@ onMounted(async () => {
                 </ElTableColumn>
               </ElTable>
 
-              <div class="mt-4 flex justify-end">
+              <div class="table-bottom-pager material-bottom-pager">
+                <div class="table-bottom-pager-left">
+                  <span>共 {{ materialTotal }} 条记录</span>
+                  <span class="table-bottom-pager-divider">|</span>
+                  <span>每页</span>
+                  <ElSelect
+                    v-model="materialQuery.pageSize"
+                    style="width: 92px"
+                    @change="onMaterialPageSizeChange"
+                  >
+                    <ElOption
+                      v-for="size in materialPageSizeOptions"
+                      :key="size"
+                      :label="`${size}`"
+                      :value="size"
+                    />
+                  </ElSelect>
+                </div>
                 <ElPagination
                   v-model:current-page="materialQuery.page"
                   :page-size="materialQuery.pageSize"
                   :total="materialTotal"
                   background
-                  layout="total, prev, pager, next"
+                  layout="prev, pager, next"
                   @current-change="() => loadProjectMaterials(currentProject?.id)"
                 />
               </div>

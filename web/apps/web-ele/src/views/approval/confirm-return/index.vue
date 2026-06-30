@@ -4,13 +4,15 @@ import type { ApprovalFlow } from '#/api/workflow';
 import { onMounted, reactive, ref } from 'vue';
 
 import { getPendingReturnsApi, confirmReturnApi } from '#/api/workflow';
-import { getDefaultPageSize } from '#/utils/runtime-settings';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 
 import {
   ElButton,
   ElMessage,
   ElMessageBox,
+  ElOption,
   ElPagination,
+  ElSelect,
   ElTable,
   ElTableColumn,
   ElTag,
@@ -22,6 +24,7 @@ const loading = ref(false);
 const confirmingIds = ref(new Set<number>());
 const flows = ref<ApprovalFlow[]>([]);
 const total = ref(0);
+const pageSizeOptions = ref(createPageSizeOptions(20));
 
 const query = reactive({
   page: 1,
@@ -48,6 +51,11 @@ async function loadData() {
 function updatePage() {
   const start = (query.page - 1) * query.pageSize;
   flows.value = allFlowsCache.value.slice(start, start + query.pageSize);
+}
+
+function onPageSizeChange() {
+  query.page = 1;
+  updatePage();
 }
 
 async function confirmReturn(row: ApprovalFlow) {
@@ -91,6 +99,7 @@ function bizText(type: string) {
 
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
   await loadData();
 });
 </script>
@@ -108,15 +117,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div v-if="flows.length === 0" class="table-panel" style="padding: 60px 20px; text-align: center;">
-        <div class="empty-text" style="font-size: 16px;">暂无待确认的资产</div>
-      </div>
-
-      <div v-else class="table-panel-with-toolbar">
-        <div class="table-toolbar">
-          <span class="table-total">共 {{ total }} 件资产</span>
-        </div>
-
+      <div class="table-panel-with-toolbar">
         <ElTable v-loading="loading" :data="flows" border height="100%">
           <ElTableColumn label="流程编号" min-width="160" prop="flowNo" />
           <ElTableColumn class-name="hide-on-mobile" label="资产编号" min-width="140" prop="assetNo" />
@@ -150,13 +151,26 @@ onMounted(async () => {
           </ElTableColumn>
         </ElTable>
 
-        <div v-if="total > query.pageSize" class="table-pagination">
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ total }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
           <ElPagination
             v-model:current-page="query.page"
             :page-size="query.pageSize"
             :total="total"
             background
-            layout="prev, pager, next, jumper"
+            layout="prev, pager, next"
             @current-change="updatePage"
           />
         </div>
