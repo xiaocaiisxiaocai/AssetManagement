@@ -4,7 +4,6 @@ import type { AuditCleanupPreview, AuditLogQuery, AuditLogRow } from '#/api/repo
 import { onMounted, reactive, ref } from 'vue';
 
 import {
-  backupDatabaseApi,
   cleanupAuditLogsApi,
   exportAuditLogsApi,
   getAuditCleanupPreviewApi,
@@ -35,7 +34,6 @@ defineOptions({ name: 'AdminAudit' });
 type TagType = 'danger' | 'info' | 'success' | 'warning';
 
 const loading = ref(false);
-const backupLoading = ref(false);
 const cleanupLoading = ref(false);
 const cleanupPreviewLoading = ref(false);
 const cleanupDialogVisible = ref(false);
@@ -138,16 +136,6 @@ async function confirmCleanup() {
   }
 }
 
-async function backupDatabase() {
-  backupLoading.value = true;
-  try {
-    const result = await backupDatabaseApi();
-    ElMessage.success(`备份完成：${result.filePath}`);
-  } finally {
-    backupLoading.value = false;
-  }
-}
-
 function actionTypeLabel(type: string): string {
   const map: Record<string, string> = { POST: '新增', PUT: '修改', DELETE: '删除', remind: '催办' };
   return map[type] ?? type;
@@ -188,7 +176,6 @@ onMounted(loadData);
           <p class="page-subtitle">系统操作记录查询与追踪</p>
         </div>
         <div class="header-actions">
-          <ElButton :loading="backupLoading" @click="backupDatabase">备份</ElButton>
           <ElButton type="warning" @click="openCleanupDialog">清理日志</ElButton>
           <ElButton type="primary" @click="exportReport">导出</ElButton>
         </div>

@@ -127,7 +127,8 @@ const moduleOrder = [
 
 const menuPermissionModules: Record<string, string[]> = {
   Admin: ['admin', 'audit', 'backup', 'department', 'role', 'setting', 'user', 'workflow'],
-  AdminAudit: ['audit', 'backup'],
+  AdminAudit: ['audit'],
+  AdminBackups: ['backup'],
   AdminDepartments: ['department'],
   AdminRoles: ['role'],
   AdminSettings: ['setting'],

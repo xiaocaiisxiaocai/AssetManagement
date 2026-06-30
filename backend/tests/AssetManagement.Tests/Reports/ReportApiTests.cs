@@ -12,6 +12,7 @@ using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Reports;
@@ -148,6 +149,35 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         db.AuditLogs.Any(x => x.Summary == "new-3").Should().BeTrue();
         db.AuditLogs.Any(x => x.Summary == "old-10" || x.Summary == "old-20").Should().BeFalse();
         db.AuditLogs.Any(x => x.ActionType == "cleanup" && x.TargetType == "AuditLog").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Database_backups_lists_existing_backup_files()
+    {
+        await Login();
+        var backupDir = Path.Combine(Path.GetTempPath(), "assetmgmt-backup-test", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(backupDir);
+        var olderFile = Path.Combine(backupDir, "assetmgmt_20260629_020000.sql");
+        var newerFile = Path.Combine(backupDir, "assetmgmt_20260630_020000.sql");
+        await File.WriteAllTextAsync(olderFile, "old");
+        await File.WriteAllTextAsync(newerFile, "newer");
+        File.SetLastWriteTime(olderFile, new DateTime(2026, 6, 29, 2, 0, 0));
+        File.SetLastWriteTime(newerFile, new DateTime(2026, 6, 30, 2, 0, 0));
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.SystemSettings
+            .Where(x => x.Key == "database_backup_path")
+            .ExecuteUpdateAsync(x => x.SetProperty(setting => setting.Value, backupDir));
+
+        var result = await _client.GetFromJsonAsync<ApiResult<List<DatabaseBackupFileDto>>>("/api/database-backups");
+
+        result!.Data!.Should().HaveCount(2);
+        result.Data.Select(x => x.FileName).Should().Equal(
+            "assetmgmt_20260630_020000.sql",
+            "assetmgmt_20260629_020000.sql");
+        result.Data[0].SizeBytes.Should().Be(5);
+        result.Data[0].FilePath.Should().Be(newerFile);
     }
 
     private async Task<CategoryNodeDto> CreateCategory()

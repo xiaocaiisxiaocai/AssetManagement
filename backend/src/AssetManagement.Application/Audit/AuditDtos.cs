@@ -48,6 +48,14 @@ public record DatabaseBackupResultDto
     public long SizeBytes { get; init; }
 }
 
+public record DatabaseBackupFileDto
+{
+    public string FileName { get; init; } = "";
+    public string FilePath { get; init; } = "";
+    public DateTime CreatedAt { get; init; }
+    public long SizeBytes { get; init; }
+}
+
 public interface IAuditQueryService
 {
     Task<PagedResult<AuditLogDto>> QueryAsync(AuditLogQuery query);
@@ -63,4 +71,5 @@ public interface IAuditMaintenanceService
 public interface IDatabaseBackupService
 {
     Task<DatabaseBackupResultDto> BackupAsync(CancellationToken cancellationToken = default);
+    Task<List<DatabaseBackupFileDto>> ListAsync(CancellationToken cancellationToken = default);
 }

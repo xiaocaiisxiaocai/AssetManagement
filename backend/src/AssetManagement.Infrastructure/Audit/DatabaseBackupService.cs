@@ -86,6 +86,29 @@ public class DatabaseBackupService : IDatabaseBackupService
         };
     }
 
+    public async Task<List<DatabaseBackupFileDto>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        var settings = await LoadSettingsAsync();
+        var backupPath = ResolveBackupPath(settings);
+        if (!Directory.Exists(backupPath))
+        {
+            return new List<DatabaseBackupFileDto>();
+        }
+
+        return Directory
+            .EnumerateFiles(backupPath, "assetmgmt_*.sql")
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.LastWriteTime)
+            .Select(file => new DatabaseBackupFileDto
+            {
+                FileName = file.Name,
+                FilePath = file.FullName,
+                CreatedAt = file.LastWriteTime,
+                SizeBytes = file.Length
+            })
+            .ToList();
+    }
+
     private string BuildArguments(MySqlConnectionStringBuilder builder, string filePath)
     {
         var host = builder.Server;
@@ -100,6 +123,17 @@ public class DatabaseBackupService : IDatabaseBackupService
         => await _db.SystemSettings.AsNoTracking()
             .Where(x => x.Key.StartsWith("database_backup_"))
             .ToDictionaryAsync(x => x.Key, x => x.Value);
+
+    private string ResolveBackupPath(Dictionary<string, string> settings)
+    {
+        var backupPath = settings.GetValueOrDefault("database_backup_path")
+            ?? _configuration["DatabaseBackup:Path"];
+        if (string.IsNullOrWhiteSpace(backupPath))
+        {
+            backupPath = Path.Combine(AppContext.BaseDirectory, "Backups");
+        }
+        return backupPath;
+    }
 
     private void CleanupOldBackups(string backupPath, Dictionary<string, string> settings)
     {

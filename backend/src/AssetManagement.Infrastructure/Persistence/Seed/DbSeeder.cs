@@ -54,6 +54,7 @@ public static class DbSeeder
             new Menu { Id = 14, ParentId = 10, Name = "AdminAudit", Title = "审计日志", Path = "/admin/audit", Component = "/admin/audit/index", Sort = 44, PermissionCode = "audit:view" },
             new Menu { Id = 20, ParentId = 10, Name = "AdminDepartments", Title = "组织架构", Path = "/admin/departments", Component = "/admin/departments/index", Sort = 45, PermissionCode = "department:view" },
             new Menu { Id = 21, ParentId = 10, Name = "AdminSettings", Title = "系统参数", Path = "/admin/settings", Component = "/admin/settings/index", Sort = 46, PermissionCode = "setting:view" },
+            new Menu { Id = 26, ParentId = 10, Name = "AdminBackups", Title = "数据库备份", Path = "/admin/backups", Component = "/admin/backups/index", Sort = 47, PermissionCode = "backup:manage" },
             new Menu { Id = 15, ParentId = 2, Name = "AssetCreateButton", Title = "新增资产按钮", Type = "button", Sort = 1, PermissionCode = "asset:create" },
             new Menu { Id = 16, ParentId = 2, Name = "AssetEditButton", Title = "编辑资产按钮", Type = "button", Sort = 2, PermissionCode = "asset:edit" },
             new Menu { Id = 17, ParentId = 2, Name = "AssetDeleteButton", Title = "删除资产按钮", Type = "button", Sort = 3, PermissionCode = "asset:delete" }
@@ -305,6 +306,9 @@ public static class DbSeeder
             db.RoleMenus.Add(new RoleMenu { RoleId = reportAdminRole.Id, MenuId = reportOverdueMenu.Id });
         }
 
+        var adminMenu = EnsureRootMenu(db, "Admin", "系统管理", "/admin", "BasicLayout", "lucide:settings", 40);
+        EnsureChildMenu(db, adminMenu, "AdminBackups", "数据库备份", "/admin/backups", "/admin/backups/index", 47, "backup:manage");
+
         var existingHome = db.Menus.SingleOrDefault(x => x.Name == "Home");
         if (existingHome is null)
         {
@@ -383,6 +387,7 @@ public static class DbSeeder
             ["AdminRoles"] = "role:view",
             ["AdminWorkflows"] = "workflow:view",
             ["AdminAudit"] = "audit:view",
+            ["AdminBackups"] = "backup:manage",
             ["AdminDepartments"] = "department:view",
             ["AdminSettings"] = "setting:view",
             ["AssetCreateButton"] = "asset:create",
@@ -395,6 +400,84 @@ public static class DbSeeder
         foreach (var menu in db.Menus.Where(x => menuPermissions.Keys.Contains(x.Name)).ToList())
         {
             menu.PermissionCode = menuPermissions[menu.Name];
+        }
+    }
+
+    private static Menu EnsureRootMenu(AppDbContext db, string name, string title, string path, string component, string icon, int sort)
+    {
+        var menu = db.Menus.SingleOrDefault(x => x.Name == name);
+        if (menu is null)
+        {
+            menu = new Menu
+            {
+                Name = name,
+                Title = title,
+                Path = path,
+                Component = component,
+                Icon = icon,
+                Sort = sort
+            };
+            db.Menus.Add(menu);
+            db.SaveChanges();
+            EnsureAdminMenu(db, menu);
+            return menu;
+        }
+
+        menu.Title = title;
+        menu.Path = path;
+        menu.Component = component;
+        menu.Icon = icon;
+        menu.Sort = sort;
+        menu.ParentId = null;
+        EnsureAdminMenu(db, menu);
+        return menu;
+    }
+
+    private static Menu EnsureChildMenu(
+        AppDbContext db,
+        Menu parent,
+        string name,
+        string title,
+        string path,
+        string component,
+        int sort,
+        string permissionCode)
+    {
+        var menu = db.Menus.SingleOrDefault(x => x.Name == name);
+        if (menu is null)
+        {
+            menu = new Menu
+            {
+                ParentId = parent.Id,
+                Name = name,
+                Title = title,
+                Path = path,
+                Component = component,
+                Sort = sort,
+                PermissionCode = permissionCode
+            };
+            db.Menus.Add(menu);
+            db.SaveChanges();
+            EnsureAdminMenu(db, menu);
+            return menu;
+        }
+
+        menu.ParentId = parent.Id;
+        menu.Title = title;
+        menu.Path = path;
+        menu.Component = component;
+        menu.Sort = sort;
+        menu.PermissionCode = permissionCode;
+        EnsureAdminMenu(db, menu);
+        return menu;
+    }
+
+    private static void EnsureAdminMenu(AppDbContext db, Menu menu)
+    {
+        var admin = db.Roles.SingleOrDefault(x => x.Code == "admin");
+        if (admin is not null && !db.RoleMenus.Any(x => x.RoleId == admin.Id && x.MenuId == menu.Id))
+        {
+            db.RoleMenus.Add(new RoleMenu { RoleId = admin.Id, MenuId = menu.Id });
         }
     }
 

@@ -119,6 +119,13 @@ export interface DatabaseBackupResult {
   sizeBytes: number;
 }
 
+export interface DatabaseBackupFile {
+  createdAt: string;
+  fileName: string;
+  filePath: string;
+  sizeBytes: number;
+}
+
 async function unwrap<T>(request: Promise<ApiResult<T>>) {
   const result = await request;
   return result.data;
@@ -181,4 +188,7 @@ export const cleanupAuditLogsApi = (retentionDays: number) =>
   );
 
 export const backupDatabaseApi = () =>
-  unwrap(requestClient.post<ApiResult<DatabaseBackupResult>>('/audit-logs/database-backup', {}));
+  unwrap(requestClient.post<ApiResult<DatabaseBackupResult>>('/database-backups', {}));
+
+export const getDatabaseBackupsApi = () =>
+  unwrap(requestClient.get<ApiResult<DatabaseBackupFile[]>>('/database-backups'));
