@@ -2,13 +2,15 @@
 import type { AssetSummary } from '#/api/report';
 
 import { onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { exportAssetSummaryApi, getAssetSummaryApi } from '#/api/report';
 
-import { ElButton, ElTable, ElTableColumn, ElTag } from 'element-plus';
+import { ElButton, ElTable, ElTableColumn } from 'element-plus';
 
 defineOptions({ name: 'ReportSummary' });
 
+const router = useRouter();
 const loading = ref(false);
 const summary = ref<AssetSummary>({
   available: 0,
@@ -41,6 +43,14 @@ function downloadBlob(blob: Blob, filename: string) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function goCategoryAssets(categoryCode: string) {
+  if (!categoryCode) return;
+  router.push({
+    path: '/asset/list',
+    query: { categoryCode },
+  });
 }
 
 onMounted(loadData);
@@ -81,7 +91,9 @@ onMounted(loadData);
           <ElTable v-loading="loading" :data="summary.byCategory" border height="100%">
             <ElTableColumn label="分类" min-width="180">
               <template #default="{ row }">
-                <ElTag size="small">{{ row.categoryCode }}</ElTag>
+                <button class="category-code-link" type="button" @click="goCategoryAssets(row.categoryCode)">
+                  {{ row.categoryCode }}
+                </button>
               </template>
             </ElTableColumn>
             <ElTableColumn label="总数" prop="total" width="100" align="center" />

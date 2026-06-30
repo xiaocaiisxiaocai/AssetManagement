@@ -3,7 +3,8 @@ import type { AssetDetail, AssetItem, AssetQuery, AssetStatus } from '#/api/asse
 import type { CategoryNode, DepartmentNode, LocationNode } from '#/api/base-data';
 import type { UserDto } from '#/api/user';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useDebounceFn } from '@vueuse/core';
 
 import { useAccess } from '@vben/access';
@@ -47,6 +48,7 @@ import AssetTransferDialog from './components/AssetTransferDialog.vue';
 defineOptions({ name: 'AssetList' });
 
 const { hasAccessByCodes } = useAccess();
+const route = useRoute();
 
 type FlatOption = {
   code?: string;
@@ -175,6 +177,24 @@ async function loadData() {
 async function loadHierarchyAssets() {
   const result = await getAssetListApi({ page: 1, pageSize: 1000 });
   allAssets.value = result.items;
+}
+
+async function applyCategoryCodeFromRoute() {
+  const rawCode = route.query.categoryCode;
+  const categoryCode = Array.isArray(rawCode) ? rawCode[0] : rawCode;
+  if (!categoryCode) return false;
+
+  const path = findCategoryPathByCode(categories.value, categoryCode);
+  if (!path.length) return false;
+
+  categoryPath.value = path;
+  selectedCategoryId.value = path[path.length - 1] ?? null;
+  query.categoryId = selectedCategoryId.value ?? undefined;
+  query.page = 1;
+  hierarchyKeyword.value = '';
+  categoryPage.value = 1;
+  await loadData();
+  return true;
 }
 
 function buildQuery(): AssetQuery {
@@ -320,6 +340,24 @@ function getHierarchyContext() {
   return { nodes, parent, trail };
 }
 
+function findCategoryPathByCode(
+  nodes: CategoryNode[],
+  code: string,
+  trail: number[] = [],
+): number[] {
+  for (const node of nodes) {
+    const nextTrail = [...trail, node.id];
+    if (node.code === code) {
+      return nextTrail;
+    }
+    const childTrail = findCategoryPathByCode(node.children, code, nextTrail);
+    if (childTrail.length) {
+      return childTrail;
+    }
+  }
+  return [];
+}
+
 function collectCategoryIds(node: CategoryNode): number[] {
   return [node.id, ...node.children.flatMap((child) => collectCategoryIds(child))];
 }
@@ -441,8 +479,21 @@ function openTransferDialog(row: AssetItem) {
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
   pageSizeOptions.value = createPageSizeOptions(query.pageSize);
-  await Promise.all([loadDictionaries(), loadData(), loadHierarchyAssets()]);
+  await loadDictionaries();
+  const routed = await applyCategoryCodeFromRoute();
+  await Promise.all([
+    routed ? Promise.resolve() : loadData(),
+    loadHierarchyAssets(),
+  ]);
 });
+
+watch(
+  () => route.query.categoryCode,
+  async (categoryCode, oldCategoryCode) => {
+    if (categoryCode === oldCategoryCode || categories.value.length === 0) return;
+    await applyCategoryCodeFromRoute();
+  },
+);
 </script>
 
 <template>

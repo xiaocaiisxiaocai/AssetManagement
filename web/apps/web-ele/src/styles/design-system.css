@@ -230,6 +230,31 @@
   color: var(--asset-page-muted);
 }
 
+.category-code-link {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 8px;
+  overflow: hidden;
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: 4px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-code-link:hover,
+.category-code-link:focus-visible {
+  border-color: var(--el-color-primary);
+  background: var(--asset-page-surface-soft);
+  outline: none;
+}
+
 /* ========== 对话框优化 ========== */
 .el-dialog {
   border-radius: 12px;

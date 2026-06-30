@@ -2,6 +2,7 @@
 import type { OverdueReportRow } from '#/api/report';
 
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import {
   exportOverdueReportApi,
@@ -24,6 +25,7 @@ import {
 
 defineOptions({ name: 'ReportOverdue' });
 
+const router = useRouter();
 const loading = ref(false);
 const remindingId = ref<number | null>(null);
 const rows = ref<OverdueReportRow[]>([]);
@@ -90,6 +92,14 @@ function onPageSizeChange() {
   selectedRows.value = [];
 }
 
+function goCategoryAssets(categoryCode: string) {
+  if (!categoryCode) return;
+  router.push({
+    path: '/asset/list',
+    query: { categoryCode },
+  });
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -154,7 +164,14 @@ onMounted(async () => {
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="分类" min-width="170">
             <template #default="{ row }">
-              <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
+              <button
+                v-if="row.categoryCode"
+                class="category-code-link"
+                type="button"
+                @click="goCategoryAssets(row.categoryCode)"
+              >
+                {{ row.categoryCode }}
+              </button>
               <span v-else class="empty-text">-</span>
             </template>
           </ElTableColumn>

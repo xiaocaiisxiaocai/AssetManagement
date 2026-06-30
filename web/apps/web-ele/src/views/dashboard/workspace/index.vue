@@ -106,6 +106,14 @@ function go(path: string) {
   router.push(path);
 }
 
+function goCategoryAssets(categoryCode: string) {
+  if (!categoryCode) return;
+  router.push({
+    path: '/asset/list',
+    query: { categoryCode },
+  });
+}
+
 onMounted(loadData);
 </script>
 
@@ -157,7 +165,9 @@ onMounted(loadData);
           <ElTable :data="categoryTopRows" class="workspace-table" border style="margin-top: 16px;">
             <ElTableColumn label="分类" min-width="180">
               <template #default="{ row }">
-                <ElTag size="small">{{ row.categoryCode }}</ElTag>
+                <button class="category-code-link" type="button" @click="goCategoryAssets(row.categoryCode)">
+                  {{ row.categoryCode }}
+                </button>
               </template>
             </ElTableColumn>
             <ElTableColumn label="总数" prop="total" width="90" align="center" />

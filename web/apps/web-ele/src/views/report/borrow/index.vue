@@ -2,6 +2,7 @@
 import type { BorrowReportQuery, BorrowReportRow } from '#/api/report';
 
 import { onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { exportBorrowReportApi, getBorrowReportApi } from '#/api/report';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
@@ -22,6 +23,7 @@ import {
 
 defineOptions({ name: 'ReportBorrow' });
 
+const router = useRouter();
 const loading = ref(false);
 const rows = ref<BorrowReportRow[]>([]);
 const total = ref(0);
@@ -85,6 +87,14 @@ function statusText(status: string) {
 
 function statusType(status: string) {
   return status === 'returned' ? 'success' : 'warning';
+}
+
+function goCategoryAssets(categoryCode: string) {
+  if (!categoryCode) return;
+  router.push({
+    path: '/asset/list',
+    query: { categoryCode },
+  });
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -166,7 +176,14 @@ onMounted(async () => {
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="分类" min-width="170">
             <template #default="{ row }">
-              <ElTag v-if="row.categoryCode" size="small">{{ row.categoryCode }}</ElTag>
+              <button
+                v-if="row.categoryCode"
+                class="category-code-link"
+                type="button"
+                @click="goCategoryAssets(row.categoryCode)"
+              >
+                {{ row.categoryCode }}
+              </button>
               <span v-else class="empty-text">-</span>
             </template>
           </ElTableColumn>
