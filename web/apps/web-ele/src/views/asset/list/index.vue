@@ -134,18 +134,6 @@ const pagedHierarchyNodes = computed(() => {
   const start = (categoryPage.value - 1) * categoryPageSize.value;
   return filteredHierarchyNodes.value.slice(start, start + categoryPageSize.value);
 });
-const selectedCategoryAssetCount = computed(() =>
-  hierarchyParent.value ? countCategoryAssets(hierarchyParent.value) : 0,
-);
-const assetSummaryText = computed(() => {
-  if (query.deleteStatus === 'deleted') {
-    return `仅显示已删除资产，检索结果 ${total.value} 条`;
-  }
-  if (query.deleteStatus === 'active') {
-    return `仅显示未删除资产，检索结果 ${total.value} 条`;
-  }
-  return `当前分类共 ${selectedCategoryAssetCount.value} 件未删除资产，检索结果 ${total.value} 条(含已删除)`;
-});
 const canPurgeAsset = computed(() => hasAccessByCodes(['asset:purge']));
 const canRestoreAsset = computed(() => hasAccessByCodes(['asset:restore']));
 async function loadDictionaries() {
@@ -674,13 +662,6 @@ watch(
           </div>
 
           <div class="asset-table-panel">
-            <div class="asset-table-summary">
-              <div>
-                <div class="text-sm text-muted-foreground">
-                  {{ assetSummaryText }}
-                </div>
-              </div>
-            </div>
             <ElTable
               v-loading="loading"
               :data="assets"
@@ -1171,15 +1152,6 @@ watch(
   border-radius: 12px;
   background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
-}
-
-.asset-table-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--asset-page-border);
-  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
 }
 
 .asset-table-panel :deep(.el-table) {
