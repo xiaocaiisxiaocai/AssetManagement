@@ -77,7 +77,7 @@ const allAssets = ref<AssetItem[]>([]);
 const total = ref(0);
 const categoryPath = ref<number[]>([]);
 const categoryPage = ref(1);
-const categoryPageSize = ref(100);
+const categoryPageSize = ref(20);
 const hierarchyKeyword = ref('');
 const categories = ref<CategoryNode[]>([]);
 const departments = ref<DepartmentNode[]>([]);
@@ -478,6 +478,7 @@ function openTransferDialog(row: AssetItem) {
 
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
+  categoryPageSize.value = query.pageSize;
   pageSizeOptions.value = createPageSizeOptions(query.pageSize);
   await loadDictionaries();
   const routed = await applyCategoryCodeFromRoute();
@@ -616,10 +617,12 @@ watch(
               <span class="asset-pager-divider">|</span>
               <span>每页</span>
               <ElSelect v-model="categoryPageSize" style="width: 92px" @change="categoryPage = 1">
-                <ElOption :value="10" label="10" />
-                <ElOption :value="20" label="20" />
-                <ElOption :value="50" label="50" />
-                <ElOption :value="100" label="100" />
+                <ElOption
+                  v-for="size in pageSizeOptions"
+                  :key="size"
+                  :label="`${size}`"
+                  :value="size"
+                />
               </ElSelect>
             </div>
             <ElPagination
@@ -901,6 +904,9 @@ watch(
   display: grid;
   grid-template-columns: repeat(auto-fill, 320px);
   gap: 20px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 12px 0 20px;
 }
 
@@ -1035,6 +1041,9 @@ watch(
 .asset-class-list {
   display: grid;
   gap: 16px;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
   overflow-y: auto;
 }
 
