@@ -200,6 +200,7 @@ onMounted(loadData);
           row-key="id"
           border
           default-expand-all
+          height="100%"
         >
           <ElTableColumn label="编码段" min-width="140" prop="codeSeg" />
           <ElTableColumn label="完整编码" min-width="200">

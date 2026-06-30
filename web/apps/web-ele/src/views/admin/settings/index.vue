@@ -117,7 +117,7 @@ onMounted(loadData);
       </div>
 
       <div class="table-panel">
-        <ElTable v-loading="loading" :data="settings" border>
+        <ElTable v-loading="loading" :data="settings" border height="100%">
           <ElTableColumn label="参数键" min-width="200" prop="key" />
           <ElTableColumn label="参数值" min-width="180" prop="value" />
           <ElTableColumn class-name="hide-on-mobile" label="说明" min-width="260" prop="description" />

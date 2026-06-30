@@ -109,6 +109,7 @@ onMounted(loadData);
           v-loading="loading"
           :data="rows"
           border
+          height="100%"
           row-key="assetId"
           @selection-change="onSelectionChange"
         >

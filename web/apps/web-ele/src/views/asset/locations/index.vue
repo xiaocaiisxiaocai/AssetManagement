@@ -107,6 +107,7 @@ onMounted(loadData);
           :data="locations"
           row-key="id"
           border
+          height="100%"
         >
           <ElTableColumn label="位置名称" min-width="240" prop="name" />
           <ElTableColumn fixed="right" label="操作" width="200" align="center">

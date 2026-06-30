@@ -241,7 +241,7 @@ onMounted(() => {
       </div>
 
       <div class="pending-table-panel">
-        <ElTable :data="flows" v-loading="loading" border>
+        <ElTable :data="flows" v-loading="loading" border height="100%">
           <ElTableColumn prop="flowNo" label="流程单号" width="180" />
           <ElTableColumn prop="bizType" label="业务类型" width="120" align="center">
             <template #default="{ row }">
@@ -401,12 +401,12 @@ onMounted(() => {
   flex-direction: column;
   gap: 20px;
   padding: 20px;
-  min-height: calc(100vh - 112px);
 }
 
 /* ========== 页面头部 ========== */
 .pending-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
@@ -435,6 +435,9 @@ onMounted(() => {
 /* ========== 表格面板 ========== */
 .pending-table-panel {
   flex: 1;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
@@ -443,6 +446,8 @@ onMounted(() => {
 }
 
 .pending-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
   font-size: 14px;
   line-height: 20px;
 }

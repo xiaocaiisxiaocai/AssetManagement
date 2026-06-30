@@ -512,7 +512,7 @@ onMounted(async () => {
           </ElSelect>
         </div>
 
-        <ElTable v-loading="loading" :data="roles" border>
+        <ElTable v-loading="loading" :data="roles" border height="100%">
           <ElTableColumn label="角色编码" min-width="130" prop="code" />
           <ElTableColumn label="角色名称" min-width="160" prop="name" />
           <ElTableColumn label="权限数" width="100" align="center">
@@ -670,12 +670,12 @@ onMounted(async () => {
   flex-direction: column;
   gap: 20px;
   padding: 20px;
-  min-height: calc(100vh - 112px);
 }
 
 /* ========== 页面头部 ========== */
 .role-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
@@ -703,6 +703,7 @@ onMounted(async () => {
 
 /* ========== 筛选面板 ========== */
 .role-filter-panel {
+  flex-shrink: 0;
   padding: 16px 20px;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
@@ -728,6 +729,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
@@ -737,6 +739,7 @@ onMounted(async () => {
 
 .role-table-toolbar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
 }
@@ -748,6 +751,8 @@ onMounted(async () => {
 }
 
 .role-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
   font-size: 14px;
   line-height: 20px;
 }
@@ -779,6 +784,7 @@ onMounted(async () => {
 
 .role-pagination {
   display: flex;
+  flex-shrink: 0;
   justify-content: flex-end;
 }
 

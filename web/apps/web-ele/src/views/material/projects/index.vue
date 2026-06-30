@@ -853,7 +853,7 @@ onMounted(async () => {
 
 <template>
   <re-page>
-    <div class="p-5">
+    <div class="material-projects-page p-5">
       <div class="mb-4 flex flex-wrap items-center gap-3">
         <ElSelect
           v-model="deleteStatus"
@@ -871,13 +871,15 @@ onMounted(async () => {
         <ElButton v-if="canManage" @click="openOptionDialog">配置</ElButton>
       </div>
 
-      <ElTable
-        v-loading="loading"
-        :data="projects"
-        :row-class-name="tableRowClassName"
-        border
-        stripe
-      >
+      <div class="project-table-panel">
+        <ElTable
+          v-loading="loading"
+          :data="projects"
+          :row-class-name="tableRowClassName"
+          border
+          height="100%"
+          stripe
+        >
         <ElTableColumn fixed label="项目名称" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <ElButton link type="primary" @click="openFollowups(row)">
@@ -987,7 +989,8 @@ onMounted(async () => {
             </template>
           </template>
         </ElTableColumn>
-      </ElTable>
+        </ElTable>
+      </div>
 
       <ElDialog
         v-model="dialogVisible"
@@ -1290,6 +1293,7 @@ onMounted(async () => {
                 :row-class-name="materialRowClassName"
                 border
                 class="mt-4"
+                max-height="420"
                 stripe
               >
                 <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
@@ -1399,7 +1403,7 @@ onMounted(async () => {
             <ElTabPane label="流转审批" name="flows">
               <ElTabs v-model="flowActiveTab" @tab-change="onFlowTabChange">
                 <ElTabPane label="待我审批" name="pending">
-                  <ElTable v-loading="pendingFlowLoading" :data="pendingFlows" border stripe>
+                  <ElTable v-loading="pendingFlowLoading" :data="pendingFlows" border max-height="420" stripe>
                     <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
                     <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
                     <ElTableColumn label="料件名称" min-width="140" prop="materialName" show-overflow-tooltip />
@@ -1419,7 +1423,7 @@ onMounted(async () => {
                   </ElTable>
                 </ElTabPane>
                 <ElTabPane label="我的发起" name="mine">
-                  <ElTable v-loading="myFlowLoading" :data="myFlows" border stripe>
+                  <ElTable v-loading="myFlowLoading" :data="myFlows" border max-height="420" stripe>
                     <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
                     <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
                     <ElTableColumn label="料件名称" min-width="140" prop="materialName" show-overflow-tooltip />
@@ -1473,6 +1477,34 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 16px;
+}
+
+.material-projects-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.material-projects-page > .mb-4 {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.project-table-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
+}
+
+.project-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
 }
 
 .option-editor {

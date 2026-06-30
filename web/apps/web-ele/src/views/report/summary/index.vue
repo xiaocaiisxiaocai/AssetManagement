@@ -78,7 +78,7 @@ onMounted(loadData);
       <div class="summary-tables">
         <div class="summary-table-panel">
           <div class="summary-table-title">按分类统计</div>
-          <ElTable v-loading="loading" :data="summary.byCategory" border>
+          <ElTable v-loading="loading" :data="summary.byCategory" border height="100%">
             <ElTableColumn label="分类" min-width="180">
               <template #default="{ row }">
                 <ElTag size="small">{{ row.categoryCode }}</ElTag>
@@ -95,7 +95,7 @@ onMounted(loadData);
 
         <div class="summary-table-panel">
           <div class="summary-table-title">按部门统计</div>
-          <ElTable v-loading="loading" :data="summary.byDept" border>
+          <ElTable v-loading="loading" :data="summary.byDept" border height="100%">
             <ElTableColumn label="部门" min-width="180">
               <template #default="{ row }">
                 <div>{{ row.departmentName }}</div>
@@ -119,9 +119,14 @@ onMounted(loadData);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
+  flex: 1;
+  min-height: 0;
 }
 
 .summary-table-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
@@ -130,6 +135,7 @@ onMounted(loadData);
 }
 
 .summary-table-title {
+  flex-shrink: 0;
   margin-bottom: 16px;
   font-size: 16px;
   font-weight: 600;
@@ -138,6 +144,8 @@ onMounted(loadData);
 }
 
 .summary-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
   font-size: 14px;
   line-height: 20px;
 }

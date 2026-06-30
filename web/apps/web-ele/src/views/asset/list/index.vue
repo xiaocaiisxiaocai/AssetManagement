@@ -632,6 +632,7 @@ onMounted(async () => {
               :data="assets"
               :row-class-name="tableRowClassName"
               border
+              height="100%"
               stripe
             >
               <ElTableColumn label="资产编号" min-width="160" prop="assetNo" sortable />
@@ -779,7 +780,6 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  min-height: calc(100vh - 112px);
 }
 
 .asset-workspace {
@@ -791,13 +791,15 @@ onMounted(async () => {
   flex: 1;
   flex-direction: column;
   gap: 20px;
-  min-height: 560px;
+  min-height: 0;
+  max-height: 100%;
   padding: 20px;
   overflow: hidden;
 }
 
 .asset-workspace-head {
   display: flex;
+  flex-shrink: 0;
   gap: 12px;
   align-items: center;
   justify-content: space-between;
@@ -959,6 +961,7 @@ onMounted(async () => {
 /* ========== 搜索栏 ========== */
 .asset-filter-strip {
   display: flex;
+  flex-shrink: 0;
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
@@ -1119,6 +1122,7 @@ onMounted(async () => {
 
 .asset-table-panel :deep(.el-table) {
   flex: 1;
+  min-height: 0;
 }
 
 .asset-table-panel :deep(.el-table th.el-table__cell) {
@@ -1172,6 +1176,7 @@ onMounted(async () => {
 /* ========== 分页器 ========== */
 .asset-pager {
   display: flex;
+  flex-shrink: 0;
   gap: 12px;
   align-items: center;
   justify-content: space-between;

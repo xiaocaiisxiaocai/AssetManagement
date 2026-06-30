@@ -17,13 +17,30 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  box-sizing: border-box;
+  height: calc(var(--vben-content-height, 100vh) - 32px);
+  min-height: 0;
+  overflow: hidden;
   padding: 20px;
-  min-height: calc(100vh - 112px);
+}
+
+.asset-list-page,
+.backup-page,
+.mine-page,
+.pending-page,
+.role-page,
+.user-page,
+.material-projects-page {
+  box-sizing: border-box;
+  height: calc(var(--vben-content-height, 100vh) - 32px);
+  min-height: 0 !important;
+  overflow: hidden;
 }
 
 /* ========== 页面头部 ========== */
 .page-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
@@ -56,6 +73,7 @@
 
 /* ========== 筛选面板 ========== */
 .filter-panel {
+  flex-shrink: 0;
   padding: 16px 20px;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
@@ -83,6 +101,9 @@
 /* ========== 表格面板 ========== */
 .table-panel {
   flex: 1;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
@@ -95,6 +116,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
@@ -104,6 +126,7 @@
 
 .table-toolbar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
 }
@@ -116,14 +139,17 @@
 
 .table-pagination {
   display: flex;
+  flex-shrink: 0;
   justify-content: flex-end;
 }
 
 /* ========== 表格样式 ========== */
 .table-panel .el-table,
 .table-panel-with-toolbar .el-table {
+  flex: 1;
   font-size: 14px;
   line-height: 20px;
+  min-height: 0;
 }
 
 .table-panel .el-table th.el-table__cell,
@@ -284,8 +310,8 @@
 @media (max-width: 768px) {
   .page-container {
     gap: 12px;
+    height: calc(var(--vben-content-height, 100vh) - 32px);
     padding: 12px;
-    min-height: calc(100vh - 96px);
   }
 
   .page-header,

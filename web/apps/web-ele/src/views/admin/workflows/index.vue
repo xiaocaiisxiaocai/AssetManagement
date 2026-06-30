@@ -185,7 +185,7 @@ onMounted(() => {
       </div>
 
       <div class="table-panel">
-        <ElTable :data="workflows" v-loading="loading" border>
+        <ElTable :data="workflows" v-loading="loading" border height="100%">
           <ElTableColumn class-name="hide-on-mobile" prop="id" label="ID" width="80" align="center" />
           <ElTableColumn prop="name" label="名称" min-width="180" />
           <ElTableColumn prop="bizType" label="业务类型" width="120" align="center">

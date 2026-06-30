@@ -148,7 +148,7 @@ onMounted(loadData);
       </div>
 
       <div class="backup-table-panel">
-        <ElTable v-loading="loading" :data="rows" border>
+        <ElTable v-loading="loading" :data="rows" border height="100%">
           <ElTableColumn label="文件名" min-width="260">
             <template #default="{ row }">
               <div class="file-name-cell">
@@ -185,7 +185,6 @@ onMounted(loadData);
   display: flex;
   flex-direction: column;
   gap: 20px;
-  min-height: calc(100vh - 112px);
   padding: 20px;
 }
 
@@ -201,6 +200,7 @@ onMounted(loadData);
 
 .backup-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
@@ -209,6 +209,7 @@ onMounted(loadData);
 
 .backup-notice {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   padding: 14px 20px;
@@ -255,6 +256,7 @@ onMounted(loadData);
 
 .backup-overview {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: 160px 160px minmax(0, 1fr);
   gap: 12px;
   padding: 16px 20px;
@@ -293,7 +295,15 @@ onMounted(loadData);
 
 .backup-table-panel {
   flex: 1;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   padding: 20px;
+}
+
+.backup-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
 }
 
 .backup-table-panel :deep(.el-table th.el-table__cell) {

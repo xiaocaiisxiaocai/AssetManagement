@@ -228,7 +228,7 @@ onMounted(async () => {
       </div>
 
       <div class="table-panel-with-toolbar">
-        <ElTable v-loading="loading" :data="rows" border>
+        <ElTable v-loading="loading" :data="rows" border height="100%">
           <ElTableColumn label="时间" min-width="170">
             <template #default="{ row }">{{ formatTime(row.occurredAt) }}</template>
           </ElTableColumn>

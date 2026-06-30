@@ -117,7 +117,7 @@ onMounted(loadData);
       </div>
 
       <div class="mine-table-panel">
-        <ElTable v-loading="loading" :data="flows" border>
+        <ElTable v-loading="loading" :data="flows" border height="100%">
           <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
           <ElTableColumn label="类型" width="100" align="center">
             <template #default="{ row }">
@@ -197,12 +197,12 @@ onMounted(loadData);
   flex-direction: column;
   gap: 20px;
   padding: 20px;
-  min-height: calc(100vh - 112px);
 }
 
 /* ========== 页面头部 ========== */
 .mine-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
@@ -236,6 +236,9 @@ onMounted(loadData);
 /* ========== 表格面板 ========== */
 .mine-table-panel {
   flex: 1;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
@@ -244,6 +247,8 @@ onMounted(loadData);
 }
 
 .mine-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
   font-size: 14px;
   line-height: 20px;
 }

@@ -117,7 +117,7 @@ onMounted(async () => {
           <span class="table-total">共 {{ total }} 件资产</span>
         </div>
 
-        <ElTable v-loading="loading" :data="flows" border>
+        <ElTable v-loading="loading" :data="flows" border height="100%">
           <ElTableColumn label="流程编号" min-width="160" prop="flowNo" />
           <ElTableColumn class-name="hide-on-mobile" label="资产编号" min-width="140" prop="assetNo" />
           <ElTableColumn label="资产名称" min-width="200" prop="assetName" />

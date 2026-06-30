@@ -156,7 +156,7 @@ onMounted(async () => {
       </div>
 
       <div class="table-panel-with-toolbar">
-        <ElTable v-loading="loading" :data="rows" border>
+        <ElTable v-loading="loading" :data="rows" border height="100%">
           <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
           <ElTableColumn label="资产" min-width="220">
             <template #default="{ row }">

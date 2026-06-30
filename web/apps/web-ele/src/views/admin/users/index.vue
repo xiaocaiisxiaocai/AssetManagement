@@ -228,7 +228,7 @@ onMounted(async () => {
           </ElSelect>
         </div>
 
-        <ElTable v-loading="loading" :data="users" border>
+        <ElTable v-loading="loading" :data="users" border height="100%">
           <ElTableColumn label="工号" min-width="120" prop="employeeNo" />
           <ElTableColumn label="姓名" min-width="140" prop="name" />
           <ElTableColumn class-name="hide-on-mobile" label="邮箱" min-width="180" prop="email" />
@@ -330,12 +330,12 @@ onMounted(async () => {
   flex-direction: column;
   gap: 20px;
   padding: 20px;
-  min-height: calc(100vh - 112px);
 }
 
 /* ========== 页面头部 ========== */
 .user-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
@@ -363,6 +363,7 @@ onMounted(async () => {
 
 /* ========== 筛选面板 ========== */
 .user-filter-panel {
+  flex-shrink: 0;
   padding: 16px 20px;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
@@ -388,6 +389,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
@@ -397,6 +399,7 @@ onMounted(async () => {
 
 .user-table-toolbar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
 }
@@ -414,6 +417,8 @@ onMounted(async () => {
 }
 
 .user-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
   font-size: 14px;
   line-height: 20px;
 }
@@ -445,6 +450,7 @@ onMounted(async () => {
 
 .user-pagination {
   display: flex;
+  flex-shrink: 0;
   justify-content: flex-end;
 }
 
