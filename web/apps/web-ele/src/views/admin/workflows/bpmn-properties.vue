@@ -13,8 +13,6 @@ import {
   ElInput,
   ElSelect,
   ElOption,
-  ElDivider,
-  ElText,
   ElRadioGroup,
   ElRadioButton,
 } from 'element-plus';
@@ -66,13 +64,14 @@ interface GatewayCondition extends ParsedCondition {
 const assigneeTypes = [
   { label: '所属组织负责人', value: 'supervisor' },
   { label: '部门经理', value: 'deptManager' },
-  { label: '指定用户名', value: 'username' },
-  { label: '多个指定用户', value: 'usernames' },
-  { label: '角色名称', value: 'roleName' },
+  { label: '指定人员', value: 'username' },
+  { label: '多人审批', value: 'usernames' },
+  { label: '按角色审批', value: 'roleName' },
 ];
 const conditionFields = [
   { label: '申请部门', value: 'applicantDept' },
   { label: '申请人角色', value: 'applicantRole' },
+  { label: '是否项目负责人', value: 'isProjectOwner' },
 ];
 const conditionOperators = computed(() => [{ label: '等于', value: '==' }]);
 const conditionValueOptions = computed(() => getConditionValueOptions(conditionField.value));
@@ -225,7 +224,7 @@ function loadElement() {
 }
 
 function parseCondition(expression: string): ParsedCondition {
-  const stringMatch = expression.match(/^\$\{(applicantDept|applicantRole)\}\s*(==|!=)\s*["'](.+)["']$/);
+  const stringMatch = expression.match(/^\$\{(applicantDept|applicantRole|isProjectOwner)\}\s*(==|!=)\s*["'](.+)["']$/);
   if (stringMatch) {
     return {
       expression,
@@ -318,11 +317,32 @@ function getConditionValueOptions(field: string) {
     }));
   }
 
+  if (field === 'isProjectOwner') {
+    return [
+      { label: '是', value: 'true' },
+      { label: '否', value: 'false' },
+    ];
+  }
+
   return departmentOptions.value;
 }
 
 function conditionValuePlaceholder(field: string) {
+  if (field === 'isProjectOwner') return '选择是否项目负责人';
   return field === 'applicantRole' ? '选择申请人角色' : '选择申请部门';
+}
+
+function elementTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    'bpmn:EndEvent': '结束节点',
+    'bpmn:ExclusiveGateway': '条件分支',
+    'bpmn:InclusiveGateway': '包容分支',
+    'bpmn:ParallelGateway': '并行审批',
+    'bpmn:SequenceFlow': '流转线',
+    'bpmn:StartEvent': '发起节点',
+    'bpmn:UserTask': '审批节点',
+  };
+  return map[type] || type || '-';
 }
 
 // 更新元素属性
@@ -425,238 +445,249 @@ onMounted(() => {
 
 <template>
   <div class="bpmn-properties">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">属性配置</div>
+        <div class="panel-subtitle">按业务语言维护流程规则</div>
+      </div>
+    </div>
+
     <div v-if="!element" class="empty-state">
-      <ElText type="info">请选择一个元素查看属性</ElText>
+      <div class="empty-box">
+        <div class="empty-title">未选择元素</div>
+        <div class="empty-desc">点击画布上的节点或连线后，在这里配置名称、审批人和分支条件。</div>
+      </div>
     </div>
 
     <div v-else class="properties-form">
       <ElForm label-width="100px" label-position="top" size="small">
-        <!-- 基础信息 -->
-        <ElDivider content-position="left">基础信息</ElDivider>
+        <section class="property-section">
+          <div class="section-title">基础信息</div>
 
-        <ElFormItem label="元素类型">
-          <ElText>{{ elementType }}</ElText>
-        </ElFormItem>
+          <ElFormItem label="节点类型">
+            <div class="readonly-field">{{ elementTypeLabel(elementType) }}</div>
+          </ElFormItem>
 
-        <ElFormItem label="元素 ID">
-          <ElText>{{ elementId }}</ElText>
-        </ElFormItem>
+          <ElFormItem label="技术标识">
+            <div class="readonly-field code-field">{{ elementId }}</div>
+          </ElFormItem>
 
-        <ElFormItem label="名称">
-          <ElInput v-model="elementName" placeholder="请输入名称" />
-        </ElFormItem>
+          <ElFormItem label="显示名称">
+            <ElInput v-model="elementName" placeholder="请输入节点名称" />
+          </ElFormItem>
+        </section>
 
         <!-- UserTask 属性 -->
         <template v-if="isUserTask">
-          <ElDivider content-position="left">审批人配置</ElDivider>
+          <section class="property-section">
+            <div class="section-title">审批设置</div>
 
-          <ElFormItem label="审批人类型">
-            <ElSelect v-model="assigneeType" placeholder="选择审批人类型" style="width: 100%">
-              <ElOption
-                v-for="item in assigneeTypes"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </ElSelect>
-          </ElFormItem>
+            <ElFormItem label="审批人来源">
+              <ElSelect v-model="assigneeType" placeholder="选择审批人来源" style="width: 100%">
+                <ElOption
+                  v-for="item in assigneeTypes"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </ElSelect>
+            </ElFormItem>
 
-          <ElFormItem
-            v-if="assigneeType === 'username' || assigneeType === 'usernames' || assigneeType === 'roleName'"
-            :label="assigneeType === 'roleName' ? '角色名称' : '用户名'"
-          >
-            <ElSelect
-              v-model="assigneeValue"
-              allow-create
-              clearable
-              filterable
-              :multiple="assigneeType === 'usernames'"
-              collapse-tags
-              collapse-tags-tooltip
-              :placeholder="assigneeValuePlaceholder"
-              style="width: 100%"
+            <ElFormItem
+              v-if="assigneeType === 'username' || assigneeType === 'usernames' || assigneeType === 'roleName'"
+              :label="assigneeType === 'roleName' ? '审批角色' : '审批人员'"
             >
-              <ElOption
-                v-for="item in assigneeValueOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </ElSelect>
-          </ElFormItem>
+              <ElSelect
+                v-model="assigneeValue"
+                allow-create
+                clearable
+                filterable
+                :multiple="assigneeType === 'usernames'"
+                collapse-tags
+                collapse-tags-tooltip
+                :placeholder="assigneeValuePlaceholder"
+                style="width: 100%"
+              >
+                <ElOption
+                  v-for="item in assigneeValueOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </ElSelect>
+            </ElFormItem>
 
-          <ElFormItem label="签核方式">
-            <ElRadioGroup v-model="approvalMode" size="small">
-              <ElRadioButton value="any">任一人通过</ElRadioButton>
-              <ElRadioButton :disabled="assigneeType !== 'usernames'" value="all">
-                全部人通过
-              </ElRadioButton>
-            </ElRadioGroup>
-          </ElFormItem>
+            <ElFormItem label="通过规则">
+              <ElRadioGroup v-model="approvalMode" size="small">
+                <ElRadioButton value="any">任一人通过</ElRadioButton>
+                <ElRadioButton :disabled="assigneeType !== 'usernames'" value="all">
+                  全部人通过
+                </ElRadioButton>
+              </ElRadioGroup>
+            </ElFormItem>
 
-          <ElFormItem label="说明">
-            <ElText type="info" size="small">
-              <div v-if="assigneeType === 'supervisor'">所属组织负责人：优先解析申请人所属组织节点负责人，未配置时兼容历史直属上级</div>
-              <div v-else-if="assigneeType === 'deptManager'">部门经理：自动解析为申请人所在部门的管理员</div>
-              <div v-else-if="assigneeType === 'username'">指定用户：填写用户姓名</div>
-              <div v-else-if="assigneeType === 'usernames'">多个指定用户：可选择多人；“全部人通过”即会签</div>
-              <div v-else-if="assigneeType === 'roleName'">角色：填写角色名称（如 系统管理员、仓库管理员）</div>
-              <div v-else>请选择审批人类型</div>
-            </ElText>
-          </ElFormItem>
+            <div class="tip-box">
+              <div v-if="assigneeType === 'supervisor'">自动解析申请人所属组织节点负责人，未配置时兼容历史直属上级。</div>
+              <div v-else-if="assigneeType === 'deptManager'">自动解析申请人所在部门的管理员。</div>
+              <div v-else-if="assigneeType === 'username'">指定一名固定审批人。</div>
+              <div v-else-if="assigneeType === 'usernames'">可选择多人；“全部人通过”表示会签。</div>
+              <div v-else-if="assigneeType === 'roleName'">按角色名称匹配审批人。</div>
+              <div v-else>请选择审批人来源。</div>
+            </div>
+          </section>
         </template>
 
         <!-- SequenceFlow 属性 -->
         <template v-if="isSequenceFlow">
-          <ElDivider content-position="left">条件表达式</ElDivider>
+          <section class="property-section">
+            <div class="section-title">流转条件</div>
 
-          <ElFormItem label="条件">
-            <div class="condition-builder">
-              <ElSelect v-model="conditionField" style="width: 100px">
-                <ElOption
-                  v-for="item in conditionFields"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </ElSelect>
-              <ElSelect v-model="conditionOperator" style="width: 96px">
-                <ElOption
-                  v-for="item in conditionOperators"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </ElSelect>
-              <ElSelect
-                v-model="conditionValue"
-                clearable
-                filterable
-                :placeholder="conditionValuePlaceholder(conditionField)"
-                style="width: 100%"
-              >
-                <ElOption
-                  v-for="item in conditionValueOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </ElSelect>
+            <ElFormItem label="条件">
+              <div class="condition-builder">
+                <ElSelect v-model="conditionField" style="width: 132px">
+                  <ElOption
+                    v-for="item in conditionFields"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </ElSelect>
+                <ElSelect v-model="conditionOperator" style="width: 82px">
+                  <ElOption
+                    v-for="item in conditionOperators"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </ElSelect>
+                <ElSelect
+                  v-model="conditionValue"
+                  clearable
+                  filterable
+                  :placeholder="conditionValuePlaceholder(conditionField)"
+                  style="width: 100%"
+                >
+                  <ElOption
+                    v-for="item in conditionValueOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </ElSelect>
+              </div>
+              <ElInput
+                v-model="conditionExpression"
+                class="expression-input"
+                type="textarea"
+                :rows="3"
+                placeholder='如: ${applicantDept} == "信息部"'
+              />
+            </ElFormItem>
+
+            <div class="tip-box">
+              条件为空时表示默认流向；支持申请部门、申请人角色、是否项目负责人。
             </div>
-            <ElInput
-              v-model="conditionExpression"
-              type="textarea"
-              :rows="3"
-              placeholder='如: ${applicantDept} == "信息部"'
-              style="margin-top: 8px"
-            />
-          </ElFormItem>
-
-          <ElFormItem label="说明">
-            <ElText type="info" size="small">
-              <div>支持表达式：</div>
-              <div>• ${`${applicantDept}`} == "信息部" - 申请部门判断</div>
-              <div>• ${`${applicantRole}`} == "supervisor" - 申请人角色判断</div>
-              <div>• 留空表示默认流向</div>
-            </ElText>
-          </ElFormItem>
+          </section>
         </template>
 
         <!-- Gateway 属性 -->
         <template v-if="isGateway">
-          <ElDivider content-position="left">网关说明</ElDivider>
+          <section class="property-section">
+            <div class="section-title">分支说明</div>
 
-          <ElFormItem label="类型">
-            <ElText type="info" size="small">
+            <div class="tip-box">
               <div v-if="elementType === 'bpmn:ExclusiveGateway'">
-                <strong>排他网关：</strong>根据条件选择一条分支执行
+                根据条件只选择一条分支继续执行。
               </div>
               <div v-else-if="elementType === 'bpmn:ParallelGateway'">
-                <strong>并行网关：</strong>所有分支同时执行
+                所有连出的分支会同时执行。
               </div>
               <div v-else-if="elementType === 'bpmn:InclusiveGateway'">
-                <strong>包容网关：</strong>执行所有满足条件的分支
+                执行所有满足条件的分支。
               </div>
-            </ElText>
-          </ElFormItem>
+            </div>
+          </section>
 
           <template v-if="isExclusiveGateway">
-            <ElDivider content-position="left">分支条件</ElDivider>
+            <section class="property-section">
+              <div class="section-title">分支条件</div>
 
-            <div v-if="gatewayConditions.length === 0" class="empty-branch">
-              <ElText type="info" size="small">请先从条件网关连出分支</ElText>
-            </div>
+              <div v-if="gatewayConditions.length === 0" class="empty-branch">
+                请先从条件分支连出审批节点或结束节点。
+              </div>
 
-            <div
-              v-for="item in gatewayConditions"
-              :key="item.id"
-              class="branch-condition"
-            >
-              <ElFormItem label="分支名称">
-                <ElInput
-                  v-model="item.label"
-                  placeholder="如：信息部分支"
-                  @change="updateGatewayCondition(item)"
-                />
-              </ElFormItem>
-
-              <ElFormItem label="流向">
-                <ElText type="info">{{ item.targetName }}</ElText>
-              </ElFormItem>
-
-              <ElFormItem label="条件">
-                <div class="condition-builder">
-                  <ElSelect
-                    v-model="item.field"
-                    style="width: 100px"
+              <div
+                v-for="item in gatewayConditions"
+                :key="item.id"
+                class="branch-condition"
+              >
+                <ElFormItem label="分支名称">
+                  <ElInput
+                    v-model="item.label"
+                    placeholder="如：信息部分支"
                     @change="updateGatewayCondition(item)"
-                  >
-                    <ElOption
-                      v-for="field in conditionFields"
-                      :key="field.value"
-                      :label="field.label"
-                      :value="field.value"
-                    />
-                  </ElSelect>
-                  <ElSelect
-                    v-model="item.operator"
-                    style="width: 96px"
-                    @change="updateGatewayCondition(item)"
-                  >
-                    <ElOption
-                      v-for="operator in [{ label: '等于', value: '==' }]"
-                      :key="operator.value"
-                      :label="operator.label"
-                      :value="operator.value"
-                    />
-                  </ElSelect>
-                  <ElSelect
-                    v-model="item.value"
-                    clearable
-                    filterable
-                    :placeholder="conditionValuePlaceholder(item.field)"
-                    style="width: 100%"
-                    @change="updateGatewayCondition(item)"
-                  >
-                    <ElOption
-                      v-for="option in getConditionValueOptions(item.field)"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </ElSelect>
-                </div>
-              </ElFormItem>
+                  />
+                </ElFormItem>
 
-              <ElFormItem label="表达式">
-                <ElInput
-                  v-model="item.expression"
-                  :rows="2"
-                  readonly
-                  type="textarea"
-                />
-              </ElFormItem>
-            </div>
+                <ElFormItem label="流向节点">
+                  <div class="readonly-field">{{ item.targetName }}</div>
+                </ElFormItem>
+
+                <ElFormItem label="条件">
+                  <div class="condition-builder">
+                    <ElSelect
+                      v-model="item.field"
+                      style="width: 132px"
+                      @change="updateGatewayCondition(item)"
+                    >
+                      <ElOption
+                        v-for="field in conditionFields"
+                        :key="field.value"
+                        :label="field.label"
+                        :value="field.value"
+                      />
+                    </ElSelect>
+                    <ElSelect
+                      v-model="item.operator"
+                      style="width: 82px"
+                      @change="updateGatewayCondition(item)"
+                    >
+                      <ElOption
+                        v-for="operator in [{ label: '等于', value: '==' }]"
+                        :key="operator.value"
+                        :label="operator.label"
+                        :value="operator.value"
+                      />
+                    </ElSelect>
+                    <ElSelect
+                      v-model="item.value"
+                      clearable
+                      filterable
+                      :placeholder="conditionValuePlaceholder(item.field)"
+                      style="width: 100%"
+                      @change="updateGatewayCondition(item)"
+                    >
+                      <ElOption
+                        v-for="option in getConditionValueOptions(item.field)"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                      />
+                    </ElSelect>
+                  </div>
+                </ElFormItem>
+
+                <ElFormItem label="表达式">
+                  <ElInput
+                    v-model="item.expression"
+                    class="expression-input"
+                    :rows="2"
+                    readonly
+                    type="textarea"
+                  />
+                </ElFormItem>
+              </div>
+            </section>
           </template>
         </template>
       </ElForm>
@@ -668,27 +699,108 @@ onMounted(() => {
 .bpmn-properties {
   height: 100%;
   overflow-y: auto;
-  padding: 10px;
-  background: var(--el-fill-color-lighter);
-  border-left: 1px solid var(--el-border-color);
+  color: var(--workflow-text, var(--el-text-color-primary));
+  background: var(--workflow-panel-bg, var(--el-bg-color));
+}
+
+.panel-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 10px 14px;
+  background: var(--workflow-panel-bg, var(--el-bg-color));
+  border-bottom: 1px solid var(--workflow-border, var(--el-border-color));
+}
+
+.panel-title {
+  color: var(--workflow-title, var(--el-text-color-primary));
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.panel-subtitle {
+  margin-top: 2px;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
+  font-size: 12px;
 }
 
 .empty-state {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 200px;
+  min-height: 220px;
+  padding: 16px;
 }
 
-.properties-form {
-  background: var(--el-bg-color);
-  padding: 15px;
+.empty-box {
+  width: 100%;
+  padding: 18px;
+  text-align: center;
+  background: var(--workflow-panel-soft-bg, var(--el-fill-color-light));
+  border: 1px dashed var(--workflow-border-dashed, var(--el-border-color));
   border-radius: 4px;
 }
 
-:deep(.el-divider__text) {
+.empty-title {
+  color: var(--workflow-title, var(--el-text-color-primary));
   font-weight: 600;
+}
+
+.empty-desc {
+  margin-top: 6px;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.properties-form {
+  padding: 10px 12px 16px;
+  background: var(--workflow-panel-bg, var(--el-bg-color));
+}
+
+.property-section {
+  padding: 10px;
+  margin-bottom: 10px;
+  background: var(--workflow-section-bg, var(--el-fill-color-blank));
+  border: 1px solid var(--workflow-border-soft, var(--el-border-color));
+  border-radius: 4px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  color: var(--workflow-title, var(--el-text-color-primary));
   font-size: 13px;
+  font-weight: 600;
+}
+
+.section-title::before {
+  width: 3px;
+  height: 14px;
+  margin-right: 6px;
+  content: "";
+  background: var(--workflow-primary, var(--el-color-primary));
+  border-radius: 2px;
+}
+
+.readonly-field {
+  min-height: 28px;
+  padding: 5px 8px;
+  color: var(--workflow-text, var(--el-text-color-primary));
+  line-height: 18px;
+  background: var(--workflow-card-bg, var(--el-fill-color-light));
+  border: 1px solid var(--workflow-border, var(--el-border-color));
+  border-radius: 4px;
+}
+
+.code-field {
+  font-family: Consolas, "Microsoft YaHei", monospace;
+  font-size: 12px;
 }
 
 .condition-builder {
@@ -697,17 +809,96 @@ onMounted(() => {
   gap: 6px;
 }
 
+.expression-input {
+  margin-top: 8px;
+}
+
+.tip-box {
+  padding: 8px 10px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+  font-size: 12px;
+  line-height: 18px;
+  background: var(--workflow-card-bg, var(--el-fill-color-light));
+  border: 1px solid var(--workflow-border, var(--el-border-color));
+  border-radius: 4px;
+}
+
 .branch-condition {
   padding: 10px;
   margin-bottom: 10px;
-  background: var(--el-fill-color-light);
-  border: 1px solid var(--el-border-color);
+  background: var(--workflow-panel-bg, var(--el-bg-color));
+  border: 1px solid var(--workflow-border-soft, var(--el-border-color));
   border-radius: 4px;
 }
 
 .empty-branch {
   padding: 10px;
-  background: var(--el-fill-color-light);
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+  font-size: 12px;
+  background: var(--workflow-card-bg, var(--el-fill-color-light));
+  border: 1px dashed var(--workflow-border-dashed, var(--el-border-color));
   border-radius: 4px;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+
+:deep(.el-form-item__label) {
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+  font-size: 12px;
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-select__wrapper),
+:deep(.el-textarea__inner) {
+  color: var(--workflow-text, var(--el-text-color-primary));
+  background-color: var(--workflow-card-bg, var(--el-fill-color-light));
+  border: 1px solid var(--workflow-border, var(--el-border-color));
+  box-shadow: none;
+}
+
+:deep(.el-input__wrapper:hover),
+:deep(.el-select__wrapper:hover),
+:deep(.el-textarea__inner:hover) {
+  border-color: var(--workflow-primary, var(--el-color-primary));
+  box-shadow: none;
+}
+
+:deep(.el-input__wrapper.is-focus),
+:deep(.el-select__wrapper.is-focused),
+:deep(.el-textarea__inner:focus) {
+  border-color: var(--workflow-primary, var(--el-color-primary));
+  box-shadow: 0 0 0 1px var(--workflow-primary, var(--el-color-primary));
+}
+
+:deep(.el-input__inner),
+:deep(.el-select__placeholder),
+:deep(.el-textarea__inner) {
+  color: var(--workflow-text, var(--el-text-color-primary));
+}
+
+:deep(.el-radio-button__inner) {
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+  background: var(--workflow-card-bg, var(--el-fill-color-light));
+  border-color: var(--workflow-border, var(--el-border-color));
+}
+
+:deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  color: #ffffff;
+  background: var(--workflow-primary, var(--el-color-primary));
+  border-color: var(--workflow-primary, var(--el-color-primary));
+}
+
+:global(.dark) .property-section,
+:global(.dark) .branch-condition,
+:global(.dark) .readonly-field,
+:global(.dark) .tip-box,
+:global(.dark) .empty-branch,
+:global(.dark) :deep(.el-input__wrapper),
+:global(.dark) :deep(.el-select__wrapper),
+:global(.dark) :deep(.el-textarea__inner),
+:global(.dark) :deep(.el-radio-button__inner) {
+  border-color: var(--workflow-border, var(--el-border-color));
 }
 </style>

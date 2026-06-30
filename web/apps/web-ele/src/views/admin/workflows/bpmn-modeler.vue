@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import { onMounted, onUnmounted, ref, shallowRef } from 'vue';
-import { ElButton, ElMessage } from 'element-plus';
+import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue';
+import { ElButton, ElButtonGroup, ElMessage } from 'element-plus';
 import BpmnModeler from 'bpmn-js/lib/Modeler';
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
 import 'bpmn-js/dist/assets/bpmn-js.css';
@@ -25,8 +25,22 @@ const containerRef = ref<HTMLDivElement>();
 const modeler = shallowRef<any>();
 const selectedElement = shallowRef<any>(null); // 当前选中的元素
 
+const elementTypeText = computed(() => {
+  const type = selectedElement.value?.businessObject?.$type;
+  const map: Record<string, string> = {
+    'bpmn:EndEvent': '结束',
+    'bpmn:ExclusiveGateway': '条件分支',
+    'bpmn:ParallelGateway': '并行审批',
+    'bpmn:SequenceFlow': '流转线',
+    'bpmn:StartEvent': '发起',
+    'bpmn:UserTask': '审批节点',
+  };
+  return type ? map[type] || '流程元素' : '未选择';
+});
+
 const allowedPaletteEntries = new Set([
   'hand-tool',
+  'lasso-tool',
   'global-connect-tool',
   'tool-separator',
   'create.start-event',
@@ -288,6 +302,14 @@ async function handleZoomReset() {
   canvas.zoom('fit-viewport');
 }
 
+function startCreateShape(event: DragEvent | MouseEvent, type: string) {
+  if (!modeler.value) return;
+  const elementFactory = modeler.value.get('elementFactory');
+  const create = modeler.value.get('create');
+  const shape = elementFactory.createShape({ type });
+  create.start(event, shape);
+}
+
 onMounted(() => {
   initModeler();
 });
@@ -301,45 +323,112 @@ onUnmounted(() => {
 
 <template>
   <div class="bpmn-modeler-wrapper">
-    <div class="toolbar">
-      <div class="toolbar-left">
+    <div class="designer-toolbar">
+      <div class="toolbar-brand">
+        <span class="brand-mark">流程</span>
+        <div>
+          <div class="brand-title">审批流程设计</div>
+          <div class="brand-subtitle">标准 BPMN 模型，业务化中文配置</div>
+        </div>
+      </div>
+      <div class="toolbar-center">
+        <span class="tool-hint">左侧拖拽节点，右侧配置审批人与条件</span>
+      </div>
+      <div class="toolbar-actions">
+        <ElButtonGroup>
+          <ElButton @click="handleZoomOut">缩小</ElButton>
+          <ElButton @click="handleZoomReset">适应</ElButton>
+          <ElButton @click="handleZoomIn">放大</ElButton>
+        </ElButtonGroup>
+        <ElButton @click="handleDownload">
+          下载
+        </ElButton>
         <ElButton type="primary" :loading="saving" @click="handleSave">
           保存
         </ElButton>
-        <ElButton @click="handleDownload">
-          下载 BPMN
-        </ElButton>
-      </div>
-      <div class="toolbar-right">
-        <ElButton @click="handleZoomIn">放大</ElButton>
-        <ElButton @click="handleZoomOut">缩小</ElButton>
-        <ElButton @click="handleZoomReset">适应画布</ElButton>
       </div>
     </div>
 
-    <div class="modeler-content">
-      <div
-        ref="containerRef"
-        v-loading="loading"
-        class="bpmn-container"
-        element-loading-text="加载中..."
-      />
+    <div class="designer-content">
+      <aside class="designer-sidebar">
+        <div class="sidebar-title">组件库</div>
+        <div
+          class="node-card node-start"
+          draggable="true"
+          @dragstart="startCreateShape($event, 'bpmn:StartEvent')"
+        >
+          <span class="node-icon bpmn-icon-start-event-none"></span>
+          <div>
+            <strong>发起</strong>
+            <span>流程开始节点</span>
+          </div>
+        </div>
+        <div
+          class="node-card node-approval"
+          draggable="true"
+          @dragstart="startCreateShape($event, 'bpmn:UserTask')"
+        >
+          <span class="node-icon bpmn-icon-user-task"></span>
+          <div>
+            <strong>审批节点</strong>
+            <span>配置审批人、会签方式</span>
+          </div>
+        </div>
+        <div
+          class="node-card node-gateway"
+          draggable="true"
+          @dragstart="startCreateShape($event, 'bpmn:ExclusiveGateway')"
+        >
+          <span class="node-icon bpmn-icon-gateway-xor"></span>
+          <div>
+            <strong>条件分支</strong>
+            <span>按部门、角色等条件流转</span>
+          </div>
+        </div>
+        <div
+          class="node-card node-parallel"
+          draggable="true"
+          @dragstart="startCreateShape($event, 'bpmn:ParallelGateway')"
+        >
+          <span class="node-icon bpmn-icon-gateway-parallel"></span>
+          <div>
+            <strong>并行审批</strong>
+            <span>多个分支同时处理</span>
+          </div>
+        </div>
+        <div
+          class="node-card node-end"
+          draggable="true"
+          @dragstart="startCreateShape($event, 'bpmn:EndEvent')"
+        >
+          <span class="node-icon bpmn-icon-end-event-none"></span>
+          <div>
+            <strong>结束</strong>
+            <span>流程终止节点</span>
+          </div>
+        </div>
 
-      <!-- 属性面板 -->
+        <div class="sidebar-note">
+          从这里拖拽组件到画布，也可以使用画布左上角的标准工具栏。
+        </div>
+      </aside>
+
+      <main class="canvas-shell">
+        <div class="canvas-statusbar">
+          <span>当前选中：{{ elementTypeText }}</span>
+          <span>支持中文节点名称和中文条件配置</span>
+        </div>
+        <div
+          ref="containerRef"
+          v-loading="loading"
+          class="bpmn-container"
+          element-loading-text="正在载入流程设计器..."
+        />
+      </main>
+
       <div class="properties-panel">
         <BpmnProperties :element="selectedElement" :modeler="modeler" />
       </div>
-    </div>
-
-    <div class="help-text">
-      <p><strong>使用说明：</strong></p>
-      <ul>
-        <li>从左侧面板拖拽元素到画布</li>
-        <li>点击元素后，在右侧属性面板配置属性</li>
-        <li>UserTask 用于审批节点，配置审批人类型</li>
-        <li>ExclusiveGateway（排他网关）用于条件分支，在连线上配置条件表达式</li>
-        <li>ParallelGateway（并行网关）用于并行审批</li>
-      </ul>
     </div>
   </div>
 </template>
@@ -349,173 +438,521 @@ onUnmounted(() => {
 .bpmn-modeler-wrapper {
   display: flex;
   flex-direction: column;
-  height: 70vh;
+  height: 100%;
+  min-height: 0;
+  color: var(--workflow-text);
+  background: var(--workflow-page-bg);
+  --workflow-page-bg: #eef3f9;
+  --workflow-panel-bg: #ffffff;
+  --workflow-panel-soft-bg: #f8fbff;
+  --workflow-section-bg: #fbfdff;
+  --workflow-card-bg: #f8fbff;
+  --workflow-card-icon-bg: #eaf2ff;
+  --workflow-border: #d8e0eb;
+  --workflow-border-soft: #dce6f3;
+  --workflow-border-dashed: #c8d5e6;
+  --workflow-text: #23324d;
+  --workflow-title: #1f3f6d;
+  --workflow-muted: #6a7890;
+  --workflow-muted-strong: #63748c;
+  --workflow-primary: #1d5fbf;
+  --workflow-grid-line: #dfe7f1;
+  --workflow-shadow: 0 1px 4px rgb(31 63 109 / 6%);
 }
 
-.bpmn-modeler-wrapper .toolbar {
+:global(.dark) .bpmn-modeler-wrapper {
+  --workflow-page-bg: var(--el-bg-color-page);
+  --workflow-panel-bg: var(--el-bg-color);
+  --workflow-panel-soft-bg: rgb(34 37 43);
+  --workflow-section-bg: rgb(32 35 40);
+  --workflow-card-bg: var(--el-fill-color-light);
+  --workflow-card-icon-bg: rgb(42 47 55);
+  --workflow-border: rgb(64 68 77);
+  --workflow-border-soft: rgb(58 62 70);
+  --workflow-border-dashed: rgb(72 76 86);
+  --workflow-text: var(--el-text-color-primary);
+  --workflow-title: var(--el-text-color-primary);
+  --workflow-muted: var(--el-text-color-secondary);
+  --workflow-muted-strong: var(--el-text-color-regular);
+  --workflow-primary: var(--el-color-primary);
+  --workflow-grid-line: rgb(255 255 255 / 5%);
+  --workflow-shadow: none;
+}
+
+.bpmn-modeler-wrapper .designer-toolbar {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  padding: 10px;
-  background: var(--el-fill-color-light);
-  border-bottom: 1px solid var(--el-border-color);
+  height: 56px;
+  padding: 0 14px;
+  background: var(--workflow-panel-bg);
+  border-bottom: 1px solid var(--workflow-border);
+  box-shadow: var(--workflow-shadow);
 }
 
-.bpmn-modeler-wrapper .toolbar-left,
-.bpmn-modeler-wrapper .toolbar-right {
+.bpmn-modeler-wrapper .toolbar-brand,
+.bpmn-modeler-wrapper .toolbar-actions {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 }
 
-.bpmn-modeler-wrapper .modeler-content {
+.bpmn-modeler-wrapper .brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--workflow-primary);
+  border-radius: 4px;
+}
+
+.bpmn-modeler-wrapper .brand-title {
+  color: var(--workflow-title);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.bpmn-modeler-wrapper .brand-subtitle,
+.bpmn-modeler-wrapper .tool-hint {
+  color: var(--workflow-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.bpmn-modeler-wrapper .designer-content {
   flex: 1;
   display: flex;
+  min-height: 0;
+  padding: 10px;
+  gap: 10px;
   overflow: hidden;
+}
+
+.bpmn-modeler-wrapper .designer-sidebar {
+  width: 196px;
+  flex: 0 0 196px;
+  padding: 12px;
+  overflow-y: auto;
+  background: var(--workflow-panel-bg);
+  border: 1px solid var(--workflow-border);
+  border-radius: 4px;
+  box-shadow: var(--workflow-shadow);
+}
+
+.bpmn-modeler-wrapper .sidebar-title {
+  margin-bottom: 10px;
+  color: var(--workflow-title);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bpmn-modeler-wrapper .node-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 58px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: var(--workflow-card-bg);
+  border: 1px solid var(--workflow-border-soft);
+  border-left: 3px solid #2f72d0;
+  border-radius: 4px;
+}
+
+.bpmn-modeler-wrapper .node-card strong {
+  display: block;
+  color: var(--workflow-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.bpmn-modeler-wrapper .node-card span:not(.node-icon) {
+  display: block;
+  color: var(--workflow-muted);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.bpmn-modeler-wrapper .node-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--workflow-primary);
+  font-size: 18px;
+  background: var(--workflow-card-icon-bg);
+  border-radius: 4px;
+}
+
+.bpmn-modeler-wrapper .node-start {
+  border-left-color: #26a269;
+}
+
+.bpmn-modeler-wrapper .node-end {
+  border-left-color: #d64545;
+}
+
+.bpmn-modeler-wrapper .node-gateway,
+.bpmn-modeler-wrapper .node-parallel {
+  border-left-color: #c78a12;
+}
+
+.bpmn-modeler-wrapper .sidebar-note {
+  padding: 8px;
+  margin-top: 12px;
+  color: var(--workflow-muted);
+  font-size: 12px;
+  line-height: 18px;
+  background: var(--workflow-panel-soft-bg);
+  border: 1px dashed var(--workflow-border-dashed);
+  border-radius: 4px;
+}
+
+.bpmn-modeler-wrapper .canvas-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--workflow-panel-bg);
+  border: 1px solid var(--workflow-border);
+  border-radius: 4px;
+  box-shadow: var(--workflow-shadow);
+}
+
+.bpmn-modeler-wrapper .canvas-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 12px;
+  color: var(--workflow-muted-strong);
+  font-size: 12px;
+  background: var(--workflow-panel-soft-bg);
+  border-bottom: 1px solid var(--workflow-border);
 }
 
 .bpmn-modeler-wrapper .bpmn-container {
   flex: 1;
-  border: 1px solid var(--el-border-color);
-  background: var(--el-bg-color);
+  min-height: 0;
+  border: none;
+  background: var(--workflow-canvas-bg);
   overflow: hidden;
-  --workflow-canvas-bg: var(--el-bg-color);
-  --workflow-node-bg: var(--el-bg-color-overlay);
-  --workflow-node-stroke: var(--el-border-color-darker);
+  --workflow-canvas-bg: #f6f9fd;
+  --workflow-node-bg: #ffffff;
+  --workflow-node-stroke: #7d95b8;
+  --workflow-node-text: #23324d;
+  --workflow-flow-stroke: #607da8;
+  --workflow-label-text: #304764;
+  --workflow-tool-bg: #ffffff;
+  --workflow-tool-border: #cbd8e8;
+  --workflow-tool-icon: #1d4f91;
+}
+
+:global(.dark) .bpmn-modeler-wrapper .bpmn-container {
+  --workflow-canvas-bg: var(--el-bg-color-page);
+  --workflow-node-bg: rgb(38 42 49);
+  --workflow-node-stroke: rgb(116 134 162);
   --workflow-node-text: var(--el-text-color-primary);
-  --workflow-flow-stroke: var(--el-text-color-secondary);
-  --workflow-label-text: var(--el-text-color-regular);
-  --workflow-tool-bg: var(--el-bg-color-overlay);
-  --workflow-tool-border: var(--el-border-color);
+  --workflow-flow-stroke: rgb(156 170 190);
+  --workflow-label-text: var(--el-text-color-primary);
+  --workflow-tool-bg: rgb(34 37 43);
+  --workflow-tool-border: rgb(79 86 99);
   --workflow-tool-icon: var(--el-text-color-primary);
 }
 
 .bpmn-modeler-wrapper .properties-panel {
-  width: 300px;
+  width: 340px;
+  flex: 0 0 340px;
   overflow-y: auto;
+  background: var(--workflow-panel-bg);
+  border: 1px solid var(--workflow-border);
+  border-radius: 4px;
+  box-shadow: var(--workflow-shadow);
 }
 
-.bpmn-modeler-wrapper .help-text {
-  padding: 10px;
-  background: var(--el-fill-color-lighter);
-  border-top: 1px solid var(--el-border-color);
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+:deep(.bpmn-container .viewport),
+:deep(.bpmn-container .djs-container) {
+  background-color: var(--workflow-canvas-bg);
+  background-image:
+    linear-gradient(var(--workflow-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--workflow-grid-line) 1px, transparent 1px);
+  background-size: 16px 16px;
 }
 
-.bpmn-modeler-wrapper .help-text ul {
-  margin: 5px 0 0 20px;
-  padding: 0;
-}
-
-.bpmn-modeler-wrapper .help-text li {
-  margin: 3px 0;
-}
-
-/* bpmn-js 默认按浅色画布渲染，暗色主题下需要显式提高流程图元素对比度 */
-.dark .bpmn-modeler-wrapper .bpmn-container {
-  --workflow-canvas-bg: #181a20;
-  --workflow-node-bg: #f5f7fa;
-  --workflow-node-stroke: #d8dde6;
-  --workflow-node-text: #1f2937;
-  --workflow-flow-stroke: #d7dde8;
-  --workflow-label-text: #e5e7eb;
-  --workflow-tool-bg: #f8fafc;
-  --workflow-tool-border: #d8dde6;
-  --workflow-tool-icon: #111827;
-}
-
-.bpmn-container .viewport,
-.bpmn-container .djs-container {
-  background: var(--workflow-canvas-bg);
-}
-
-.bpmn-container .djs-shape .djs-visual > rect,
-.bpmn-container .djs-shape .djs-visual > circle,
-.bpmn-container .djs-shape .djs-visual > ellipse,
-.bpmn-container .djs-shape .djs-visual > polygon,
-.bpmn-container .djs-shape .djs-visual > path {
+:deep(.bpmn-container .djs-shape .djs-visual > rect),
+:deep(.bpmn-container .djs-shape .djs-visual > circle),
+:deep(.bpmn-container .djs-shape .djs-visual > ellipse),
+:deep(.bpmn-container .djs-shape .djs-visual > polygon),
+:deep(.bpmn-container .djs-shape .djs-visual > path) {
   fill: var(--workflow-node-bg) !important;
   stroke: var(--workflow-node-stroke) !important;
+  stroke-width: 1.8px !important;
 }
 
-.bpmn-container .djs-shape .djs-visual text,
-.bpmn-container .djs-label .djs-visual text {
+:deep(.bpmn-container .djs-shape .djs-visual text),
+:deep(.bpmn-container .djs-label .djs-visual text) {
   fill: var(--workflow-node-text) !important;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif !important;
+  font-size: 12px !important;
   stroke: none !important;
 }
 
-.bpmn-container .djs-connection .djs-visual > path,
-.bpmn-container .djs-connection .djs-visual > polyline,
-.bpmn-container .djs-connection .djs-visual marker path {
+:deep(.bpmn-container .djs-connection .djs-visual > path),
+:deep(.bpmn-container .djs-connection .djs-visual > polyline),
+:deep(.bpmn-container .djs-connection .djs-visual marker path) {
   stroke: var(--workflow-flow-stroke) !important;
 }
 
-.bpmn-container .djs-connection .djs-visual marker path {
+:deep(.bpmn-container .djs-connection .djs-visual marker path) {
   fill: var(--workflow-flow-stroke) !important;
 }
 
-.bpmn-container .djs-element.djs-label .djs-visual text {
+:deep(.bpmn-container .djs-element.djs-label .djs-visual text) {
   fill: var(--workflow-label-text) !important;
 }
 
-.bpmn-container .djs-element[data-element-id$="_label"] .djs-visual text,
-.bpmn-container .djs-element[data-element-id$="_label"] .djs-visual tspan {
+:deep(.bpmn-container .djs-element[data-element-id$="_label"] .djs-visual text),
+:deep(.bpmn-container .djs-element[data-element-id$="_label"] .djs-visual tspan) {
   fill: var(--workflow-label-text) !important;
 }
 
-.bpmn-container .djs-palette,
-.bpmn-container .djs-context-pad {
+:deep(.bpmn-container .djs-palette),
+:deep(.bpmn-container .djs-context-pad) {
   background: var(--workflow-tool-bg);
-  border-color: var(--workflow-tool-border);
+  border: 1px solid var(--workflow-tool-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgb(31 63 109 / 12%);
 }
 
-.bpmn-container .djs-palette .entry,
-.bpmn-container .djs-context-pad .entry {
+:global(.dark) :deep(.bpmn-container .djs-palette),
+:global(.dark) :deep(.bpmn-container .djs-context-pad) {
+  box-shadow: 0 8px 20px rgb(0 0 0 / 28%);
+}
+
+:deep(.bpmn-container .djs-palette .entry),
+:deep(.bpmn-container .djs-context-pad .entry) {
   color: var(--workflow-tool-icon);
+  border-radius: 3px;
 }
 
-.bpmn-container .djs-palette .entry:hover,
-.bpmn-container .djs-context-pad .entry:hover {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
+:deep(.bpmn-container .djs-palette .entry:hover),
+:deep(.bpmn-container .djs-context-pad .entry:hover) {
+  color: var(--workflow-primary);
+  background: var(--workflow-card-icon-bg);
+}
+
+:deep(.bpmn-container .djs-context-pad.open) {
+  background: var(--workflow-tool-bg);
+}
+
+:deep(.bpmn-container .djs-context-pad .entry::before),
+:deep(.bpmn-container .djs-palette .entry::before) {
+  color: currentColor;
+}
+
+:global(.dark) :deep(.bpmn-container .djs-context-pad .entry:hover),
+:global(.dark) :deep(.bpmn-container .djs-palette .entry:hover) {
+  background: rgb(46 54 66);
+}
+
+:deep(.bpmn-container .djs-element.selected .djs-outline),
+:deep(.bpmn-container .djs-element.hover .djs-outline) {
+  stroke: var(--workflow-primary) !important;
+  stroke-width: 2px !important;
+  stroke-dasharray: 4 3;
 }
 
 /* 只固定连线可视层宽度，保留 bpmn-js 较宽的命中层用于拖拽和点击 */
-.bpmn-container .djs-connection .djs-visual > path,
-.bpmn-container .djs-connection .djs-visual > polyline {
+:deep(.bpmn-container .djs-connection .djs-visual > path),
+:deep(.bpmn-container .djs-connection .djs-visual > polyline) {
   stroke-width: 2px !important;
 }
 
 /* 隐藏连线编辑手柄的可视层，保留 hit 层以维持点击与拖拽命中区域 */
-.bpmn-container .djs-bendpoint .djs-visual,
-.bpmn-container .djs-segment-dragger .djs-visual {
+:deep(.bpmn-container .djs-bendpoint .djs-visual),
+:deep(.bpmn-container .djs-segment-dragger .djs-visual) {
   display: none !important;
 }
 
-.bpmn-container .djs-bendpoint .djs-hit,
-.bpmn-container .djs-segment-dragger .djs-hit {
+:deep(.bpmn-container .djs-bendpoint .djs-hit),
+:deep(.bpmn-container .djs-segment-dragger .djs-hit) {
   fill: none !important;
   stroke: transparent !important;
 }
 
 /* 审批工作流只保留业务需要的建模工具 */
-.bpmn-container .djs-palette .entry,
-.bpmn-container .djs-context-pad .entry {
+:deep(.bpmn-container .djs-palette .entry),
+:deep(.bpmn-container .djs-context-pad .entry) {
   display: none;
 }
 
-.bpmn-container .djs-palette .entry.bpmn-icon-hand-tool,
-.bpmn-container .djs-palette .entry.bpmn-icon-connection-multi,
-.bpmn-container .djs-palette .entry.bpmn-icon-start-event-none,
-.bpmn-container .djs-palette .entry.bpmn-icon-end-event-none,
-.bpmn-container .djs-palette .entry.bpmn-icon-gateway-none,
-.bpmn-container .djs-palette .entry.bpmn-icon-gateway-xor,
-.bpmn-container .djs-palette .entry.bpmn-icon-gateway-parallel,
-.bpmn-container .djs-palette .entry.bpmn-icon-user-task,
-.bpmn-container .djs-context-pad .entry.bpmn-icon-end-event-none,
-.bpmn-container .djs-context-pad .entry.bpmn-icon-gateway-none,
-.bpmn-container .djs-context-pad .entry.bpmn-icon-user-task,
-.bpmn-container .djs-context-pad .entry.bpmn-icon-connection-multi,
-.bpmn-container .djs-context-pad .entry.bpmn-icon-trash {
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-hand-tool),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-lasso-tool),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-connection-multi),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-start-event-none),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-end-event-none),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-gateway-none),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-gateway-xor),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-gateway-parallel),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-user-task),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-end-event-none),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-gateway-none),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-user-task),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-connection-multi),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-trash) {
   display: block;
+}
+
+@media (max-width: 1200px) {
+  .bpmn-modeler-wrapper .designer-sidebar {
+    display: none;
+  }
+
+  .bpmn-modeler-wrapper .properties-panel {
+    width: 320px;
+    flex-basis: 320px;
+  }
+}
+</style>
+
+<style>
+/* bpmn-js 的 SVG 与浮动工具条是运行时插入的 DOM，需要全局命名空间覆盖。 */
+.dark .bpmn-modeler-wrapper {
+  --workflow-page-bg: var(--el-bg-color-page);
+  --workflow-panel-bg: var(--el-bg-color);
+  --workflow-panel-soft-bg: rgb(34 37 43);
+  --workflow-section-bg: rgb(32 35 40);
+  --workflow-card-bg: var(--el-fill-color-light);
+  --workflow-card-icon-bg: rgb(42 47 55);
+  --workflow-border: rgb(64 68 77);
+  --workflow-border-soft: rgb(58 62 70);
+  --workflow-border-dashed: rgb(72 76 86);
+  --workflow-text: var(--el-text-color-primary);
+  --workflow-title: var(--el-text-color-primary);
+  --workflow-muted: var(--el-text-color-secondary);
+  --workflow-muted-strong: var(--el-text-color-regular);
+  --workflow-primary: var(--el-color-primary);
+  --workflow-grid-line: rgb(255 255 255 / 5%);
+  --workflow-shadow: none;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container {
+  --workflow-canvas-bg: var(--el-bg-color-page);
+  --workflow-node-bg: rgb(38 42 49);
+  --workflow-node-stroke: rgb(116 134 162);
+  --workflow-node-text: var(--el-text-color-primary);
+  --workflow-flow-stroke: rgb(156 170 190);
+  --workflow-label-text: var(--el-text-color-primary);
+  --workflow-tool-bg: rgb(34 37 43);
+  --workflow-tool-border: rgb(79 86 99);
+  --workflow-tool-icon: var(--el-text-color-primary);
+}
+
+.bpmn-modeler-wrapper .bpmn-container .viewport,
+.bpmn-modeler-wrapper .bpmn-container .djs-container,
+.bpmn-modeler-wrapper .bpmn-container .djs-canvas,
+.bpmn-modeler-wrapper .bpmn-container svg[data-element-id] {
+  background-color: var(--workflow-canvas-bg) !important;
+  background-image:
+    linear-gradient(var(--workflow-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--workflow-grid-line) 1px, transparent 1px) !important;
+  background-size: 16px 16px !important;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container svg,
+.dark .bpmn-modeler-wrapper .bpmn-container .viewport,
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-container,
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-canvas,
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-dragger {
+  background-color: var(--workflow-canvas-bg) !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > rect,
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > circle,
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > ellipse,
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > polygon,
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > path,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > rect,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > circle,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > ellipse,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > polygon,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > path {
+  fill: var(--workflow-node-bg) !important;
+  stroke: var(--workflow-node-stroke) !important;
+  stroke-width: 1.8px !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual text,
+.bpmn-modeler-wrapper .bpmn-container .djs-label .djs-visual text,
+.bpmn-modeler-wrapper .bpmn-container .djs-label .djs-visual tspan {
+  fill: var(--workflow-node-text) !important;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif !important;
+  font-size: 12px !important;
+  stroke: none !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-connection .djs-visual > path,
+.bpmn-modeler-wrapper .bpmn-container .djs-connection .djs-visual > polyline,
+.bpmn-modeler-wrapper .bpmn-container .djs-connection .djs-visual marker path {
+  stroke: var(--workflow-flow-stroke) !important;
+  stroke-width: 2px !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-connection .djs-visual marker path {
+  fill: var(--workflow-flow-stroke) !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-palette,
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad {
+  background: var(--workflow-tool-bg) !important;
+  border: 1px solid var(--workflow-tool-border) !important;
+  border-radius: 4px !important;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-palette,
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-context-pad {
+  box-shadow: 0 8px 20px rgb(0 0 0 / 28%) !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-palette .entry,
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry {
+  color: var(--workflow-tool-icon) !important;
+  background-color: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 3px;
+  box-shadow: none !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-palette .entry:hover,
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry:hover {
+  color: var(--workflow-primary) !important;
+  background: var(--workflow-card-icon-bg) !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad .group {
+  background: var(--workflow-tool-bg) !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry::before,
+.bpmn-modeler-wrapper .bpmn-container .djs-palette .entry::before {
+  color: currentColor !important;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry {
+  background-color: rgb(34 37 43) !important;
+  border-color: rgb(79 86 99) !important;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry:hover {
+  color: var(--workflow-primary) !important;
+  background-color: rgb(46 54 66) !important;
 }
 </style>

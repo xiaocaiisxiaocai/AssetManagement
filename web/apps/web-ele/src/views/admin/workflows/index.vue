@@ -259,8 +259,9 @@ onMounted(() => {
       <!-- BPMN 设计器对话框 -->
       <ElDialog
         v-model="dialogVisible"
-        :title="`设计工作流: ${currentWorkflow?.name}`"
-        width="90%"
+        class="workflow-designer-dialog"
+        :title="`流程设计 - ${currentWorkflow?.name}`"
+        fullscreen
         :close-on-click-modal="false"
         destroy-on-close
       >
@@ -275,6 +276,48 @@ onMounted(() => {
   </re-page>
 </template>
 
-<style scoped>
-/* BPMN 设计器对话框保持全宽 */
+<style>
+.workflow-designer-dialog {
+  --el-dialog-bg-color: #eef3f9;
+  background: #eef3f9;
+}
+
+.dark .workflow-designer-dialog {
+  --el-dialog-bg-color: var(--el-bg-color-page);
+  background: var(--el-bg-color-page);
+}
+
+.workflow-designer-dialog .el-dialog__header {
+  height: 44px;
+  padding: 0 16px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #d8e0eb;
+  background: #ffffff;
+}
+
+.dark .workflow-designer-dialog .el-dialog__header {
+  border-bottom-color: var(--el-border-color);
+  background: var(--el-bg-color);
+}
+
+.workflow-designer-dialog .el-dialog__title {
+  color: #1f3f6d;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dark .workflow-designer-dialog .el-dialog__title {
+  color: var(--el-text-color-primary);
+}
+
+.workflow-designer-dialog .el-dialog__headerbtn {
+  top: 4px;
+}
+
+.workflow-designer-dialog .el-dialog__body {
+  height: calc(100vh - 44px);
+  padding: 0;
+}
 </style>
