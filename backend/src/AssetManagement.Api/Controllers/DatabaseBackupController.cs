@@ -25,4 +25,17 @@ public class DatabaseBackupController : ControllerBase
     [HasPermission("backup:manage")]
     public async Task<ApiResult<DatabaseBackupResultDto>> Backup(CancellationToken cancellationToken)
         => ApiResult<DatabaseBackupResultDto>.Ok(await _backupService.BackupAsync(cancellationToken));
+
+    [HttpGet("{fileName}/download")]
+    [HasPermission("backup:manage")]
+    public async Task<IActionResult> Download(string fileName, CancellationToken cancellationToken)
+    {
+        var file = await _backupService.OpenAsync(fileName, cancellationToken);
+        if (file is null)
+        {
+            return NotFound();
+        }
+
+        return File(file.Stream, file.ContentType, file.FileName);
+    }
 }

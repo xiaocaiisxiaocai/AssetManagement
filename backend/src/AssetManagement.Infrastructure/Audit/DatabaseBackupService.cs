@@ -3,6 +3,7 @@ using AssetManagement.Application.Audit;
 using AssetManagement.Application.Common;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MySqlConnector;
@@ -13,15 +14,18 @@ public class DatabaseBackupService : IDatabaseBackupService
 {
     private readonly IConfiguration _configuration;
     private readonly AppDbContext _db;
+    private readonly IHostEnvironment _environment;
     private readonly ILogger<DatabaseBackupService> _logger;
 
     public DatabaseBackupService(
         IConfiguration configuration,
         AppDbContext db,
+        IHostEnvironment environment,
         ILogger<DatabaseBackupService> logger)
     {
         _configuration = configuration;
         _db = db;
+        _environment = environment;
         _logger = logger;
     }
 
@@ -31,15 +35,12 @@ public class DatabaseBackupService : IDatabaseBackupService
         var connStr = _configuration.GetConnectionString("Default")
             ?? throw new BizException(500, "缺少数据库连接配置");
         var builder = new MySqlConnectionStringBuilder(connStr);
-        var backupPath = settings.GetValueOrDefault("database_backup_path")
-            ?? _configuration["DatabaseBackup:Path"];
-        if (string.IsNullOrWhiteSpace(backupPath))
-        {
-            backupPath = Path.Combine(AppContext.BaseDirectory, "Backups");
-        }
+        var backupPath = ResolveBackupPath(settings);
         Directory.CreateDirectory(backupPath);
 
-        var filePath = Path.Combine(backupPath, $"assetmgmt_{DateTime.Now:yyyyMMdd_HHmmss}.sql");
+        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var filePath = Path.Combine(backupPath, $"assetmgmt_{timestamp}.sql");
+        var packagePath = Path.Combine(backupPath, $"assetmgmt_{timestamp}.zip");
         var dumpExe = _configuration["DatabaseBackup:MysqldumpPath"];
         if (string.IsNullOrWhiteSpace(dumpExe)) dumpExe = "mysqldump";
 
@@ -76,8 +77,9 @@ public class DatabaseBackupService : IDatabaseBackupService
             throw new BizException(500, "数据库备份失败，请检查 mysqldump 是否可用");
         }
 
+        DatabaseBackupPackageBuilder.Build(filePath, ResolveAttachmentPath(), packagePath);
         CleanupOldBackups(backupPath, settings);
-        var file = new FileInfo(filePath);
+        var file = new FileInfo(packagePath);
         return new DatabaseBackupResultDto
         {
             FilePath = file.FullName,
@@ -96,17 +98,42 @@ public class DatabaseBackupService : IDatabaseBackupService
         }
 
         return Directory
-            .EnumerateFiles(backupPath, "assetmgmt_*.sql")
+            .EnumerateFiles(backupPath, "assetmgmt_*.*")
+            .Where(path => IsBackupFileName(Path.GetFileName(path)))
             .Select(path => new FileInfo(path))
             .OrderByDescending(file => file.LastWriteTime)
             .Select(file => new DatabaseBackupFileDto
             {
                 FileName = file.Name,
                 FilePath = file.FullName,
+                FileType = file.Extension.Equals(".zip", StringComparison.OrdinalIgnoreCase) ? "package" : "sql",
                 CreatedAt = file.LastWriteTime,
                 SizeBytes = file.Length
             })
             .ToList();
+    }
+
+    public async Task<DatabaseBackupDownloadDto?> OpenAsync(string fileName, CancellationToken cancellationToken = default)
+    {
+        if (!IsBackupFileName(fileName))
+        {
+            return null;
+        }
+
+        var settings = await LoadSettingsAsync();
+        var backupPath = ResolveBackupPath(settings);
+        var fullPath = Path.GetFullPath(Path.Combine(backupPath, fileName));
+        var rootPath = Path.GetFullPath(backupPath);
+        if (!fullPath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase) || !File.Exists(fullPath))
+        {
+            return null;
+        }
+
+        var contentType = Path.GetExtension(fileName).Equals(".zip", StringComparison.OrdinalIgnoreCase)
+            ? "application/zip"
+            : "application/sql";
+        var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return new DatabaseBackupDownloadDto(stream, fileName, contentType);
     }
 
     private string BuildArguments(MySqlConnectionStringBuilder builder, string filePath)
@@ -130,9 +157,19 @@ public class DatabaseBackupService : IDatabaseBackupService
             ?? _configuration["DatabaseBackup:Path"];
         if (string.IsNullOrWhiteSpace(backupPath))
         {
-            backupPath = Path.Combine(AppContext.BaseDirectory, "Backups");
+            backupPath = "Backups";
         }
-        return backupPath;
+        return Path.IsPathRooted(backupPath)
+            ? backupPath
+            : Path.Combine(_environment.ContentRootPath, backupPath);
+    }
+
+    private string ResolveAttachmentPath()
+    {
+        var configuredPath = _configuration["Attachment:Path"] ?? "App_Data/uploads";
+        return Path.IsPathRooted(configuredPath)
+            ? configuredPath
+            : Path.Combine(_environment.ContentRootPath, configuredPath);
     }
 
     private void CleanupOldBackups(string backupPath, Dictionary<string, string> settings)
@@ -143,7 +180,7 @@ public class DatabaseBackupService : IDatabaseBackupService
             ? Math.Max(days, 1)
             : 30;
         var cutoff = DateTime.Now.AddDays(-retentionDays);
-        foreach (var file in Directory.GetFiles(backupPath, "assetmgmt_*.sql"))
+        foreach (var file in Directory.GetFiles(backupPath, "assetmgmt_*.*").Where(path => IsBackupFileName(Path.GetFileName(path))))
         {
             var info = new FileInfo(file);
             if (info.LastWriteTime < cutoff)
@@ -155,4 +192,13 @@ public class DatabaseBackupService : IDatabaseBackupService
 
     private static string Quote(string value)
         => $"\"{value.Replace("\"", "\\\"")}\"";
+
+    private static bool IsBackupFileName(string fileName)
+        => !string.IsNullOrWhiteSpace(fileName)
+           && !fileName.Contains('/')
+           && !fileName.Contains('\\')
+           && !fileName.Contains("..")
+           && fileName.StartsWith("assetmgmt_", StringComparison.OrdinalIgnoreCase)
+           && (fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+               || fileName.EndsWith(".sql", StringComparison.OrdinalIgnoreCase));
 }

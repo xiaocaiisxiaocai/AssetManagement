@@ -123,6 +123,7 @@ export interface DatabaseBackupFile {
   createdAt: string;
   fileName: string;
   filePath: string;
+  fileType: 'package' | 'sql' | string;
   sizeBytes: number;
 }
 
@@ -192,3 +193,8 @@ export const backupDatabaseApi = () =>
 
 export const getDatabaseBackupsApi = () =>
   unwrap(requestClient.get<ApiResult<DatabaseBackupFile[]>>('/database-backups'));
+
+export const downloadDatabaseBackupApi = (fileName: string) =>
+  requestClient.get(`/database-backups/${encodeURIComponent(fileName)}/download`, {
+    responseType: 'blob',
+  });

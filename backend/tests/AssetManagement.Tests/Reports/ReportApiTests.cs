@@ -180,6 +180,29 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         result.Data[0].FilePath.Should().Be(newerFile);
     }
 
+    [Fact]
+    public async Task Database_backup_download_returns_backup_file()
+    {
+        await Login();
+        var backupDir = Path.Combine(Path.GetTempPath(), "assetmgmt-backup-test", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(backupDir);
+        var backupFile = Path.Combine(backupDir, "assetmgmt_20260630_020000.zip");
+        await File.WriteAllTextAsync(backupFile, "zip bytes");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.SystemSettings
+            .Where(x => x.Key == "database_backup_path")
+            .ExecuteUpdateAsync(x => x.SetProperty(setting => setting.Value, backupDir));
+
+        var response = await _client.GetAsync("/api/database-backups/assetmgmt_20260630_020000.zip/download");
+
+        response.EnsureSuccessStatusCode();
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/zip");
+        response.Content.Headers.ContentDisposition!.FileNameStar.Should().Be("assetmgmt_20260630_020000.zip");
+        (await response.Content.ReadAsStringAsync()).Should().Be("zip bytes");
+    }
+
     private async Task<CategoryNodeDto> CreateCategory()
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest

@@ -52,9 +52,12 @@ public record DatabaseBackupFileDto
 {
     public string FileName { get; init; } = "";
     public string FilePath { get; init; } = "";
+    public string FileType { get; init; } = "";
     public DateTime CreatedAt { get; init; }
     public long SizeBytes { get; init; }
 }
+
+public record DatabaseBackupDownloadDto(Stream Stream, string FileName, string ContentType);
 
 public interface IAuditQueryService
 {
@@ -72,4 +75,5 @@ public interface IDatabaseBackupService
 {
     Task<DatabaseBackupResultDto> BackupAsync(CancellationToken cancellationToken = default);
     Task<List<DatabaseBackupFileDto>> ListAsync(CancellationToken cancellationToken = default);
+    Task<DatabaseBackupDownloadDto?> OpenAsync(string fileName, CancellationToken cancellationToken = default);
 }

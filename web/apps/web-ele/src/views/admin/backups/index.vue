@@ -3,7 +3,11 @@ import type { DatabaseBackupFile } from '#/api/report';
 
 import { computed, onMounted, ref } from 'vue';
 
-import { backupDatabaseApi, getDatabaseBackupsApi } from '#/api/report';
+import {
+  backupDatabaseApi,
+  downloadDatabaseBackupApi,
+  getDatabaseBackupsApi,
+} from '#/api/report';
 
 import {
   ElButton,
@@ -39,8 +43,8 @@ async function loadData() {
 
 async function backupDatabase() {
   await ElMessageBox.confirm(
-    '确认立即执行一次数据库备份？备份过程可能需要等待一段时间。',
-    '立即备份',
+    '确认立即生成完整备份包？备份包会包含数据库 SQL 和附件目录，过程可能需要等待一段时间。',
+    '生成完整备份包',
     {
       confirmButtonText: '开始备份',
       cancelButtonText: '取消',
@@ -56,6 +60,11 @@ async function backupDatabase() {
   } finally {
     backupLoading.value = false;
   }
+}
+
+async function downloadBackup(row: DatabaseBackupFile) {
+  const response = await downloadDatabaseBackupApi(row.fileName);
+  downloadBlob(response.data, row.fileName);
 }
 
 function formatTime(value: string) {
@@ -74,6 +83,25 @@ function formatSize(bytes: number) {
   return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+function fileTypeLabel(type: string) {
+  return type === 'package' ? '完整包' : 'SQL';
+}
+
+function fileTypeTag(type: string) {
+  return type === 'package' ? 'success' : 'info';
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 onMounted(loadData);
 </script>
 
@@ -83,13 +111,24 @@ onMounted(loadData);
       <div class="backup-header">
         <div>
           <h2 class="backup-title">数据库备份</h2>
-          <p class="backup-subtitle">查看备份文件并手动触发数据库备份</p>
+          <p class="backup-subtitle">查看、下载备份文件，并手动生成完整备份包</p>
         </div>
         <div class="backup-actions">
           <ElButton @click="loadData">刷新</ElButton>
           <ElButton :loading="backupLoading" type="primary" @click="backupDatabase">
-            立即备份
+            生成完整备份包
           </ElButton>
+        </div>
+      </div>
+
+      <div class="backup-notice">
+        <div>
+          <strong>完整备份包</strong>
+          <span>包含当前业务数据库 SQL 与附件上传目录，可用于离线归档或人工恢复。</span>
+        </div>
+        <div>
+          <strong>恢复提醒</strong>
+          <span>恢复会覆盖现有数据，当前不提供页面一键恢复，建议由管理员在停机窗口手工执行。</span>
         </div>
       </div>
 
@@ -113,10 +152,15 @@ onMounted(loadData);
           <ElTableColumn label="文件名" min-width="260">
             <template #default="{ row }">
               <div class="file-name-cell">
-                <ElTag size="small" type="success">SQL</ElTag>
+                <ElTag size="small" :type="fileTypeTag(row.fileType)">
+                  {{ fileTypeLabel(row.fileType) }}
+                </ElTag>
                 <span>{{ row.fileName }}</span>
               </div>
             </template>
+          </ElTableColumn>
+          <ElTableColumn label="类型" width="110" align="center">
+            <template #default="{ row }">{{ fileTypeLabel(row.fileType) }}</template>
           </ElTableColumn>
           <ElTableColumn label="大小" width="120" align="right">
             <template #default="{ row }">{{ formatSize(row.sizeBytes) }}</template>
@@ -125,6 +169,11 @@ onMounted(loadData);
             <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="完整路径" min-width="360" prop="filePath" />
+          <ElTableColumn fixed="right" label="操作" width="100" align="center">
+            <template #default="{ row }">
+              <ElButton link type="primary" size="small" @click="downloadBackup(row)">下载</ElButton>
+            </template>
+          </ElTableColumn>
         </ElTable>
       </div>
     </div>
@@ -141,6 +190,7 @@ onMounted(loadData);
 }
 
 .backup-header,
+.backup-notice,
 .backup-overview,
 .backup-table-panel {
   border: 1px solid var(--asset-page-border);
@@ -155,6 +205,32 @@ onMounted(loadData);
   justify-content: space-between;
   padding: 20px 24px;
   background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+}
+
+.backup-notice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 20px;
+  background: var(--asset-page-surface-soft);
+}
+
+.backup-notice div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.backup-notice strong {
+  color: var(--asset-page-text);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.backup-notice span {
+  color: var(--asset-page-muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .backup-title {
@@ -257,6 +333,10 @@ onMounted(loadData);
   }
 
   .backup-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-notice {
     grid-template-columns: 1fr;
   }
 }
