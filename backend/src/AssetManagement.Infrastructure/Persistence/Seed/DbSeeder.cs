@@ -131,7 +131,14 @@ public static class DbSeeder
             RoleId = adminRole.Id
         });
         db.SystemSettings.AddRange(
-            new SystemSetting { Key = "audit_retention_months", Value = "12", Description = "审计日志保留月数" },
+            new SystemSetting { Key = "audit_retention_months", Value = "12", Description = "审计日志保留月数（历史兼容）" },
+            new SystemSetting { Key = "audit_retention_days", Value = "30", Description = "审计日志保留天数（7/14/30）" },
+            new SystemSetting { Key = "audit_cleanup_enabled", Value = "true", Description = "是否启用审计日志定时清理" },
+            new SystemSetting { Key = "audit_cleanup_time", Value = "02:10", Description = "审计日志定时清理时间" },
+            new SystemSetting { Key = "database_backup_enabled", Value = "true", Description = "是否启用数据库定时备份" },
+            new SystemSetting { Key = "database_backup_time", Value = "02:00", Description = "数据库定时备份时间" },
+            new SystemSetting { Key = "database_backup_path", Value = "Backups", Description = "数据库备份目录" },
+            new SystemSetting { Key = "database_backup_retention_days", Value = "30", Description = "数据库备份文件保留天数" },
             new SystemSetting { Key = "attachment_max_mb", Value = "5", Description = "附件大小限制 MB" },
             new SystemSetting { Key = "page_size", Value = "20", Description = "默认每页记录数" }
         );
@@ -169,8 +176,16 @@ public static class DbSeeder
 
         if (!db.SystemSettings.Any(x => x.Key == "audit_retention_months"))
         {
-            db.SystemSettings.Add(new SystemSetting { Key = "audit_retention_months", Value = "12", Description = "审计日志保留月数" });
+            db.SystemSettings.Add(new SystemSetting { Key = "audit_retention_months", Value = "12", Description = "审计日志保留月数（历史兼容）" });
         }
+
+        EnsureSetting(db, "audit_retention_days", "30", "审计日志保留天数（7/14/30）");
+        EnsureSetting(db, "audit_cleanup_enabled", "true", "是否启用审计日志定时清理");
+        EnsureSetting(db, "audit_cleanup_time", "02:10", "审计日志定时清理时间");
+        EnsureSetting(db, "database_backup_enabled", "true", "是否启用数据库定时备份");
+        EnsureSetting(db, "database_backup_time", "02:00", "数据库定时备份时间");
+        EnsureSetting(db, "database_backup_path", "Backups", "数据库备份目录");
+        EnsureSetting(db, "database_backup_retention_days", "30", "数据库备份文件保留天数");
 
         if (!db.SystemSettings.Any(x => x.Key == "attachment_max_mb"))
         {
@@ -422,6 +437,8 @@ public static class DbSeeder
 
         ("audit:view", "查看审计日志", "audit"),
         ("audit:export", "导出审计日志", "audit"),
+        ("audit:cleanup", "清理审计日志", "audit"),
+        ("backup:manage", "管理数据库备份", "backup"),
         ("setting:view", "查看系统参数", "setting"),
         ("setting:edit", "编辑系统参数", "setting"),
 
@@ -492,7 +509,7 @@ public static class DbSeeder
             "file:upload", "file:view",
             "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
             "report:view", "report:export", "report:remind",
-            "audit:view", "audit:export", "setting:view", "setting:edit",
+            "audit:view", "audit:export", "audit:cleanup", "backup:manage", "setting:view", "setting:edit",
             "workflow:view", "workflow:create", "workflow:edit", "workflow:delete", "workflow:design",
             "material:view", "material:create", "material:edit", "material:transfer", "material-flow:view", "material-flow:transfer",
             "admin:audit", "admin:setting"
@@ -563,6 +580,17 @@ public static class DbSeeder
         }
         EnsureWarehouseUsersHaveRole(db);
         db.SaveChanges();
+    }
+
+    private static void EnsureSetting(AppDbContext db, string key, string value, string description)
+    {
+        if (db.SystemSettings.Any(x => x.Key == key)) return;
+        db.SystemSettings.Add(new SystemSetting
+        {
+            Key = key,
+            Value = value,
+            Description = description
+        });
     }
 
     private static void EnsureCoreRoles(AppDbContext db)

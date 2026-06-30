@@ -27,8 +27,40 @@ public record AuditLogQuery
     public int PageSize { get; init; } = 20;
 }
 
+public record AuditCleanupPreviewDto
+{
+    public int RetentionDays { get; init; }
+    public DateTime CutoffTime { get; init; }
+    public int DeleteCount { get; init; }
+}
+
+public record AuditCleanupResultDto
+{
+    public int RetentionDays { get; init; }
+    public DateTime CutoffTime { get; init; }
+    public int DeletedCount { get; init; }
+}
+
+public record DatabaseBackupResultDto
+{
+    public string FilePath { get; init; } = "";
+    public DateTime CreatedAt { get; init; }
+    public long SizeBytes { get; init; }
+}
+
 public interface IAuditQueryService
 {
     Task<PagedResult<AuditLogDto>> QueryAsync(AuditLogQuery query);
     Task<byte[]> ExportAsync(AuditLogQuery query);
+}
+
+public interface IAuditMaintenanceService
+{
+    Task<AuditCleanupPreviewDto> PreviewCleanupAsync(int retentionDays);
+    Task<AuditCleanupResultDto> CleanupAsync(int retentionDays, int? operatorUserId = null);
+}
+
+public interface IDatabaseBackupService
+{
+    Task<DatabaseBackupResultDto> BackupAsync(CancellationToken cancellationToken = default);
 }

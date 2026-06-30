@@ -98,12 +98,16 @@ builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 builder.Services.AddScoped<IBizEffectApplier, BizEffectApplier>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
+builder.Services.AddScoped<IAuditMaintenanceService, AuditMaintenanceService>();
+builder.Services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
 builder.Services.AddScoped<ITestProjectService, TestProjectService>();
 builder.Services.AddScoped<ITestMaterialService, TestMaterialService>();
 builder.Services.AddScoped<IMaterialFlowService, MaterialFlowService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddHostedService<OverdueNotificationWorker>();
 builder.Services.AddHostedService<PendingApprovalReminderWorker>();
+builder.Services.AddHostedService<DatabaseBackupWorker>();
+builder.Services.AddHostedService<AuditCleanupWorker>();
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
 // 生产环境纵深防御:禁止以占位符或弱密钥(<32 字符)启动,密钥应通过环境变量 Jwt__Key 注入

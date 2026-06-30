@@ -1,0 +1,75 @@
+using AssetManagement.Application.Audit;
+using AssetManagement.Application.Common;
+using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace AssetManagement.Infrastructure.Audit;
+
+public class AuditMaintenanceService : IAuditMaintenanceService
+{
+    private static readonly int[] AllowedRetentionDays = [7, 14, 30];
+    private readonly AppDbContext _db;
+
+    public AuditMaintenanceService(AppDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task<AuditCleanupPreviewDto> PreviewCleanupAsync(int retentionDays)
+    {
+        ValidateRetentionDays(retentionDays);
+        var cutoff = CutoffTime(retentionDays);
+        var count = await _db.AuditLogs.CountAsync(x => x.OccurredAt < cutoff);
+        return new AuditCleanupPreviewDto
+        {
+            RetentionDays = retentionDays,
+            CutoffTime = cutoff,
+            DeleteCount = count
+        };
+    }
+
+    public async Task<AuditCleanupResultDto> CleanupAsync(int retentionDays, int? operatorUserId = null)
+    {
+        ValidateRetentionDays(retentionDays);
+        var cutoff = CutoffTime(retentionDays);
+        var logs = await _db.AuditLogs
+            .Where(x => x.OccurredAt < cutoff)
+            .ToListAsync();
+        var deletedCount = logs.Count;
+
+        if (deletedCount > 0)
+        {
+            _db.AuditLogs.RemoveRange(logs);
+        }
+
+        _db.AuditLogs.Add(new AuditLog
+        {
+            UserId = operatorUserId,
+            ActionType = "cleanup",
+            TargetType = "AuditLog",
+            Summary = $"清理审计日志：保留 {retentionDays} 天，删除 {deletedCount} 条",
+            Detail = $"{{\"retentionDays\":{retentionDays},\"cutoffTime\":\"{cutoff:O}\",\"deletedCount\":{deletedCount}}}",
+            OccurredAt = DateTime.Now
+        });
+        await _db.SaveChangesAsync();
+
+        return new AuditCleanupResultDto
+        {
+            RetentionDays = retentionDays,
+            CutoffTime = cutoff,
+            DeletedCount = deletedCount
+        };
+    }
+
+    private static DateTime CutoffTime(int retentionDays)
+        => DateTime.Now.Date.AddDays(-retentionDays);
+
+    private static void ValidateRetentionDays(int retentionDays)
+    {
+        if (!AllowedRetentionDays.Contains(retentionDays))
+        {
+            throw new BizException(400, "审计日志保留天数只能选择 7、14、30 天");
+        }
+    }
+}

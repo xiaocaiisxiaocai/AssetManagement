@@ -121,12 +121,13 @@ const moduleOrder = [
   'workflow',
   'setting',
   'audit',
+  'backup',
   'admin',
 ];
 
 const menuPermissionModules: Record<string, string[]> = {
-  Admin: ['admin', 'audit', 'department', 'role', 'setting', 'user', 'workflow'],
-  AdminAudit: ['audit'],
+  Admin: ['admin', 'audit', 'backup', 'department', 'role', 'setting', 'user', 'workflow'],
+  AdminAudit: ['audit', 'backup'],
   AdminDepartments: ['department'],
   AdminRoles: ['role'],
   AdminSettings: ['setting'],

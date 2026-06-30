@@ -101,6 +101,24 @@ export interface AuditLogRow {
   userName?: null | string;
 }
 
+export interface AuditCleanupPreview {
+  cutoffTime: string;
+  deleteCount: number;
+  retentionDays: number;
+}
+
+export interface AuditCleanupResult {
+  cutoffTime: string;
+  deletedCount: number;
+  retentionDays: number;
+}
+
+export interface DatabaseBackupResult {
+  createdAt: string;
+  filePath: string;
+  sizeBytes: number;
+}
+
 async function unwrap<T>(request: Promise<ApiResult<T>>) {
   const result = await request;
   return result.data;
@@ -147,3 +165,20 @@ export const getAuditLogsApi = (params: AuditLogQuery) =>
 
 export const exportAuditLogsApi = (params: AuditLogQuery) =>
   requestClient.get('/audit-logs/export', { params, responseType: 'blob' });
+
+export const getAuditCleanupPreviewApi = (retentionDays: number) =>
+  unwrap(
+    requestClient.get<ApiResult<AuditCleanupPreview>>('/audit-logs/cleanup-preview', {
+      params: { retentionDays },
+    }),
+  );
+
+export const cleanupAuditLogsApi = (retentionDays: number) =>
+  unwrap(
+    requestClient.delete<ApiResult<AuditCleanupResult>>('/audit-logs', {
+      params: { retentionDays },
+    }),
+  );
+
+export const backupDatabaseApi = () =>
+  unwrap(requestClient.post<ApiResult<DatabaseBackupResult>>('/audit-logs/database-backup', {}));

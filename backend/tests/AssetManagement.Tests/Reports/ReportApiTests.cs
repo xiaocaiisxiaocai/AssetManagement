@@ -9,17 +9,21 @@ using AssetManagement.Application.Common;
 using AssetManagement.Application.Reports;
 using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Reports;
 
 public class ReportApiTests : IClassFixture<TestWebAppFactory>
 {
+    private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
 
     public ReportApiTests(TestWebAppFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -113,6 +117,37 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
 
         overdue!.Data!.Should().Contain(x => x.AssetId == asset.Id && x.OverdueDays > 0);
         audit!.Data!.Items.Should().Contain(x => x.TargetId == asset.Id.ToString());
+    }
+
+    [Fact]
+    public async Task Audit_cleanup_preview_and_delete_only_support_allowed_retention_days()
+    {
+        await Login();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.AuditLogs.AddRange(
+            new AuditLog { ActionType = "POST", TargetType = "Test", Summary = "old-10", OccurredAt = DateTime.Now.AddDays(-10) },
+            new AuditLog { ActionType = "POST", TargetType = "Test", Summary = "old-20", OccurredAt = DateTime.Now.AddDays(-20) },
+            new AuditLog { ActionType = "POST", TargetType = "Test", Summary = "new-3", OccurredAt = DateTime.Now.AddDays(-3) });
+        await db.SaveChangesAsync();
+
+        var preview = await _client.GetFromJsonAsync<ApiResult<AuditCleanupPreviewDto>>("/api/audit-logs/cleanup-preview?retentionDays=7");
+        preview!.Data!.RetentionDays.Should().Be(7);
+        preview.Data.DeleteCount.Should().BeGreaterThanOrEqualTo(2);
+
+        var invalid = await _client.DeleteAsync("/api/audit-logs?retentionDays=10");
+        invalid.EnsureSuccessStatusCode();
+        var invalidBody = await invalid.Content.ReadFromJsonAsync<ApiResult<object>>();
+        invalidBody!.Code.Should().NotBe(0);
+
+        var cleanup = await _client.DeleteAsync("/api/audit-logs?retentionDays=7");
+        cleanup.EnsureSuccessStatusCode();
+        var body = await cleanup.Content.ReadFromJsonAsync<ApiResult<AuditCleanupResultDto>>();
+        body!.Data!.DeletedCount.Should().BeGreaterThanOrEqualTo(2);
+        db.ChangeTracker.Clear();
+        db.AuditLogs.Any(x => x.Summary == "new-3").Should().BeTrue();
+        db.AuditLogs.Any(x => x.Summary == "old-10" || x.Summary == "old-20").Should().BeFalse();
+        db.AuditLogs.Any(x => x.ActionType == "cleanup" && x.TargetType == "AuditLog").Should().BeTrue();
     }
 
     private async Task<CategoryNodeDto> CreateCategory()

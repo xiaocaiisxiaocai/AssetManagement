@@ -1,18 +1,29 @@
 <script lang="ts" setup>
-import type { AuditLogQuery, AuditLogRow } from '#/api/report';
+import type { AuditCleanupPreview, AuditLogQuery, AuditLogRow } from '#/api/report';
 
 import { onMounted, reactive, ref } from 'vue';
 
-import { exportAuditLogsApi, getAuditLogsApi } from '#/api/report';
+import {
+  backupDatabaseApi,
+  cleanupAuditLogsApi,
+  exportAuditLogsApi,
+  getAuditCleanupPreviewApi,
+  getAuditLogsApi,
+} from '#/api/report';
 
 import {
   ElButton,
   ElDatePicker,
+  ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
+  ElMessage,
+  ElMessageBox,
   ElOption,
   ElPagination,
+  ElRadioButton,
+  ElRadioGroup,
   ElSelect,
   ElTable,
   ElTableColumn,
@@ -24,8 +35,14 @@ defineOptions({ name: 'AdminAudit' });
 type TagType = 'danger' | 'info' | 'success' | 'warning';
 
 const loading = ref(false);
+const backupLoading = ref(false);
+const cleanupLoading = ref(false);
+const cleanupPreviewLoading = ref(false);
+const cleanupDialogVisible = ref(false);
 const rows = ref<AuditLogRow[]>([]);
 const total = ref(0);
+const cleanupRetentionDays = ref(30);
+const cleanupPreview = ref<AuditCleanupPreview | null>(null);
 const query = reactive({
   actionType: '',
   dateRange: [] as string[],
@@ -84,6 +101,53 @@ async function exportReport() {
   }
 }
 
+async function openCleanupDialog() {
+  cleanupDialogVisible.value = true;
+  await loadCleanupPreview();
+}
+
+async function loadCleanupPreview() {
+  cleanupPreviewLoading.value = true;
+  try {
+    cleanupPreview.value = await getAuditCleanupPreviewApi(cleanupRetentionDays.value);
+  } finally {
+    cleanupPreviewLoading.value = false;
+  }
+}
+
+async function confirmCleanup() {
+  const preview = cleanupPreview.value ?? await getAuditCleanupPreviewApi(cleanupRetentionDays.value);
+  await ElMessageBox.confirm(
+    `确认清理 ${formatTime(preview.cutoffTime)} 之前的审计日志？预计删除 ${preview.deleteCount} 条。`,
+    '清理审计日志',
+    {
+      confirmButtonText: '确认清理',
+      cancelButtonText: '取消',
+      type: 'warning',
+    },
+  );
+
+  cleanupLoading.value = true;
+  try {
+    const result = await cleanupAuditLogsApi(cleanupRetentionDays.value);
+    ElMessage.success(`已清理 ${result.deletedCount} 条审计日志`);
+    cleanupDialogVisible.value = false;
+    await loadData();
+  } finally {
+    cleanupLoading.value = false;
+  }
+}
+
+async function backupDatabase() {
+  backupLoading.value = true;
+  try {
+    const result = await backupDatabaseApi();
+    ElMessage.success(`备份完成：${result.filePath}`);
+  } finally {
+    backupLoading.value = false;
+  }
+}
+
 function actionTypeLabel(type: string): string {
   const map: Record<string, string> = { POST: '新增', PUT: '修改', DELETE: '删除', remind: '催办' };
   return map[type] ?? type;
@@ -123,7 +187,11 @@ onMounted(loadData);
           <h2 class="page-title">审计日志</h2>
           <p class="page-subtitle">系统操作记录查询与追踪</p>
         </div>
-        <ElButton type="primary" @click="exportReport">导出</ElButton>
+        <div class="header-actions">
+          <ElButton :loading="backupLoading" @click="backupDatabase">备份</ElButton>
+          <ElButton type="warning" @click="openCleanupDialog">清理日志</ElButton>
+          <ElButton type="primary" @click="exportReport">导出</ElButton>
+        </div>
       </div>
 
       <div class="filter-panel">
@@ -199,6 +267,84 @@ onMounted(loadData);
           />
         </div>
       </div>
+
+      <ElDialog
+        v-model="cleanupDialogVisible"
+        title="清理审计日志"
+        width="460px"
+        :close-on-click-modal="false"
+      >
+        <ElForm label-position="top">
+          <ElFormItem label="保留周期">
+            <ElRadioGroup v-model="cleanupRetentionDays" @change="loadCleanupPreview">
+              <ElRadioButton :value="7">7 天</ElRadioButton>
+              <ElRadioButton :value="14">14 天</ElRadioButton>
+              <ElRadioButton :value="30">30 天</ElRadioButton>
+            </ElRadioGroup>
+          </ElFormItem>
+
+          <div v-loading="cleanupPreviewLoading" class="cleanup-preview">
+            <div class="preview-row">
+              <span>截止时间</span>
+              <strong>{{ cleanupPreview ? formatTime(cleanupPreview.cutoffTime) : '-' }}</strong>
+            </div>
+            <div class="preview-row">
+              <span>预计删除</span>
+              <strong>{{ cleanupPreview?.deleteCount ?? 0 }} 条</strong>
+            </div>
+            <div class="preview-tip">
+              只会删除超过保留周期的审计日志；本次清理动作会单独写入审计日志。
+            </div>
+          </div>
+        </ElForm>
+
+        <template #footer>
+          <ElButton @click="cleanupDialogVisible = false">取消</ElButton>
+          <ElButton
+            type="danger"
+            :loading="cleanupLoading"
+            :disabled="cleanupPreviewLoading"
+            @click="confirmCleanup"
+          >
+            确认清理
+          </ElButton>
+        </template>
+      </ElDialog>
     </div>
   </re-page>
 </template>
+
+<style scoped>
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cleanup-preview {
+  min-height: 116px;
+  padding: 12px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+}
+
+.preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: var(--el-text-color-regular);
+}
+
+.preview-row strong {
+  color: var(--el-text-color-primary);
+}
+
+.preview-tip {
+  padding-top: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  border-top: 1px dashed var(--el-border-color);
+}
+</style>
