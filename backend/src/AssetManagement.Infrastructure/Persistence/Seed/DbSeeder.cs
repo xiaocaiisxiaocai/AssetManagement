@@ -594,6 +594,7 @@ public static class DbSeeder
             "report:view", "report:export", "report:remind",
             "audit:view", "audit:export", "audit:cleanup", "backup:manage", "setting:view", "setting:edit",
             "workflow:view", "workflow:create", "workflow:edit", "workflow:delete", "workflow:design",
+            "project:view",
             "material:view", "material:create", "material:edit", "material:transfer", "material-flow:view", "material-flow:transfer",
             "admin:audit", "admin:setting"
         },
@@ -602,6 +603,7 @@ public static class DbSeeder
             "asset:view", "category:view", "location:view", "file:view",
             "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign",
             "report:view", "report:export",
+            "project:view",
             "material:view", "material:approve", "material:transfer", "material-flow:view", "material-flow:transfer", "material-flow:approve"
         },
         ["dept_admin"] = new[]

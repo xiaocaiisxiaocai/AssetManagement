@@ -59,6 +59,11 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
             .Should().HaveCount(_db.Menus.Count(), "系统管理员应始终拥有全部菜单，避免新增菜单后没有入口");
         warehouse!.RoleMenus.Select(x => x.MenuId).Distinct()
             .Should().NotBeEmpty("仓库管理员恢复后也应按权限矩阵补齐菜单入口");
+        warehouse.RolePermissions.Select(x => x.Permission.Code)
+            .Should().Contain("project:view", "仓库管理员已有测试项目菜单时必须能访问测试项目接口");
+        roles.Single(x => x.Code == "supervisor")
+            .RolePermissions.Select(x => x.Permission.Code)
+            .Should().Contain("project:view", "部门主管已有测试项目菜单时必须能访问测试项目接口");
         warehouseUser.UserRoles.Select(x => x.RoleId)
             .Should().Contain(warehouse!.Id, "现有仓库管理员测试用户不能保持无角色状态");
         normalUser.UserRoles.Select(x => x.RoleId)
