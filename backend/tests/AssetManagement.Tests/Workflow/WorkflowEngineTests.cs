@@ -136,6 +136,16 @@ public class BpmnEngineTests
     }
 
     [Fact]
+    public void Validator_accepts_project_owner_condition()
+    {
+        var bpmn = ProjectOwnerConditionBpmn();
+
+        var errors = BpmnValidator.Validate(bpmn);
+
+        errors.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Countersign_requires_all_signers()
     {
         var bpmn = CountersignBpmn();
@@ -261,6 +271,27 @@ public class BpmnEngineTests
     <bpmn:sequenceFlow id=""F2"" sourceRef=""Task_Countersign"" targetRef=""End"" />
   </bpmn:process>
 </bpmn:definitions>";
+
+    private static string ProjectOwnerConditionBpmn() => """
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="projectOwnerCondition" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:exclusiveGateway id="Gateway" />
+    <bpmn:userTask id="Task_Owner" name="指定人员审批" camunda:assignee="1001" />
+    <bpmn:userTask id="Task_Default" name="默认审批" camunda:assignee="deptManager" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="Gateway" />
+    <bpmn:sequenceFlow id="F2" sourceRef="Gateway" targetRef="Task_Owner">
+      <bpmn:conditionExpression>${isProjectOwner} == "true"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="F3" sourceRef="Gateway" targetRef="Task_Default" />
+    <bpmn:sequenceFlow id="F4" sourceRef="Task_Owner" targetRef="End" />
+    <bpmn:sequenceFlow id="F5" sourceRef="Task_Default" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
 
     #endregion
 

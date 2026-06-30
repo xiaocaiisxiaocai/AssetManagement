@@ -19,6 +19,7 @@ import {
   ElCheckbox,
   ElCheckboxGroup,
   ElDialog,
+  ElEmpty,
   ElForm,
   ElFormItem,
   ElInput,
@@ -47,6 +48,9 @@ const permissions = ref<PermissionDto[]>([]);
 const menus = ref<MenuDto[]>([]);
 const total = ref(0);
 const menuTreeRef = ref<InstanceType<typeof ElTree>>();
+const activePermissionGroupKey = ref('');
+const permissionKeyword = ref('');
+const showSelectedOnly = ref(false);
 
 const query = reactive({
   keyword: '',
@@ -70,16 +74,251 @@ const menuForm = reactive({
   selectedMenus: [] as number[],
 });
 
+interface PermissionGroup {
+  key: string;
+  label: string;
+  level: number;
+  permissions: PermissionDto[];
+  selected: number;
+  total: number;
+}
+
+const actionLabelMap: Record<string, string> = {
+  approve: '审批',
+  assign: '分配',
+  create: '新增',
+  delete: '删除',
+  design: '设计',
+  edit: '编辑',
+  export: '导出',
+  followup: '跟进',
+  handle: '处理',
+  import: '导入',
+  manage: '管理',
+  option: '选项',
+  purge: '彻底删除',
+  remind: '提醒',
+  restore: '恢复',
+  return: '退回',
+  transfer: '流转',
+  upload: '上传',
+  view: '查看',
+};
+
+const moduleOrder = [
+  'asset',
+  'category',
+  'location',
+  'file',
+  'approval',
+  'report',
+  'project',
+  'material',
+  'material-flow',
+  'user',
+  'department',
+  'role',
+  'workflow',
+  'setting',
+  'audit',
+  'admin',
+];
+
+const menuPermissionModules: Record<string, string[]> = {
+  Admin: ['admin', 'audit', 'department', 'role', 'setting', 'user', 'workflow'],
+  AdminAudit: ['audit'],
+  AdminDepartments: ['department'],
+  AdminRoles: ['role'],
+  AdminSettings: ['setting'],
+  AdminUsers: ['user'],
+  AdminWorkflows: ['workflow'],
+  Approval: ['approval'],
+  ApprovalMine: ['approval'],
+  ApprovalPending: ['approval'],
+  Asset: ['asset', 'category', 'file', 'location'],
+  AssetCategories: ['category'],
+  AssetList: ['asset', 'file'],
+  AssetLocations: ['location'],
+  ConfirmReturn: ['approval'],
+  Material: ['material', 'material-flow', 'project'],
+  MaterialHome: ['project'],
+  MaterialProjects: ['material', 'material-flow', 'project'],
+  Report: ['report'],
+  ReportBorrow: ['report'],
+  ReportOverdue: ['report'],
+  ReportSummary: ['report'],
+};
+
+const menuPermissionCodes: Record<string, string[]> = {
+  AdminAudit: ['admin:audit'],
+  AdminRoles: ['admin:role'],
+  AdminSettings: ['admin:setting'],
+  AdminUsers: ['admin:user'],
+};
+
+const selectedPermissionSet = computed(() => new Set(permissionForm.selectedPermissions));
+
 const permissionsByModule = computed(() => {
   const grouped: Record<string, PermissionDto[]> = {};
   permissions.value.forEach((perm) => {
-    if (!grouped[perm.module]) {
-      grouped[perm.module] = [];
-    }
-    grouped[perm.module]!.push(perm);
+    const module = perm.module || 'other';
+    grouped[module] ??= [];
+    grouped[module]!.push(perm);
   });
-  return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
+
+  return grouped;
 });
+
+const permissionGroups = computed(() => {
+  const groups = buildMenuPermissionGroups(menus.value);
+  const coveredIds = new Set(groups.flatMap((group) => group.permissions.map((perm) => perm.id)));
+  const ungroupedPermissions = permissions.value
+    .filter((perm) => !coveredIds.has(perm.id))
+    .sort(comparePermissions);
+
+  if (ungroupedPermissions.length > 0) {
+    groups.push(toPermissionGroup({
+      key: '__ungrouped__',
+      label: '未挂菜单权限',
+      level: 0,
+      permissions: ungroupedPermissions,
+    }));
+  }
+
+  return groups;
+});
+
+const activePermissionGroup = computed(() => {
+  if (!activePermissionGroupKey.value && permissionGroups.value.length > 0) {
+    return permissionGroups.value[0];
+  }
+  return permissionGroups.value.find((item) => item.key === activePermissionGroupKey.value)
+    ?? permissionGroups.value[0];
+});
+
+const filteredPermissions = computed(() => {
+  const group = activePermissionGroup.value;
+  if (!group) return [];
+
+  const keyword = permissionKeyword.value.trim().toLowerCase();
+  return group.permissions.filter((perm) => {
+    const matchedKeyword = !keyword
+      || perm.name.toLowerCase().includes(keyword)
+      || perm.code.toLowerCase().includes(keyword);
+    const matchedSelected = !showSelectedOnly.value || selectedPermissionSet.value.has(perm.id);
+    return matchedKeyword && matchedSelected;
+  });
+});
+
+const selectedPermissionCount = computed(() => permissionForm.selectedPermissions.length);
+const activePermissionGroupKeyValue = computed(() => activePermissionGroup.value?.key ?? '');
+const activePermissionGroupLabel = computed(() => activePermissionGroup.value?.label ?? '权限');
+
+function comparePermissions(a: PermissionDto, b: PermissionDto) {
+  const ai = moduleOrder.indexOf(a.module || 'other');
+  const bi = moduleOrder.indexOf(b.module || 'other');
+  if (ai !== bi) {
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  }
+  return a.code.localeCompare(b.code);
+}
+
+function actionLabel(code: string) {
+  const parts = code.split(':');
+  const action = parts[parts.length - 1] ?? code;
+  if (action.includes('-')) {
+    return action
+      .split('-')
+      .map((part) => actionLabelMap[part] ?? part)
+      .join('/');
+  }
+  return actionLabelMap[action] ?? action;
+}
+
+function collectMenuPermissionModules(menu: MenuDto) {
+  const modules = new Set<string>();
+  const configuredModules = menuPermissionModules[menu.name] ?? [];
+  configuredModules.forEach((module) => modules.add(module));
+
+  if (menu.permissionCode) {
+    const module = menu.permissionCode.split(':')[0];
+    if (module) modules.add(module);
+  }
+
+  return [...modules];
+}
+
+function collectMenuPermissions(menu: MenuDto) {
+  const modulePermissions = collectMenuPermissionModules(menu)
+    .flatMap((module) => permissionsByModule.value[module] ?? []);
+  const configuredCodePermissions = (menuPermissionCodes[menu.name] ?? [])
+    .flatMap((code) => permissions.value.filter((perm) => perm.code === code));
+  const codePermissions = menu.permissionCode
+    ? permissions.value.filter((perm) => perm.code === menu.permissionCode)
+    : [];
+
+  return [...modulePermissions, ...configuredCodePermissions, ...codePermissions]
+    .filter((perm, index, list) => list.findIndex((item) => item.id === perm.id) === index)
+    .sort(comparePermissions);
+}
+
+function toPermissionGroup(group: Omit<PermissionGroup, 'selected' | 'total'>): PermissionGroup {
+  return {
+    ...group,
+    selected: group.permissions.filter((perm) => selectedPermissionSet.value.has(perm.id)).length,
+    total: group.permissions.length,
+  };
+}
+
+function buildMenuPermissionGroups(menuList: MenuDto[], level = 0): PermissionGroup[] {
+  const groups: PermissionGroup[] = [];
+
+  menuList
+    .filter((menu) => menu.type !== 'button')
+    .forEach((menu) => {
+      const children = menu.children ?? [];
+      const ownPermissions = collectMenuPermissions(menu);
+      const childGroups = buildMenuPermissionGroups(children, level + 1);
+      const childPermissions = childGroups.flatMap((group) => group.permissions);
+      const permissionsForMenu = [...ownPermissions, ...childPermissions]
+        .filter((perm, index, list) => list.findIndex((item) => item.id === perm.id) === index)
+        .sort(comparePermissions);
+
+      if (permissionsForMenu.length > 0) {
+        groups.push(toPermissionGroup({
+          key: `menu:${menu.id}`,
+          label: menu.title || menu.name,
+          level,
+          permissions: permissionsForMenu,
+        }));
+      }
+
+      groups.push(...childGroups);
+    });
+
+  return groups;
+}
+
+function selectPermissionGroup(key: string) {
+  activePermissionGroupKey.value = key;
+}
+
+function selectCurrentModulePermissions() {
+  const group = activePermissionGroup.value;
+  if (!group) return;
+  const selected = new Set(permissionForm.selectedPermissions);
+  group.permissions.forEach((perm) => selected.add(perm.id));
+  permissionForm.selectedPermissions = [...selected];
+}
+
+function clearCurrentModulePermissions() {
+  const group = activePermissionGroup.value;
+  if (!group) return;
+  const ids = new Set(group.permissions.map((perm) => perm.id));
+  permissionForm.selectedPermissions = permissionForm.selectedPermissions.filter((id) => !ids.has(id));
+}
 
 async function loadData() {
   loading.value = true;
@@ -155,6 +394,9 @@ async function save() {
 function openPermDialog(row: RoleDto) {
   permissionForm.roleId = row.id;
   permissionForm.selectedPermissions = [...(row.permissionIds ?? [])];
+  permissionKeyword.value = '';
+  showSelectedOnly.value = false;
+  activePermissionGroupKey.value = permissionGroups.value[0]?.key ?? '';
   permDialogVisible.value = true;
 }
 
@@ -228,8 +470,8 @@ onMounted(async () => {
         <ElButton type="primary" @click="openCreate">新增角色</ElButton>
       </div>
 
-      <div class="filter-panel">
-        <ElForm class="filter-form" inline>
+      <div class="role-filter-panel">
+        <ElForm class="role-search-form" inline>
           <ElFormItem label="搜索">
             <ElInput
               v-model="query.keyword"
@@ -331,26 +573,61 @@ onMounted(async () => {
       </ElDialog>
 
       <!-- 权限分配弹窗 -->
-      <ElDialog v-model="permDialogVisible" title="权限分配" width="720px">
-        <div class="role-permission-panel">
-          <template v-for="[module, perms] in permissionsByModule" :key="module">
-            <div class="role-permission-group">
-              <div class="role-permission-group-title">{{ module }}</div>
-              <ElCheckboxGroup v-model="permissionForm.selectedPermissions">
-                <div class="role-permission-grid">
-                  <ElCheckbox
-                    v-for="perm in perms"
-                    :key="perm.id"
-                    :label="perm.id"
-                    border
-                  >
-                    {{ perm.name }}
-                    <span class="role-permission-code">({{ perm.code }})</span>
-                  </ElCheckbox>
-                </div>
-              </ElCheckboxGroup>
+      <ElDialog v-model="permDialogVisible" title="权限分配" width="920px">
+        <div class="role-permission-shell">
+          <aside class="role-permission-sidebar">
+            <button
+              v-for="item in permissionGroups"
+              :key="item.key"
+              :class="[
+                'role-module-item',
+                { 'is-active': activePermissionGroupKeyValue === item.key },
+              ]"
+              :style="{ paddingLeft: `${10 + item.level * 16}px` }"
+              type="button"
+              @click="selectPermissionGroup(item.key)"
+            >
+              <span class="role-module-name">{{ item.label }}</span>
+              <span class="role-module-count">{{ item.selected }}/{{ item.total }}</span>
+            </button>
+          </aside>
+
+          <section class="role-permission-main">
+            <div class="role-permission-tools">
+              <ElInput
+                v-model="permissionKeyword"
+                clearable
+                placeholder="搜索权限名称或编码"
+              />
+              <div class="role-permission-tool-actions">
+                <ElCheckbox v-model="showSelectedOnly">只看已选</ElCheckbox>
+                <ElButton @click="selectCurrentModulePermissions">全选当前模块</ElButton>
+                <ElButton @click="clearCurrentModulePermissions">清空当前模块</ElButton>
+              </div>
             </div>
-          </template>
+
+            <div class="role-permission-summary">
+              <span>{{ activePermissionGroupLabel }}</span>
+              <span>已选 {{ selectedPermissionCount }} / {{ permissions.length }}</span>
+            </div>
+
+            <ElCheckboxGroup v-model="permissionForm.selectedPermissions">
+              <div v-if="filteredPermissions.length > 0" class="role-permission-list">
+                <ElCheckbox
+                  v-for="perm in filteredPermissions"
+                  :key="perm.id"
+                  :label="perm.id"
+                  class="role-permission-card"
+                  border
+                >
+                  <span class="role-permission-name">{{ perm.name }}</span>
+                  <span class="role-permission-action">{{ actionLabel(perm.code) }}</span>
+                  <span class="role-permission-code">{{ perm.code }}</span>
+                </ElCheckbox>
+              </div>
+              <ElEmpty v-else description="没有匹配的权限" />
+            </ElCheckboxGroup>
+          </section>
         </div>
         <template #footer>
           <ElButton @click="permDialogVisible = false">取消</ElButton>
@@ -497,40 +774,145 @@ onMounted(async () => {
 }
 
 /* ========== 权限分配面板 ========== */
-.role-permission-panel {
-  display: flex;
-  flex-direction: column;
+.role-permission-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
   gap: 16px;
-  max-height: 500px;
-  overflow-y: auto;
+  min-height: 520px;
 }
 
-.role-permission-group {
-  padding: 16px;
+.role-permission-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  max-height: 560px;
+  overflow-y: auto;
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
   background: var(--asset-page-surface-soft);
 }
 
-.role-permission-group-title {
-  margin-bottom: 12px;
+.role-module-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--asset-page-text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.role-module-item:hover,
+.role-module-item.is-active {
+  border-color: var(--el-color-primary-light-5);
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.role-module-name {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.role-module-count {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--asset-page-muted);
+}
+
+.role-permission-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.role-permission-tools {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.role-permission-tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.role-permission-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.role-permission-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 430px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.role-permission-card {
+  width: 100%;
+  min-height: 72px;
+  margin-right: 0;
+}
+
+.role-permission-card :deep(.el-checkbox__label) {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+}
+
+.role-permission-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--asset-page-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
-  color: var(--asset-page-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.role-permission-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+.role-permission-action {
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .role-permission-code {
-  margin-left: 4px;
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--asset-page-muted);
   font-size: 12px;
   line-height: 16px;
-  color: var(--asset-page-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ========== 对话框优化 ========== */

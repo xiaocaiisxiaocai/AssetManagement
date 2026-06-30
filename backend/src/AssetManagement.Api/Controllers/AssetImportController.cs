@@ -17,12 +17,12 @@ public class AssetImportController : ControllerBase
     }
 
     [HttpGet("template")]
-    [HasPermission("asset:view")]
+    [HasPermission("asset:import")]
     public FileContentResult Template()
         => File(_service.BuildImportTemplate(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "asset-import-template.xlsx");
 
     [HttpPost("validate")]
-    [HasPermission("asset:create")]
+    [HasPermission("asset:import")]
     public async Task<ApiResult<List<ImportPreviewRow>>> Validate(IFormFile file)
     {
         await using var stream = file.OpenReadStream();
@@ -30,7 +30,7 @@ public class AssetImportController : ControllerBase
     }
 
     [HttpPost("confirm")]
-    [HasPermission("asset:create")]
+    [HasPermission("asset:import")]
     public async Task<ApiResult<ImportConfirmResult>> Confirm(IFormFile file)
     {
         await using var stream = file.OpenReadStream();

@@ -23,7 +23,7 @@ public class ReportController : ControllerBase
         => ApiResult<AssetSummaryDto>.Ok(await _service.GetSummaryAsync());
 
     [HttpGet("summary/export")]
-    [HasPermission("report:view")]
+    [HasPermission("report:export")]
     public async Task<FileContentResult> ExportSummary()
         => File(await _service.ExportSummaryAsync(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "asset-summary.xlsx");
 
@@ -33,7 +33,7 @@ public class ReportController : ControllerBase
         => ApiResult<PagedResult<BorrowReportRow>>.Ok(await _service.QueryBorrowedAsync(query));
 
     [HttpGet("borrowed/export")]
-    [HasPermission("report:view")]
+    [HasPermission("report:export")]
     public async Task<FileContentResult> ExportBorrowed([FromQuery] BorrowReportQuery query)
         => File(await _service.ExportBorrowedAsync(query), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "borrowed-report.xlsx");
 
@@ -43,12 +43,12 @@ public class ReportController : ControllerBase
         => ApiResult<List<OverdueReportRow>>.Ok(await _service.QueryOverdueAsync());
 
     [HttpGet("overdue/export")]
-    [HasPermission("report:view")]
+    [HasPermission("report:export")]
     public async Task<FileContentResult> ExportOverdue()
         => File(await _service.ExportOverdueAsync(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "overdue-report.xlsx");
 
     [HttpPost("overdue/{assetId:int}/remind")]
-    [HasPermission("report:view")]
+    [HasPermission("report:remind")]
     public async Task<ApiResult<object?>> Remind(int assetId)
     {
         await _service.RemindOverdueAsync(assetId, CurrentUserId());
@@ -56,7 +56,7 @@ public class ReportController : ControllerBase
     }
 
     [HttpPost("overdue/remind-batch")]
-    [HasPermission("report:view")]
+    [HasPermission("report:remind")]
     public async Task<ApiResult<object?>> RemindBatch(RemindBatchRequest request)
     {
         var count = await _service.RemindOverdueBatchAsync(request.AssetIds, CurrentUserId());

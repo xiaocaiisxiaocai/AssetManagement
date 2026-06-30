@@ -17,22 +17,22 @@ public class AssetCategoryController : ControllerBase
     }
 
     [HttpGet("tree")]
-    [HasPermission("asset:view")]
+    [HasPermission("category:view")]
     public async Task<ApiResult<List<CategoryNodeDto>>> Tree([FromQuery] string? deleteStatus = null)
         => ApiResult<List<CategoryNodeDto>>.Ok(await _service.GetCategoryTreeAsync(deleteStatus));
 
     [HttpPost]
-    [HasPermission("asset:create")]
+    [HasPermission("category:create")]
     public async Task<ApiResult<CategoryNodeDto>> Create(CreateCategoryRequest request)
         => ApiResult<CategoryNodeDto>.Ok(await _service.CreateCategoryAsync(request));
 
     [HttpPut("{id:int}")]
-    [HasPermission("asset:edit")]
+    [HasPermission("category:edit")]
     public async Task<ApiResult<CategoryNodeDto>> Update(int id, UpdateCategoryRequest request)
         => ApiResult<CategoryNodeDto>.Ok(await _service.UpdateCategoryAsync(id, request));
 
     [HttpDelete("{id:int}")]
-    [HasPermission("asset:delete")]
+    [HasPermission("category:delete")]
     public async Task<ApiResult<object?>> Delete(int id)
     {
         await _service.DeleteCategoryAsync(id);
@@ -40,7 +40,7 @@ public class AssetCategoryController : ControllerBase
     }
 
     [HttpDelete("{id:int}/purge")]
-    [HasPermission("asset:purge")]
+    [HasPermission("category:purge")]
     public async Task<ApiResult<object?>> Purge(int id)
     {
         await _service.PurgeCategoryAsync(id);
@@ -48,7 +48,7 @@ public class AssetCategoryController : ControllerBase
     }
 
     [HttpPost("{id:int}/restore")]
-    [HasPermission("asset:restore")]
+    [HasPermission("category:restore")]
     public async Task<ApiResult<object?>> Restore(int id)
     {
         await _service.RestoreCategoryAsync(id);

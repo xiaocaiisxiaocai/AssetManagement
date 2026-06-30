@@ -24,24 +24,9 @@ public static class DbSeeder
 
             using var tx = db.Database.BeginTransaction();
 
-            var permissions = new[]
-            {
-            new Permission { Code = "asset:view", Name = "查看资产", Module = "asset" },
-            new Permission { Code = "asset:create", Name = "新增资产", Module = "asset" },
-            new Permission { Code = "asset:edit", Name = "编辑资产", Module = "asset" },
-            new Permission { Code = "asset:delete", Name = "删除资产", Module = "asset" },
-            new Permission { Code = "asset:purge", Name = "彻底删除资产/分类", Module = "asset" },
-            new Permission { Code = "asset:restore", Name = "恢复资产/分类", Module = "asset" },
-            new Permission { Code = "approval:handle", Name = "处理审批", Module = "approval" },
-            new Permission { Code = "approval:view", Name = "查看审批", Module = "approval" },
-            new Permission { Code = "approval:create", Name = "发起审批", Module = "approval" },
-            new Permission { Code = "report:view", Name = "查看报表", Module = "report" },
-            new Permission { Code = "admin:user", Name = "用户管理", Module = "admin" },
-            new Permission { Code = "admin:role", Name = "角色管理", Module = "admin" },
-            new Permission { Code = "admin:audit", Name = "审计日志", Module = "admin" },
-            new Permission { Code = "admin:setting", Name = "系统参数", Module = "admin" },
-            new Permission { Code = "workflow:design", Name = "流程设计", Module = "workflow" }
-        };
+            var permissions = RequiredPermissions()
+                .Select(x => new Permission { Code = x.Code, Name = x.Name, Module = x.Module })
+                .ToArray();
 
         db.Permissions.AddRange(permissions);
 
@@ -52,23 +37,23 @@ public static class DbSeeder
             new Menu { Id = 1, Name = "Asset", Title = "资产管理", Path = "/asset", Component = "BasicLayout", Icon = "lucide:package", Sort = 10 },
             new Menu { Id = 2, ParentId = 1, Name = "AssetList", Title = "资产列表", Path = "/asset/list", Component = "/asset/list/index", Sort = 11, PermissionCode = "asset:view" },
             // Id=3 资产层级菜单已删除,实际功能已整合到资产列表的层级视图中
-            new Menu { Id = 18, ParentId = 1, Name = "AssetCategories", Title = "资产分类", Path = "/asset/categories", Component = "/asset/categories/index", Sort = 13, PermissionCode = "asset:view" },
-            new Menu { Id = 19, ParentId = 1, Name = "AssetLocations", Title = "存放位置", Path = "/asset/locations", Component = "/asset/locations/index", Sort = 14, PermissionCode = "asset:view" },
+            new Menu { Id = 18, ParentId = 1, Name = "AssetCategories", Title = "资产分类", Path = "/asset/categories", Component = "/asset/categories/index", Sort = 13, PermissionCode = "category:view" },
+            new Menu { Id = 19, ParentId = 1, Name = "AssetLocations", Title = "存放位置", Path = "/asset/locations", Component = "/asset/locations/index", Sort = 14, PermissionCode = "location:view" },
             new Menu { Id = 4, Name = "Approval", Title = "审批管理", Path = "/approval", Component = "BasicLayout", Icon = "lucide:git-branch", Sort = 20 },
             new Menu { Id = 5, ParentId = 4, Name = "ApprovalPending", Title = "待我审批", Path = "/approval/pending", Component = "/approval/pending/index", Sort = 21, PermissionCode = "approval:handle" },
             new Menu { Id = 6, ParentId = 4, Name = "ApprovalMine", Title = "我的申请", Path = "/approval/mine", Component = "/approval/mine/index", Sort = 22, PermissionCode = "approval:view" },
-            new Menu { Id = 23, ParentId = 4, Name = "ConfirmReturn", Title = "待确认入库", Path = "/approval/confirm-return", Component = "/approval/confirm-return/index", Sort = 23, PermissionCode = "asset:edit" },
+            new Menu { Id = 23, ParentId = 4, Name = "ConfirmReturn", Title = "待确认入库", Path = "/approval/confirm-return", Component = "/approval/confirm-return/index", Sort = 23, PermissionCode = "approval:confirm-return" },
             new Menu { Id = 7, Name = "Report", Title = "报表统计", Path = "/report", Component = "BasicLayout", Icon = "lucide:chart-column", Sort = 30 },
             new Menu { Id = 8, ParentId = 7, Name = "ReportSummary", Title = "资产汇总", Path = "/report/summary", Component = "/report/summary/index", Sort = 31, PermissionCode = "report:view" },
             new Menu { Id = 9, ParentId = 7, Name = "ReportBorrow", Title = "借用明细", Path = "/report/borrow", Component = "/report/borrow/index", Sort = 32, PermissionCode = "report:view" },
             new Menu { Id = 22, ParentId = 7, Name = "ReportOverdue", Title = "逾期资产", Path = "/report/overdue", Component = "/report/overdue/index", Sort = 33, PermissionCode = "report:view" },
             new Menu { Id = 10, Name = "Admin", Title = "系统管理", Path = "/admin", Component = "BasicLayout", Icon = "lucide:settings", Sort = 40 },
-            new Menu { Id = 11, ParentId = 10, Name = "AdminUsers", Title = "用户管理", Path = "/admin/users", Component = "/admin/users/index", Sort = 41, PermissionCode = "admin:user" },
-            new Menu { Id = 12, ParentId = 10, Name = "AdminRoles", Title = "角色管理", Path = "/admin/roles", Component = "/admin/roles/index", Sort = 42, PermissionCode = "admin:role" },
-            new Menu { Id = 13, ParentId = 10, Name = "AdminWorkflows", Title = "审批流程", Path = "/admin/workflows", Component = "/admin/workflows/index", Sort = 43, PermissionCode = "workflow:design" },
-            new Menu { Id = 14, ParentId = 10, Name = "AdminAudit", Title = "审计日志", Path = "/admin/audit", Component = "/admin/audit/index", Sort = 44, PermissionCode = "admin:audit" },
-            new Menu { Id = 20, ParentId = 10, Name = "AdminDepartments", Title = "组织架构", Path = "/admin/departments", Component = "/admin/departments/index", Sort = 45, PermissionCode = "admin:user" },
-            new Menu { Id = 21, ParentId = 10, Name = "AdminSettings", Title = "系统参数", Path = "/admin/settings", Component = "/admin/settings/index", Sort = 46, PermissionCode = "admin:setting" },
+            new Menu { Id = 11, ParentId = 10, Name = "AdminUsers", Title = "用户管理", Path = "/admin/users", Component = "/admin/users/index", Sort = 41, PermissionCode = "user:view" },
+            new Menu { Id = 12, ParentId = 10, Name = "AdminRoles", Title = "角色管理", Path = "/admin/roles", Component = "/admin/roles/index", Sort = 42, PermissionCode = "role:view" },
+            new Menu { Id = 13, ParentId = 10, Name = "AdminWorkflows", Title = "审批流程", Path = "/admin/workflows", Component = "/admin/workflows/index", Sort = 43, PermissionCode = "workflow:view" },
+            new Menu { Id = 14, ParentId = 10, Name = "AdminAudit", Title = "审计日志", Path = "/admin/audit", Component = "/admin/audit/index", Sort = 44, PermissionCode = "audit:view" },
+            new Menu { Id = 20, ParentId = 10, Name = "AdminDepartments", Title = "组织架构", Path = "/admin/departments", Component = "/admin/departments/index", Sort = 45, PermissionCode = "department:view" },
+            new Menu { Id = 21, ParentId = 10, Name = "AdminSettings", Title = "系统参数", Path = "/admin/settings", Component = "/admin/settings/index", Sort = 46, PermissionCode = "setting:view" },
             new Menu { Id = 15, ParentId = 2, Name = "AssetCreateButton", Title = "新增资产按钮", Type = "button", Sort = 1, PermissionCode = "asset:create" },
             new Menu { Id = 16, ParentId = 2, Name = "AssetEditButton", Title = "编辑资产按钮", Type = "button", Sort = 2, PermissionCode = "asset:edit" },
             new Menu { Id = 17, ParentId = 2, Name = "AssetDeleteButton", Title = "删除资产按钮", Type = "button", Sort = 3, PermissionCode = "asset:delete" }
@@ -362,35 +347,189 @@ public static class DbSeeder
             existingHomeWorkspace.Sort = 1;
         }
 
+        SyncMenuPermissionCodes(db);
         db.SaveChanges();
     }
 
+    private static void SyncMenuPermissionCodes(AppDbContext db)
+    {
+        var menuPermissions = new Dictionary<string, string>
+        {
+            ["AssetList"] = "asset:view",
+            ["AssetCategories"] = "category:view",
+            ["AssetLocations"] = "location:view",
+            ["ApprovalPending"] = "approval:handle",
+            ["ApprovalMine"] = "approval:view",
+            ["ConfirmReturn"] = "approval:confirm-return",
+            ["ReportSummary"] = "report:view",
+            ["ReportBorrow"] = "report:view",
+            ["ReportOverdue"] = "report:view",
+            ["AdminUsers"] = "user:view",
+            ["AdminRoles"] = "role:view",
+            ["AdminWorkflows"] = "workflow:view",
+            ["AdminAudit"] = "audit:view",
+            ["AdminDepartments"] = "department:view",
+            ["AdminSettings"] = "setting:view",
+            ["AssetCreateButton"] = "asset:create",
+            ["AssetEditButton"] = "asset:edit",
+            ["AssetDeleteButton"] = "asset:delete",
+            ["MaterialHome"] = "project:view",
+            ["MaterialProjects"] = "project:view"
+        };
+
+        foreach (var menu in db.Menus.Where(x => menuPermissions.Keys.Contains(x.Name)).ToList())
+        {
+            menu.PermissionCode = menuPermissions[menu.Name];
+        }
+    }
+
+    private static (string Code, string Name, string Module)[] RequiredPermissions() => new[]
+    {
+        ("asset:view", "查看资产", "asset"),
+        ("asset:create", "新增资产", "asset"),
+        ("asset:edit", "编辑资产", "asset"),
+        ("asset:delete", "删除资产", "asset"),
+        ("asset:restore", "恢复资产", "asset"),
+        ("asset:purge", "彻底删除资产", "asset"),
+        ("asset:import", "导入资产", "asset"),
+        ("asset:export", "导出资产", "asset"),
+
+        ("category:view", "查看资产分类", "category"),
+        ("category:create", "新增资产分类", "category"),
+        ("category:edit", "编辑资产分类", "category"),
+        ("category:delete", "删除资产分类", "category"),
+        ("category:restore", "恢复资产分类", "category"),
+        ("category:purge", "彻底删除资产分类", "category"),
+
+        ("location:view", "查看存放位置", "location"),
+        ("location:create", "新增存放位置", "location"),
+        ("location:edit", "编辑存放位置", "location"),
+        ("location:delete", "删除存放位置", "location"),
+
+        ("file:upload", "上传文件", "file"),
+        ("file:view", "查看文件", "file"),
+
+        ("approval:create", "发起审批", "approval"),
+        ("approval:view", "查看审批", "approval"),
+        ("approval:handle", "处理审批", "approval"),
+        ("approval:add-sign", "审批加签", "approval"),
+        ("approval:transfer-sign", "审批转签", "approval"),
+        ("approval:confirm-return", "确认归还入库", "approval"),
+
+        ("report:view", "查看报表", "report"),
+        ("report:export", "导出报表", "report"),
+        ("report:remind", "逾期提醒", "report"),
+
+        ("audit:view", "查看审计日志", "audit"),
+        ("audit:export", "导出审计日志", "audit"),
+        ("setting:view", "查看系统参数", "setting"),
+        ("setting:edit", "编辑系统参数", "setting"),
+
+        ("user:view", "查看用户", "user"),
+        ("user:create", "新增用户", "user"),
+        ("user:edit", "编辑用户", "user"),
+        ("user:delete", "删除用户", "user"),
+        ("user:reset-password", "重置用户密码", "user"),
+        ("user:toggle-status", "启停用户", "user"),
+
+        ("department:view", "查看部门", "department"),
+        ("department:create", "新增部门", "department"),
+        ("department:edit", "编辑部门", "department"),
+        ("department:delete", "删除部门", "department"),
+
+        ("role:view", "查看角色", "role"),
+        ("role:create", "新增角色", "role"),
+        ("role:edit", "编辑角色", "role"),
+        ("role:delete", "删除角色", "role"),
+        ("role:assign-permission", "分配角色权限", "role"),
+        ("role:assign-menu", "分配角色菜单", "role"),
+        ("permission:manage", "管理权限", "role"),
+        ("menu:manage", "管理菜单", "role"),
+
+        ("workflow:view", "查看工作流", "workflow"),
+        ("workflow:create", "新增工作流", "workflow"),
+        ("workflow:edit", "编辑工作流", "workflow"),
+        ("workflow:delete", "删除工作流", "workflow"),
+        ("workflow:design", "设计工作流", "workflow"),
+
+        ("project:view", "查看测试项目", "project"),
+        ("project:create", "新增测试项目", "project"),
+        ("project:edit", "编辑测试项目", "project"),
+        ("project:delete", "删除测试项目", "project"),
+        ("project:restore", "恢复测试项目", "project"),
+        ("project:purge", "彻底删除测试项目", "project"),
+        ("project:option", "管理项目选项", "project"),
+        ("project:followup", "管理项目跟进", "project"),
+        ("project:manage", "管理测试项目", "project"),
+
+        ("material:view", "查看测试料件", "material"),
+        ("material:create", "新增测试料件", "material"),
+        ("material:edit", "编辑测试料件", "material"),
+        ("material:delete", "删除测试料件", "material"),
+        ("material:restore", "恢复测试料件", "material"),
+        ("material:purge", "彻底删除测试料件", "material"),
+        ("material:return", "退回测试料件", "material"),
+        ("material:transfer", "发起料件流转", "material"),
+        ("material:approve", "审批料件流转", "material"),
+        ("material-flow:view", "查看料件流转", "material-flow"),
+        ("material-flow:transfer", "发起料件流转", "material-flow"),
+        ("material-flow:approve", "审批料件流转", "material-flow"),
+
+        // 旧权限码保留，避免历史角色和前端缓存失效。
+        ("admin:user", "用户管理", "admin"),
+        ("admin:role", "角色管理", "admin"),
+        ("admin:audit", "审计日志", "admin"),
+        ("admin:setting", "系统参数", "admin")
+    };
+
     private static Dictionary<string, string[]> CoreRolePermissionMap() => new()
     {
-        ["warehouse"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:delete", "approval:handle", "approval:view", "approval:create", "report:view", "admin:audit", "admin:setting", "workflow:design" },
-        ["supervisor"] = new[] { "asset:view", "approval:handle", "approval:view", "approval:create", "report:view" },
-        ["dept_admin"] = new[] { "asset:view", "asset:create", "asset:edit", "asset:restore", "approval:handle", "approval:view", "approval:create", "report:view" },
-        ["employee"] = new[] { "asset:view", "approval:view", "approval:create" }
+        ["warehouse"] = new[]
+        {
+            "asset:view", "asset:create", "asset:edit", "asset:delete", "asset:import", "asset:export",
+            "category:view", "category:create", "category:edit", "category:delete",
+            "location:view", "location:create", "location:edit", "location:delete",
+            "file:upload", "file:view",
+            "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
+            "report:view", "report:export", "report:remind",
+            "audit:view", "audit:export", "setting:view", "setting:edit",
+            "workflow:view", "workflow:create", "workflow:edit", "workflow:delete", "workflow:design",
+            "material:view", "material:create", "material:edit", "material:transfer", "material-flow:view", "material-flow:transfer",
+            "admin:audit", "admin:setting"
+        },
+        ["supervisor"] = new[]
+        {
+            "asset:view", "category:view", "location:view", "file:view",
+            "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign",
+            "report:view", "report:export",
+            "material:view", "material:approve", "material:transfer", "material-flow:view", "material-flow:transfer", "material-flow:approve"
+        },
+        ["dept_admin"] = new[]
+        {
+            "asset:view", "asset:create", "asset:edit", "asset:restore", "asset:export",
+            "category:view", "category:create", "category:edit", "category:restore",
+            "location:view", "location:create", "location:edit",
+            "file:upload", "file:view",
+            "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
+            "report:view", "report:export",
+            "department:view", "user:view",
+            "project:view", "project:create", "project:edit", "project:delete", "project:restore", "project:option", "project:followup", "project:manage",
+            "material:view", "material:create", "material:edit", "material:restore", "material:transfer", "material:approve",
+            "material-flow:view", "material-flow:transfer", "material-flow:approve"
+        },
+        ["employee"] = new[]
+        {
+            "asset:view", "category:view", "location:view", "file:view",
+            "approval:create", "approval:view",
+            "project:view", "material:view", "material-flow:view"
+        }
     };
 
     private static void EnsureCoreRolePermissions(AppDbContext db)
     {
-        var requiredPermissions = new[]
-        {
-            ("asset:view", "查看资产", "asset"),
-            ("asset:create", "新增资产", "asset"),
-            ("asset:edit", "编辑资产", "asset"),
-            ("asset:delete", "删除资产", "asset"),
-            ("approval:handle", "处理审批", "approval"),
-            ("approval:view", "查看审批", "approval"),
-            ("approval:create", "发起审批", "approval"),
-            ("report:view", "查看报表", "report"),
-            ("admin:audit", "审计日志", "admin"),
-            ("admin:setting", "系统参数", "admin"),
-            ("workflow:design", "流程设计", "workflow")
-        };
+        EnsureCoreRoles(db);
 
-        foreach (var (code, name, module) in requiredPermissions)
+        foreach (var (code, name, module) in RequiredPermissions())
         {
             var permission = db.Permissions.SingleOrDefault(x => x.Code == code);
             if (permission is null)
@@ -405,6 +544,8 @@ public static class DbSeeder
         }
         db.SaveChanges();
 
+        EnsureAdminHasAllPermissionsAndMenus(db);
+
         foreach (var (roleCode, permissionCodes) in CoreRolePermissionMap())
         {
             var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
@@ -418,38 +559,127 @@ public static class DbSeeder
                     db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id });
                 }
             }
+            EnsureRoleMenusForPermissions(db, role, permissionCodes);
+        }
+        EnsureWarehouseUsersHaveRole(db);
+        db.SaveChanges();
+    }
+
+    private static void EnsureCoreRoles(AppDbContext db)
+    {
+        var requiredRoles = new[]
+        {
+            ("admin", "系统管理员"),
+            ("warehouse", "仓库管理员"),
+            ("supervisor", "部门主管"),
+            ("employee", "普通员工"),
+            ("dept_admin", "部门管理员")
+        };
+
+        foreach (var (code, name) in requiredRoles)
+        {
+            var role = db.Roles.SingleOrDefault(x => x.Code == code);
+            if (role is null)
+            {
+                db.Roles.Add(new Role { Code = code, Name = name, IsActive = true });
+            }
+            else
+            {
+                role.Name = name;
+                role.IsActive = true;
+            }
         }
         db.SaveChanges();
+    }
+
+    private static void EnsureAdminHasAllPermissionsAndMenus(AppDbContext db)
+    {
+        var admin = db.Roles.SingleOrDefault(x => x.Code == "admin");
+        if (admin is null) return;
+
+        foreach (var permission in db.Permissions.ToList())
+        {
+            if (!db.RolePermissions.Any(x => x.RoleId == admin.Id && x.PermissionId == permission.Id))
+            {
+                db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = permission.Id });
+            }
+        }
+
+        foreach (var menu in db.Menus.ToList())
+        {
+            if (!db.RoleMenus.Any(x => x.RoleId == admin.Id && x.MenuId == menu.Id))
+            {
+                db.RoleMenus.Add(new RoleMenu { RoleId = admin.Id, MenuId = menu.Id });
+            }
+        }
+        db.SaveChanges();
+    }
+
+    private static void EnsureWarehouseUsersHaveRole(AppDbContext db)
+    {
+        var warehouseRole = db.Roles.SingleOrDefault(x => x.Code == "warehouse");
+        if (warehouseRole is null) return;
+
+        var warehouseUsers = db.Users
+            .Where(x => x.Name.Contains("Warehouse"))
+            .ToList();
+        foreach (var user in warehouseUsers)
+        {
+            if (!db.UserRoles.Any(x => x.UserId == user.Id && x.RoleId == warehouseRole.Id))
+            {
+                db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = warehouseRole.Id });
+            }
+        }
+    }
+
+    private static void EnsureRoleMenusForPermissions(AppDbContext db, Role role, string[] permissionCodes)
+    {
+        var allMenus = db.Menus.ToList();
+        var menuIds = new HashSet<int>();
+        foreach (var menu in allMenus.Where(x => x.PermissionCode != null && permissionCodes.Contains(x.PermissionCode)))
+        {
+            menuIds.Add(menu.Id);
+            var cursor = menu;
+            while (cursor.ParentId.HasValue)
+            {
+                menuIds.Add(cursor.ParentId.Value);
+                cursor = allMenus.First(x => x.Id == cursor.ParentId.Value);
+            }
+        }
+
+        var home = allMenus.SingleOrDefault(x => x.Name == "Home");
+        if (home is not null) menuIds.Add(home.Id);
+        var homeWorkspace = allMenus.SingleOrDefault(x => x.Name == "HomeWorkspace");
+        if (homeWorkspace is not null) menuIds.Add(homeWorkspace.Id);
+
+        foreach (var menuId in menuIds)
+        {
+            if (!db.RoleMenus.Any(x => x.RoleId == role.Id && x.MenuId == menuId))
+            {
+                db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = menuId });
+            }
+        }
     }
 
     public static void SeedTestMaterialModule(AppDbContext db)
     {
         // ---- 1. 权限码 ----
-        var materialPermissions = new[]
-        {
-            ("material:view", "查看测试料件"),
-            ("material:create", "新增测试料件"),
-            ("material:edit", "编辑测试料件"),
-            ("material:delete", "删除测试料件"),
-            ("material:restore", "恢复测试料件/项目"),
-            ("material:purge", "彻底删除测试料件/项目"),
-            ("material:transfer", "发起料件流转"),
-            ("material:approve", "审批料件流转"),
-            ("project:manage", "管理测试项目"),
-        };
+        var materialPermissions = RequiredPermissions()
+            .Where(x => x.Module is "material" or "material-flow" or "project")
+            .ToArray();
         var permByCode = new Dictionary<string, Permission>();
-        foreach (var (code, name) in materialPermissions)
+        foreach (var (code, name, module) in materialPermissions)
         {
             var perm = db.Permissions.SingleOrDefault(x => x.Code == code);
             if (perm is null)
             {
-                perm = new Permission { Code = code, Name = name, Module = "material" };
+                perm = new Permission { Code = code, Name = name, Module = module };
                 db.Permissions.Add(perm);
             }
             else
             {
                 perm.Name = name;
-                perm.Module = "material";
+                perm.Module = module;
             }
             permByCode[code] = perm;
         }
@@ -458,11 +688,11 @@ public static class DbSeeder
         // ---- 2. 角色-权限映射 ----
         var roleGrants = new Dictionary<string, string[]>
         {
-            ["admin"] = materialPermissions.Select(p => p.Item1).ToArray(),
-            ["dept_admin"] = new[] { "material:view", "material:create", "material:edit", "material:transfer", "material:restore", "material:approve", "project:manage" },
-            ["supervisor"] = new[] { "material:view", "material:approve", "material:transfer" },
-            ["warehouse"] = new[] { "material:view", "material:create", "material:edit", "material:transfer" },
-            ["employee"] = new[] { "material:view" },
+            ["admin"] = materialPermissions.Select(p => p.Code).ToArray(),
+            ["dept_admin"] = CoreRolePermissionMap()["dept_admin"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
+            ["supervisor"] = CoreRolePermissionMap()["supervisor"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
+            ["warehouse"] = CoreRolePermissionMap()["warehouse"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
+            ["employee"] = CoreRolePermissionMap()["employee"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
         };
         foreach (var (roleCode, codes) in roleGrants)
         {
@@ -536,8 +766,8 @@ public static class DbSeeder
         if (adminRole != null && !db.RoleMenus.Any(x => x.RoleId == adminRole.Id && x.MenuId == rootMenu.Id))
             db.RoleMenus.Add(new RoleMenu { RoleId = adminRole.Id, MenuId = rootMenu.Id });
 
-        EnsureChild("MaterialHome", "项目总览", "/material/home", "/material/home/index", 16, "material:view");
-        EnsureChild("MaterialProjects", "测试项目", "/material/projects", "/material/projects/index", 17, "material:view");
+        EnsureChild("MaterialHome", "项目总览", "/material/home", "/material/home/index", 16, "project:view");
+        EnsureChild("MaterialProjects", "测试项目", "/material/projects", "/material/projects/index", 17, "project:view");
         db.SaveChanges();
 
         // 把根菜单 + 子菜单授予 dept_admin / employee(按其权限码可见性)
@@ -577,7 +807,8 @@ public static class DbSeeder
         EnsureProjectOption(db, "project_progress", "closed", "已结案", 4);
 
         // ---- 5. 默认 BPMN 工作流模板(material_transfer)----
-        if (!db.Workflows.Any(x => x.BizType == "material_transfer"))
+        var materialWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "material_transfer");
+        if (materialWorkflow is null)
         {
             db.Workflows.Add(new WorkflowEntity
             {
@@ -586,8 +817,19 @@ public static class DbSeeder
                 BpmnXml = MaterialTransferBpmnXml
             });
         }
+        else if (IsLegacyMaterialTransferWorkflow(materialWorkflow.BpmnXml))
+        {
+            materialWorkflow.Name = "测试料件流转流程";
+            materialWorkflow.BpmnXml = MaterialTransferBpmnXml;
+        }
         db.SaveChanges();
     }
+
+    private static bool IsLegacyMaterialTransferWorkflow(string? bpmnXml)
+        => !string.IsNullOrWhiteSpace(bpmnXml)
+           && bpmnXml.Contains("Task_deptManager", StringComparison.Ordinal)
+           && !bpmnXml.Contains("Gateway_projectOwner", StringComparison.Ordinal)
+           && !bpmnXml.Contains("Task_projectOwnerSpecified", StringComparison.Ordinal);
 
     private static void EnsureProjectOption(AppDbContext db, string kind, string code, string label, int sort)
     {
@@ -620,14 +862,29 @@ public static class DbSeeder
     <bpmn:startEvent id=""StartEvent_1"" name=""发起料件流转"">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:userTask id=""Task_deptManager"" name=""部门负责人审批"" camunda:assignee=""deptManager"">
+    <bpmn:exclusiveGateway id=""Gateway_projectOwner"" name=""是否项目负责人"">
       <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_projectOwner</bpmn:outgoing>
+      <bpmn:outgoing>Flow_nonOwner</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id=""Task_projectOwnerSpecified"" name=""指定人员审批"" camunda:assignee=""1001"">
+      <bpmn:incoming>Flow_projectOwner</bpmn:incoming>
+      <bpmn:outgoing>Flow_specified_to_end</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id=""Task_deptManager"" name=""部门负责人审批"" camunda:assignee=""deptManager"">
+      <bpmn:incoming>Flow_nonOwner</bpmn:incoming>
       <bpmn:outgoing>Flow_2</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:endEvent id=""EndEvent_1"" name=""流程结束"">
       <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:incoming>Flow_specified_to_end</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Task_deptManager"" />
+    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Gateway_projectOwner"" />
+    <bpmn:sequenceFlow id=""Flow_projectOwner"" sourceRef=""Gateway_projectOwner"" targetRef=""Task_projectOwnerSpecified"">
+      <bpmn:conditionExpression>${isProjectOwner} == ""true""</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id=""Flow_nonOwner"" sourceRef=""Gateway_projectOwner"" targetRef=""Task_deptManager"" />
+    <bpmn:sequenceFlow id=""Flow_specified_to_end"" sourceRef=""Task_projectOwnerSpecified"" targetRef=""EndEvent_1"" />
     <bpmn:sequenceFlow id=""Flow_2"" sourceRef=""Task_deptManager"" targetRef=""EndEvent_1"" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
@@ -635,19 +892,43 @@ public static class DbSeeder
       <bpmndi:BPMNShape id=""StartEvent_1_di"" bpmnElement=""StartEvent_1"">
         <dc:Bounds x=""152"" y=""102"" width=""36"" height=""36"" />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Gateway_projectOwner_di"" bpmnElement=""Gateway_projectOwner"">
+        <dc:Bounds x=""230"" y=""95"" width=""50"" height=""50"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Task_projectOwnerSpecified_di"" bpmnElement=""Task_projectOwnerSpecified"">
+        <dc:Bounds x=""340"" y=""20"" width=""100"" height=""80"" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id=""Task_deptManager_di"" bpmnElement=""Task_deptManager"">
-        <dc:Bounds x=""240"" y=""80"" width=""100"" height=""80"" />
+        <dc:Bounds x=""340"" y=""140"" width=""100"" height=""80"" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id=""EndEvent_1_di"" bpmnElement=""EndEvent_1"">
-        <dc:Bounds x=""392"" y=""102"" width=""36"" height=""36"" />
+        <dc:Bounds x=""520"" y=""102"" width=""36"" height=""36"" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id=""Flow_1_di"" bpmnElement=""Flow_1"">
         <di:waypoint x=""188"" y=""120"" />
-        <di:waypoint x=""240"" y=""120"" />
+        <di:waypoint x=""230"" y=""120"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_projectOwner_di"" bpmnElement=""Flow_projectOwner"">
+        <di:waypoint x=""255"" y=""95"" />
+        <di:waypoint x=""255"" y=""60"" />
+        <di:waypoint x=""340"" y=""60"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_nonOwner_di"" bpmnElement=""Flow_nonOwner"">
+        <di:waypoint x=""255"" y=""145"" />
+        <di:waypoint x=""255"" y=""180"" />
+        <di:waypoint x=""340"" y=""180"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_specified_to_end_di"" bpmnElement=""Flow_specified_to_end"">
+        <di:waypoint x=""440"" y=""60"" />
+        <di:waypoint x=""500"" y=""60"" />
+        <di:waypoint x=""500"" y=""120"" />
+        <di:waypoint x=""520"" y=""120"" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id=""Flow_2_di"" bpmnElement=""Flow_2"">
-        <di:waypoint x=""340"" y=""120"" />
-        <di:waypoint x=""392"" y=""120"" />
+        <di:waypoint x=""440"" y=""180"" />
+        <di:waypoint x=""500"" y=""180"" />
+        <di:waypoint x=""500"" y=""120"" />
+        <di:waypoint x=""520"" y=""120"" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

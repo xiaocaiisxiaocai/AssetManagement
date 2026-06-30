@@ -17,12 +17,12 @@ public class SettingController : ControllerBase
     }
 
     [HttpGet]
-    [HasPermission("admin:setting")]
+    [HasPermission("setting:view")]
     public async Task<ApiResult<List<SystemSettingDto>>> List()
         => ApiResult<List<SystemSettingDto>>.Ok(await _service.GetSettingsAsync());
 
     [HttpPut]
-    [HasPermission("admin:setting")]
+    [HasPermission("setting:edit")]
     public async Task<ApiResult<List<SystemSettingDto>>> Save(List<SaveSystemSettingRequest> requests)
         => ApiResult<List<SystemSettingDto>>.Ok(await _service.SaveSettingsAsync(requests));
 }

@@ -33,7 +33,7 @@ public class ApprovalController : ControllerBase
         => ApiResult<List<ApprovalFlowDto>>.Ok(await _service.MineAsync(CurrentUserId()));
 
     [HttpGet("pending-return")]
-    [HasPermission("asset:edit")]
+    [HasPermission("approval:confirm-return")]
     public async Task<ApiResult<List<ApprovalFlowDto>>> PendingReturn()
         => ApiResult<List<ApprovalFlowDto>>.Ok(await _service.PendingReturnsAsync());
 
@@ -53,17 +53,17 @@ public class ApprovalController : ControllerBase
         => ApiResult<ApprovalFlowDto>.Ok(await _service.RejectAsync(id, request, CurrentUserId()));
 
     [HttpPost("{id:int}/add-sign")]
-    [HasPermission("approval:handle")]
+    [HasPermission("approval:add-sign")]
     public async Task<ApiResult<ApprovalFlowDto>> AddSign(int id, AddSignRequest request)
         => ApiResult<ApprovalFlowDto>.Ok(await _service.AddSignAsync(id, request, CurrentUserId()));
 
     [HttpPost("{id:int}/transfer-sign")]
-    [HasPermission("approval:handle")]
+    [HasPermission("approval:transfer-sign")]
     public async Task<ApiResult<ApprovalFlowDto>> TransferSign(int id, TransferSignRequest request)
         => ApiResult<ApprovalFlowDto>.Ok(await _service.TransferSignAsync(id, request, CurrentUserId()));
 
     [HttpPost("{id:int}/confirm-return")]
-    [HasPermission("asset:edit")]
+    [HasPermission("approval:confirm-return")]
     public async Task<ApiResult<ApprovalFlowDto>> ConfirmReturn(int id)
         => ApiResult<ApprovalFlowDto>.Ok(await _service.ConfirmReturnAsync(id, CurrentUserId()));
 

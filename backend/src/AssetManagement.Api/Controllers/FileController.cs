@@ -17,7 +17,7 @@ public class FileController : ControllerBase
     }
 
     [HttpPost("upload")]
-    [HasPermission("asset:edit")]
+    [HasPermission("file:upload")]
     public async Task<ApiResult<FileUploadResult>> Upload(IFormFile file)
     {
         await using var stream = file.OpenReadStream();
@@ -25,7 +25,7 @@ public class FileController : ControllerBase
     }
 
     [HttpGet("{name}")]
-    [HasPermission("asset:view")]
+    [HasPermission("file:view")]
     public IActionResult Get(string name)
     {
         var stored = _storage.Open(name);

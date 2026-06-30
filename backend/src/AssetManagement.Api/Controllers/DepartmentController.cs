@@ -17,22 +17,22 @@ public class DepartmentController : ControllerBase
     }
 
     [HttpGet("tree")]
-    [HasPermission("admin:user")]
+    [HasPermission("department:view")]
     public async Task<ApiResult<List<DepartmentNodeDto>>> Tree()
         => ApiResult<List<DepartmentNodeDto>>.Ok(await _service.GetDepartmentTreeAsync());
 
     [HttpPost]
-    [HasPermission("admin:user")]
+    [HasPermission("department:create")]
     public async Task<ApiResult<DepartmentNodeDto>> Create(CreateDepartmentRequest request)
         => ApiResult<DepartmentNodeDto>.Ok(await _service.CreateDepartmentAsync(request));
 
     [HttpPut("{id:int}")]
-    [HasPermission("admin:user")]
+    [HasPermission("department:edit")]
     public async Task<ApiResult<DepartmentNodeDto>> Update(int id, UpdateDepartmentRequest request)
         => ApiResult<DepartmentNodeDto>.Ok(await _service.UpdateDepartmentAsync(id, request));
 
     [HttpDelete("{id:int}")]
-    [HasPermission("admin:user")]
+    [HasPermission("department:delete")]
     public async Task<ApiResult<object?>> Delete(int id)
     {
         await _service.DeleteDepartmentAsync(id);

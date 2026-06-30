@@ -66,7 +66,7 @@ public class AssetController : ControllerBase
     }
 
     [HttpGet("export")]
-    [HasPermission("asset:view")]
+    [HasPermission("asset:export")]
     public async Task<FileContentResult> Export([FromQuery] AssetQuery query)
         => File(await _service.ExportAsync(query), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "assets.xlsx");
 }

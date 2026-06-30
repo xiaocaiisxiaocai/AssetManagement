@@ -38,7 +38,7 @@ public class TestMaterialController : ControllerBase
         => ApiResult<TestMaterialDto>.Ok(await _service.UpdateAsync(id, request));
 
     [HttpPost("{id:int}/return")]
-    [HasPermission("material:edit")]
+    [HasPermission("material:return")]
     public async Task<ApiResult<TestMaterialDto>> Return(int id)
         => ApiResult<TestMaterialDto>.Ok(await _service.ReturnToVendorAsync(id));
 

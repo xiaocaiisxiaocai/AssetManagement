@@ -17,27 +17,27 @@ public class RoleController : ControllerBase
     }
 
     [HttpGet]
-    [HasPermission("admin:role")]
+    [HasPermission("role:view")]
     public async Task<ApiResult<PagedResult<RoleDto>>> List(int page = 1, int pageSize = 20)
         => ApiResult<PagedResult<RoleDto>>.Ok(await _rbac.GetRolesAsync(page, pageSize));
 
     [HttpGet("{id:int}")]
-    [HasPermission("admin:role")]
+    [HasPermission("role:view")]
     public async Task<ApiResult<RoleDto>> Get(int id)
         => ApiResult<RoleDto>.Ok(await _rbac.GetRoleAsync(id));
 
     [HttpPost]
-    [HasPermission("admin:role")]
+    [HasPermission("role:create")]
     public async Task<ApiResult<RoleDto>> Create(RoleDto request)
         => ApiResult<RoleDto>.Ok(await _rbac.CreateRoleAsync(request));
 
     [HttpPut("{id:int}")]
-    [HasPermission("admin:role")]
+    [HasPermission("role:edit")]
     public async Task<ApiResult<RoleDto>> Update(int id, RoleDto request)
         => ApiResult<RoleDto>.Ok(await _rbac.UpdateRoleAsync(id, request));
 
     [HttpDelete("{id:int}")]
-    [HasPermission("admin:role")]
+    [HasPermission("role:delete")]
     public async Task<ApiResult<object?>> Delete(int id)
     {
         await _rbac.DeleteRoleAsync(id);
@@ -45,12 +45,12 @@ public class RoleController : ControllerBase
     }
 
     [HttpPut("{id:int}/permissions")]
-    [HasPermission("admin:role")]
+    [HasPermission("role:assign-permission")]
     public async Task<ApiResult<RoleDto>> SetPermissions(int id, SetRolePermissionsRequest request)
         => ApiResult<RoleDto>.Ok(await _rbac.SetRolePermissionsAsync(id, request.PermissionIds));
 
     [HttpPut("{id:int}/menus")]
-    [HasPermission("admin:role")]
+    [HasPermission("role:assign-menu")]
     public async Task<ApiResult<RoleDto>> SetMenus(int id, SetRoleMenusRequest request)
         => ApiResult<RoleDto>.Ok(await _rbac.SetRoleMenusAsync(id, request.MenuIds));
 }

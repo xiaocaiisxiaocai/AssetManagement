@@ -17,12 +17,12 @@ public class AuditLogController : ControllerBase
     }
 
     [HttpGet]
-    [HasPermission("admin:audit")]
+    [HasPermission("audit:view")]
     public async Task<ApiResult<PagedResult<AuditLogDto>>> List([FromQuery] AuditLogQuery query)
         => ApiResult<PagedResult<AuditLogDto>>.Ok(await _service.QueryAsync(query));
 
     [HttpGet("export")]
-    [HasPermission("admin:audit")]
+    [HasPermission("audit:export")]
     public async Task<FileContentResult> Export([FromQuery] AuditLogQuery query)
         => File(await _service.ExportAsync(query), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "audit-logs.xlsx");
 }

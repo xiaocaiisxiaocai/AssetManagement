@@ -40,6 +40,7 @@ export interface MenuDto {
   component?: string | null;
   icon?: string | null;
   parentId?: number | null;
+  permissionCode?: string | null;
   sort: number;
   type: string;
   children?: MenuDto[];

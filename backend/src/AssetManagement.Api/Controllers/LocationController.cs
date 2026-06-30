@@ -17,22 +17,22 @@ public class LocationController : ControllerBase
     }
 
     [HttpGet("tree")]
-    [HasPermission("asset:view")]
+    [HasPermission("location:view")]
     public async Task<ApiResult<List<LocationNodeDto>>> Tree()
         => ApiResult<List<LocationNodeDto>>.Ok(await _service.GetLocationTreeAsync());
 
     [HttpPost]
-    [HasPermission("asset:create")]
+    [HasPermission("location:create")]
     public async Task<ApiResult<LocationNodeDto>> Create(CreateLocationRequest request)
         => ApiResult<LocationNodeDto>.Ok(await _service.CreateLocationAsync(request));
 
     [HttpPut("{id:int}")]
-    [HasPermission("asset:edit")]
+    [HasPermission("location:edit")]
     public async Task<ApiResult<LocationNodeDto>> Update(int id, UpdateLocationRequest request)
         => ApiResult<LocationNodeDto>.Ok(await _service.UpdateLocationAsync(id, request));
 
     [HttpDelete("{id:int}")]
-    [HasPermission("asset:delete")]
+    [HasPermission("location:delete")]
     public async Task<ApiResult<object?>> Delete(int id)
     {
         await _service.DeleteLocationAsync(id);

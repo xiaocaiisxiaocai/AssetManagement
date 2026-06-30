@@ -14,32 +14,32 @@ public class TestProjectController : ControllerBase
     public TestProjectController(ITestProjectService service) => _service = service;
 
     [HttpGet("stats")]
-    [HasPermission("material:view")]
+    [HasPermission("project:view")]
     public async Task<ApiResult<TestProjectStatsDto>> Stats()
         => ApiResult<TestProjectStatsDto>.Ok(await _service.GetStatsAsync());
 
     [HttpGet]
-    [HasPermission("material:view")]
+    [HasPermission("project:view")]
     public async Task<ApiResult<List<TestProjectDto>>> List([FromQuery] string? deleteStatus)
         => ApiResult<List<TestProjectDto>>.Ok(await _service.ListAsync(deleteStatus, CurrentUserId()));
 
     [HttpGet("options")]
-    [HasPermission("material:view")]
+    [HasPermission("project:view")]
     public async Task<ApiResult<List<TestProjectOptionDto>>> Options([FromQuery] string? kind)
         => ApiResult<List<TestProjectOptionDto>>.Ok(await _service.ListOptionsAsync(kind));
 
     [HttpPost("options")]
-    [HasPermission("project:manage")]
+    [HasPermission("project:option")]
     public async Task<ApiResult<TestProjectOptionDto>> CreateOption(SaveTestProjectOptionRequest request)
         => ApiResult<TestProjectOptionDto>.Ok(await _service.CreateOptionAsync(request));
 
     [HttpPut("options/{id:int}")]
-    [HasPermission("project:manage")]
+    [HasPermission("project:option")]
     public async Task<ApiResult<TestProjectOptionDto>> UpdateOption(int id, SaveTestProjectOptionRequest request)
         => ApiResult<TestProjectOptionDto>.Ok(await _service.UpdateOptionAsync(id, request));
 
     [HttpDelete("options/{id:int}")]
-    [HasPermission("project:manage")]
+    [HasPermission("project:option")]
     public async Task<ApiResult<object?>> DeleteOption(int id)
     {
         await _service.DeleteOptionAsync(id);
@@ -47,22 +47,22 @@ public class TestProjectController : ControllerBase
     }
 
     [HttpGet("{id:int}/followups")]
-    [HasPermission("material:view")]
+    [HasPermission("project:view")]
     public async Task<ApiResult<List<TestProjectFollowupDto>>> Followups(int id)
         => ApiResult<List<TestProjectFollowupDto>>.Ok(await _service.ListFollowupsAsync(id));
 
     [HttpPost("{id:int}/followups")]
-    [HasPermission("project:manage")]
+    [HasPermission("project:followup")]
     public async Task<ApiResult<TestProjectFollowupDto>> CreateFollowup(int id, SaveTestProjectFollowupRequest request)
         => ApiResult<TestProjectFollowupDto>.Ok(await _service.CreateFollowupAsync(id, request, CurrentUserId()));
 
     [HttpPut("{id:int}/followups/{followupId:int}")]
-    [HasPermission("project:manage")]
+    [HasPermission("project:followup")]
     public async Task<ApiResult<TestProjectFollowupDto>> UpdateFollowup(int id, int followupId, SaveTestProjectFollowupRequest request)
         => ApiResult<TestProjectFollowupDto>.Ok(await _service.UpdateFollowupAsync(id, followupId, request, CurrentUserId()));
 
     [HttpDelete("{id:int}/followups/{followupId:int}")]
-    [HasPermission("project:manage")]
+    [HasPermission("project:followup")]
     public async Task<ApiResult<object?>> DeleteFollowup(int id, int followupId)
     {
         await _service.DeleteFollowupAsync(id, followupId, CurrentUserId());
@@ -70,17 +70,17 @@ public class TestProjectController : ControllerBase
     }
 
     [HttpPost]
-    [HasPermission("project:manage")]
+    [HasPermission("project:create")]
     public async Task<ApiResult<TestProjectDto>> Create(SaveTestProjectRequest request)
         => ApiResult<TestProjectDto>.Ok(await _service.CreateAsync(request));
 
     [HttpPut("{id:int}")]
-    [HasPermission("project:manage")]
+    [HasPermission("project:edit")]
     public async Task<ApiResult<TestProjectDto>> Update(int id, SaveTestProjectRequest request)
         => ApiResult<TestProjectDto>.Ok(await _service.UpdateAsync(id, request));
 
     [HttpDelete("{id:int}")]
-    [HasPermission("project:manage")]
+    [HasPermission("project:delete")]
     public async Task<ApiResult<object?>> Delete(int id)
     {
         await _service.DeleteAsync(id);
@@ -88,7 +88,7 @@ public class TestProjectController : ControllerBase
     }
 
     [HttpPost("{id:int}/restore")]
-    [HasPermission("project:manage")]
+    [HasPermission("project:restore")]
     public async Task<ApiResult<object?>> Restore(int id)
     {
         await _service.RestoreAsync(id);
@@ -96,7 +96,7 @@ public class TestProjectController : ControllerBase
     }
 
     [HttpDelete("{id:int}/purge")]
-    [HasPermission("material:purge")]
+    [HasPermission("project:purge")]
     public async Task<ApiResult<object?>> Purge(int id)
     {
         await _service.PurgeAsync(id);

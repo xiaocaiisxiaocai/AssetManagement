@@ -72,6 +72,42 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_owner_transfer_routes_to_configured_assignee()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var owner = await CreateUser("0910", "项目负责人甲", "supervisor");
+        var transferee = await CreateUser("0911", "受让人甲");
+        var project = await CreateProject("负责人流转项目", owner.Id);
+        var material = await CreateMaterial(project.Id, "负责人审批样品");
+
+        Auth(await LoginToken(owner.EmployeeNo, "123456"));
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "负责人发起流转"
+        });
+
+        flow.Data!.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_projectOwnerSpecified");
+
+        var denied = await _client.PostAsJsonAsync(
+            $"/api/material-flows/{flow.Data.Id}/approve",
+            new MaterialApprovalRequest { Opinion = "非指定人员不应可审批" });
+        var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+        deniedBody!.Code.Should().Be(4016);
+
+        await Login();
+        var pending = await _client.GetFromJsonAsync<ApiResult<List<MaterialFlowDto>>>("/api/material-flows/pending");
+        pending!.Data!.Select(x => x.Id).Should().Contain(flow.Data.Id);
+
+        var approved = await Post<ApiResult<MaterialFlowDto>>(
+            $"/api/material-flows/{flow.Data.Id}/approve",
+            new MaterialApprovalRequest { Opinion = "指定人员审批通过" });
+        approved.Data!.Status.Should().Be("approved");
+    }
+
+    [Fact]
     public async Task Transfer_with_switch_on_reject_keeps_custodian()
     {
         await Login();
@@ -178,8 +214,12 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         res.EnsureSuccessStatusCode();
     }
 
-    private async Task<TestProjectDto> CreateProject(string name)
-        => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest { Name = name })).Data!;
+    private async Task<TestProjectDto> CreateProject(string name, int? ownerId = null)
+        => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Name = name,
+            OwnerId = ownerId
+        })).Data!;
 
     private async Task<TestMaterialDto> CreateMaterial(int projectId, string name)
         => (await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
@@ -187,20 +227,34 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             Name = name, ProjectId = projectId
         })).Data!;
 
-    private async Task<UserDto> CreateUser(string employeeNo, string name)
+    private async Task<UserDto> CreateUser(string employeeNo, string name, string roleCode = "employee")
         => (await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
-            EmployeeNo = employeeNo, Name = name, RoleIds = Array.Empty<int>()
+            EmployeeNo = employeeNo, Name = name, Password = "123456", RoleIds = new[] { (await Role(roleCode)).Id }
         })).Data!;
+
+    private async Task<RoleDto> Role(string code)
+    {
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        return roles!.Data!.Items.Single(x => x.Code == code);
+    }
 
     private async Task Login()
     {
+        Auth(await LoginToken("1001", "123456"));
+    }
+
+    private void Auth(string token)
+        => _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+    private async Task<string> LoginToken(string employeeNo, string password)
+    {
         var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
-            employeeNo = "1001",
-            password = "123456"
+            employeeNo,
+            password
         });
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.Data!.Token);
+        return body.Data!.Token;
     }
 
     private async Task<T> Post<T>(string url, object payload)

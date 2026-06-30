@@ -112,7 +112,10 @@ public class SourceConventionTests
         var incrementalSource = source[source.IndexOf("private static void SeedIncremental", StringComparison.Ordinal)..];
 
         incrementalSource.Should().Contain("EnsureCoreRolePermissions(db)", "已有库只会进入增量种子，必须补齐基础角色权限矩阵");
-        source.Should().Contain("[\"employee\"] = new[] { \"asset:view\", \"approval:view\", \"approval:create\" }",
+        var employeeRoleIndex = source.IndexOf("[\"employee\"]", StringComparison.Ordinal);
+        employeeRoleIndex.Should().BeGreaterThan(0);
+        var employeeRoleSource = source[employeeRoleIndex..source.IndexOf("}", employeeRoleIndex, StringComparison.Ordinal)];
+        employeeRoleSource.Should().Contain("\"approval:create\"",
             "普通员工必须能发起资产审批，否则不同权限流程测试和实际员工借用申请都会被 403 拦截");
     }
 

@@ -144,7 +144,7 @@ public class MaterialFlowService : IMaterialFlowService
                 Status = "pending",
                 ApplyTime = DateTime.UtcNow,
                 Deadline = DateTime.UtcNow.AddDays(2),
-                Context = BuildWorkflowContext(applicant)
+                Context = await BuildWorkflowContext(applicant, material.ProjectId)
             };
             BpmnEngine.Start(flow, process);
             _db.MaterialFlows.Add(flow);
@@ -526,7 +526,7 @@ public class MaterialFlowService : IMaterialFlowService
         return dept?.Name;
     }
 
-    private static Dictionary<string, string> BuildWorkflowContext(User applicant)
+    private async Task<Dictionary<string, string>> BuildWorkflowContext(User applicant, int projectId)
     {
         var roleCodes = applicant.UserRoles
             .Select(x => x.Role?.Code)
@@ -535,11 +535,15 @@ public class MaterialFlowService : IMaterialFlowService
             .OrderBy(x => x)
             .Cast<string>()
             .ToArray();
+        var project = await _db.TestProjects
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == projectId);
 
         return new Dictionary<string, string>
         {
             ["applicantRole"] = roleCodes.FirstOrDefault() ?? "",
-            ["applicantRoles"] = string.Join(",", roleCodes)
+            ["applicantRoles"] = string.Join(",", roleCodes),
+            ["isProjectOwner"] = project?.OwnerId == applicant.Id ? "true" : "false"
         };
     }
 
