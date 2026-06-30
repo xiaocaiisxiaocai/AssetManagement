@@ -13,6 +13,7 @@ import {
   setRolePermissionsApi,
   updateRoleApi,
 } from '#/api/role';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 
 import {
   ElButton,
@@ -51,6 +52,7 @@ const menuTreeRef = ref<InstanceType<typeof ElTree>>();
 const activePermissionGroupKey = ref('');
 const permissionKeyword = ref('');
 const showSelectedOnly = ref(false);
+const pageSizeOptions = ref(createPageSizeOptions(20));
 
 const query = reactive({
   keyword: '',
@@ -456,6 +458,8 @@ function reset() {
 }
 
 onMounted(async () => {
+  query.pageSize = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
   await loadPermissionsAndMenus();
   await loadData();
 });
@@ -499,9 +503,12 @@ onMounted(async () => {
             style="width: 140px"
             @change="search"
           >
-            <ElOption :value="20" label="每页 20 条" />
-            <ElOption :value="50" label="每页 50 条" />
-            <ElOption :value="100" label="每页 100 条" />
+            <ElOption
+              v-for="size in pageSizeOptions"
+              :key="size"
+              :label="`每页 ${size} 条`"
+              :value="size"
+            />
           </ElSelect>
         </div>
 

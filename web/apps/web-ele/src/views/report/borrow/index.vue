@@ -4,6 +4,7 @@ import type { BorrowReportQuery, BorrowReportRow } from '#/api/report';
 import { onMounted, reactive, ref } from 'vue';
 
 import { exportBorrowReportApi, getBorrowReportApi } from '#/api/report';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 
 import {
   ElButton,
@@ -24,6 +25,7 @@ defineOptions({ name: 'ReportBorrow' });
 const loading = ref(false);
 const rows = ref<BorrowReportRow[]>([]);
 const total = ref(0);
+const pageSizeOptions = ref(createPageSizeOptions(20));
 const query = reactive({
   borrowerId: undefined as number | undefined,
   categoryId: undefined as number | undefined,
@@ -67,7 +69,6 @@ function resetQuery() {
     categoryId: undefined,
     dateRange: [],
     page: 1,
-    pageSize: 20,
     status: undefined,
   });
   void loadData();
@@ -97,7 +98,11 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-onMounted(loadData);
+onMounted(async () => {
+  query.pageSize = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
+  await loadData();
+});
 </script>
 
 <template>
@@ -182,7 +187,7 @@ onMounted(loadData);
           <ElPagination
             v-model:current-page="query.page"
             v-model:page-size="query.pageSize"
-            :page-sizes="[10, 20, 50, 100]"
+            :page-sizes="pageSizeOptions"
             :total="total"
             background
             layout="total, sizes, prev, pager, next"

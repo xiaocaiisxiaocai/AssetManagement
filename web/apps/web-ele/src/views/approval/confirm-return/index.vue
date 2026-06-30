@@ -4,6 +4,7 @@ import type { ApprovalFlow } from '#/api/workflow';
 import { onMounted, reactive, ref } from 'vue';
 
 import { getPendingReturnsApi, confirmReturnApi } from '#/api/workflow';
+import { getDefaultPageSize } from '#/utils/runtime-settings';
 
 import {
   ElButton,
@@ -88,7 +89,10 @@ function bizText(type: string) {
   return { borrow: '借用', return: '归还', transfer: '转让' }[type] ?? type;
 }
 
-onMounted(loadData);
+onMounted(async () => {
+  query.pageSize = await getDefaultPageSize();
+  await loadData();
+});
 </script>
 
 <template>

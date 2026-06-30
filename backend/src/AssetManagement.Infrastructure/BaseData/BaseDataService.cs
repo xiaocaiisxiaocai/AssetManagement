@@ -301,6 +301,20 @@ public class BaseDataService : IBaseDataService
             .Select(x => ToSettingDto(x))
             .ToListAsync();
 
+    public async Task<RuntimeSettingsDto> GetRuntimeSettingsAsync()
+    {
+        var settings = await _db.SystemSettings
+            .AsNoTracking()
+            .Where(x => x.Key == "page_size" || x.Key == "attachment_max_mb")
+            .ToDictionaryAsync(x => x.Key, x => x.Value);
+
+        return new RuntimeSettingsDto
+        {
+            PageSize = ReadIntSetting(settings, "page_size", 20, 1, AppConstants.MaxPageSize),
+            AttachmentMaxMb = ReadIntSetting(settings, "attachment_max_mb", 5, 1, 100)
+        };
+    }
+
     public async Task<List<SystemSettingDto>> SaveSettingsAsync(IEnumerable<SaveSystemSettingRequest> requests)
     {
         foreach (var request in requests)
@@ -492,4 +506,19 @@ public class BaseDataService : IBaseDataService
         Value = x.Value,
         Description = x.Description
     };
+
+    private static int ReadIntSetting(
+        IReadOnlyDictionary<string, string> settings,
+        string key,
+        int fallback,
+        int min,
+        int max)
+    {
+        if (!settings.TryGetValue(key, out var raw) || !int.TryParse(raw, out var value))
+        {
+            return fallback;
+        }
+
+        return Math.Clamp(value, min, max);
+    }
 }

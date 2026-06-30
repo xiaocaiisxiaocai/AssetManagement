@@ -20,5 +20,6 @@ public interface IBaseDataService
     Task DeleteLocationAsync(int id);
 
     Task<List<SystemSettingDto>> GetSettingsAsync();
+    Task<RuntimeSettingsDto> GetRuntimeSettingsAsync();
     Task<List<SystemSettingDto>> SaveSettingsAsync(IEnumerable<SaveSystemSettingRequest> requests);
 }

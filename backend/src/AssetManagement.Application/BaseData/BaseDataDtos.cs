@@ -77,6 +77,12 @@ public record SystemSettingDto
     public string? Description { get; init; }
 }
 
+public record RuntimeSettingsDto
+{
+    public int PageSize { get; init; }
+    public int AttachmentMaxMb { get; init; }
+}
+
 public record SaveSystemSettingRequest
 {
     public string Key { get; init; } = "";

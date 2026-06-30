@@ -9,6 +9,7 @@ import {
   getAuditCleanupPreviewApi,
   getAuditLogsApi,
 } from '#/api/report';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 
 import {
   ElButton,
@@ -39,6 +40,7 @@ const cleanupPreviewLoading = ref(false);
 const cleanupDialogVisible = ref(false);
 const rows = ref<AuditLogRow[]>([]);
 const total = ref(0);
+const pageSizeOptions = ref(createPageSizeOptions(20));
 const cleanupRetentionDays = ref(30);
 const cleanupPreview = ref<AuditCleanupPreview | null>(null);
 const query = reactive({
@@ -84,7 +86,6 @@ function resetQuery() {
     dateRange: [],
     module: '',
     page: 1,
-    pageSize: 20,
     userId: undefined,
   });
   void loadData();
@@ -164,7 +165,11 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-onMounted(loadData);
+onMounted(async () => {
+  query.pageSize = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
+  await loadData();
+});
 </script>
 
 <template>
@@ -245,7 +250,7 @@ onMounted(loadData);
           <ElPagination
             v-model:current-page="query.page"
             v-model:page-size="query.pageSize"
-            :page-sizes="[10, 20, 50, 100]"
+            :page-sizes="pageSizeOptions"
             :total="total"
             background
             layout="total, sizes, prev, pager, next"

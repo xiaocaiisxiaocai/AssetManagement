@@ -90,10 +90,11 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRbacService, RbacService>();
 builder.Services.AddScoped<IBaseDataService, BaseDataService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
-builder.Services.AddSingleton<IFileStorageService>(_ =>
+builder.Services.AddScoped<IFileStorageService>(sp =>
     new FileStorageService(
         builder.Configuration["Attachment:Path"] ?? "App_Data/uploads",
-        builder.Environment.ContentRootPath));
+        builder.Environment.ContentRootPath,
+        sp.GetRequiredService<AppDbContext>()));
 builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 builder.Services.AddScoped<IBizEffectApplier, BizEffectApplier>();
 builder.Services.AddScoped<IReportService, ReportService>();

@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AssetManagement.Application.Auth;
+using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using FluentAssertions;
 
@@ -44,6 +45,31 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
         var body = await res.Content.ReadFromJsonAsync<ApiResult<JsonElement>>();
 
         body!.Code.Should().NotBe(0);
+    }
+
+    [Fact]
+    public async Task Upload_uses_attachment_max_mb_system_setting()
+    {
+        await Login();
+        await _client.PutAsJsonAsync("/api/settings", new[]
+        {
+            new SaveSystemSettingRequest
+            {
+                Key = "attachment_max_mb",
+                Value = "1",
+                Description = "附件大小限制 MB"
+            }
+        });
+        using var form = new MultipartFormDataContent();
+        var content = new ByteArrayContent(new byte[1024 * 1024 + 1]);
+        content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        form.Add(content, "file", "large.png");
+
+        var res = await _client.PostAsync("/api/files/upload", form);
+        var body = await res.Content.ReadFromJsonAsync<ApiResult<JsonElement>>();
+
+        body!.Code.Should().NotBe(0);
+        body.Message.Should().Contain("1MB");
     }
 
     private async Task<string> UploadImage(byte[] bytes, string fileName, string contentType)

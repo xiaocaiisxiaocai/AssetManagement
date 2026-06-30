@@ -1,5 +1,7 @@
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Files;
+using AssetManagement.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace AssetManagement.Infrastructure.Files;
 
@@ -8,12 +10,12 @@ public class FileStorageService : IFileStorageService
     private static readonly HashSet<string> AllowedExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
 
-    private const long MaxSizeBytes = 5 * 1024 * 1024;
-
+    private readonly AppDbContext _db;
     private readonly string _root;
 
-    public FileStorageService(string configuredPath, string contentRootPath)
+    public FileStorageService(string configuredPath, string contentRootPath, AppDbContext db)
     {
+        _db = db;
         _root = Path.IsPathRooted(configuredPath)
             ? configuredPath
             : Path.Combine(contentRootPath, configuredPath);
@@ -27,9 +29,10 @@ public class FileStorageService : IFileStorageService
         {
             throw new BizException(4150, "仅支持 jpg/jpeg/png/gif/webp 图片");
         }
-        if (length > MaxSizeBytes)
+        var maxMb = await LoadAttachmentMaxMbAsync();
+        if (length > maxMb * 1024L * 1024L)
         {
-            throw new BizException(4151, "单张图片大小不能超过 5MB");
+            throw new BizException(4151, $"单张图片大小不能超过 {maxMb}MB");
         }
 
         var name = $"{Guid.NewGuid():N}{ext.ToLowerInvariant()}";
@@ -69,4 +72,17 @@ public class FileStorageService : IFileStorageService
         ".webp" => "image/webp",
         _ => "application/octet-stream"
     };
+
+    private async Task<int> LoadAttachmentMaxMbAsync()
+    {
+        var value = await _db.SystemSettings
+            .AsNoTracking()
+            .Where(x => x.Key == "attachment_max_mb")
+            .Select(x => x.Value)
+            .SingleOrDefaultAsync();
+
+        return int.TryParse(value, out var maxMb)
+            ? Math.Clamp(maxMb, 1, 100)
+            : 5;
+    }
 }

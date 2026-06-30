@@ -46,6 +46,7 @@ import {
 } from 'element-plus';
 
 import { getDepartmentTreeApi, getLocationTreeApi } from '#/api/base-data';
+import { getDefaultPageSize } from '#/utils/runtime-settings';
 import {
   approveFlowApi,
   deleteMaterialApi,
@@ -645,7 +646,6 @@ function resetMaterialQuery() {
     materialNo: '',
     name: '',
     page: 1,
-    pageSize: 10,
     status: undefined,
   });
   void loadProjectMaterials();
@@ -846,6 +846,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
 }
 
 onMounted(async () => {
+  materialQuery.pageSize = await getDefaultPageSize();
   await Promise.all([loadOptions(), loadData()]);
 });
 </script>

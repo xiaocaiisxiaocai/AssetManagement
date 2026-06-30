@@ -21,6 +21,7 @@ import {
   getDepartmentTreeApi,
   getLocationTreeApi,
 } from '#/api/base-data';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { getWorkflowsApi } from '#/api/workflow';
 import { getUserListApi } from '#/api/user';
 
@@ -85,6 +86,7 @@ const currentAssetForAction = ref<AssetItem | null>(null);
 const detailVisible = ref(false);
 const detailLoading = ref(false);
 const detail = ref<AssetDetail | null>(null);
+const pageSizeOptions = ref(createPageSizeOptions(20));
 
 const query = reactive({
   assetNo: '',
@@ -196,7 +198,6 @@ function resetQuery() {
     departmentId: undefined,
     name: '',
     page: 1,
-    pageSize: 20,
     status: undefined,
   });
   selectedCategoryId.value = isAssetStage.value ? hierarchyParent.value?.id ?? null : null;
@@ -438,6 +439,8 @@ function openTransferDialog(row: AssetItem) {
 }
 
 onMounted(async () => {
+  query.pageSize = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
   await Promise.all([loadDictionaries(), loadData(), loadHierarchyAssets()]);
 });
 </script>
@@ -710,10 +713,12 @@ onMounted(async () => {
                 <span class="asset-pager-divider">|</span>
                 <span>每页</span>
                 <ElSelect v-model="query.pageSize" style="width: 92px" @change="search">
-                  <ElOption :value="10" label="10" />
-                  <ElOption :value="20" label="20" />
-                  <ElOption :value="50" label="50" />
-                  <ElOption :value="100" label="100" />
+                  <ElOption
+                    v-for="size in pageSizeOptions"
+                    :key="size"
+                    :label="`${size}`"
+                    :value="size"
+                  />
                 </ElSelect>
               </div>
               <ElPagination

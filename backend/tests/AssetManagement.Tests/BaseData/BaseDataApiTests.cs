@@ -293,6 +293,25 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         settings!.Data!.Should().Contain(x => x.Key == key && x.Value == "42");
     }
 
+    [Fact]
+    public async Task Runtime_settings_exposes_page_size_for_normal_pages()
+    {
+        await Login();
+        await Put<ApiResult<List<SystemSettingDto>>>("/api/settings", new[]
+        {
+            new SaveSystemSettingRequest
+            {
+                Key = "page_size",
+                Value = "50",
+                Description = "默认每页记录数"
+            }
+        });
+
+        var runtime = await _client.GetFromJsonAsync<ApiResult<RuntimeSettingsDto>>("/api/settings/runtime");
+
+        runtime!.Data!.PageSize.Should().Be(50);
+    }
+
     private async Task Login()
     {
         var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new

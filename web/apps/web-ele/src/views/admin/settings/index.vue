@@ -4,6 +4,7 @@ import type { SettingPayload, SystemSetting } from '#/api/base-data';
 import { onMounted, ref } from 'vue';
 
 import { getSettingsApi, saveSettingsApi } from '#/api/base-data';
+import { invalidateRuntimeSettings } from '#/utils/runtime-settings';
 
 import {
   ElButton,
@@ -77,6 +78,7 @@ async function save() {
       .map((item) => ({ description: item.description, key: item.key, value: item.value }));
 
     settings.value = await saveSettingsApi(payload);
+    invalidateRuntimeSettings();
     ElMessage.success('保存成功');
     dialogVisible.value = false;
   } finally {
@@ -93,6 +95,7 @@ async function remove(index: number) {
       .map((item) => ({ description: item.description, key: item.key, value: item.value }));
 
     settings.value = await saveSettingsApi(payload);
+    invalidateRuntimeSettings();
     ElMessage.success('删除成功');
   } finally {
     saving.value = false;

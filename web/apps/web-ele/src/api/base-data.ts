@@ -44,6 +44,11 @@ export interface SystemSetting {
   value: string;
 }
 
+export interface RuntimeSettings {
+  attachmentMaxMb: number;
+  pageSize: number;
+}
+
 export type DepartmentPayload = {
   isActive?: boolean;
   managerId?: null | number;
@@ -116,6 +121,9 @@ export const deleteLocationApi = (id: number) =>
 
 export const getSettingsApi = () =>
   unwrap(requestClient.get<ApiResult<SystemSetting[]>>('/settings'));
+
+export const getRuntimeSettingsApi = () =>
+  unwrap(requestClient.get<ApiResult<RuntimeSettings>>('/settings/runtime'));
 
 export const saveSettingsApi = (data: SettingPayload[]) =>
   unwrap(requestClient.put<ApiResult<SystemSetting[]>>('/settings', data));
