@@ -78,6 +78,29 @@ public class RbacService : IRbacService
         return await LoadUserDto(id);
     }
 
+    public async Task DeleteUserAsync(int id)
+    {
+        var user = await _db.Users
+            .AsTracking()
+            .Include(x => x.UserRoles)
+            .ThenInclude(x => x.Role)
+            .SingleOrDefaultAsync(x => x.Id == id)
+            ?? throw new BizException(4041, "用户不存在");
+
+        if (user.UserRoles.Any(x => x.Role?.Code == "admin"))
+        {
+            var adminCount = await _db.UserRoles
+                .CountAsync(x => x.Role != null && x.Role.Code == "admin");
+            if (adminCount <= 1)
+            {
+                throw new BizException(4094, "至少保留一个系统管理员");
+            }
+        }
+
+        _db.Users.Remove(user);
+        await _db.SaveChangesAsync();
+    }
+
     public async Task ResetPasswordAsync(int id)
     {
         var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)

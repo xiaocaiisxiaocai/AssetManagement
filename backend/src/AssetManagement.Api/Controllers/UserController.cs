@@ -31,6 +31,14 @@ public class UserController : ControllerBase
     public async Task<ApiResult<UserDto>> Update(int id, UpdateUserRequest request)
         => ApiResult<UserDto>.Ok(await _rbac.UpdateUserAsync(id, request));
 
+    [HttpDelete("{id:int}")]
+    [HasPermission("admin:user")]
+    public async Task<ApiResult<object?>> Delete(int id)
+    {
+        await _rbac.DeleteUserAsync(id);
+        return ApiResult.Ok();
+    }
+
     [HttpPost("{id:int}/reset-password")]
     [HasPermission("admin:user")]
     public async Task<ApiResult<object?>> ResetPassword(int id)

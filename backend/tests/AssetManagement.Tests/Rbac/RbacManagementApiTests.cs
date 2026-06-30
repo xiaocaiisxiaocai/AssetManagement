@@ -283,6 +283,39 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         login.Data!.Token.Should().NotBeNullOrWhiteSpace();
     }
 
+    [Fact]
+    public async Task Delete_user_removes_user_from_list()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "待删除用户",
+            RoleIds = new[] { roleId }
+        });
+
+        var deleted = await Delete<ApiResult<object?>>($"/api/users/{user.Data!.Id}");
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={employeeNo}");
+
+        deleted.Code.Should().Be(0);
+        list!.Data!.Items.Should().NotContain(x => x.Id == user.Data.Id);
+    }
+
+    [Fact]
+    public async Task Delete_last_admin_user_is_blocked()
+    {
+        await Login();
+        var admins = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>("/api/users?keyword=1001");
+        var admin = admins!.Data!.Items.Single(x => x.EmployeeNo == "1001");
+
+        var deleted = await Delete<ApiResult<object?>>($"/api/users/{admin.Id}");
+
+        deleted.Code.Should().Be(4094);
+        deleted.Message.Should().Be("至少保留一个系统管理员");
+    }
+
     private async Task Login()
     {
         var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
@@ -303,6 +336,12 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     {
         var res = await _client.PutAsJsonAsync(url, body);
         res.EnsureSuccessStatusCode();
+        return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<T> Delete<T>(string url)
+    {
+        var res = await _client.DeleteAsync(url);
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }
 

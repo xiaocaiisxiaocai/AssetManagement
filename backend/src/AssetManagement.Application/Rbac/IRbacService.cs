@@ -7,6 +7,7 @@ public interface IRbacService
     Task<PagedResult<UserDto>> GetUsersAsync(string? keyword, int page, int pageSize);
     Task<UserDto> CreateUserAsync(CreateUserRequest request);
     Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request);
+    Task DeleteUserAsync(int id);
     Task ResetPasswordAsync(int id);
     Task ToggleUserStatusAsync(int id, bool? isActive = null);
 
