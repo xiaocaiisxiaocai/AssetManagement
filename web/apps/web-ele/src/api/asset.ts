@@ -42,6 +42,7 @@ export interface AssetItem {
 export interface AssetQuery {
   assetNo?: string;
   categoryId?: null | number;
+  custodianId?: null | number;
   deleteStatus?: 'active' | 'all' | 'deleted';
   departmentId?: null | number;
   deletedOnly?: boolean;

@@ -93,6 +93,7 @@ const pageSizeOptions = ref(createPageSizeOptions(20));
 const query = reactive({
   assetNo: '',
   categoryId: undefined as number | undefined,
+  custodianId: undefined as number | undefined,
   departmentId: undefined as number | undefined,
   deleteStatus: 'all' as 'active' | 'all' | 'deleted',
   name: '',
@@ -141,7 +142,7 @@ async function loadDictionaries() {
     getCategoryTreeApi(),
     getDepartmentTreeApi(),
     getLocationTreeApi(),
-    getUserListApi().then((result) => result.items),
+    getUserListApi('', 1, 500).then((result) => result.items),
     getWorkflowsApi(),
   ]);
   categories.value = categoryTree;
@@ -189,6 +190,7 @@ function buildQuery(): AssetQuery {
   return {
     assetNo: query.assetNo || undefined,
     categoryId: query.categoryId,
+    custodianId: query.custodianId,
     deleteStatus: query.deleteStatus,
     departmentId: query.departmentId,
     name: query.name || undefined,
@@ -202,6 +204,7 @@ function resetQuery() {
   Object.assign(query, {
     assetNo: '',
     categoryId: isAssetStage.value ? hierarchyParent.value?.id : undefined,
+    custodianId: undefined,
     deleteStatus: 'all',
     departmentId: undefined,
     name: '',
@@ -656,6 +659,20 @@ watch(
               <ElOption label="全部" value="all" />
               <ElOption label="未删除" value="active" />
               <ElOption label="已删除" value="deleted" />
+            </ElSelect>
+            <ElSelect
+              v-model="query.custodianId"
+              clearable
+              filterable
+              placeholder="保管人"
+              style="width: 180px"
+            >
+              <ElOption
+                v-for="user in users"
+                :key="user.id"
+                :label="`${user.name}（${user.employeeNo}）`"
+                :value="user.id"
+              />
             </ElSelect>
             <ElButton type="primary" @click="search">查询</ElButton>
             <ElButton @click="resetQuery">重置</ElButton>

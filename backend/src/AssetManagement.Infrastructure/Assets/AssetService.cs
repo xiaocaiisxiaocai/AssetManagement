@@ -370,6 +370,11 @@ public class AssetService : IAssetService
             queryable = queryable.Where(x => x.DepartmentId.HasValue && departmentIds.Contains(x.DepartmentId.Value));
         }
 
+        if (query.CustodianId.HasValue)
+        {
+            queryable = queryable.Where(x => x.CustodianId == query.CustodianId.Value);
+        }
+
         return queryable;
     }
 

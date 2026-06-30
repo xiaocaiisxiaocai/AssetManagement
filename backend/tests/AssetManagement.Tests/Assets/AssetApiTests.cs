@@ -71,6 +71,30 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Custodian_filter_returns_only_matching_assets()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var matched = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "指定保管人资产",
+            CategoryId = category.Id,
+            CustodianId = 1,
+        });
+        var unmatched = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "未指定保管人资产",
+            CategoryId = category.Id,
+        });
+
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>(
+            $"/api/assets?categoryId={category.Id}&custodianId=1");
+
+        list!.Data!.Items.Should().ContainSingle(x => x.Id == matched.Data!.Id);
+        list.Data.Items.Should().NotContain(x => x.Id == unmatched.Data!.Id);
+    }
+
+    [Fact]
     public async Task Borrowed_asset_cannot_be_deleted()
     {
         await Login();
