@@ -138,12 +138,14 @@ async function confirmCleanup() {
 }
 
 function actionTypeLabel(type: string): string {
-  const map: Record<string, string> = { POST: '新增', PUT: '修改', DELETE: '删除', remind: '催办' };
+  const map: Record<string, string> = { POST: '新增', PUT: '修改', DELETE: '删除', business: '业务', cleanup: '清理', remind: '催办' };
   return map[type] ?? type;
 }
 
 function actionType(type: string): TagType | undefined {
   if (type === 'remind') return 'warning';
+  if (type === 'business') return 'info';
+  if (type === 'cleanup') return 'info';
   if (type === 'DELETE') return 'danger';
   if (type === 'POST') return 'success';
   if (type === 'PUT') return 'info';
