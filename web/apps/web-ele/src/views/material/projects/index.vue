@@ -1419,6 +1419,7 @@ onMounted(async () => {
                 </ElTableColumn>
                 <ElTableColumn align="center" fixed="right" label="操作" width="150">
                   <template #default="{ row }">
+                    <div class="material-row-actions">
                     <template v-if="!row.isDeleted">
                       <ElButton link size="small" type="primary" @click="openMaterialDetail(row)">
                         详情
@@ -1483,6 +1484,7 @@ onMounted(async () => {
                         </template>
                       </ElDropdown>
                     </template>
+                    </div>
                   </template>
                 </ElTableColumn>
                 </ElTable>
@@ -2117,6 +2119,17 @@ onMounted(async () => {
 .drawer-table-panel :deep(.el-table) {
   flex: 1;
   min-height: 0;
+}
+
+.material-row-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+.material-row-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 .material-table-panel,

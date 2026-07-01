@@ -797,6 +797,7 @@ watch(
               </ElTableColumn>
               <ElTableColumn fixed="right" label="操作" width="160" align="center">
                 <template #default="{ row }">
+                  <div class="asset-row-actions">
                   <template v-if="!row.isDeleted">
                     <ElButton link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
                     <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
@@ -833,6 +834,7 @@ watch(
                     </ElDropdown>
                     <span v-if="!canRestoreAsset && !canPurgeAsset" class="asset-no-permission">无操作权限</span>
                   </template>
+                  </div>
                 </template>
               </ElTableColumn>
             </ElTable>
@@ -1298,6 +1300,17 @@ watch(
 
 .asset-table-panel :deep(.el-button + .el-button) {
   margin-left: 4px;
+}
+
+.asset-row-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+.asset-row-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 /* ========== 分页器 ========== */
