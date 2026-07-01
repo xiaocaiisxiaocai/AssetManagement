@@ -146,8 +146,6 @@ public class RbacService : IRbacService
             ?? throw new BizException(4042, "角色不存在");
         role.Name = request.Name.Trim();
         role.IsActive = request.IsActive;
-        await RewriteRolePermissions(id, request.PermissionIds);
-        await RewriteRoleMenus(id, request.MenuIds);
         await _db.SaveChangesAsync();
         return await LoadRoleDto(id);
     }

@@ -215,6 +215,56 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Update_role_status_keeps_existing_permissions_and_menus()
+    {
+        await Login();
+        var roleCode = Unique("role_status");
+        var permissionCode = Unique("role:status");
+        var menuName = Unique("RoleStatusMenu");
+
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = roleCode,
+            Name = "角色状态测试",
+            IsActive = true
+        });
+        var permission = await Post<ApiResult<PermissionDto>>("/api/permissions", new PermissionDto
+        {
+            Code = permissionCode,
+            Name = "角色状态权限",
+            Module = "role"
+        });
+        var menu = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = menuName,
+            Title = "角色状态菜单",
+            Path = $"/demo/{menuName}",
+            Component = "/demo/index",
+            Sort = 101,
+            Type = "menu"
+        });
+
+        await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data!.Id}/permissions", new
+        {
+            permissionIds = new[] { permission.Data!.Id }
+        });
+        await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data.Id}/menus", new
+        {
+            menuIds = new[] { menu.Data!.Id }
+        });
+
+        var updated = await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data.Id}", new
+        {
+            name = "角色状态测试-禁用",
+            isActive = false
+        });
+
+        updated.Data!.IsActive.Should().BeFalse();
+        updated.Data.PermissionIds.Should().Contain(permission.Data.Id);
+        updated.Data.MenuIds.Should().Contain(menu.Data.Id);
+    }
+
+    [Fact]
     public async Task Set_user_status_is_idempotent()
     {
         await Login();
