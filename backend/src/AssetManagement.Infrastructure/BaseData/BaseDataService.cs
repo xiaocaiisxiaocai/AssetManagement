@@ -271,9 +271,11 @@ public class BaseDataService : IBaseDataService
 
     public async Task<LocationNodeDto> CreateLocationAsync(CreateLocationRequest request)
     {
+        var name = request.Name.Trim();
+        await EnsureLocationNameAvailableAsync(name);
         var location = new Location
         {
-            Name = request.Name.Trim()
+            Name = name
         };
         _db.Locations.Add(location);
         await _db.SaveChangesAsync();
@@ -284,7 +286,9 @@ public class BaseDataService : IBaseDataService
     {
         var location = await _db.Locations.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4047, "位置不存在");
-        location.Name = request.Name.Trim();
+        var name = request.Name.Trim();
+        await EnsureLocationNameAvailableAsync(name, id);
+        location.Name = name;
         await _db.SaveChangesAsync();
         return ToLocationDto(location);
     }
@@ -474,6 +478,14 @@ public class BaseDataService : IBaseDataService
             {
                 yield return item;
             }
+        }
+    }
+
+    private async Task EnsureLocationNameAvailableAsync(string name, int? selfId = null)
+    {
+        if (await _db.Locations.AnyAsync(x => x.Name == name && x.Id != selfId))
+        {
+            throw new BizException(4094, "存放位置已存在");
         }
     }
 

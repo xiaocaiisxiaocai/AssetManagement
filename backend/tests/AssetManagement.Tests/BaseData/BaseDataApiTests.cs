@@ -258,6 +258,47 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Location_create_rejects_duplicate_name_with_business_message()
+    {
+        await Login();
+        var name = Unique("库位");
+        await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        {
+            Name = name
+        });
+
+        var duplicated = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        {
+            Name = name
+        });
+
+        duplicated.Code.Should().Be(4094);
+        duplicated.Message.Should().Be("存放位置已存在");
+    }
+
+    [Fact]
+    public async Task Location_update_rejects_duplicate_name_with_business_message()
+    {
+        await Login();
+        var existing = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        {
+            Name = Unique("库位")
+        });
+        var target = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        {
+            Name = Unique("库位")
+        });
+
+        var duplicated = await Put<ApiResult<LocationNodeDto>>($"/api/locations/{target.Data!.Id}", new UpdateLocationRequest
+        {
+            Name = existing.Data!.Name
+        });
+
+        duplicated.Code.Should().Be(4094);
+        duplicated.Message.Should().Be("存放位置已存在");
+    }
+
+    [Fact]
     public async Task Location_tree_does_not_return_qr_code()
     {
         await Login();
