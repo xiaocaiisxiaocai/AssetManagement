@@ -10,6 +10,7 @@ public class TestProjectService : ITestProjectService
 {
     public const string OptionKindProjectType = "project_type";
     public const string OptionKindProgress = "project_progress";
+    public const string ProgressLanding = "landing";
 
     private readonly AppDbContext _db;
 
@@ -297,7 +298,8 @@ public class TestProjectService : ITestProjectService
         return list.Select(x =>
         {
             latestByProject.TryGetValue(x.Id, out var latest);
-            var nextDue = NextFollowUpDueDate(x, latest);
+            var isLanding = IsLandingProgress(x);
+            DateTime? nextDue = isLanding ? NextFollowUpDueDate(x, latest) : null;
             return new TestProjectDto
             {
                 Id = x.Id,
@@ -318,7 +320,7 @@ public class TestProjectService : ITestProjectService
                 FollowUpStatus = FollowUpStatus(nextDue),
                 LatestFollowUpContent = latest?.Content,
                 LatestFollowUpAt = latest?.FilledAt,
-                CanWriteFollowUp = currentUserId.HasValue && (isAdmin || x.OwnerId == currentUserId.Value),
+                CanWriteFollowUp = isLanding && currentUserId.HasValue && (isAdmin || x.OwnerId == currentUserId.Value),
                 CreatedAt = x.CreatedAt,
                 IsDeleted = x.IsDeleted,
                 DeletedAt = x.DeletedAt,
@@ -368,9 +370,14 @@ public class TestProjectService : ITestProjectService
 
     private async Task EnsureCanWriteFollowup(TestProject project, int currentUserId)
     {
+        if (!IsLandingProgress(project))
+            throw new BizException(4031, "项目进入落地跟进后才能填写落地跟进");
         if (project.OwnerId == currentUserId || await IsAdmin(currentUserId)) return;
         throw new BizException(4031, "只有项目负责人或管理员可以填写落地跟进");
     }
+
+    private static bool IsLandingProgress(TestProject project)
+        => string.Equals(project.ProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase);
 
     private async Task<bool> IsAdmin(int userId)
         => await _db.UserRoles
@@ -392,11 +399,12 @@ public class TestProjectService : ITestProjectService
         return baseDate.AddDays(NormalizeInterval(project.FollowUpIntervalDays));
     }
 
-    private static string FollowUpStatus(DateTime dueDate)
+    private static string FollowUpStatus(DateTime? dueDate)
     {
+        if (!dueDate.HasValue) return "upcoming";
         var today = DateTime.UtcNow.Date;
-        if (dueDate.Date < today) return "overdue";
-        if (dueDate.Date == today) return "due";
+        if (dueDate.Value.Date < today) return "overdue";
+        if (dueDate.Value.Date == today) return "due";
         return "upcoming";
     }
 

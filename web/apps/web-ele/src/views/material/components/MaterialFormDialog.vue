@@ -25,6 +25,7 @@ import {
 
 import { assetImageUrl, stripImageToken, uploadAssetImageApi } from '#/api/asset';
 import { createMaterialApi, updateMaterialApi } from '#/api/material';
+import { getDefaultCustodianId, validateMaterialForm } from './material-form-rules';
 
 type FlatOption = { id: number; label: string };
 
@@ -83,14 +84,15 @@ watch(visible, (opened) => {
       url: assetImageUrl(url),
     }));
   } else {
+    const projectId = props.defaultProjectId;
     Object.assign(form, {
       brand: '',
-      custodianId: undefined,
+      custodianId: getDefaultCustodianId(props.projects, projectId),
       departmentId: undefined,
       locationId: undefined,
       model: '',
       name: '',
-      projectId: props.defaultProjectId,
+      projectId,
       quantity: 1,
       receivedDate: undefined,
       remark: '',
@@ -142,12 +144,9 @@ function onImageExceed() {
 }
 
 async function save() {
-  if (!form.name.trim()) {
-    ElMessage.warning('请填写料件名称');
-    return;
-  }
-  if (!form.projectId) {
-    ElMessage.warning('请选择所属测试项目');
+  const validationMessage = validateMaterialForm(form);
+  if (validationMessage) {
+    ElMessage.warning(validationMessage);
     return;
   }
   saving.value = true;
@@ -171,14 +170,15 @@ const debouncedSave = useDebounceFn(save, 300);
 <template>
   <ElDialog
     v-model="visible"
+    align-center
     :title="isEdit ? '编辑测试料件' : '新增测试料件'"
     width="600px"
   >
     <ElForm label-width="96px">
-      <ElFormItem label="料件名称">
-        <ElInput v-model="form.name" placeholder="必填" />
+      <ElFormItem label="料件名称" required>
+        <ElInput v-model="form.name" placeholder="请输入料件名称" />
       </ElFormItem>
-      <ElFormItem label="所属项目">
+      <ElFormItem label="所属项目" required>
         <ElSelect
           v-model="form.projectId"
           :disabled="props.projectLocked"
@@ -194,19 +194,19 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="厂商/来源">
-        <ElInput v-model="form.vendorName" placeholder="寄件厂商名称" />
+      <ElFormItem label="厂商/来源" required>
+        <ElInput v-model="form.vendorName" placeholder="请输入寄件厂商名称" />
       </ElFormItem>
-      <ElFormItem label="型号品牌">
+      <ElFormItem label="型号品牌" required>
         <div class="grid w-full grid-cols-2 gap-2">
-          <ElInput v-model="form.model" placeholder="型号" />
-          <ElInput v-model="form.brand" placeholder="品牌" />
+          <ElInput v-model="form.model" placeholder="请输入型号" />
+          <ElInput v-model="form.brand" placeholder="请输入品牌" />
         </div>
       </ElFormItem>
-      <ElFormItem label="数量">
+      <ElFormItem label="数量" required>
         <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
       </ElFormItem>
-      <ElFormItem label="归属部门">
+      <ElFormItem label="归属部门" required>
         <ElSelect
           v-model="form.departmentId"
           clearable
@@ -222,7 +222,7 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="存放位置">
+      <ElFormItem label="存放位置" required>
         <ElSelect
           v-model="form.locationId"
           clearable
@@ -238,7 +238,7 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="保管人">
+      <ElFormItem label="保管人" required>
         <ElSelect
           v-model="form.custodianId"
           clearable
@@ -254,7 +254,7 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="接收日期">
+      <ElFormItem label="接收日期" required>
         <ElDatePicker
           v-model="form.receivedDate"
           placeholder="选择接收日期"

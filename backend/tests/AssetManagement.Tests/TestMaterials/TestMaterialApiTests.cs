@@ -132,6 +132,49 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_owner_can_create_and_edit_material_without_material_permissions()
+    {
+        await Login();
+        var owner = await CreateUserInDb("1904", "普通负责人");
+        var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Name = "负责人料件项目",
+            OwnerId = owner.Id
+        });
+
+        await Login(owner.EmployeeNo, "123456");
+        var created = await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "负责人新增样品",
+            ProjectId = project.Data!.Id,
+            VendorName = "供应商",
+            Model = "M-1",
+            Brand = "SAA",
+            Quantity = 1,
+            CustodianId = owner.Id,
+            ReceivedDate = DateTime.UtcNow.Date
+        });
+
+        created.Data!.CustodianId.Should().Be(owner.Id);
+
+        var updateResponse = await _client.PutAsJsonAsync($"/api/test-materials/{created.Data.Id}", new SaveTestMaterialRequest
+        {
+            Name = "负责人编辑样品",
+            ProjectId = project.Data.Id,
+            VendorName = "供应商",
+            Model = "M-2",
+            Brand = "SAA",
+            Quantity = 2,
+            CustodianId = owner.Id,
+            ReceivedDate = DateTime.UtcNow.Date
+        });
+
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await updateResponse.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
+        updated!.Data!.Name.Should().Be("负责人编辑样品");
+    }
+
+    [Fact]
     public async Task Project_fields_options_and_followup_due_status_are_returned()
     {
         await Login();
@@ -172,17 +215,18 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "权限跟进项目",
             ProjectTypeCode = "prototype",
-            ProgressCode = "testing",
+            ProgressCode = "landing",
             OwnerId = manager.Id,
             StartDate = DateTime.UtcNow.Date,
             FollowUpIntervalDays = 14
         });
 
-        // 无 project:manage 权限的普通员工应被拒绝（403）
+        // 非项目负责人也不是管理员，应被业务权限拒绝
         await Login(outsider.EmployeeNo, "123456");
         var denied = await _client.PostAsJsonAsync($"/api/test-projects/{project.Data!.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "我不应该能填" });
-        denied.StatusCode.Should().Be(System.Net.HttpStatusCode.Forbidden);
+        var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
+        deniedBody!.Code.Should().Be(4031);
 
         // 有 project:manage 权限的部门管理员可以写跟进
         await Login(manager.EmployeeNo, "123456");
@@ -197,6 +241,49 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             $"/api/test-projects/{project.Data.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "管理员补充跟进" });
         adminFollowup.Data!.FilledByName.Should().Be("系统管理员");
+    }
+
+    [Fact]
+    public async Task Followup_is_available_only_when_project_is_landing()
+    {
+        await Login();
+        var owner = await CreateUserInDb("1905", "落地负责人");
+        var planned = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Name = "未落地项目",
+            ProgressCode = "planning",
+            OwnerId = owner.Id,
+            StartDate = new DateTime(2026, 6, 29),
+            FollowUpIntervalDays = 7
+        });
+
+        planned.Data!.NextFollowUpDueDate.Should().BeNull();
+        planned.Data.CanWriteFollowUp.Should().BeFalse();
+
+        await Login(owner.EmployeeNo, "123456");
+        var denied = await _client.PostAsJsonAsync($"/api/test-projects/{planned.Data.Id}/followups",
+            new SaveTestProjectFollowupRequest { Content = "未落地不应允许填写" });
+        var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
+        deniedBody!.Code.Should().Be(4031);
+
+        await Login();
+        var landing = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Name = "落地项目",
+            ProgressCode = "landing",
+            OwnerId = owner.Id,
+            StartDate = new DateTime(2026, 6, 29),
+            FollowUpIntervalDays = 7
+        });
+
+        landing.Data!.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 6));
+        landing.Data.CanWriteFollowUp.Should().BeFalse();
+
+        await Login(owner.EmployeeNo, "123456");
+        var saved = await Post<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{landing.Data.Id}/followups",
+            new SaveTestProjectFollowupRequest { Content = "落地后填写" });
+        saved.Data!.Content.Should().Be("落地后填写");
     }
 
     // ===== 辅助方法 =====

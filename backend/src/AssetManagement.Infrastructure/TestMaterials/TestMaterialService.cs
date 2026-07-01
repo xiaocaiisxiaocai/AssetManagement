@@ -101,8 +101,11 @@ public class TestMaterialService : ITestMaterialService
     public async Task<TestMaterialDto> CreateAsync(SaveTestMaterialRequest request)
     {
         await EnsureCanAssignDepartmentAsync(request.DepartmentId);
-        if (!await _db.TestProjects.AnyAsync(x => x.Id == request.ProjectId && !x.IsDeleted))
-            throw new BizException(4046, "测试项目不存在");
+        var project = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ProjectId && !x.IsDeleted)
+            ?? throw new BizException(4046, "测试项目不存在");
+        await EnsureCanWriteMaterialAsync(project, "material:create");
+        if (string.IsNullOrWhiteSpace(request.Name))
+            throw new BizException(4001, "请填写料件名称");
 
         for (var attempt = 0; ; attempt++)
         {
@@ -145,10 +148,17 @@ public class TestMaterialService : ITestMaterialService
         await EnsureCanAccessAsync(m);
         EnsureInUse(m, "已退回厂商的料件不能编辑");
         await EnsureCanAssignDepartmentAsync(request.DepartmentId);
+        var originalProject = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == m.ProjectId && !x.IsDeleted)
+            ?? throw new BizException(4046, "测试项目不存在");
+        await EnsureCanWriteMaterialAsync(originalProject, "material:edit");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能编辑");
-        if (!await _db.TestProjects.AnyAsync(x => x.Id == request.ProjectId && !x.IsDeleted))
-            throw new BizException(4046, "测试项目不存在");
+        var project = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ProjectId && !x.IsDeleted)
+            ?? throw new BizException(4046, "测试项目不存在");
+        if (project.Id != originalProject.Id)
+            await EnsureCanWriteMaterialAsync(project, "material:edit");
+        if (string.IsNullOrWhiteSpace(request.Name))
+            throw new BizException(4001, "请填写料件名称");
 
         m.Name = request.Name.Trim();
         m.ProjectId = request.ProjectId;
@@ -297,6 +307,22 @@ public class TestMaterialService : ITestMaterialService
         var allowed = await AllowedDepartmentIdsAsync();
         if (allowed != null && (!departmentId.HasValue || !allowed.Contains(departmentId.Value)))
             throw new BizException(4047, "无权将料件归属到该部门");
+    }
+
+    private async Task EnsureCanWriteMaterialAsync(TestProject project, string permission)
+    {
+        var user = _http.HttpContext?.User;
+        var currentUserId = CurrentUserId();
+        var permissions = user?.FindAll("perm").Select(x => x.Value).ToArray() ?? Array.Empty<string>();
+        if (user?.IsInRole("admin") == true || permissions.Contains(permission) || project.OwnerId == currentUserId)
+            return;
+        throw new BizException(4047, "无权维护该项目料件");
+    }
+
+    private int? CurrentUserId()
+    {
+        var value = _http.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return int.TryParse(value, out var id) ? id : null;
     }
 
     private static void EnsureInUse(TestMaterial material, string message)

@@ -80,6 +80,7 @@ import { getUserListApi } from '#/api/user';
 import MaterialDetailDialog from '../components/MaterialDetailDialog.vue';
 import MaterialFormDialog from '../components/MaterialFormDialog.vue';
 import TransferDialog from '../components/TransferDialog.vue';
+import { validateProjectForm } from './project-form-rules';
 
 defineOptions({ name: 'MaterialProjects' });
 
@@ -138,6 +139,12 @@ const canDeleteMaterial = computed(() => hasAccessByCodes(['material:delete']));
 const canTransferMaterial = computed(() => hasAccessByCodes(['material:transfer']));
 const canRestoreMaterial = computed(() => hasAccessByCodes(['material:restore']));
 const canApproveMaterial = computed(() => hasAccessByCodes(['material:approve']));
+const canWriteCurrentProjectMaterial = computed(() =>
+  canCreateMaterial.value || currentProject.value?.canWriteFollowUp === true,
+);
+const canEditCurrentProjectMaterial = computed(() =>
+  canEditMaterial.value || currentProject.value?.canWriteFollowUp === true,
+);
 
 const loading = ref(false);
 const projects = ref<TestProjectItem[]>([]);
@@ -183,7 +190,7 @@ const optionForm = reactive<SaveTestProjectOptionPayload>({
 
 const followupDrawerVisible = ref(false);
 const currentProject = ref<null | TestProjectItem>(null);
-const activeProjectTab = ref('followups');
+const activeProjectTab = ref('materials');
 const followups = ref<TestProjectFollowup[]>([]);
 const followupLoading = ref(false);
 const followupSaving = ref(false);
@@ -218,6 +225,15 @@ const pendingFlowLoading = ref(false);
 const myFlowLoading = ref(false);
 const pendingFlows = ref<MaterialFlowItem[]>([]);
 const myFlows = ref<MaterialFlowItem[]>([]);
+const pendingFlowQuery = reactive({
+  page: 1,
+  pageSize: 10,
+});
+const myFlowQuery = reactive({
+  page: 1,
+  pageSize: 10,
+});
+const flowPageSizeOptions = ref(createPageSizeOptions(20));
 
 const projectTypeOptions = computed(() => activeOptions('project_type'));
 const progressOptions = computed(() => activeOptions('project_progress'));
@@ -231,6 +247,23 @@ const locationOptions = computed<FlatOption[]>(() =>
 const currentProjectList = computed(() =>
   currentProject.value ? [currentProject.value] : projects.value,
 );
+const currentProjectCodeText = computed(() => currentProject.value?.code || '未设置编号');
+const currentProjectTypeText = computed(() =>
+  currentProject.value?.projectTypeLabel || currentProject.value?.projectTypeCode || '未分类',
+);
+const currentProjectProgressText = computed(() =>
+  currentProject.value?.progressLabel || currentProject.value?.progressCode || '未设置进度',
+);
+const pendingFlowCount = computed(() => pendingFlows.value.length);
+const myFlowCount = computed(() => myFlows.value.length);
+const pagedPendingFlows = computed(() => {
+  const start = (pendingFlowQuery.page - 1) * pendingFlowQuery.pageSize;
+  return pendingFlows.value.slice(start, start + pendingFlowQuery.pageSize);
+});
+const pagedMyFlows = computed(() => {
+  const start = (myFlowQuery.page - 1) * myFlowQuery.pageSize;
+  return myFlows.value.slice(start, start + myFlowQuery.pageSize);
+});
 const pagedProjects = computed(() => {
   const start = (projectQuery.page - 1) * projectQuery.pageSize;
   return projects.value.slice(start, start + projectQuery.pageSize);
@@ -374,8 +407,9 @@ function buildProjectPayload(): SaveTestProjectPayload {
 }
 
 async function save() {
-  if (!form.name.trim()) {
-    ElMessage.warning('请填写项目名称');
+  const validationMessage = validateProjectForm(form, !!editingId.value);
+  if (validationMessage) {
+    ElMessage.warning(validationMessage);
     return;
   }
   if (saving.value) return;
@@ -535,8 +569,10 @@ async function openFollowups(row: TestProjectItem) {
   pendingFlows.value = [];
   myFlows.value = [];
   flowActiveTab.value = 'pending';
+  pendingFlowQuery.page = 1;
+  myFlowQuery.page = 1;
   resetMaterialQuery();
-  activeProjectTab.value = 'followups';
+  activeProjectTab.value = 'materials';
   editingFollowupId.value = null;
   Object.assign(followupForm, {
     content: '',
@@ -577,7 +613,7 @@ async function saveFollowup() {
   const project = currentProject.value;
   if (!project) return;
   if (!project.canWriteFollowUp) {
-    ElMessage.warning('只有项目负责人或管理员可以填写落地跟进');
+    ElMessage.warning('项目进入落地跟进后，负责人或管理员才能填写');
     return;
   }
   if (!followupForm.content.trim()) {
@@ -790,8 +826,14 @@ async function afterMaterialChanged() {
   await loadProjectMaterials();
   if (currentProject.value?.id) {
     const id = currentProject.value.id;
-    void listPendingFlowsApi(id).then((v) => { pendingFlows.value = v; }).catch(() => {});
-    void listMyFlowsApi(id).then((v) => { myFlows.value = v; }).catch(() => {});
+    void listPendingFlowsApi(id).then((v) => {
+      pendingFlows.value = v;
+      normalizeFlowPage('pending');
+    }).catch(() => {});
+    void listMyFlowsApi(id).then((v) => {
+      myFlows.value = v;
+      normalizeFlowPage('mine');
+    }).catch(() => {});
   }
 }
 
@@ -804,8 +846,13 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
     const flows = await (loadMine
       ? listMyFlowsApi(projectId)
       : listPendingFlowsApi(projectId));
-    if (loadMine) myFlows.value = flows;
-    else pendingFlows.value = flows;
+    if (loadMine) {
+      myFlows.value = flows;
+      normalizeFlowPage('mine');
+    } else {
+      pendingFlows.value = flows;
+      normalizeFlowPage('pending');
+    }
   } finally {
     if (loadMine) myFlowLoading.value = false;
     else pendingFlowLoading.value = false;
@@ -863,6 +910,22 @@ function onFlowTabChange() {
   void loadProjectFlows();
 }
 
+function normalizeFlowPage(type: 'mine' | 'pending') {
+  const query = type === 'mine' ? myFlowQuery : pendingFlowQuery;
+  const total = type === 'mine' ? myFlows.value.length : pendingFlows.value.length;
+  if ((query.page - 1) * query.pageSize >= total) {
+    query.page = 1;
+  }
+}
+
+function onPendingFlowPageSizeChange() {
+  pendingFlowQuery.page = 1;
+}
+
+function onMyFlowPageSizeChange() {
+  myFlowQuery.page = 1;
+}
+
 function tableRowClassName({ row }: { row: TestProjectItem }) {
   return row.isDeleted ? 'project-row-deleted' : '';
 }
@@ -871,8 +934,11 @@ onMounted(async () => {
   const defaultPageSize = await getDefaultPageSize();
   projectQuery.pageSize = defaultPageSize;
   materialQuery.pageSize = defaultPageSize;
+  pendingFlowQuery.pageSize = defaultPageSize;
+  myFlowQuery.pageSize = defaultPageSize;
   pageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   materialPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
+  flowPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   await Promise.all([loadOptions(), loadData()]);
 });
 </script>
@@ -880,21 +946,25 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="material-projects-page p-5">
-      <div class="mb-4 flex flex-wrap items-center gap-3">
-        <ElSelect
-          v-model="deleteStatus"
-          placeholder="删除状态"
-          style="width: 130px"
-          @change="loadData"
-        >
-          <ElOption label="全部" value="all" />
-          <ElOption label="未删除" value="active" />
-          <ElOption label="已删除" value="deleted" />
-        </ElSelect>
-        <ElButton v-if="canManage" type="primary" @click="openCreate">
-          新增项目
-        </ElButton>
-        <ElButton v-if="canManage" @click="openOptionDialog">配置</ElButton>
+      <div class="project-toolbar">
+        <div class="project-toolbar-left">
+          <ElSelect
+            v-model="deleteStatus"
+            placeholder="删除状态"
+            style="width: 130px"
+            @change="loadData"
+          >
+            <ElOption label="全部" value="all" />
+            <ElOption label="未删除" value="active" />
+            <ElOption label="已删除" value="deleted" />
+          </ElSelect>
+        </div>
+        <div class="project-toolbar-right">
+          <ElButton v-if="canManage" @click="openOptionDialog">配置</ElButton>
+          <ElButton v-if="canManage" type="primary" @click="openCreate">
+            新增项目
+          </ElButton>
+        </div>
       </div>
 
       <div class="project-table-panel">
@@ -1047,13 +1117,13 @@ onMounted(async () => {
       >
         <ElForm label-width="96px">
           <div class="form-grid">
-            <ElFormItem label="项目名称">
-              <ElInput v-model="form.name" placeholder="必填" />
+            <ElFormItem label="项目名称" required>
+              <ElInput v-model="form.name" placeholder="请输入项目名称" />
             </ElFormItem>
-            <ElFormItem label="项目编号">
-              <ElInput v-model="form.code" placeholder="可选" />
+            <ElFormItem label="项目编号" required>
+              <ElInput v-model="form.code" placeholder="请输入项目编号" />
             </ElFormItem>
-            <ElFormItem label="项目类型">
+            <ElFormItem label="项目类型" required>
               <ElSelect v-model="form.projectTypeCode" clearable placeholder="请选择">
                 <ElOption
                   v-for="item in projectTypeOptions"
@@ -1063,7 +1133,7 @@ onMounted(async () => {
                 />
               </ElSelect>
             </ElFormItem>
-            <ElFormItem label="进度">
+            <ElFormItem label="进度" required>
               <ElSelect v-model="form.progressCode" clearable placeholder="请选择">
                 <ElOption
                   v-for="item in progressOptions"
@@ -1073,7 +1143,7 @@ onMounted(async () => {
                 />
               </ElSelect>
             </ElFormItem>
-            <ElFormItem label="负责人">
+            <ElFormItem label="负责人" required>
               <ElSelect v-model="form.ownerId" clearable filterable placeholder="请选择">
                 <ElOption
                   v-for="user in users"
@@ -1083,7 +1153,7 @@ onMounted(async () => {
                 />
               </ElSelect>
             </ElFormItem>
-            <ElFormItem label="跟进间隔">
+            <ElFormItem label="跟进间隔" required>
               <ElInputNumber
                 v-model="form.followUpIntervalDays"
                 :max="365"
@@ -1092,7 +1162,7 @@ onMounted(async () => {
                 style="width: 100%"
               />
             </ElFormItem>
-            <ElFormItem label="开始时间">
+            <ElFormItem label="开始时间" required>
               <ElDatePicker
                 v-model="form.startDate"
                 placeholder="选择日期"
@@ -1101,7 +1171,7 @@ onMounted(async () => {
                 value-format="YYYY-MM-DD"
               />
             </ElFormItem>
-            <ElFormItem label="计划完成">
+            <ElFormItem label="计划完成" required>
               <ElDatePicker
                 v-model="form.plannedFinishDate"
                 placeholder="选择日期"
@@ -1197,99 +1267,51 @@ onMounted(async () => {
 
       <ElDrawer
         v-model="followupDrawerVisible"
-        :title="currentProject ? `项目跟进 - ${currentProject.name}` : '项目跟进'"
+        title="项目跟进"
         size="78%"
       >
         <div v-if="currentProject" class="followup-panel">
-          <div class="followup-summary">
-            <div>
-              <span class="summary-label">负责人</span>
-              <span>{{ currentProject.ownerName || '-' }}</span>
+          <section class="project-brief">
+            <div class="project-brief-main">
+              <div class="project-kicker">项目跟进工作台</div>
+              <h2 class="project-title">{{ currentProject.name }}</h2>
+              <div class="project-meta-line">
+                <span>{{ currentProjectCodeText }}</span>
+                <span>{{ currentProjectTypeText }}</span>
+                <span>{{ currentProjectProgressText }}</span>
+              </div>
             </div>
-            <div>
-              <span class="summary-label">下次跟进</span>
-              <span>{{ dateText(currentProject.nextFollowUpDueDate) }}</span>
-              <ElTag :type="statusMeta(currentProject.followUpStatus).type" size="small">
-                {{ statusMeta(currentProject.followUpStatus).label }}
-              </ElTag>
-            </div>
-            <div>
-              <span class="summary-label">间隔</span>
-              <span>{{ currentProject.followUpIntervalDays }}天</span>
-            </div>
-          </div>
-
-          <ElTabs v-model="activeProjectTab" @tab-change="onProjectTabChange">
-            <ElTabPane label="落地跟进" name="followups">
-              <div v-if="currentProject.canWriteFollowUp" class="followup-editor">
-                <ElForm label-width="86px">
-                  <ElFormItem label="跟进日期">
-                    <ElDatePicker
-                      v-model="followupForm.dueDate"
-                      placeholder="选择对应周期日期"
-                      style="width: 100%"
-                      type="date"
-                      value-format="YYYY-MM-DD"
-                    />
-                  </ElFormItem>
-                  <ElFormItem label="落地情况">
-                    <ElInput
-                      v-model="followupForm.content"
-                      :rows="4"
-                      maxlength="2000"
-                      placeholder="填写本周期落地进展、问题和下一步"
-                      show-word-limit
-                      type="textarea"
-                    />
-                  </ElFormItem>
-                </ElForm>
-                <div class="followup-actions">
-                  <ElButton v-if="editingFollowupId" @click="cancelFollowupEdit">
-                    取消编辑
-                  </ElButton>
-                  <ElButton :loading="followupSaving" type="primary" @click="saveFollowup">
-                    {{ editingFollowupId ? '保存修改' : '新增跟进' }}
-                  </ElButton>
+            <div class="project-brief-stats">
+              <div class="brief-stat">
+                <span class="brief-stat-label">负责人</span>
+                <strong>{{ currentProject.ownerName || '-' }}</strong>
+              </div>
+              <div class="brief-stat">
+                <span class="brief-stat-label">下次跟进</span>
+                <div class="brief-stat-value">
+                  <strong>{{ dateText(currentProject.nextFollowUpDueDate) }}</strong>
+                  <ElTag :type="statusMeta(currentProject.followUpStatus).type" size="small">
+                    {{ statusMeta(currentProject.followUpStatus).label }}
+                  </ElTag>
                 </div>
               </div>
-              <ElTag v-else type="info">
-                只有项目负责人或管理员可以填写，其他人只读
-              </ElTag>
-
-              <div v-loading="followupLoading" class="followup-list">
-                <ElEmpty v-if="!followups.length && !followupLoading" description="暂无跟进记录" />
-                <ElTimeline v-else>
-                  <ElTimelineItem
-                    v-for="item in followups"
-                    :key="item.id"
-                    :timestamp="`${dateText(item.dueDate)} · ${item.filledByName || '-'} · ${dateTimeText(item.filledAt)}`"
-                    placement="top"
-                  >
-                    <div class="followup-content">{{ item.content }}</div>
-                    <ElButton
-                      v-if="currentProject.canWriteFollowUp"
-                      link
-                      size="small"
-                      type="primary"
-                      @click="editFollowup(item)"
-                    >
-                      编辑
-                    </ElButton>
-                    <ElButton
-                      v-if="currentProject.canWriteFollowUp"
-                      link
-                      size="small"
-                      type="danger"
-                      @click="deleteFollowup(item)"
-                    >
-                      删除
-                    </ElButton>
-                  </ElTimelineItem>
-                </ElTimeline>
+              <div class="brief-stat">
+                <span class="brief-stat-label">跟进间隔</span>
+                <strong>{{ currentProject.followUpIntervalDays }} 天</strong>
               </div>
-            </ElTabPane>
+              <div class="brief-stat">
+                <span class="brief-stat-label">料件数</span>
+                <strong>{{ currentProject.materialCount }} 件</strong>
+              </div>
+            </div>
+          </section>
 
-            <ElTabPane label="料件清单" name="materials">
+          <ElTabs v-model="activeProjectTab" class="project-work-tabs" @tab-change="onProjectTabChange">
+            <ElTabPane name="materials">
+              <template #label>
+                <span>料件清单</span>
+                <span class="tab-count">{{ materialTotal }}</span>
+              </template>
               <div class="material-filter">
                 <ElInput
                   v-model="materialQuery.materialNo"
@@ -1330,20 +1352,20 @@ onMounted(async () => {
                 </ElSelect>
                 <ElButton type="primary" @click="searchMaterials">查询</ElButton>
                 <ElButton @click="resetMaterialQuery">重置</ElButton>
-                <ElButton v-if="canCreateMaterial" type="primary" @click="openCreateMaterial">
+                <ElButton v-if="canWriteCurrentProjectMaterial" type="primary" @click="openCreateMaterial">
                   新增料件
                 </ElButton>
               </div>
 
-              <ElTable
-                v-loading="materialLoading"
-                :data="materials"
-                :row-class-name="materialRowClassName"
-                border
-                class="mt-4"
-                max-height="420"
-                stripe
-              >
+              <div class="drawer-table-panel material-table-panel">
+                <ElTable
+                  v-loading="materialLoading"
+                  :data="materials"
+                  :row-class-name="materialRowClassName"
+                  border
+                  height="100%"
+                  stripe
+                >
                 <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
                 <ElTableColumn label="名称" min-width="140" prop="name" show-overflow-tooltip />
                 <ElTableColumn label="厂商" min-width="120" prop="vendorName" show-overflow-tooltip />
@@ -1373,7 +1395,7 @@ onMounted(async () => {
                         详情
                       </ElButton>
                       <ElButton
-                        v-if="canEditMaterial && canOperateMaterial(row)"
+                        v-if="canEditCurrentProjectMaterial && canOperateMaterial(row)"
                         link
                         size="small"
                         type="primary"
@@ -1434,9 +1456,9 @@ onMounted(async () => {
                     </template>
                   </template>
                 </ElTableColumn>
-              </ElTable>
+                </ElTable>
 
-              <div class="table-bottom-pager material-bottom-pager">
+                <div class="table-bottom-pager material-bottom-pager">
                 <div class="table-bottom-pager-left">
                   <span>共 {{ materialTotal }} 条记录</span>
                   <span class="table-bottom-pager-divider">|</span>
@@ -1462,48 +1484,204 @@ onMounted(async () => {
                   layout="prev, pager, next"
                   @current-change="() => loadProjectMaterials(currentProject?.id)"
                 />
+                </div>
               </div>
             </ElTabPane>
 
-            <ElTabPane label="流转审批" name="flows">
-              <ElTabs v-model="flowActiveTab" @tab-change="onFlowTabChange">
-                <ElTabPane label="待我审批" name="pending">
-                  <ElTable v-loading="pendingFlowLoading" :data="pendingFlows" border max-height="420" stripe>
-                    <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
-                    <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
-                    <ElTableColumn label="料件名称" min-width="140" prop="materialName" show-overflow-tooltip />
-                    <ElTableColumn label="发起人" min-width="90" prop="applicant" />
-                    <ElTableColumn label="受让人" min-width="90" prop="transferee" />
-                    <ElTableColumn label="原因" min-width="150" prop="reason" show-overflow-tooltip />
-                    <ElTableColumn align="center" label="操作" width="140">
-                      <template #default="{ row }">
-                        <ElButton v-if="canApproveMaterial" link size="small" type="success" @click="approveFlow(row)">
-                          通过
-                        </ElButton>
-                        <ElButton v-if="canApproveMaterial" link size="small" type="danger" @click="rejectFlow(row)">
-                          驳回
-                        </ElButton>
-                      </template>
-                    </ElTableColumn>
-                  </ElTable>
+            <ElTabPane name="flows">
+              <template #label>
+                <span>流转审批</span>
+                <span class="tab-count">{{ pendingFlowCount + myFlowCount }}</span>
+              </template>
+              <ElTabs v-model="flowActiveTab" class="inner-flow-tabs" @tab-change="onFlowTabChange">
+                <ElTabPane name="pending">
+                  <template #label>待我审批 {{ pendingFlowCount }}</template>
+                  <div class="drawer-table-panel flow-table-panel">
+                    <ElTable v-loading="pendingFlowLoading" :data="pagedPendingFlows" border height="100%" stripe>
+                      <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
+                      <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
+                      <ElTableColumn label="料件名称" min-width="140" prop="materialName" show-overflow-tooltip />
+                      <ElTableColumn label="发起人" min-width="90" prop="applicant" />
+                      <ElTableColumn label="受让人" min-width="90" prop="transferee" />
+                      <ElTableColumn label="原因" min-width="150" prop="reason" show-overflow-tooltip />
+                      <ElTableColumn align="center" label="操作" width="140">
+                        <template #default="{ row }">
+                          <ElButton v-if="canApproveMaterial" link size="small" type="success" @click="approveFlow(row)">
+                            通过
+                          </ElButton>
+                          <ElButton v-if="canApproveMaterial" link size="small" type="danger" @click="rejectFlow(row)">
+                            驳回
+                          </ElButton>
+                        </template>
+                      </ElTableColumn>
+                    </ElTable>
+                    <div class="table-bottom-pager">
+                      <div class="table-bottom-pager-left">
+                        <span>共 {{ pendingFlowCount }} 条记录</span>
+                        <span class="table-bottom-pager-divider">|</span>
+                        <span>每页</span>
+                        <ElSelect
+                          v-model="pendingFlowQuery.pageSize"
+                          style="width: 92px"
+                          @change="onPendingFlowPageSizeChange"
+                        >
+                          <ElOption
+                            v-for="size in flowPageSizeOptions"
+                            :key="size"
+                            :label="`${size}`"
+                            :value="size"
+                          />
+                        </ElSelect>
+                      </div>
+                      <ElPagination
+                        v-model:current-page="pendingFlowQuery.page"
+                        :page-size="pendingFlowQuery.pageSize"
+                        :total="pendingFlowCount"
+                        background
+                        layout="prev, pager, next"
+                      />
+                    </div>
+                  </div>
                 </ElTabPane>
-                <ElTabPane label="我的发起" name="mine">
-                  <ElTable v-loading="myFlowLoading" :data="myFlows" border max-height="420" stripe>
-                    <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
-                    <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
-                    <ElTableColumn label="料件名称" min-width="140" prop="materialName" show-overflow-tooltip />
-                    <ElTableColumn label="受让人" min-width="90" prop="transferee" />
-                    <ElTableColumn label="原因" min-width="150" prop="reason" show-overflow-tooltip />
-                    <ElTableColumn align="center" label="状态" width="110">
-                      <template #default="{ row }">
-                        <ElTag :type="flowMetaOf(row.status).tag" size="small">
-                          {{ flowMetaOf(row.status).label }}
-                        </ElTag>
-                      </template>
-                    </ElTableColumn>
-                  </ElTable>
+                <ElTabPane name="mine">
+                  <template #label>我的发起 {{ myFlowCount }}</template>
+                  <div class="drawer-table-panel flow-table-panel">
+                    <ElTable v-loading="myFlowLoading" :data="pagedMyFlows" border height="100%" stripe>
+                      <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
+                      <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
+                      <ElTableColumn label="料件名称" min-width="140" prop="materialName" show-overflow-tooltip />
+                      <ElTableColumn label="受让人" min-width="90" prop="transferee" />
+                      <ElTableColumn label="原因" min-width="150" prop="reason" show-overflow-tooltip />
+                      <ElTableColumn align="center" label="状态" width="110">
+                        <template #default="{ row }">
+                          <ElTag :type="flowMetaOf(row.status).tag" size="small">
+                            {{ flowMetaOf(row.status).label }}
+                          </ElTag>
+                        </template>
+                      </ElTableColumn>
+                    </ElTable>
+                    <div class="table-bottom-pager">
+                      <div class="table-bottom-pager-left">
+                        <span>共 {{ myFlowCount }} 条记录</span>
+                        <span class="table-bottom-pager-divider">|</span>
+                        <span>每页</span>
+                        <ElSelect
+                          v-model="myFlowQuery.pageSize"
+                          style="width: 92px"
+                          @change="onMyFlowPageSizeChange"
+                        >
+                          <ElOption
+                            v-for="size in flowPageSizeOptions"
+                            :key="size"
+                            :label="`${size}`"
+                            :value="size"
+                          />
+                        </ElSelect>
+                      </div>
+                      <ElPagination
+                        v-model:current-page="myFlowQuery.page"
+                        :page-size="myFlowQuery.pageSize"
+                        :total="myFlowCount"
+                        background
+                        layout="prev, pager, next"
+                      />
+                    </div>
+                  </div>
                 </ElTabPane>
               </ElTabs>
+            </ElTabPane>
+
+            <ElTabPane name="followups">
+              <template #label>
+                <span>落地跟进</span>
+                <span class="tab-count">{{ followups.length }}</span>
+              </template>
+              <div class="followup-workspace">
+                <aside class="followup-editor-panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h3>{{ editingFollowupId ? '编辑跟进记录' : '新增跟进记录' }}</h3>
+                      <p>记录本周期进展、问题和下一步动作。</p>
+                    </div>
+                    <ElTag v-if="!currentProject.canWriteFollowUp" type="info">只读</ElTag>
+                  </div>
+
+                  <template v-if="currentProject.canWriteFollowUp">
+                    <ElForm label-position="top">
+                      <ElFormItem label="跟进日期">
+                        <ElDatePicker
+                          v-model="followupForm.dueDate"
+                          placeholder="选择对应周期日期"
+                          style="width: 100%"
+                          type="date"
+                          value-format="YYYY-MM-DD"
+                        />
+                      </ElFormItem>
+                      <ElFormItem label="落地情况">
+                        <ElInput
+                          v-model="followupForm.content"
+                          class="followup-textarea"
+                          resize="none"
+                          :rows="7"
+                          maxlength="2000"
+                          placeholder="填写本周期落地进展、问题和下一步"
+                          show-word-limit
+                          type="textarea"
+                        />
+                      </ElFormItem>
+                    </ElForm>
+                    <div class="followup-actions">
+                      <ElButton v-if="editingFollowupId" @click="cancelFollowupEdit">
+                        取消编辑
+                      </ElButton>
+                      <ElButton :loading="followupSaving" type="primary" @click="saveFollowup">
+                        {{ editingFollowupId ? '保存修改' : '新增跟进' }}
+                      </ElButton>
+                    </div>
+                  </template>
+                  <div v-else class="readonly-note">
+                    项目进入落地跟进后，负责人或管理员才能填写。
+                  </div>
+                </aside>
+
+                <section v-loading="followupLoading" class="followup-history-panel">
+                  <div class="panel-heading">
+                    <div>
+                      <h3>历史跟进</h3>
+                      <p>按填写时间倒序展示。</p>
+                    </div>
+                  </div>
+                  <ElEmpty
+                    v-if="!followups.length && !followupLoading"
+                    class="compact-empty"
+                    description="暂无跟进记录"
+                  />
+                  <ElTimeline v-else class="followup-timeline">
+                    <ElTimelineItem
+                      v-for="item in followups"
+                      :key="item.id"
+                      :timestamp="dateText(item.dueDate)"
+                      placement="top"
+                    >
+                      <article class="followup-record">
+                        <div class="followup-record-meta">
+                          <span>{{ item.filledByName || '-' }}</span>
+                          <span>{{ dateTimeText(item.filledAt) }}</span>
+                        </div>
+                        <div class="followup-content">{{ item.content }}</div>
+                        <div v-if="currentProject.canWriteFollowUp" class="record-actions">
+                          <ElButton link size="small" type="primary" @click="editFollowup(item)">
+                            编辑
+                          </ElButton>
+                          <ElButton link size="small" type="danger" @click="deleteFollowup(item)">
+                            删除
+                          </ElButton>
+                        </div>
+                      </article>
+                    </ElTimelineItem>
+                  </ElTimeline>
+                </section>
+              </div>
             </ElTabPane>
           </ElTabs>
         </div>
@@ -1550,9 +1728,25 @@ onMounted(async () => {
   gap: 16px;
 }
 
-.material-projects-page > .mb-4 {
+.project-toolbar {
+  display: flex;
   flex-shrink: 0;
-  margin-bottom: 0;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.project-toolbar-left,
+.project-toolbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.project-toolbar-right {
+  justify-content: flex-end;
 }
 
 .project-table-panel {
@@ -1589,8 +1783,13 @@ onMounted(async () => {
 .option-actions,
 .followup-actions {
   display: flex;
+  flex-shrink: 0;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.followup-actions {
+  margin-top: 12px;
 }
 
 .table-sub-text {
@@ -1602,44 +1801,362 @@ onMounted(async () => {
 .followup-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
 }
 
-.followup-summary,
-.followup-editor {
-  padding: 12px;
-  background: var(--el-fill-color-light);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
+:deep(.el-drawer__body) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 16px;
 }
 
-.followup-summary {
+:deep(.el-drawer__body > *) {
+  flex: 1;
+  min-height: 0;
+}
+
+.project-brief {
   display: grid;
-  gap: 8px;
-  font-size: 13px;
+  grid-template-columns: minmax(260px, 1fr) minmax(520px, 1.4fr);
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--el-fill-color-blank), var(--el-fill-color-light));
 }
 
-.summary-label {
-  display: inline-block;
-  width: 72px;
+.project-brief-main {
+  min-width: 0;
+}
+
+.project-kicker {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+
+.project-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--el-text-color-primary);
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 8px;
+  font-size: 13px;
   color: var(--el-text-color-secondary);
 }
 
-.followup-list {
-  min-height: 160px;
+.project-meta-line span:not(:last-child)::after {
+  position: relative;
+  left: 8px;
+  color: var(--el-border-color);
+  content: "/";
+}
+
+.project-brief-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.brief-stat {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+}
+
+.brief-stat-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.brief-stat strong {
+  display: block;
+  overflow: hidden;
+  color: var(--el-text-color-primary);
+  font-size: 15px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brief-stat-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.project-work-tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.project-work-tabs :deep(.el-tabs__content) {
+  order: 1;
+  flex: 1;
+  min-height: 0;
+}
+
+.project-work-tabs :deep(.el-tabs__header) {
+  order: 0;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+
+.project-work-tabs :deep(.el-tab-pane) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  margin-left: 6px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  background: var(--el-fill-color-light);
+  border-radius: 999px;
+}
+
+.followup-workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.48fr) minmax(0, 1fr);
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.followup-editor-panel,
+.followup-history-panel {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+}
+
+.followup-editor-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: sticky;
+  top: 0;
+}
+
+.followup-editor-panel :deep(.el-form) {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.followup-editor-panel :deep(.el-form-item:last-child) {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.followup-editor-panel :deep(.el-form-item:last-child .el-form-item__content) {
+  min-height: 0;
+  flex: 1;
+}
+
+.followup-textarea {
+  height: 100%;
+}
+
+.followup-textarea :deep(.el-textarea__inner) {
+  height: 100%;
+  max-height: 100%;
+  resize: none;
+}
+
+.followup-history-panel {
+  min-height: 0;
+  overflow: auto;
+}
+
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.panel-heading h3 {
+  margin: 0;
+  color: var(--el-text-color-primary);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.panel-heading p {
+  margin: 4px 0 0;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.readonly-note {
+  padding: 14px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+}
+
+.compact-empty {
+  padding: 54px 0;
+}
+
+.followup-timeline {
+  padding-right: 6px;
+}
+
+.followup-record {
+  padding: 12px 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+
+.followup-record-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .followup-content {
-  margin-bottom: 4px;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
 }
 
-.material-filter {
+.record-actions {
   display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.drawer-table-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
+  background: var(--asset-page-surface);
+}
+
+.drawer-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
+}
+
+.material-table-panel,
+.flow-table-panel {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.inner-flow-tabs {
+  display: flex;
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.inner-flow-tabs :deep(.el-tabs__content) {
+  order: 1;
+  flex: 1;
+  min-height: 0;
+}
+
+.inner-flow-tabs :deep(.el-tabs__header) {
+  order: 0;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+
+.inner-flow-tabs :deep(.el-tab-pane) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.table-bottom-pager {
+  display: flex;
+  flex-shrink: 0;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid var(--asset-page-border);
+  background: var(--asset-page-surface);
+}
+
+.table-bottom-pager-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--asset-page-muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.table-bottom-pager-divider {
+  color: var(--asset-page-border);
+}
+
+.material-filter {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
 }
 
 :deep(.project-row-deleted td.el-table__cell) {
@@ -1658,8 +2175,25 @@ onMounted(async () => {
 
 @media (max-width: 768px) {
   .form-grid,
-  .option-form-grid {
+  .option-form-grid,
+  .project-brief,
+  .project-brief-stats,
+  .followup-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .followup-editor-panel {
+    position: static;
+  }
+
+  .project-toolbar {
+    align-items: stretch;
+  }
+
+  .material-table-panel,
+  .flow-table-panel,
+  .inner-flow-tabs {
+    height: auto;
   }
 }
 </style>

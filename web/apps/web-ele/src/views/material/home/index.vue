@@ -5,6 +5,12 @@ import { EchartsUI, type EchartsUIType, useEcharts } from '@vben/plugins/echarts
 
 import { getTestProjectStatsApi, type TestProjectStats } from '#/api/test-project';
 
+import {
+  buildMonthlySeriesData,
+  monthLabels,
+  quantityAxisLabel,
+} from './chart-options';
+
 const stats = ref<TestProjectStats>({
   total: 0,
   closed: 0,
@@ -25,8 +31,6 @@ const { renderEcharts: renderStatusChart } = useEcharts(statusChartRef);
 // 柱线组合图：结案与落地数据统计
 const barChartRef = ref<EchartsUIType>();
 const { renderEcharts: renderBarChart } = useEcharts(barChartRef);
-
-const MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
 
 let themeObserver: MutationObserver | undefined;
 
@@ -103,16 +107,20 @@ function renderCharts(data: TestProjectStats) {
   });
 
   // 柱线组合图
-  const closedData = data.monthlyStat.map(x => x.closedCount);
-  const landedData = data.monthlyStat.map(x => x.landedCount);
+  const { closedData, landedData } = buildMonthlySeriesData(data.monthlyStat);
   renderBarChart({
     backgroundColor: 'transparent',
     title: { text: '结案与落地数据统计', left: 'center', top: 8, textStyle: titleTextStyle },
     tooltip: { trigger: 'axis' },
     legend: { bottom: 0, data: ['结案数量', '落地数量'], textStyle: legendTextStyle },
-    grid: { top: 50, left: 40, right: 20, bottom: 50 },
-    xAxis: { type: 'category', data: MONTHS, axisLabel, axisLine },
-    yAxis: { type: 'value', minInterval: 1, axisLabel, splitLine },
+    grid: { top: 50, left: 56, right: 20, bottom: 50 },
+    xAxis: { type: 'category', data: monthLabels, axisLabel, axisLine },
+    yAxis: {
+      type: 'value',
+      minInterval: 1,
+      axisLabel: { ...axisLabel, ...quantityAxisLabel },
+      splitLine,
+    },
     series: [
       {
         name: '结案数量',

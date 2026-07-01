@@ -1,6 +1,7 @@
 using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Infrastructure.Auth;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AssetManagement.Api.Controllers;
@@ -28,12 +29,12 @@ public class TestMaterialController : ControllerBase
         => ApiResult<TestMaterialDetailDto>.Ok(await _service.GetDetailAsync(id));
 
     [HttpPost]
-    [HasPermission("material:create")]
+    [Authorize]
     public async Task<ApiResult<TestMaterialDto>> Create(SaveTestMaterialRequest request)
         => ApiResult<TestMaterialDto>.Ok(await _service.CreateAsync(request));
 
     [HttpPut("{id:int}")]
-    [HasPermission("material:edit")]
+    [Authorize]
     public async Task<ApiResult<TestMaterialDto>> Update(int id, SaveTestMaterialRequest request)
         => ApiResult<TestMaterialDto>.Ok(await _service.UpdateAsync(id, request));
 
