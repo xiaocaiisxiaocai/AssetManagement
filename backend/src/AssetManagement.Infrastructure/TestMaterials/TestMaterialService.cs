@@ -105,15 +105,17 @@ public class TestMaterialService : ITestMaterialService
         var project = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ProjectId && !x.IsDeleted)
             ?? throw new BizException(4046, "测试项目不存在");
         await EnsureCanWriteMaterialAsync(project, "material:create");
-        if (string.IsNullOrWhiteSpace(request.Name))
+        var name = request.Name.Trim();
+        if (string.IsNullOrWhiteSpace(name))
             throw new BizException(4001, "请填写料件名称");
+        await EnsureMaterialNameAvailableAsync(request.ProjectId, name);
 
         for (var attempt = 0; ; attempt++)
         {
             var m = new TestMaterial
             {
                 MaterialNo = await NextMaterialNo(),
-                Name = request.Name.Trim(),
+                Name = name,
                 ProjectId = request.ProjectId,
                 VendorName = request.VendorName?.Trim(),
                 Model = request.Model?.Trim(),
@@ -159,10 +161,12 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.Id != originalProject.Id)
             await EnsureCanWriteMaterialAsync(project, "material:edit");
-        if (string.IsNullOrWhiteSpace(request.Name))
+        var name = request.Name.Trim();
+        if (string.IsNullOrWhiteSpace(name))
             throw new BizException(4001, "请填写料件名称");
+        await EnsureMaterialNameAvailableAsync(request.ProjectId, name, id);
 
-        m.Name = request.Name.Trim();
+        m.Name = name;
         m.ProjectId = request.ProjectId;
         m.VendorName = request.VendorName?.Trim();
         m.Model = request.Model?.Trim();
@@ -316,6 +320,18 @@ public class TestMaterialService : ITestMaterialService
         if (!departmentId.HasValue) return;
         if (!await _db.Departments.AnyAsync(x => x.Id == departmentId.Value && x.IsActive))
             throw new BizException(4045, "部门不存在或已停用");
+    }
+
+    private async Task EnsureMaterialNameAvailableAsync(int projectId, string name, int? selfId = null)
+    {
+        if (await _db.TestMaterials.AnyAsync(x =>
+                x.ProjectId == projectId &&
+                x.Name == name &&
+                !x.IsDeleted &&
+                x.Id != selfId))
+        {
+            throw new BizException(4094, "料件名称已存在");
+        }
     }
 
     private async Task EnsureCanWriteMaterialAsync(TestProject project, string permission)

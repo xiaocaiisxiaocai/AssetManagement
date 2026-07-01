@@ -78,6 +78,47 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Material_rejects_duplicate_name_in_same_project()
+    {
+        await Login();
+        var project = await CreateProject("料件重名项目");
+        var otherProject = await CreateProject("允许同名的其他项目");
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = 1,
+            Name = $"重名料件部门-{Guid.NewGuid():N}"
+        });
+        var location = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        {
+            Name = $"重名料件位置-{Guid.NewGuid():N}"
+        });
+        var name = $"重名料件-{Guid.NewGuid():N}";
+        await Post<ApiResult<TestMaterialDto>>(
+            "/api/test-materials",
+            NewMaterialRequest(project.Id, name, department.Data!.Id, location.Data!.Id));
+
+        var duplicateCreate = await Post<ApiResult<TestMaterialDto>>(
+            "/api/test-materials",
+            NewMaterialRequest(project.Id, name, department.Data.Id, location.Data.Id));
+        var sameNameInOtherProject = await Post<ApiResult<TestMaterialDto>>(
+            "/api/test-materials",
+            NewMaterialRequest(otherProject.Id, name, department.Data.Id, location.Data.Id));
+        var updateTarget = await Post<ApiResult<TestMaterialDto>>(
+            "/api/test-materials",
+            NewMaterialRequest(project.Id, $"{name}-可更新", department.Data.Id, location.Data.Id));
+        var duplicateUpdateResponse = await _client.PutAsJsonAsync(
+            $"/api/test-materials/{updateTarget.Data!.Id}",
+            NewMaterialRequest(project.Id, name, department.Data.Id, location.Data.Id));
+        var duplicateUpdate = await duplicateUpdateResponse.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
+
+        duplicateCreate.Code.Should().Be(4094);
+        duplicateCreate.Message.Should().Be("料件名称已存在");
+        sameNameInOtherProject.Code.Should().Be(0);
+        duplicateUpdate!.Code.Should().Be(4094);
+        duplicateUpdate.Message.Should().Be("料件名称已存在");
+    }
+
+    [Fact]
     public async Task Soft_delete_keeps_in_all_list_and_restore_brings_back_active()
     {
         await Login();
@@ -403,6 +444,24 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         })).Data!;
 
     private static string NewProjectCode() => $"TP-{Guid.NewGuid():N}"[..20];
+
+    private static SaveTestMaterialRequest NewMaterialRequest(
+        int projectId,
+        string name,
+        int departmentId,
+        int locationId) => new()
+    {
+        Brand = "SAA",
+        DepartmentId = departmentId,
+        CustodianId = 3,
+        LocationId = locationId,
+        Model = "TM-Model",
+        Name = name,
+        ProjectId = projectId,
+        Quantity = 1,
+        ReceivedDate = DateTime.UtcNow.Date,
+        VendorName = "测试供应商"
+    };
 
     private async Task Login(string employeeNo = "1001", string password = "123456")
     {
