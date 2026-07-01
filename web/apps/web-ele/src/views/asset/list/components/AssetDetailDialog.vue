@@ -72,6 +72,39 @@ function formatTime(time: null | string | undefined) {
     ? time
     : d.toLocaleString('zh-CN', { hour12: false });
 }
+
+const actionTypeText: Record<string, string> = {
+  DELETE: '删除',
+  GET: '查看',
+  PATCH: '修改',
+  POST: '新增',
+  PUT: '修改',
+};
+
+const actionTypeTag: Record<
+  string,
+  'danger' | 'info' | 'primary' | 'success' | 'warning'
+> = {
+  DELETE: 'danger',
+  GET: 'info',
+  PATCH: 'warning',
+  POST: 'success',
+  PUT: 'warning',
+};
+
+function actionText(action: null | string | undefined) {
+  if (!action) return '—';
+  return actionTypeText[action.toUpperCase()] ?? action;
+}
+
+function actionTag(action: null | string | undefined) {
+  return actionTypeTag[(action ?? '').toUpperCase()] ?? 'info';
+}
+
+function summaryText(summary: null | string | undefined) {
+  if (!summary) return '—';
+  return summary.replace(/^(DELETE|GET|PATCH|POST|PUT)\s+/i, '');
+}
 </script>
 
 <template>
@@ -87,8 +120,10 @@ function formatTime(time: null | string | undefined) {
           <div class="ad-header-main">
             <h3 class="ad-title">{{ detail.asset.name }}</h3>
             <div class="ad-sub">
+              <span class="ad-sub-tag">编号</span>
               <span class="ad-no">{{ detail.asset.assetNo }}</span>
               <span class="ad-dot">·</span>
+              <span class="ad-sub-tag">分类</span>
               <span>{{ detail.asset.categoryCode }}</span>
             </div>
           </div>
@@ -134,7 +169,7 @@ function formatTime(time: null | string | undefined) {
           <ElDescriptionsItem label="品牌">
             {{ detail.asset.brand || '—' }}
           </ElDescriptionsItem>
-          <ElDescriptionsItem label="创建时间">
+          <ElDescriptionsItem :span="detail.asset.isDeleted ? 1 : 2" label="创建时间">
             {{ formatTime(detail.asset.createdAt) }}
           </ElDescriptionsItem>
           <ElDescriptionsItem v-if="detail.asset.isDeleted" label="删除时间">
@@ -200,8 +235,18 @@ function formatTime(time: null | string | undefined) {
               </template>
             </ElTableColumn>
             <ElTableColumn label="操作人" prop="userName" width="110" />
-            <ElTableColumn label="动作" prop="actionType" width="90" />
-            <ElTableColumn label="摘要" prop="summary" show-overflow-tooltip />
+            <ElTableColumn label="动作" width="90">
+              <template #default="{ row }">
+                <ElTag :type="actionTag(row.actionType)" effect="light" size="small">
+                  {{ actionText(row.actionType) }}
+                </ElTag>
+              </template>
+            </ElTableColumn>
+            <ElTableColumn label="摘要" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span class="ad-log-summary">{{ summaryText(row.summary) }}</span>
+              </template>
+            </ElTableColumn>
           </ElTable>
           <ElEmpty v-else :image-size="56" description="暂无操作日志" />
         </section>
@@ -249,6 +294,19 @@ function formatTime(time: null | string | undefined) {
 
 .ad-dot {
   color: var(--el-text-color-disabled);
+}
+
+.ad-sub-tag {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  background-color: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.ad-log-summary {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .ad-tags {
