@@ -132,10 +132,13 @@ public class TestProjectService : ITestProjectService
     public async Task<TestProjectOptionDto> CreateOptionAsync(SaveTestProjectOptionRequest request)
     {
         ValidateOptionRequest(request);
+        var kind = request.Kind.Trim();
+        var code = request.Code.Trim();
+        await EnsureOptionCodeAvailable(kind, code);
         var option = new TestProjectOption
         {
-            Kind = request.Kind.Trim(),
-            Code = request.Code.Trim(),
+            Kind = kind,
+            Code = code,
             Label = request.Label.Trim(),
             Sort = request.Sort,
             IsActive = request.IsActive
@@ -150,8 +153,11 @@ public class TestProjectService : ITestProjectService
         ValidateOptionRequest(request);
         var option = await _db.TestProjectOptions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "项目配置项不存在");
-        option.Kind = request.Kind.Trim();
-        option.Code = request.Code.Trim();
+        var kind = request.Kind.Trim();
+        var code = request.Code.Trim();
+        await EnsureOptionCodeAvailable(kind, code, id);
+        option.Kind = kind;
+        option.Code = code;
         option.Label = request.Label.Trim();
         option.Sort = request.Sort;
         option.IsActive = request.IsActive;
@@ -427,6 +433,14 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4001, "配置类型不正确");
         if (string.IsNullOrWhiteSpace(request.Code)) throw new BizException(4001, "配置编码不能为空");
         if (string.IsNullOrWhiteSpace(request.Label)) throw new BizException(4001, "配置名称不能为空");
+    }
+
+    private async Task EnsureOptionCodeAvailable(string kind, string code, int? selfId = null)
+    {
+        if (await _db.TestProjectOptions.AnyAsync(x => x.Kind == kind && x.Code == code && x.Id != selfId))
+        {
+            throw new BizException(4094, "配置编码已存在");
+        }
     }
 
     private static string? NormalizeOptional(string? text)

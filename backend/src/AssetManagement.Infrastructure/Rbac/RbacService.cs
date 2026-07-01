@@ -42,13 +42,15 @@ public class RbacService : IRbacService
     public async Task<UserDto> CreateUserAsync(CreateUserRequest request)
     {
         EnsureSingleRole(request.RoleIds);
+        var employeeNo = request.EmployeeNo.Trim();
+        await EnsureEmployeeNoAvailable(employeeNo);
         var password = !string.IsNullOrWhiteSpace(request.Password)
             ? request.Password
             : DefaultUserPassword;
 
         var user = new User
         {
-            EmployeeNo = request.EmployeeNo.Trim(),
+            EmployeeNo = employeeNo,
             Name = request.Name.Trim(),
             Email = request.Email,
             Phone = request.Phone,
@@ -132,7 +134,9 @@ public class RbacService : IRbacService
 
     public async Task<RoleDto> CreateRoleAsync(RoleDto request)
     {
-        var role = new Role { Code = request.Code.Trim(), Name = request.Name.Trim(), IsActive = request.IsActive };
+        var code = request.Code.Trim();
+        await EnsureRoleCodeAvailable(code);
+        var role = new Role { Code = code, Name = request.Name.Trim(), IsActive = request.IsActive };
         _db.Roles.Add(role);
         await _db.SaveChangesAsync();
         await RewriteRolePermissions(role.Id, request.PermissionIds);
@@ -175,7 +179,9 @@ public class RbacService : IRbacService
 
     public async Task<PermissionDto> CreatePermissionAsync(PermissionDto request)
     {
-        var permission = new Permission { Code = request.Code.Trim(), Name = request.Name.Trim(), Module = request.Module };
+        var code = request.Code.Trim();
+        await EnsurePermissionCodeAvailable(code);
+        var permission = new Permission { Code = code, Name = request.Name.Trim(), Module = request.Module };
         _db.Permissions.Add(permission);
         await _db.SaveChangesAsync();
         return ToPermissionDto(permission);
@@ -185,7 +191,9 @@ public class RbacService : IRbacService
     {
         var permission = await _db.Permissions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4043, "权限不存在");
-        permission.Code = request.Code.Trim();
+        var code = request.Code.Trim();
+        await EnsurePermissionCodeAvailable(code, id);
+        permission.Code = code;
         permission.Name = request.Name.Trim();
         permission.Module = request.Module;
         await _db.SaveChangesAsync();
@@ -263,6 +271,30 @@ public class RbacService : IRbacService
         if (roleIds.Distinct().Count() != 1)
         {
             throw new BizException(4001, "请选择角色");
+        }
+    }
+
+    private async Task EnsureEmployeeNoAvailable(string employeeNo)
+    {
+        if (await _db.Users.AnyAsync(x => x.EmployeeNo == employeeNo))
+        {
+            throw new BizException(4094, "工号已存在");
+        }
+    }
+
+    private async Task EnsureRoleCodeAvailable(string code)
+    {
+        if (await _db.Roles.AnyAsync(x => x.Code == code))
+        {
+            throw new BizException(4094, "角色编码已存在");
+        }
+    }
+
+    private async Task EnsurePermissionCodeAvailable(string code, int? selfId = null)
+    {
+        if (await _db.Permissions.AnyAsync(x => x.Code == code && x.Id != selfId))
+        {
+            throw new BizException(4094, "权限编码已存在");
         }
     }
 

@@ -102,6 +102,53 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Create_user_rejects_duplicate_employee_no_with_business_message()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "原用户",
+            RoleIds = new[] { roleId }
+        });
+
+        var duplicated = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "重复用户",
+            RoleIds = new[] { roleId }
+        });
+
+        duplicated.Code.Should().Be(4094);
+        duplicated.Message.Should().Be("工号已存在");
+    }
+
+    [Fact]
+    public async Task Create_role_rejects_duplicate_code_with_business_message()
+    {
+        await Login();
+        var code = Unique("role");
+        await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = code,
+            Name = "原角色",
+            IsActive = true
+        });
+
+        var duplicated = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = code,
+            Name = "重复角色",
+            IsActive = true
+        });
+
+        duplicated.Code.Should().Be(4094);
+        duplicated.Message.Should().Be("角色编码已存在");
+    }
+
+    [Fact]
     public async Task Create_permission_then_list_can_find_it()
     {
         await Login();
@@ -116,6 +163,29 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var list = await _client.GetFromJsonAsync<ApiResult<List<PermissionDto>>>("/api/permissions");
 
         list!.Data!.Should().Contain(x => x.Code == permissionCode);
+    }
+
+    [Fact]
+    public async Task Create_permission_rejects_duplicate_code_with_business_message()
+    {
+        await Login();
+        var code = Unique("asset:archive");
+        await Post<ApiResult<PermissionDto>>("/api/permissions", new PermissionDto
+        {
+            Code = code,
+            Name = "原权限",
+            Module = "asset"
+        });
+
+        var duplicated = await Post<ApiResult<PermissionDto>>("/api/permissions", new PermissionDto
+        {
+            Code = code,
+            Name = "重复权限",
+            Module = "asset"
+        });
+
+        duplicated.Code.Should().Be(4094);
+        duplicated.Message.Should().Be("权限编码已存在");
     }
 
     [Fact]

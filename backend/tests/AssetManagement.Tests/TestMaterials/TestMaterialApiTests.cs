@@ -236,6 +236,33 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_option_rejects_duplicate_kind_code_with_business_message()
+    {
+        await Login();
+        var code = $"dup_{Guid.NewGuid():N}";
+        await Post<ApiResult<TestProjectOptionDto>>("/api/test-projects/options", new SaveTestProjectOptionRequest
+        {
+            Kind = "project_type",
+            Code = code,
+            Label = "原配置",
+            Sort = 1,
+            IsActive = true
+        });
+
+        var duplicated = await Post<ApiResult<TestProjectOptionDto>>("/api/test-projects/options", new SaveTestProjectOptionRequest
+        {
+            Kind = "project_type",
+            Code = code,
+            Label = "重复配置",
+            Sort = 2,
+            IsActive = true
+        });
+
+        duplicated.Code.Should().Be(4094);
+        duplicated.Message.Should().Be("配置编码已存在");
+    }
+
+    [Fact]
     public async Task Only_project_owner_or_admin_can_write_followup()
     {
         await Login();
