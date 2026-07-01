@@ -58,6 +58,17 @@ const form = reactive({
 });
 
 const isEdit = computed(() => props.material !== null);
+const selectableDepartmentOptions = computed(() => {
+  const options = [...props.departmentOptions];
+  const currentId = props.material?.departmentId;
+  if (currentId && !options.some((item) => item.id === currentId)) {
+    options.unshift({
+      id: currentId,
+      label: `${props.material?.departmentName || '原归属部门'}（停用）`,
+    });
+  }
+  return options;
+});
 
 watch(visible, (opened) => {
   if (!opened) {
@@ -215,7 +226,7 @@ const debouncedSave = useDebounceFn(save, 300);
           style="width: 100%"
         >
           <ElOption
-            v-for="item in departmentOptions"
+            v-for="item in selectableDepartmentOptions"
             :key="item.id"
             :label="item.label"
             :value="item.id"

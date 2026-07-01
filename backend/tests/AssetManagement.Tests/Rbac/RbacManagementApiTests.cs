@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AssetManagement.Application.Auth;
+using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
 using FluentAssertions;
@@ -335,6 +336,43 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
         login.Code.Should().Be(4012);
         login.Message.Should().Be("账号角色已禁用，请联系系统管理员");
+        login.Data.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Department_admin_in_inactive_department_cannot_login()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100");
+        var role = roles!.Data!.Items.Single(x => x.Code == "dept_admin");
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = 1,
+            Name = "已停用登录部门"
+        });
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "停用部门管理员",
+            DepartmentId = department.Data!.Id,
+            RoleIds = new[] { role.Id }
+        });
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{department.Data.Id}", new UpdateDepartmentRequest
+        {
+            ManagerId = user.Data!.Id,
+            Name = department.Data.Name,
+            IsActive = false
+        });
+
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "123456"
+        });
+
+        login.Code.Should().Be(4013);
+        login.Message.Should().Be("所属部门已停用，请联系系统管理员");
         login.Data.Should().BeNull();
     }
 

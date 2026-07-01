@@ -25,6 +25,9 @@ import {
   ElDatePicker,
   ElDialog,
   ElDrawer,
+  ElDropdown,
+  ElDropdownItem,
+  ElDropdownMenu,
   ElEmpty,
   ElForm,
   ElFormItem,
@@ -85,7 +88,7 @@ import { validateProjectForm } from './project-form-rules';
 defineOptions({ name: 'MaterialProjects' });
 
 type DeleteStatus = 'active' | 'all' | 'deleted';
-type FlatOption = { id: number; label: string };
+type FlatOption = { id: number; isActive?: boolean; label: string };
 type OptionKind = 'project_progress' | 'project_type';
 type ProjectFormState = {
   closedDate: string;
@@ -241,6 +244,7 @@ const displayedOptions = computed(() =>
   options.value.filter((item) => item.kind === activeOptionKind.value),
 );
 const departmentOptions = computed(() => flattenDepartments(departments.value));
+const activeDepartmentOptions = computed(() => departmentOptions.value.filter((item) => item.isActive));
 const locationOptions = computed<FlatOption[]>(() =>
   locations.value.map((node) => ({ id: node.id, label: node.name })),
 );
@@ -275,7 +279,11 @@ function activeOptions(kind: OptionKind) {
 
 function flattenDepartments(nodes: DepartmentNode[], level = 0): FlatOption[] {
   return nodes.flatMap((node) => [
-    { id: node.id, label: `${'　'.repeat(level)}${node.name}` },
+    {
+      id: node.id,
+      isActive: node.isActive,
+      label: `${'　'.repeat(level)}${node.name}${node.isActive ? '' : '（停用）'}`,
+    },
     ...flattenDepartments(node.children, level + 1),
   ]);
 }
@@ -714,6 +722,32 @@ function openCreateMaterial() {
   materialFormVisible.value = true;
 }
 
+function onMaterialRowCommand(command: number | string, row: MaterialItem) {
+  switch (command) {
+    case 'delete': {
+      void removeMaterial(row);
+      break;
+    }
+    case 'purge': {
+      void purgeMaterial(row);
+      break;
+    }
+    case 'restore': {
+      void restoreMaterial(row);
+      break;
+    }
+    case 'return': {
+      void onReturnMaterial(row);
+      break;
+    }
+    case 'transfer': {
+      openTransfer(row);
+      break;
+    }
+    // no default
+  }
+}
+
 function openEditMaterial(row: MaterialItem) {
   editingMaterial.value = row;
   materialFormVisible.value = true;
@@ -974,6 +1008,7 @@ onMounted(async () => {
           :row-class-name="tableRowClassName"
           border
           height="100%"
+          scrollbar-always-on
           stripe
         >
         <ElTableColumn fixed label="项目名称" min-width="180" show-overflow-tooltip>
@@ -1015,14 +1050,7 @@ onMounted(async () => {
             {{ optionalText(row.testStatus) }}
           </template>
         </ElTableColumn>
-        <ElTableColumn label="最新落地跟进" min-width="220" show-overflow-tooltip>
-          <template #default="{ row }">
-            <div>{{ optionalText(row.latestFollowUpContent) }}</div>
-            <div v-if="row.latestFollowUpAt" class="table-sub-text">
-              {{ dateTimeText(row.latestFollowUpAt) }}
-            </div>
-          </template>
-        </ElTableColumn>
+        <!-- 「最新落地跟进」列已移至项目「落地跟进」抽屉，主表精简减少横向宽度 -->
         <ElTableColumn align="center" label="下次跟进" width="130">
           <template #default="{ row }">
             <div>{{ dateText(row.nextFollowUpDueDate) }}</div>
@@ -1364,6 +1392,7 @@ onMounted(async () => {
                   :row-class-name="materialRowClassName"
                   border
                   height="100%"
+                  scrollbar-always-on
                   stripe
                 >
                 <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
@@ -1388,7 +1417,7 @@ onMounted(async () => {
                     </ElTag>
                   </template>
                 </ElTableColumn>
-                <ElTableColumn align="center" label="操作" width="280">
+                <ElTableColumn align="center" fixed="right" label="操作" width="150">
                   <template #default="{ row }">
                     <template v-if="!row.isDeleted">
                       <ElButton link size="small" type="primary" @click="openMaterialDetail(row)">
@@ -1403,56 +1432,56 @@ onMounted(async () => {
                       >
                         编辑
                       </ElButton>
-                      <ElButton
-                        v-if="canTransferMaterial && canOperateMaterial(row) && !row.hasPendingFlow"
-                        link
-                        size="small"
-                        type="info"
-                        @click="openTransfer(row)"
+                      <ElDropdown
+                        v-if="
+                          (canTransferMaterial && canOperateMaterial(row) && !row.hasPendingFlow) ||
+                          (canEditMaterial && canOperateMaterial(row) && !row.hasPendingFlow) ||
+                          (canDeleteMaterial && canOperateMaterial(row))
+                        "
+                        @command="(cmd) => onMaterialRowCommand(cmd, row)"
                       >
-                        转移
-                      </ElButton>
-                      <ElButton
-                        v-if="canEditMaterial && canOperateMaterial(row) && !row.hasPendingFlow"
-                        link
-                        size="small"
-                        type="warning"
-                        @click="onReturnMaterial(row)"
-                      >
-                        退回厂商
-                      </ElButton>
-                      <ElButton
-                        v-if="canDeleteMaterial && canOperateMaterial(row)"
-                        link
-                        size="small"
-                        type="danger"
-                        @click="removeMaterial(row)"
-                      >
-                        删除
-                      </ElButton>
+                        <ElButton link size="small" type="primary">更多</ElButton>
+                        <template #dropdown>
+                          <ElDropdownMenu>
+                            <ElDropdownItem
+                              v-if="canTransferMaterial && canOperateMaterial(row) && !row.hasPendingFlow"
+                              command="transfer"
+                            >
+                              转移
+                            </ElDropdownItem>
+                            <ElDropdownItem
+                              v-if="canEditMaterial && canOperateMaterial(row) && !row.hasPendingFlow"
+                              command="return"
+                            >
+                              退回厂商
+                            </ElDropdownItem>
+                            <ElDropdownItem
+                              v-if="canDeleteMaterial && canOperateMaterial(row)"
+                              command="delete"
+                              divided
+                            >
+                              删除
+                            </ElDropdownItem>
+                          </ElDropdownMenu>
+                        </template>
+                      </ElDropdown>
                     </template>
                     <template v-else>
                       <ElButton link size="small" type="primary" @click="openMaterialDetail(row)">
                         详情
                       </ElButton>
-                      <ElButton
-                        v-if="canRestoreMaterial"
-                        link
-                        size="small"
-                        type="success"
-                        @click="restoreMaterial(row)"
+                      <ElDropdown
+                        v-if="canRestoreMaterial || canPurge"
+                        @command="(cmd) => onMaterialRowCommand(cmd, row)"
                       >
-                        撤销删除
-                      </ElButton>
-                      <ElButton
-                        v-if="canPurge"
-                        link
-                        size="small"
-                        type="danger"
-                        @click="purgeMaterial(row)"
-                      >
-                        彻底删除
-                      </ElButton>
+                        <ElButton link size="small" type="primary">更多</ElButton>
+                        <template #dropdown>
+                          <ElDropdownMenu>
+                            <ElDropdownItem v-if="canRestoreMaterial" command="restore">撤销删除</ElDropdownItem>
+                            <ElDropdownItem v-if="canPurge" command="purge" divided>彻底删除</ElDropdownItem>
+                          </ElDropdownMenu>
+                        </template>
+                      </ElDropdown>
                     </template>
                   </template>
                 </ElTableColumn>
@@ -1690,7 +1719,7 @@ onMounted(async () => {
       <MaterialFormDialog
         v-model:visible="materialFormVisible"
         :default-project-id="currentProject?.id"
-        :department-options="departmentOptions"
+        :department-options="activeDepartmentOptions"
         :location-options="locationOptions"
         :material="editingMaterial"
         :project-locked="true"

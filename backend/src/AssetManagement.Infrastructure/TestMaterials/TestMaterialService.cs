@@ -101,6 +101,7 @@ public class TestMaterialService : ITestMaterialService
     public async Task<TestMaterialDto> CreateAsync(SaveTestMaterialRequest request)
     {
         await EnsureCanAssignDepartmentAsync(request.DepartmentId);
+        await EnsureActiveDepartmentAsync(request.DepartmentId);
         var project = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ProjectId && !x.IsDeleted)
             ?? throw new BizException(4046, "测试项目不存在");
         await EnsureCanWriteMaterialAsync(project, "material:create");
@@ -148,6 +149,7 @@ public class TestMaterialService : ITestMaterialService
         await EnsureCanAccessAsync(m);
         EnsureInUse(m, "已退回厂商的料件不能编辑");
         await EnsureCanAssignDepartmentAsync(request.DepartmentId);
+        await EnsureActiveDepartmentAsync(request.DepartmentId);
         var originalProject = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == m.ProjectId && !x.IsDeleted)
             ?? throw new BizException(4046, "测试项目不存在");
         await EnsureCanWriteMaterialAsync(originalProject, "material:edit");
@@ -307,6 +309,13 @@ public class TestMaterialService : ITestMaterialService
         var allowed = await AllowedDepartmentIdsAsync();
         if (allowed != null && (!departmentId.HasValue || !allowed.Contains(departmentId.Value)))
             throw new BizException(4047, "无权将料件归属到该部门");
+    }
+
+    private async Task EnsureActiveDepartmentAsync(int? departmentId)
+    {
+        if (!departmentId.HasValue) return;
+        if (!await _db.Departments.AnyAsync(x => x.Id == departmentId.Value && x.IsActive))
+            throw new BizException(4045, "部门不存在或已停用");
     }
 
     private async Task EnsureCanWriteMaterialAsync(TestProject project, string permission)

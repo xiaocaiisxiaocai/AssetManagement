@@ -71,6 +71,35 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Create_asset_rejects_inactive_department()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = 1,
+            Name = "已停用资产部门"
+        });
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{department.Data!.Id}", new UpdateDepartmentRequest
+        {
+            ManagerId = 1,
+            Name = department.Data.Name,
+            IsActive = false
+        });
+
+        var res = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
+        {
+            Name = "不应归属停用部门",
+            CategoryId = category.Id,
+            DepartmentId = department.Data.Id
+        });
+        var body = await res.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
+
+        body!.Code.Should().Be(4045);
+        body.Message.Should().Be("部门不存在或已停用");
+    }
+
+    [Fact]
     public async Task Custodian_filter_returns_only_matching_assets()
     {
         await Login();

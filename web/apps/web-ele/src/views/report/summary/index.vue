@@ -96,10 +96,10 @@ onMounted(loadData);
                 </button>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="总数" prop="total" width="100" align="center" />
-            <ElTableColumn label="在库" prop="available" width="100" align="center" />
-            <ElTableColumn class-name="hide-on-mobile" label="借出" prop="borrowed" width="100" align="center" />
-            <ElTableColumn class-name="hide-on-mobile" label="占比" width="100" align="center">
+            <ElTableColumn label="总数" prop="total" width="100" align="right" />
+            <ElTableColumn label="在库" prop="available" width="100" align="right" />
+            <ElTableColumn class-name="hide-on-mobile" label="借出" prop="borrowed" width="100" align="right" />
+            <ElTableColumn class-name="hide-on-mobile" label="占比" width="100" align="right">
               <template #default="{ row }">{{ row.percent }}%</template>
             </ElTableColumn>
           </ElTable>
@@ -113,10 +113,10 @@ onMounted(loadData);
                 <div>{{ row.departmentName }}</div>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="总数" prop="total" width="100" align="center" />
-            <ElTableColumn label="在库" prop="available" width="100" align="center" />
-            <ElTableColumn class-name="hide-on-mobile" label="借出" prop="borrowed" width="100" align="center" />
-            <ElTableColumn class-name="hide-on-mobile" label="占比" width="100" align="center">
+            <ElTableColumn label="总数" prop="total" width="100" align="right" />
+            <ElTableColumn label="在库" prop="available" width="100" align="right" />
+            <ElTableColumn class-name="hide-on-mobile" label="借出" prop="borrowed" width="100" align="right" />
+            <ElTableColumn class-name="hide-on-mobile" label="占比" width="100" align="right">
               <template #default="{ row }">{{ row.percent }}%</template>
             </ElTableColumn>
           </ElTable>

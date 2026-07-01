@@ -28,6 +28,9 @@ import { getUserListApi } from '#/api/user';
 
 import {
   ElButton,
+  ElDropdown,
+  ElDropdownItem,
+  ElDropdownMenu,
   ElInput,
   ElMessage,
   ElMessageBox,
@@ -53,6 +56,7 @@ const route = useRoute();
 type FlatOption = {
   code?: string;
   id: number;
+  isActive?: boolean;
   label: string;
 };
 
@@ -72,6 +76,7 @@ const transferDialogVisible = ref(false);
 const editingAsset = ref<AssetItem | null>(null);
 const formDefaultCategoryId = ref(0);
 const selectedCategoryId = ref<null | number>(null);
+const flatMode = ref(false);
 const assets = ref<AssetItem[]>([]);
 const allAssets = ref<AssetItem[]>([]);
 const total = ref(0);
@@ -104,6 +109,7 @@ const query = reactive({
 
 const categoryOptions = computed(() => flattenCategories(categories.value));
 const departmentOptions = computed(() => flattenDepartments(departments.value));
+const activeDepartmentOptions = computed(() => departmentOptions.value.filter((item) => item.isActive));
 const locationOptions = computed(() => flattenLocations(locations.value));
 const hierarchyContext = computed(() => getHierarchyContext());
 const hierarchyNodes = computed(() => hierarchyContext.value.nodes);
@@ -114,7 +120,9 @@ const isAssetStage = computed(() =>
   currentCategoryLevel.value === MAX_CATEGORY_LEVEL && !!hierarchyParent.value,
 );
 const isCategoryStage = computed(() => currentCategoryLevel.value < MAX_CATEGORY_LEVEL);
+const showAssetTable = computed(() => isAssetStage.value || flatMode.value);
 const currentLevelTitle = computed(() => {
+  if (flatMode.value) return '全部资产清单';
   if (currentCategoryLevel.value === 0) return '一级分类';
   if (currentCategoryLevel.value === 1) return `二级分类 - ${hierarchyParent.value?.code ?? ''}`;
   if (currentCategoryLevel.value === 2) return `三级分类 - ${hierarchyParent.value?.code ?? ''}`;
@@ -218,6 +226,56 @@ function resetQuery() {
 function search() {
   query.page = 1;
   void loadData();
+}
+
+function enterFlatMode() {
+  flatMode.value = true;
+  categoryPath.value = [];
+  selectedCategoryId.value = null;
+  Object.assign(query, {
+    assetNo: '',
+    categoryId: undefined,
+    custodianId: undefined,
+    deleteStatus: 'all',
+    departmentId: undefined,
+    name: '',
+    page: 1,
+    status: undefined,
+  });
+  void loadData();
+}
+
+function exitFlatMode() {
+  flatMode.value = false;
+  categoryPath.value = [];
+  selectedCategoryId.value = null;
+  query.categoryId = undefined;
+}
+
+function onRowCommand(command: string, row: AssetItem) {
+  switch (command) {
+    case 'borrow': {
+      openBorrowDialog(row);
+      break;
+    }
+    case 'delete': {
+      void debouncedRemove(row);
+      break;
+    }
+    case 'purge': {
+      void debouncedPurge(row);
+      break;
+    }
+    case 'restore': {
+      void debouncedRestore(row);
+      break;
+    }
+    case 'transfer': {
+      openTransferDialog(row);
+      break;
+    }
+    // no default
+  }
 }
 
 function openCreate(categoryId?: number) {
@@ -439,7 +497,11 @@ function flattenCategories(nodes: CategoryNode[], level = 0): FlatOption[] {
 
 function flattenDepartments(nodes: DepartmentNode[], level = 0): FlatOption[] {
   return nodes.flatMap((node) => [
-    { id: node.id, label: `${'　'.repeat(level)}${node.name}` },
+    {
+      id: node.id,
+      isActive: node.isActive,
+      label: `${'　'.repeat(level)}${node.name}${node.isActive ? '' : '（停用）'}`,
+    },
     ...flattenDepartments(node.children, level + 1),
   ]);
 }
@@ -496,28 +558,42 @@ watch(
           <div>
             <div class="asset-section-title">{{ currentLevelTitle }}</div>
             <div class="asset-path">
-              <a href="#" @click.prevent="drillToCategoryPath(-1)">全部分类</a>
-              <template v-for="(node, index) in hierarchyTrail" :key="node.id">
-                <span class="text-muted-foreground">›</span>
-                <a href="#" @click.prevent="drillToCategoryPath(index)">
-                  {{ node.code }}
-                </a>
+              <template v-if="flatMode">
+                <span class="text-muted-foreground">跨分类查看全部资产，可用下方条件筛选</span>
+              </template>
+              <template v-else>
+                <a href="#" @click.prevent="drillToCategoryPath(-1)">全部分类</a>
+                <template v-for="(node, index) in hierarchyTrail" :key="node.id">
+                  <span class="text-muted-foreground">›</span>
+                  <a href="#" @click.prevent="drillToCategoryPath(index)">
+                    {{ node.code }}
+                  </a>
+                </template>
               </template>
             </div>
           </div>
           <div class="asset-head-actions">
             <ElButton
-              v-if="hierarchyParent"
+              v-if="currentCategoryLevel === 0 && !flatMode"
+              @click="enterFlatMode"
+            >
+              查看全部资产
+            </ElButton>
+            <ElButton v-if="flatMode" @click="exitFlatMode">
+              返回分类浏览
+            </ElButton>
+            <ElButton
+              v-if="hierarchyParent && !flatMode"
               @click="drillToCategoryPath(categoryPath.length - 2)"
             >
               返回上一层
             </ElButton>
-            <template v-if="isAssetStage">
+            <template v-if="showAssetTable">
               <ElButton @click="openImport">批量导入</ElButton>
               <ElButton @click="exportAssets">导出Excel</ElButton>
             </template>
             <ElButton
-              v-if="!isCategoryStage"
+              v-if="showAssetTable"
               type="primary"
               @click="openCreate(hierarchyParent?.id)"
             >
@@ -526,7 +602,7 @@ watch(
           </div>
         </div>
 
-        <template v-if="currentCategoryLevel === 0">
+        <template v-if="!showAssetTable && currentCategoryLevel === 0">
           <div v-if="hierarchyNodes.length" class="asset-root-grid">
             <article
               v-for="node in hierarchyNodes"
@@ -554,7 +630,7 @@ watch(
           </div>
         </template>
 
-        <template v-else-if="isCategoryStage">
+        <template v-else-if="!showAssetTable && isCategoryStage">
           <div class="asset-filter-strip">
             <label>关键字搜索</label>
             <ElInput
@@ -685,6 +761,7 @@ watch(
               :row-class-name="tableRowClassName"
               border
               height="100%"
+              scrollbar-always-on
               stripe
             >
               <ElTableColumn label="资产编号" min-width="160" prop="assetNo" sortable />
@@ -718,43 +795,42 @@ watch(
                   </ElTag>
                 </template>
               </ElTableColumn>
-              <ElTableColumn fixed="right" label="操作" width="240" align="center">
+              <ElTableColumn fixed="right" label="操作" width="160" align="center">
                 <template #default="{ row }">
                   <template v-if="!row.isDeleted">
                     <ElButton link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
                     <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-                    <ElButton link type="warning" size="small" @click="openBorrowDialog(row)">借用</ElButton>
-                    <ElButton link type="info" size="small" @click="openTransferDialog(row)">转让</ElButton>
-                    <ElButton
-                      link
-                      type="danger"
-                      size="small"
-                      :disabled="deletingAssetIds.includes(row.id)"
-                      @click="debouncedRemove(row)"
-                    >
-                      删除
-                    </ElButton>
+                    <ElDropdown @command="(cmd) => onRowCommand(String(cmd), row)">
+                      <ElButton link type="primary" size="small">更多</ElButton>
+                      <template #dropdown>
+                        <ElDropdownMenu>
+                          <ElDropdownItem command="borrow">借用</ElDropdownItem>
+                          <ElDropdownItem command="transfer">转让</ElDropdownItem>
+                          <ElDropdownItem
+                            command="delete"
+                            divided
+                            :disabled="deletingAssetIds.includes(row.id)"
+                          >
+                            删除
+                          </ElDropdownItem>
+                        </ElDropdownMenu>
+                      </template>
+                    </ElDropdown>
                   </template>
                   <template v-else>
                     <ElButton link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
-                    <ElButton
-                      v-if="canRestoreAsset"
-                      link
-                      type="success"
-                      size="small"
-                      @click="debouncedRestore(row)"
+                    <ElDropdown
+                      v-if="canRestoreAsset || canPurgeAsset"
+                      @command="(cmd) => onRowCommand(String(cmd), row)"
                     >
-                      撤销删除
-                    </ElButton>
-                    <ElButton
-                      v-if="canPurgeAsset"
-                      link
-                      type="danger"
-                      size="small"
-                      @click="debouncedPurge(row)"
-                    >
-                      彻底删除
-                    </ElButton>
+                      <ElButton link type="primary" size="small">更多</ElButton>
+                      <template #dropdown>
+                        <ElDropdownMenu>
+                          <ElDropdownItem v-if="canRestoreAsset" command="restore">撤销删除</ElDropdownItem>
+                          <ElDropdownItem v-if="canPurgeAsset" command="purge" divided>彻底删除</ElDropdownItem>
+                        </ElDropdownMenu>
+                      </template>
+                    </ElDropdown>
                     <span v-if="!canRestoreAsset && !canPurgeAsset" class="asset-no-permission">无操作权限</span>
                   </template>
                 </template>
@@ -792,7 +868,7 @@ watch(
         :asset="editingAsset"
         :category-options="categoryOptions"
         :default-category-id="formDefaultCategoryId"
-        :department-options="departmentOptions"
+        :department-options="activeDepartmentOptions"
         :location-options="locationOptions"
         :users="users"
         @saved="onSaved"

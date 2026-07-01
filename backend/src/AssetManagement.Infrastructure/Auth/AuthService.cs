@@ -80,6 +80,12 @@ public class AuthService : IAuthService
         {
             throw new BizException(4012, "账号角色已禁用，请联系系统管理员");
         }
+        if (user.DepartmentId.HasValue
+            && activeRoles.Any(x => x.Code == "dept_admin")
+            && !await _db.Departments.AnyAsync(x => x.Id == user.DepartmentId.Value && x.IsActive))
+        {
+            throw new BizException(4013, "所属部门已停用，请联系系统管理员");
+        }
 
         var roleCodes = activeRoles
             .Select(x => x.Code)

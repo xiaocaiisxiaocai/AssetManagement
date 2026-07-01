@@ -123,6 +123,7 @@ public class AssetService : IAssetService
     public async Task<AssetDto> CreateAsync(CreateAssetRequest request)
     {
         EnsureCanAssignDepartment(request.DepartmentId);
+        await EnsureActiveDepartment(request.DepartmentId);
         var category = await _db.AssetCategories.SingleOrDefaultAsync(x => x.Id == request.CategoryId && !x.IsDeleted)
             ?? throw new BizException(4046, "资产分类不存在");
 
@@ -163,6 +164,7 @@ public class AssetService : IAssetService
             ?? throw new BizException(4048, "资产不存在");
         EnsureCanAccess(asset);
         EnsureCanAssignDepartment(request.DepartmentId);
+        await EnsureActiveDepartment(request.DepartmentId);
         if (!await _db.AssetCategories.AnyAsync(x => x.Id == request.CategoryId && !x.IsDeleted))
         {
             throw new BizException(4046, "资产分类不存在");
@@ -442,6 +444,19 @@ public class AssetService : IAssetService
         if (allowed != null && (!departmentId.HasValue || !allowed.Contains(departmentId.Value)))
         {
             throw new BizException(4047, "无权将资产归属到该部门");
+        }
+    }
+
+    private async Task EnsureActiveDepartment(int? departmentId)
+    {
+        if (!departmentId.HasValue)
+        {
+            return;
+        }
+
+        if (!await _db.Departments.AnyAsync(x => x.Id == departmentId.Value && x.IsActive))
+        {
+            throw new BizException(4045, "部门不存在或已停用");
         }
     }
 

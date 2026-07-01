@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AssetManagement.Application.Auth;
+using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
@@ -45,6 +46,35 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<TestMaterialDto>>>(
             $"/api/test-materials?projectId={project.Id}");
         list!.Data!.Items.Should().Contain(x => x.Id == created.Data.Id);
+    }
+
+    [Fact]
+    public async Task Create_material_rejects_inactive_department()
+    {
+        await Login();
+        var project = await CreateProject("停用部门料件项目");
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = 1,
+            Name = "已停用料件部门"
+        });
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{department.Data!.Id}", new UpdateDepartmentRequest
+        {
+            ManagerId = 1,
+            Name = department.Data.Name,
+            IsActive = false
+        });
+
+        var res = await _client.PostAsJsonAsync("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "不应归属停用部门",
+            ProjectId = project.Id,
+            DepartmentId = department.Data.Id
+        });
+        var body = await res.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
+
+        body!.Code.Should().Be(4045);
+        body.Message.Should().Be("部门不存在或已停用");
     }
 
     [Fact]
@@ -197,8 +227,8 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         project.Data.ProgressLabel.Should().Be("测试中");
         project.Data.OwnerName.Should().Be("项目负责人");
         project.Data.FollowUpIntervalDays.Should().Be(14);
-        project.Data.NextFollowUpDueDate.Should().Be(new DateTime(2026, 6, 15));
-        project.Data.FollowUpStatus.Should().NotBeNullOrWhiteSpace();
+        project.Data.NextFollowUpDueDate.Should().BeNull();
+        project.Data.FollowUpStatus.Should().Be("upcoming");
 
         var options = await _client.GetFromJsonAsync<ApiResult<List<TestProjectOptionDto>>>(
             "/api/test-projects/options?kind=project_type");
@@ -341,6 +371,13 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     private async Task<T> Post<T>(string url, object payload)
     {
         var res = await _client.PostAsJsonAsync(url, payload);
+        res.EnsureSuccessStatusCode();
+        return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<T> Put<T>(string url, object payload)
+    {
+        var res = await _client.PutAsJsonAsync(url, payload);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }

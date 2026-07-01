@@ -124,7 +124,7 @@ MySQL 连接字符串位置:
 DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 - **Domain**(`AssetManagement.Domain`):实体(`Entities/`)、领域服务(`Services/`,如资产编号 `AssetNoGenerator`、类别编码 `CategoryCodeService`)、**纯函数审批引擎**(`Workflow/`)。
-- **Application**(`AssetManagement.Application`):服务接口(`I*Service`)、DTO、`Common/`(`ApiResult`、`BizException`、`PagedResult`)。仅定义契约与数据形状,不含实现。服务按**限界上下文**粗粒度划分(**非每实体一个**):`IAssetService`(资产 CRUD + 详情/流转时间线 + Excel 批量导入)、`IAuthService`/`IJwtTokenService`、`IBaseDataService`(部门/分类/位置)、`IRbacService`(用户/角色/权限/菜单)、`IWorkflowService`(工作流 + 审批)、`IReportService`(汇总/借用/逾期报表)、`IFileStorageService`(文件存储,见 `Files/`)、`IAuditQueryService`(审计日志查询)/`IAuditMaintenanceService`(审计日志清理)/`IDatabaseBackupService`(数据库备份,三者均见 `Audit/`)、**`ITestProjectService`/`ITestMaterialService`/`IMaterialFlowService`**(测试料件模块,见下「测试料件模块」)。
+- **Application**(`AssetManagement.Application`):服务接口(`I*Service`)、DTO、`Common/`(`ApiResult`、`BizException`、`PagedResult`)。仅定义契约与数据形状,不含实现。服务按**限界上下文**粗粒度划分(**非每实体一个**):`IAssetService`(资产 CRUD + 详情/流转时间线 + Excel 批量导入)、`IAuthService`/`IJwtTokenService`、`IBaseDataService`(部门/分类/位置)、`IRbacService`(用户/角色/权限/菜单)、`IWorkflowService`(工作流 + 审批)、`IReportService`(汇总/借用/逾期报表)、`IFileStorageService`(文件存储,见 `Files/`)、`IAuditQueryService`(审计日志查询)/`IAuditMaintenanceService`(审计日志清理)/`IDatabaseBackupService`(数据库备份,三者均见 `Audit/`)、**`ITestProjectService`/`ITestMaterialService`/`IMaterialFlowService`**(新产品新技术(测试料件)模块,见下「新产品新技术(测试料件)模块」)。
 - **Infrastructure**(`AssetManagement.Infrastructure`):服务实现、`Persistence/`(`AppDbContext` + `Configurations/` 每实体一个 `IEntityTypeConfiguration` + `Seed/DbSeeder`)、`Migrations/`、`Auth/`(JWT、权限策略)、`Audit/`(操作审计过滤器 + 审计查询)、`Reports/`(报表服务)、`Files/`(文件存储服务 `FileStorageService`,支持资产图片上传;在 `Program.cs` 注册为 **Singleton**,上传根目录由 `Attachment:Path` 配置,默认 `App_Data/uploads`)。
 - **Api**(`AssetManagement.Api`):瘦控制器,每个 action 一行调用对应 `I*Service`;`Program.cs` 注册所有 DI、JWT、Swagger、自定义权限策略。
 
@@ -161,13 +161,17 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **种子**:`asset:restore`/`asset:purge` 通过 `DbSeeder` **增量种子**(幂等检查)确保已有库补上并授予对应角色,无需迁移(权限是数据非表结构)。
 - 前端:`asset/list`、`asset/categories` 已删除行按权限显示「撤销删除」「彻底删除」;详情对话框 `AssetDetailDialog.vue` 用 `ElDescriptions` 展示并高亮删除状态。
 
-### 测试料件模块(独立模块,2026-06-25 新增)
+### 新产品新技术(测试料件)模块(独立模块,2026-06-25 新增,后续持续扩展)
 
-厂商寄送的测试料件(非固定资产),属于某测试项目,有临时编号(格式 `TM-YYYYMMDD-流水号`)、保管人、部门、位置、照片等属性,可在人员间流转(可选审批)。
+> **命名说明**:界面一级菜单显示为 **"新产品新技术"**,但代码命名空间与权限前缀仍沿用 `material`/`TestProject`/`TestMaterial`(历史名"测试料件")。本文档"新产品新技术"= 代码中的测试料件/测试项目模块。
+
+围绕**新产品/新技术测评项目**的全生命周期管理:测评项目(类型、进度、负责人、计划/结案时间、定期跟进)+ 厂商寄送的测试料件(非固定资产,临时编号 `TM-YYYYMMDD-流水号`,保管人/部门/位置/照片)+ 料件在人员间流转(可选审批)。
 
 #### 核心实体
 
-- **`TestProject`**(测试项目):`Name`(必填)、`Code`(可选)、`Description`、`MaterialCount`(统计字段,本项目下料件数)、软删除字段。
+- **`TestProject`**(测评项目):`Name`(必填)、`Code`、`ProjectTypeCode`(项目类型,取自选项字典)、`ProgressCode`(进度状态,取自选项字典)、`OwnerId`(负责人)、`StartDate`/`PlannedFinishDate`/`ClosedDate`(开始/计划完成/结案)、`TestStatus`、`FollowUpIntervalDays`(跟进周期天数,默认 14)、软删除字段。**已从早期薄分组实体扩展为完整项目生命周期实体**。
+- **`TestProjectOption`**(项目选项字典):`Kind`(分组,如项目类型 `project_type`/进度状态 `project_progress`)、`Code`/`Label`/`Sort`/`IsActive`。为项目类型、进度等下拉提供可维护字典项。
+- **`TestProjectFollowup`**(项目跟进记录):`ProjectId`、`DueDate`(跟进到期日)、`Content`、`FilledById`/`FilledAt`。按 `FollowUpIntervalDays` 周期性跟进。
 - **`TestMaterial`**(测试料件):`MaterialNo`(自动生成 `TM-YYYYMMDD-XXX`)、`Name`(必填)、`ProjectId`(必填,外键到 `TestProject`)、`VendorName`(厂商)、`Model`/`Brand`/`Quantity`、`DepartmentId`/`LocationId`/`CustodianId`(可选)、`ReceivedDate`(接收日期)、`Status`(0=在用、1=已退回厂商)、`Images`(JSON 数组,复用 `FileStorageService`)、`Remark`、软删除字段、`HasPendingFlow`(计算属性,标识有待审批流转)。
 - **`MaterialFlow`**(流转记录):`FlowNo`(流转单号 `MF-YYYYMMDD-XXX`)、`MaterialId`、`ApplicantId`/`TransfereeId`(受让人)、`Reason`、`Status`(pending/approved/rejected)、`DirectTransfer`(布尔,标识绕过审批直接转移)、`BpmnTokens`(BPMN 引擎状态,JSON)、`CurrentNodeIds`(活跃节点列表,JSON)。
 - **`MaterialFlowRecord`**(流转操作记录):`FlowId`、`Action`(start/approve/reject/direct_transfer)、`Operator`(操作人名)、`Comment`、`OperatedAt`。
@@ -178,40 +182,47 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 #### 服务与接口
 
-- **`TestProjectService`**:CRUD + 软删除三态(active/all/deleted)+ 撤销/彻底删除。删除项目前检查下辖料件。
+- **`TestProjectService`**:项目 CRUD + 软删除三态(active/all/deleted)+ 撤销/彻底删除(删除项目前检查下辖料件);项目**选项字典**(`TestProjectOption`)增删改查;项目**跟进记录**(`TestProjectFollowup`)增删改查;**统计**(`GetStatsAsync` → `TestProjectStatsDto`:总数/结案/进行中/落地 + 类型分布 `typeDist` + 月度统计 `monthlyStat`,供总览仪表盘)。
 - **`TestMaterialService`**:CRUD + 软删除三态 + 详情(含流转历史 `MaterialFlows` 与操作记录 `MaterialFlowRecords`)+ 退回厂商(`ReturnToVendorAsync`,置 `Status=1`)。`CreateAsync` 自动生成 `MaterialNo`。
 - **`MaterialFlowService`**:
   - `InitiateTransferAsync`:发起流转;若全局开关 `material.transfer.approval.enabled=false`(默认),直接转移(`DirectTransfer=true`,立刻改 `CustodianId`);否则创建 pending 流转并启动 BPMN 引擎(`material_transfer` 工作流模板)。
   - `ApproveAsync`/`RejectAsync`:审批;通过时触发 `BizEffectApplier.ApplyMaterialTransfer`,改 `CustodianId` 并记录操作。
   - `PendingAsync`/`MineAsync`:待我审批列表 / 我的发起列表。
+- **控制器**:`TestProjectController`(`api/test-projects`,含 `GET stats` 统计、`options` 选项字典 CRUD、`{id}/followups` 跟进 CRUD)、`TestMaterialController`、`MaterialFlowController`。
 
 #### 权限码与菜单
 
-9 个权限码:`material:view`/`create`/`edit`/`delete`/`restore`/`purge`/`transfer`/`approve`、`project:manage`。菜单结构:一级入口"测试料件"(`/material`) → 三个子页面(`/material/list` 料件清单、`/material/projects` 测试项目、`/material/transfers` 流转审批)。`DbSeeder.SeedTestMaterialModule` 增量种子确保权限/菜单/工作流模板/系统参数(`material.transfer.approval.enabled`,默认 `false`)齐全。
+权限码分三组(共约 20 个):
+- **`project:`**(9):`view`/`create`/`edit`/`delete`/`restore`/`purge`/`option`(管理选项字典)/`followup`(管理项目跟进)/`manage`。
+- **`material:`**(9):`view`/`create`/`edit`/`delete`/`restore`/`purge`/`return`(退回厂商)/`transfer`/`approve`。
+- **`material-flow:`**(3):`view`/`transfer`/`approve`(流转单据维度)。
+
+菜单结构:一级入口界面名 **"新产品新技术"**(根菜单 `Name=Material`、`Path=/material`、`Component=BasicLayout`、图标 `lucide:flask-conical`)→ 两个子页面:**项目总览**(`/material/home` → `/material/home/index`)、**测试项目**(`/material/projects` → `/material/projects/index`),二者均以 `project:view` 控权。`DbSeeder.SeedTestMaterialModule`(幂等增量种子)确保权限/菜单/工作流模板/系统参数(`material.transfer.approval.enabled`,默认 `false`)齐全。**旧的 `/material/list`、`/material/transfers` 独立路由已废弃**,料件清单与流转审批现内嵌为「测试项目」页的 Tab。
 
 #### 前端页面
 
-- `web/apps/web-ele/src/views/material/list/index.vue`:料件清单(扁平表格,支持按项目/状态/删除三态筛选)+ 表单对话框(`components/MaterialFormDialog.vue`,含图片上传,复用 `asset.ts` 的 `uploadAssetImageApi`/`assetImageUrl`/`stripImageToken`)+ 详情对话框(`MaterialDetailDialog.vue`,流转时间线)+ 转移对话框(`TransferDialog.vue`)。
-- `web/apps/web-ele/src/views/material/projects/index.vue`:测试项目管理,简单表格 CRUD,删除三态。
-- `web/apps/web-ele/src/views/material/transfers/index.vue`:两个 Tab(待我审批 / 我的发起),有全局开关提示横幅。
+- `views/material/home/index.vue`:**项目总览**仪表盘(ECharts:测评类型分布/进度状态分布饼图 + 结案/落地月度柱线组合图),数据来自 `getTestProjectStatsApi`;图表 option 构造抽到纯函数 `home/chart-options.ts`(带 `chart-options.spec.ts` 单测)。
+- `views/material/projects/index.vue`:**测试项目**主页面(约 2200 行,模块的核心工作台)。外层项目表格 CRUD(类型/进度/负责人/起止/结案/跟进);选中项目后内嵌多个 Tab——**料件清单**(`activeProjectTab`,含新增/编辑/详情/转移)、**流转审批**(`flowActiveTab`:待我审批 / 我的发起)、项目跟进等。
+- `views/material/components/`:三个对话框 `MaterialFormDialog.vue`(含图片上传,复用 `asset.ts` 的 `uploadAssetImageApi`/`assetImageUrl`/`stripImageToken`)、`MaterialDetailDialog.vue`(流转时间线)、`TransferDialog.vue`;以及表单校验纯函数 `material-form-rules.ts` 与 `projects/project-form-rules.ts`(均带 `.spec.ts` 单测)。
+- 前端 API:`api/material.ts`(料件/流转)、`api/test-project.ts`(项目/选项/跟进/统计 `getTestProjectStatsApi`)。
 
 #### 测试覆盖
 
-- **单元测试**:`MaterialNoGeneratorTests.cs`、`FlowNoGeneratorTests.cs`(TDD,7 个 `[Fact]`/`[Theory]`)。
-- **集成测试**:`TestMaterialApiTests.cs`(4 个测试,含料件 CRUD、软删除三态、退回厂商、项目占用检查)、`MaterialFlowApiTests.cs`(3 个测试,含开关关=直接转移、开关开=审批通过/驳回)。
-- **端到端**:Playwright 脚本验证登录 → 菜单 → 新增项目/料件 → 编号自动生成 → UI 转移 → 审批页渲染(9/10 核心步骤通过)。
+- **后端单元测试**:`MaterialNoGeneratorTests.cs`、`FlowNoGeneratorTests.cs`(编号生成,TDD)、`TestProjectServiceNoTrackingTests.cs`(NoTracking 写路径)。
+- **后端集成测试**:`TestMaterialApiTests.cs`(料件 CRUD、软删除三态、退回厂商、项目占用检查)、`MaterialFlowApiTests.cs`(开关关=直接转移、开关开=审批通过/驳回)。
+- **前端单元测试**(Vitest,与视图同目录 colocated):`material-form-rules.spec.ts`、`project-form-rules.spec.ts`、`home/chart-options.spec.ts`。在 `web/` 下跑 `pnpm test:unit`。
 
 #### 与固定资产模块的差异
 
-| 维度 | 固定资产 | 测试料件 |
+| 维度 | 固定资产 | 新产品新技术(测试料件) |
 |------|----------|----------|
 | 编号 | 分类驱动三层(`一级-二级-三级-流水`),自动 | 临时编号 `TM-YYYYMMDD-XXX`,自动 |
 | 分类 | 三层树形强制关联(`CategoryId` 必填) | 无分类,关联测试项目(`ProjectId` 必填) |
 | 流转审批 | 借用/转让/归还三类,BPMN 工作流强制 | 仅转移一类,可全局关闭审批 |
 | 删除 | 软删除,置灰保留在主清单 | 同左(复用模式) |
-| 前端入口 | 独立一级菜单"资产管理" | 独立一级菜单"测试料件" |
+| 前端入口 | 独立一级菜单"资产管理" | 独立一级菜单"新产品新技术"(项目总览 + 测试项目工作台) |
 
-**设计参考**:`docs/superpowers/plans/M8-测试料件模块设计.md`。
+**设计参考**:`docs/superpowers/plans/2026-06-25-测试料件管理.md`、`docs/superpowers/specs/2026-06-25-测试料件管理-design.md`。
 
 ### 审批工作流引擎（BPMN 2.0）
 
@@ -345,9 +356,11 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
   - `views/asset/` — 资产管理(`list` 列表、`hierarchy` 层级视图、`categories` 分类、`locations` 位置)
   - `views/approval/` — 审批流程(`pending` 待我审批、`mine` 我的申请、`confirm-return` 确认入库)
   - `views/report/` — 报表(`summary` 汇总、`borrow` 借用明细、`overdue` 逾期)
-  - `views/admin/` — 基础数据与系统管理(`departments` 部门、`users` 用户、`roles` 角色、`settings` 系统参数、`audit` 审计日志、`workflows` 工作流设计器)
+  - `views/admin/` — 基础数据与系统管理(`departments` 部门、`users` 用户、`roles` 角色、`settings` 系统参数、`audit` 审计日志、`workflows` 工作流设计器、`backups` 数据库备份)
+  - `views/material/` — 新产品新技术/测试料件(`home` 项目总览仪表盘、`projects` 测试项目工作台并内嵌料件清单/流转审批 Tab、`components` 共享对话框与校验规则)
 - 复用上游 `@vben/*`、`@core/*` 包的能力(布局、请求客户端、preferences、stores),不要重复造轮子;改动 `web/packages/` 下的核心包会影响所有 app,需谨慎。
 - 提交前跑 `pnpm -F @vben/web-ele run typecheck`;monorepo 根有 `pnpm check`(circular/dep/type/cspell)。
+- **前端单元测试**:纯函数(表单校验规则、图表 option 构造)用 Vitest,`*.spec.ts` 与被测源码**同目录 colocated**(如 `views/material/**/*.spec.ts`);在 `web/` 下跑 `pnpm test:unit`(`vitest run --dom`)。
 - **端到端测试**:`web/e2e-comprehensive-test.js`(Playwright,覆盖登录 + 资产/审批/报表/系统管理全部页面)。须先起后端(5000)再起前端(5777),然后 `cd web && node e2e-comprehensive-test.js`(依赖 `web/node_modules/playwright`,用默认账号 `1001/123456` 跑通全流程)。截图产物(`e2e-final-state.png`、`debug-*.png`)已在 `.gitignore` 忽略,不入库。
 
 ## 常见开发场景速查
@@ -421,7 +434,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **154 个** `[Fact]`/`[Theory]` 全部通过。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通,所有计划待办事项已完成,后端测试 **154 个** `[Fact]`/`[Theory]` 全部通过。
 
 最新里程碑(2026-06-17 ~ 2026-06-30):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)
@@ -432,8 +445,8 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - ✅ P0/P1/P2 优化任务全部完成,后端测试覆盖率提升至 100%
 - ✅ 前端 UI 统一优化(样式规范与布局改进、登录跳转修复)
 - ✅ **资产/分类删除子系统重构**(删除即软删除并保留在主清单、`asset:restore` 撤销删除 + `asset:purge` 彻底删除、详情接口支持已删除项、`AssetDetailDialog` 详情页重构)
-- ✅ **测试料件模块**(2026-06-25,独立模块,包含测试项目/料件管理/流转审批,临时编号 `TM-YYYYMMDD-XXX`,可选审批,9 个权限码,7 个单元测试 + 7 个集成测试,Playwright 端到端验证通过)
+- ✅ **新产品新技术(测试料件)模块**(2026-06-25 起,独立模块并持续扩展:测评项目全生命周期(类型/进度/负责人/计划结案/定期跟进)+ 项目总览仪表盘 + 料件管理 + 流转审批(可选);临时编号 `TM-YYYYMMDD-XXX`;权限码扩至约 20 个(`project:*`/`material:*`/`material-flow:*`);界面一级菜单已更名为"新产品新技术")
 - ✅ **全面站内通知系统**(2026-06-28，借用到期提醒 + 审批任务通知 + 审批结果通知 + 资产转让接收通知 + 料件流转通知，共 13 种通知类型；`PendingApprovalReminderWorker` 每日早 9 点催办超 1 天未处理流程；`INotificationService.CreateAsync/CreateBatchAsync` 支持幂等键防重复；铃铛 UI 5 分钟轮询，支持已读/全部已读)
 - ✅ **数据库备份与审计维护**(系统管理新增「数据库备份」页,`mysqldump` 全量导出 + 附件打包为 ZIP 备份包、`DatabaseBackupWorker` 每日定时备份;审计日志支持导出与 `AuditCleanupWorker` 定时清理,新增 `backup:manage`/`audit:export`/`audit:cleanup` 权限码)
 
-系统已进入生产部署准备阶段。详见 `docs/plans/M7-进度分析与待办事项.md`、`docs/plans/M8-测试料件模块设计.md` 与 `docs/BPMN-*.md`。
+系统已进入生产部署准备阶段。详见 `docs/plans/M7-进度分析与待办事项.md`、`docs/superpowers/plans/2026-06-25-测试料件管理.md` 与 `docs/BPMN-*.md`。
