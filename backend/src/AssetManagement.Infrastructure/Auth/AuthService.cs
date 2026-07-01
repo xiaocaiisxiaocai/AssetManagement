@@ -76,6 +76,11 @@ public class AuthService : IAuthService
             .Select(x => x.Role)
             .Where(x => x.IsActive)
             .ToList();
+        if (activeRoles.Count == 0)
+        {
+            throw new BizException(4012, "账号角色已禁用，请联系系统管理员");
+        }
+
         var roleCodes = activeRoles
             .Select(x => x.Code)
             .Distinct()

@@ -310,6 +310,35 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task User_with_only_disabled_role_cannot_login()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("disabled_role"),
+            Name = "禁用角色",
+            IsActive = false
+        });
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "禁用角色用户",
+            RoleIds = new[] { role.Data!.Id }
+        });
+
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "123456"
+        });
+
+        login.Code.Should().Be(4012);
+        login.Message.Should().Be("账号角色已禁用，请联系系统管理员");
+        login.Data.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Reset_password_uses_default_123456()
     {
         await Login();
