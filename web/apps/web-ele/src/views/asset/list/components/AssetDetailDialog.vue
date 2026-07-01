@@ -74,22 +74,28 @@ function formatTime(time: null | string | undefined) {
 }
 
 const actionTypeText: Record<string, string> = {
+  BUSINESS: '业务',
+  CLEANUP: '清理',
   DELETE: '删除',
   GET: '查看',
   PATCH: '修改',
   POST: '新增',
   PUT: '修改',
+  REMIND: '催办',
 };
 
 const actionTypeTag: Record<
   string,
   'danger' | 'info' | 'primary' | 'success' | 'warning'
 > = {
+  BUSINESS: 'primary',
+  CLEANUP: 'info',
   DELETE: 'danger',
   GET: 'info',
   PATCH: 'warning',
   POST: 'success',
   PUT: 'warning',
+  REMIND: 'warning',
 };
 
 function actionText(action: null | string | undefined) {
@@ -103,7 +109,11 @@ function actionTag(action: null | string | undefined) {
 
 function summaryText(summary: null | string | undefined) {
   if (!summary) return '—';
-  return summary.replace(/^(DELETE|GET|PATCH|POST|PUT)\s+/i, '');
+  return summary
+    .replace(/^(DELETE|GET|PATCH|POST|PUT)\s+/i, '')
+    .replace(/\bborrow\b/gi, '借用')
+    .replace(/\btransfer\b/gi, '转让')
+    .replace(/\breturn\b/gi, '归还');
 }
 </script>
 
