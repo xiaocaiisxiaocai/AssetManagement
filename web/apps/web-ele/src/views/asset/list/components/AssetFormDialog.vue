@@ -27,6 +27,8 @@ import {
   uploadAssetImageApi,
 } from '#/api/asset';
 
+import { validateAssetForm } from './asset-form-rules';
+
 type FlatOption = { code?: string; id: number; label: string };
 
 const props = defineProps<{
@@ -160,8 +162,12 @@ function onImageExceed() {
 }
 
 async function save() {
-  if (!form.name.trim() || !form.categoryId) {
-    ElMessage.warning('请填写资产名称并选择分类');
+  const error = validateAssetForm({
+    ...form,
+    imageCount: imageFileList.value.length,
+  });
+  if (error) {
+    ElMessage.warning(error);
     return;
   }
   saving.value = true;
@@ -190,10 +196,10 @@ const debouncedSave = useDebounceFn(save, 300);
     width="560px"
   >
     <ElForm label-width="88px">
-      <ElFormItem label="资产名称">
+      <ElFormItem label="资产名称" required>
         <ElInput v-model="form.name" />
       </ElFormItem>
-      <ElFormItem label="资产分类">
+      <ElFormItem label="资产分类" required>
         <ElSelect
           v-model="form.categoryId"
           filterable
@@ -208,10 +214,10 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="编号预览">
+      <ElFormItem label="编号预览" required>
         <ElTag>{{ assetNoPreview }}</ElTag>
       </ElFormItem>
-      <ElFormItem label="归属部门">
+      <ElFormItem label="归属部门" required>
         <ElSelect
           v-model="form.departmentId"
           clearable
@@ -227,7 +233,7 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="存放位置">
+      <ElFormItem label="存放位置" required>
         <ElSelect
           v-model="form.locationId"
           clearable
@@ -243,7 +249,7 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="保管人">
+      <ElFormItem label="保管人" required>
         <ElSelect
           v-model="form.custodianId"
           clearable
@@ -259,16 +265,16 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="型号品牌">
+      <ElFormItem label="型号品牌" required>
         <div class="grid w-full grid-cols-2 gap-2">
           <ElInput v-model="form.model" placeholder="型号" />
           <ElInput v-model="form.brand" placeholder="品牌" />
         </div>
       </ElFormItem>
-      <ElFormItem label="数量">
+      <ElFormItem label="数量" required>
         <ElInput v-model.number="form.quantity" />
       </ElFormItem>
-      <ElFormItem label="资产照片">
+      <ElFormItem label="资产照片" required>
         <ElUpload
           v-model:file-list="imageFileList"
           :before-upload="beforeImageUpload"

@@ -1,0 +1,61 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import { validateAssetForm } from './asset-form-rules';
+
+const baseForm = {
+  brand: 'Codex',
+  categoryId: 1,
+  custodianId: 4,
+  departmentId: 2,
+  imageCount: 1,
+  locationId: 3,
+  model: 'API-TST',
+  name: '测试资产',
+  quantity: 1,
+  status: 0,
+};
+
+describe('固定资产表单规则', () => {
+  it('新增资产除状态外均为必填', () => {
+    expect(validateAssetForm({ ...baseForm, name: '' })).toBe('请填写资产名称');
+    expect(validateAssetForm({ ...baseForm, categoryId: 0 })).toBe('请选择资产分类');
+    expect(validateAssetForm({ ...baseForm, departmentId: undefined })).toBe('请选择归属部门');
+    expect(validateAssetForm({ ...baseForm, locationId: undefined })).toBe('请选择存放位置');
+    expect(validateAssetForm({ ...baseForm, custodianId: undefined })).toBe('请选择保管人');
+    expect(validateAssetForm({ ...baseForm, model: '' })).toBe('请填写型号');
+    expect(validateAssetForm({ ...baseForm, brand: '' })).toBe('请填写品牌');
+    expect(validateAssetForm({ ...baseForm, quantity: 0 })).toBe('请填写数量');
+    expect(validateAssetForm({ ...baseForm, imageCount: 0 })).toBe('请上传资产照片');
+  });
+
+  it('状态不是必填校验项', () => {
+    expect(validateAssetForm({ ...baseForm, status: undefined })).toBeNull();
+  });
+
+  it('必填项在界面上显示星号', () => {
+    const componentPath = join(
+      process.cwd(),
+      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
+    );
+    const source = readFileSync(componentPath, 'utf8');
+    const requiredLabels = [
+      '资产名称',
+      '资产分类',
+      '编号预览',
+      '归属部门',
+      '存放位置',
+      '保管人',
+      '型号品牌',
+      '数量',
+      '资产照片',
+    ];
+
+    for (const label of requiredLabels) {
+      expect(source).toContain(`<ElFormItem label="${label}" required>`);
+    }
+    expect(source).not.toContain('<ElFormItem v-if="isEdit" label="状态" required>');
+  });
+});
