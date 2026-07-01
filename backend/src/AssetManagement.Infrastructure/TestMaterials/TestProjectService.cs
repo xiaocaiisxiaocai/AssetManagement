@@ -40,11 +40,14 @@ public class TestProjectService : ITestProjectService
     {
         var name = (request.Name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
+        var code = (request.Code ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(code)) throw new BizException(4001, "项目编号不能为空");
+        await EnsureProjectUnique(code, name);
         await ValidateProjectReferences(request);
         var project = new TestProject
         {
             Name = name,
-            Code = request.Code?.Trim(),
+            Code = code,
             ProjectTypeCode = NormalizeOptional(request.ProjectTypeCode),
             StartDate = request.StartDate?.Date,
             PlannedFinishDate = request.PlannedFinishDate?.Date,
@@ -67,9 +70,12 @@ public class TestProjectService : ITestProjectService
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
         var name = (request.Name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
+        var code = (request.Code ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(code)) throw new BizException(4001, "项目编号不能为空");
+        await EnsureProjectUnique(code, name, id);
         await ValidateProjectReferences(request);
         project.Name = name;
-        project.Code = request.Code?.Trim();
+        project.Code = code;
         project.ProjectTypeCode = NormalizeOptional(request.ProjectTypeCode);
         project.StartDate = request.StartDate?.Date;
         project.PlannedFinishDate = request.PlannedFinishDate?.Date;
@@ -440,6 +446,19 @@ public class TestProjectService : ITestProjectService
         if (await _db.TestProjectOptions.AnyAsync(x => x.Kind == kind && x.Code == code && x.Id != selfId))
         {
             throw new BizException(4094, "配置编码已存在");
+        }
+    }
+
+    private async Task EnsureProjectUnique(string code, string name, int? selfId = null)
+    {
+        if (await _db.TestProjects.AnyAsync(x => x.Code == code && x.Id != selfId))
+        {
+            throw new BizException(4094, "项目编号已存在");
+        }
+
+        if (await _db.TestProjects.AnyAsync(x => x.Name == name && x.Id != selfId))
+        {
+            throw new BizException(4094, "项目名称已存在");
         }
     }
 

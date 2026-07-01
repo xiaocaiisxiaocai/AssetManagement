@@ -1011,14 +1011,14 @@ onMounted(async () => {
           scrollbar-always-on
           stripe
         >
-        <ElTableColumn fixed label="项目名称" min-width="180" show-overflow-tooltip>
+        <ElTableColumn fixed label="项目编号" min-width="130" prop="code" show-overflow-tooltip />
+        <ElTableColumn label="项目名称" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <ElButton link type="primary" @click="openFollowups(row)">
               {{ row.name }}
             </ElButton>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="项目编号" min-width="130" prop="code" show-overflow-tooltip />
         <ElTableColumn label="项目类型" min-width="120">
           <template #default="{ row }">
             {{ row.projectTypeLabel || row.projectTypeCode || '-' }}
@@ -1145,11 +1145,11 @@ onMounted(async () => {
       >
         <ElForm label-width="96px">
           <div class="form-grid">
-            <ElFormItem label="项目名称" required>
-              <ElInput v-model="form.name" placeholder="请输入项目名称" />
-            </ElFormItem>
             <ElFormItem label="项目编号" required>
               <ElInput v-model="form.code" placeholder="请输入项目编号" />
+            </ElFormItem>
+            <ElFormItem label="项目名称" required>
+              <ElInput v-model="form.name" placeholder="请输入项目名称" />
             </ElFormItem>
             <ElFormItem label="项目类型" required>
               <ElSelect v-model="form.projectTypeCode" clearable placeholder="请选择">

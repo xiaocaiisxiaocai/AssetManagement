@@ -31,8 +31,9 @@ describe('测试项目表单规则', () => {
     expect(validateProjectForm({ ...baseForm, closedDate: '', testStatus: '' }, false)).toBeNull();
   });
 
-  it('编辑时允许管理者保存全字段修改，但项目名称仍不能为空', () => {
+  it('编辑时允许管理者保存其他字段修改，但项目编号和项目名称仍不能为空', () => {
+    expect(validateProjectForm({ ...baseForm, code: '' }, true)).toBe('请填写项目编号');
     expect(validateProjectForm({ ...baseForm, name: '' }, true)).toBe('请填写项目名称');
-    expect(validateProjectForm({ ...baseForm, code: '' }, true)).toBeNull();
+    expect(validateProjectForm({ ...baseForm, projectTypeCode: '' }, true)).toBeNull();
   });
 });

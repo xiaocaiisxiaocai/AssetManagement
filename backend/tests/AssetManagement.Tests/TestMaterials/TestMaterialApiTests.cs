@@ -168,6 +168,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var owner = await CreateUserInDb("1904", "普通负责人");
         var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
+            Code = NewProjectCode(),
             Name = "负责人料件项目",
             OwnerId = owner.Id
         });
@@ -211,8 +212,8 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var owner = await CreateUserInDb("1901", "项目负责人");
         var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
+            Code = NewProjectCode(),
             Name = "E2E整机测试",
-            Code = "TP-001",
             ProjectTypeCode = "prototype",
             ProgressCode = "testing",
             OwnerId = owner.Id,
@@ -233,6 +234,53 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var options = await _client.GetFromJsonAsync<ApiResult<List<TestProjectOptionDto>>>(
             "/api/test-projects/options?kind=project_type");
         options!.Data!.Should().Contain(x => x.Code == "prototype" && x.Label == "样机测试");
+    }
+
+    [Fact]
+    public async Task Project_rejects_duplicate_code_and_name_with_business_message()
+    {
+        await Login();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var code = $"TP-DUP-{suffix}";
+        var name = $"重复项目-{suffix}";
+        await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Code = code,
+            Name = name
+        });
+        var another = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Code = $"{code}-OTHER",
+            Name = $"{name}-其他"
+        });
+
+        var duplicateCode = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Code = code,
+            Name = $"{name}-新名称"
+        });
+        var duplicateName = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Code = $"{code}-NEW",
+            Name = name
+        });
+        var duplicateCodeOnUpdateResponse = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{another.Data!.Id}",
+            new SaveTestProjectRequest { Code = code, Name = $"{name}-更新编号" });
+        var duplicateCodeOnUpdate = await duplicateCodeOnUpdateResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+        var duplicateNameOnUpdateResponse = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{another.Data.Id}",
+            new SaveTestProjectRequest { Code = $"{code}-UPDATE", Name = name });
+        var duplicateNameOnUpdate = await duplicateNameOnUpdateResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+
+        duplicateCode.Code.Should().Be(4094);
+        duplicateCode.Message.Should().Be("项目编号已存在");
+        duplicateName.Code.Should().Be(4094);
+        duplicateName.Message.Should().Be("项目名称已存在");
+        duplicateCodeOnUpdate!.Code.Should().Be(4094);
+        duplicateCodeOnUpdate.Message.Should().Be("项目编号已存在");
+        duplicateNameOnUpdate!.Code.Should().Be(4094);
+        duplicateNameOnUpdate.Message.Should().Be("项目名称已存在");
     }
 
     [Fact]
@@ -270,6 +318,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var outsider = await CreateUserInDb("1903", "无关员工");
         var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
+            Code = NewProjectCode(),
             Name = "权限跟进项目",
             ProjectTypeCode = "prototype",
             ProgressCode = "landing",
@@ -307,6 +356,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var owner = await CreateUserInDb("1905", "落地负责人");
         var planned = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
+            Code = NewProjectCode(),
             Name = "未落地项目",
             ProgressCode = "planning",
             OwnerId = owner.Id,
@@ -326,6 +376,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         await Login();
         var landing = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
+            Code = NewProjectCode(),
             Name = "落地项目",
             ProgressCode = "landing",
             OwnerId = owner.Id,
@@ -345,7 +396,13 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
 
     // ===== 辅助方法 =====
     private async Task<TestProjectDto> CreateProject(string name)
-        => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest { Name = name })).Data!;
+        => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Code = NewProjectCode(),
+            Name = name
+        })).Data!;
+
+    private static string NewProjectCode() => $"TP-{Guid.NewGuid():N}"[..20];
 
     private async Task Login(string employeeNo = "1001", string password = "123456")
     {

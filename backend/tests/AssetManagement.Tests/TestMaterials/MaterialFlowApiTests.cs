@@ -217,9 +217,12 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     private async Task<TestProjectDto> CreateProject(string name, int? ownerId = null)
         => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
+            Code = NewProjectCode(),
             Name = name,
             OwnerId = ownerId
         })).Data!;
+
+    private static string NewProjectCode() => $"TP-{Guid.NewGuid():N}"[..20];
 
     private async Task<TestMaterialDto> CreateMaterial(int projectId, string name)
         => (await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
