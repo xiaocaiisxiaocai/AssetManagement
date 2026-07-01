@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # 验证 dotnet 版本(需 8.0+)
 dotnet --version
 
-# 验证 pnpm 版本(需 8.0+)
+# 验证 pnpm 版本(需 9.12+,仓库锁定 pnpm@9.15.0;Node 需 20.10+)
 pnpm --version
 
 # 验证 MySQL 连接(修改连接字符串为实际值)
@@ -210,7 +210,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 - **后端单元测试**:`MaterialNoGeneratorTests.cs`、`FlowNoGeneratorTests.cs`(编号生成,TDD)、`TestProjectServiceNoTrackingTests.cs`(NoTracking 写路径)。
 - **后端集成测试**:`TestMaterialApiTests.cs`(料件 CRUD、软删除三态、退回厂商、项目占用检查)、`MaterialFlowApiTests.cs`(开关关=直接转移、开关开=审批通过/驳回)。
-- **前端单元测试**(Vitest,与视图同目录 colocated):`material-form-rules.spec.ts`、`project-form-rules.spec.ts`、`home/chart-options.spec.ts`。在 `web/` 下跑 `pnpm test:unit`。
+- **前端单元测试**(Vitest,与视图同目录 colocated):`material-form-rules.spec.ts`、`project-form-rules.spec.ts`、`project-filter.spec.ts`、`home/chart-options.spec.ts`,以及资产模块的 `asset/list/components/asset-form-rules.spec.ts` 等。在 `web/` 下跑 `pnpm test:unit`。
 
 #### 与固定资产模块的差异
 
@@ -358,6 +358,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
   - `views/report/` — 报表(`summary` 汇总、`borrow` 借用明细、`overdue` 逾期)
   - `views/admin/` — 基础数据与系统管理(`departments` 部门、`users` 用户、`roles` 角色、`settings` 系统参数、`audit` 审计日志、`workflows` 工作流设计器、`backups` 数据库备份)
   - `views/material/` — 新产品新技术/测试料件(`home` 项目总览仪表盘、`projects` 测试项目工作台并内嵌料件清单/流转审批 Tab、`components` 共享对话框与校验规则)
+  - `views/dashboard/`、`views/demos/`、`views/_core/` — vue-vben-admin 上游模板自带目录,业务不涉及,**新功能不在此实现**
 - 复用上游 `@vben/*`、`@core/*` 包的能力(布局、请求客户端、preferences、stores),不要重复造轮子;改动 `web/packages/` 下的核心包会影响所有 app,需谨慎。
 - 提交前跑 `pnpm -F @vben/web-ele run typecheck`;monorepo 根有 `pnpm check`(circular/dep/type/cspell)。
 - **前端单元测试**:纯函数(表单校验规则、图表 option 构造)用 Vitest,`*.spec.ts` 与被测源码**同目录 colocated**(如 `views/material/**/*.spec.ts`);在 `web/` 下跑 `pnpm test:unit`(`vitest run --dom`)。
@@ -434,7 +435,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通,所有计划待办事项已完成,后端测试 **154 个** `[Fact]`/`[Theory]` 全部通过。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通,所有计划待办事项已完成,后端测试 **168 个** `[Fact]`/`[Theory]`(33 个测试文件)全部通过。
 
 最新里程碑(2026-06-17 ~ 2026-06-30):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)
