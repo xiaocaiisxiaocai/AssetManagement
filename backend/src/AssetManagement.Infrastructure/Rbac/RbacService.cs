@@ -135,8 +135,10 @@ public class RbacService : IRbacService
     public async Task<RoleDto> CreateRoleAsync(RoleDto request)
     {
         var code = request.Code.Trim();
+        var name = request.Name.Trim();
         await EnsureRoleCodeAvailable(code);
-        var role = new Role { Code = code, Name = request.Name.Trim(), IsActive = request.IsActive };
+        await EnsureRoleNameAvailable(name);
+        var role = new Role { Code = code, Name = name, IsActive = request.IsActive };
         _db.Roles.Add(role);
         await _db.SaveChangesAsync();
         await RewriteRolePermissions(role.Id, request.PermissionIds);
@@ -148,7 +150,9 @@ public class RbacService : IRbacService
     {
         var role = await _db.Roles.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4042, "角色不存在");
-        role.Name = request.Name.Trim();
+        var name = request.Name.Trim();
+        await EnsureRoleNameAvailable(name, id);
+        role.Name = name;
         role.IsActive = request.IsActive;
         await _db.SaveChangesAsync();
         return await LoadRoleDto(id);
@@ -287,6 +291,14 @@ public class RbacService : IRbacService
         if (await _db.Roles.AnyAsync(x => x.Code == code))
         {
             throw new BizException(4094, "角色编码已存在");
+        }
+    }
+
+    private async Task EnsureRoleNameAvailable(string name, int? selfId = null)
+    {
+        if (await _db.Roles.AnyAsync(x => x.Name == name && x.Id != selfId))
+        {
+            throw new BizException(4094, "角色名称已存在");
         }
     }
 

@@ -149,6 +149,42 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Role_rejects_duplicate_name_with_business_message()
+    {
+        await Login();
+        var name = $"重复角色名称-{Guid.NewGuid():N}";
+        await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = name,
+            IsActive = true
+        });
+        var target = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = $"{name}-可更新",
+            IsActive = true
+        });
+
+        var duplicatedCreate = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = name,
+            IsActive = true
+        });
+        var duplicatedUpdate = await Put<ApiResult<RoleDto>>($"/api/roles/{target.Data!.Id}", new
+        {
+            name,
+            isActive = true
+        });
+
+        duplicatedCreate.Code.Should().Be(4094);
+        duplicatedCreate.Message.Should().Be("角色名称已存在");
+        duplicatedUpdate.Code.Should().Be(4094);
+        duplicatedUpdate.Message.Should().Be("角色名称已存在");
+    }
+
+    [Fact]
     public async Task Create_permission_then_list_can_find_it()
     {
         await Login();
@@ -541,7 +577,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
         {
             Code = Unique("role"),
-            Name = "测试角色",
+            Name = Unique("测试角色"),
             IsActive = true
         });
         return role.Data!.Id;
