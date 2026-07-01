@@ -76,6 +76,42 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Department_rejects_duplicate_name_with_business_message()
+    {
+        await Login();
+        var name = Unique("部门重名");
+        await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = 1,
+            Name = name
+        });
+        var target = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = 1,
+            Name = Unique("待改名部门")
+        });
+
+        var duplicatedCreate = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = 1,
+            Name = name
+        });
+        var duplicatedUpdate = await Put<ApiResult<DepartmentNodeDto>>(
+            $"/api/departments/{target.Data!.Id}",
+            new UpdateDepartmentRequest
+            {
+                ManagerId = 1,
+                Name = name,
+                IsActive = true
+            });
+
+        duplicatedCreate.Code.Should().Be(4094);
+        duplicatedCreate.Message.Should().Be("部门名称已存在");
+        duplicatedUpdate.Code.Should().Be(4094);
+        duplicatedUpdate.Message.Should().Be("部门名称已存在");
+    }
+
+    [Fact]
     public async Task Category_update_recalculates_descendant_codes()
     {
         await Login();

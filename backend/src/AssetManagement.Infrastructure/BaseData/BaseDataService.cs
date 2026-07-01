@@ -41,10 +41,12 @@ public class BaseDataService : IBaseDataService
     public async Task<DepartmentNodeDto> CreateDepartmentAsync(CreateDepartmentRequest request)
     {
         ValidateDepartmentRequest(request.Name, request.ManagerId);
+        var name = request.Name.Trim();
+        await EnsureDepartmentNameAvailableAsync(name);
         var department = new Department
         {
             ParentId = request.ParentId,
-            Name = request.Name.Trim(),
+            Name = name,
             Code = await NextDepartmentCodeAsync(),
             ManagerId = request.ManagerId,
             IsActive = true
@@ -63,8 +65,10 @@ public class BaseDataService : IBaseDataService
         ValidateDepartmentRequest(request.Name, request.ManagerId);
         var department = await _db.Departments.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4045, "部门不存在");
+        var name = request.Name.Trim();
+        await EnsureDepartmentNameAvailableAsync(name, id);
         department.ParentId = request.ParentId;
-        department.Name = request.Name.Trim();
+        department.Name = name;
         department.ManagerId = request.ManagerId;
         department.IsActive = request.IsActive;
         await _db.SaveChangesAsync();
@@ -85,6 +89,14 @@ public class BaseDataService : IBaseDataService
         if (managerId is null)
         {
             throw new BizException(4001, "请选择负责人");
+        }
+    }
+
+    private async Task EnsureDepartmentNameAvailableAsync(string name, int? selfId = null)
+    {
+        if (await _db.Departments.AnyAsync(x => x.Name == name && x.Id != selfId))
+        {
+            throw new BizException(4094, "部门名称已存在");
         }
     }
 
