@@ -4,6 +4,7 @@ using System.Text.Json;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Rbac;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -38,14 +39,16 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     public async Task Department_tree_returns_nested_children()
     {
         await Login();
+        var parentManager = await CreateUser();
+        var childManager = await CreateUser();
         var parent = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = parentManager.Id,
             Name = "研发部"
         });
         var child = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = childManager.Id,
             ParentId = parent.Data!.Id,
             Name = "硬件组"
         });
@@ -60,9 +63,10 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     public async Task Department_tree_does_not_return_code()
     {
         await Login();
+        var manager = await CreateUser();
         var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = manager.Id,
             Name = Unique("部门")
         });
 
@@ -80,27 +84,31 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var name = Unique("部门重名");
+        var existingManager = await CreateUser();
+        var targetManager = await CreateUser();
+        var createManager = await CreateUser();
+        var updateManager = await CreateUser();
         await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = existingManager.Id,
             Name = name
         });
         var target = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = targetManager.Id,
             Name = Unique("待改名部门")
         });
 
         var duplicatedCreate = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = createManager.Id,
             Name = name
         });
         var duplicatedUpdate = await Put<ApiResult<DepartmentNodeDto>>(
             $"/api/departments/{target.Data!.Id}",
             new UpdateDepartmentRequest
             {
-                ManagerId = 1,
+                ManagerId = updateManager.Id,
                 Name = name,
                 IsActive = true
             });
@@ -109,6 +117,100 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         duplicatedCreate.Message.Should().Be("部门名称已存在");
         duplicatedUpdate.Code.Should().Be(4094);
         duplicatedUpdate.Message.Should().Be("部门名称已存在");
+    }
+
+    [Fact]
+    public async Task Department_rejects_duplicate_manager_on_active_departments()
+    {
+        await Login();
+        var manager = await CreateUser();
+        var targetManager = await CreateUser();
+        await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = manager.Id,
+            Name = Unique("负责人部门")
+        });
+        var target = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = targetManager.Id,
+            Name = Unique("待换负责人")
+        });
+
+        var duplicatedCreate = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = manager.Id,
+            Name = Unique("重复负责人")
+        });
+        var duplicatedUpdate = await Put<ApiResult<DepartmentNodeDto>>(
+            $"/api/departments/{target.Data!.Id}",
+            new UpdateDepartmentRequest
+            {
+                ManagerId = manager.Id,
+                Name = target.Data.Name,
+                IsActive = true
+            });
+
+        duplicatedCreate.Code.Should().Be(4094);
+        duplicatedCreate.Message.Should().Be("负责人已负责其他部门");
+        duplicatedUpdate.Code.Should().Be(4094);
+        duplicatedUpdate.Message.Should().Be("负责人已负责其他部门");
+    }
+
+    [Fact]
+    public async Task Department_inactive_department_does_not_occupy_manager()
+    {
+        await Login();
+        var manager = await CreateUser();
+        var inactive = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = manager.Id,
+            Name = Unique("停用负责人")
+        });
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{inactive.Data!.Id}", new UpdateDepartmentRequest
+        {
+            ManagerId = manager.Id,
+            Name = inactive.Data.Name,
+            IsActive = false
+        });
+
+        var created = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = manager.Id,
+            Name = Unique("复用负责人")
+        });
+
+        created.Code.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Department_inactive_update_can_use_occupied_manager()
+    {
+        await Login();
+        var occupiedManager = await CreateUser();
+        var targetManager = await CreateUser();
+        await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = occupiedManager.Id,
+            Name = Unique("已占负责人")
+        });
+        var target = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = targetManager.Id,
+            Name = Unique("停用复用")
+        });
+
+        var updated = await Put<ApiResult<DepartmentNodeDto>>(
+            $"/api/departments/{target.Data!.Id}",
+            new UpdateDepartmentRequest
+            {
+                ManagerId = occupiedManager.Id,
+                Name = target.Data.Name,
+                IsActive = false
+            });
+
+        updated.Code.Should().Be(0);
+        updated.Data!.ManagerId.Should().Be(occupiedManager.Id);
+        updated.Data.IsActive.Should().BeFalse();
     }
 
     [Fact]
@@ -432,6 +534,28 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         var res = await _client.PutAsJsonAsync(url, body);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<UserDto> CreateUser()
+    {
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("u"),
+            Name = "部门负责人",
+            RoleIds = new[] { await CreateRoleId() }
+        });
+        return user.Data!;
+    }
+
+    private async Task<int> CreateRoleId()
+    {
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("测试角色"),
+            IsActive = true
+        });
+        return role.Data!.Id;
     }
 
     private static string Unique(string prefix)

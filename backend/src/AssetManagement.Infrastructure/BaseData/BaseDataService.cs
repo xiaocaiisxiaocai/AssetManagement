@@ -43,6 +43,7 @@ public class BaseDataService : IBaseDataService
         ValidateDepartmentRequest(request.Name, request.ManagerId);
         var name = request.Name.Trim();
         await EnsureDepartmentNameAvailableAsync(name);
+        await EnsureDepartmentManagerAvailableAsync(request.ManagerId);
         var department = new Department
         {
             ParentId = request.ParentId,
@@ -67,6 +68,10 @@ public class BaseDataService : IBaseDataService
             ?? throw new BizException(4045, "部门不存在");
         var name = request.Name.Trim();
         await EnsureDepartmentNameAvailableAsync(name, id);
+        if (request.IsActive)
+        {
+            await EnsureDepartmentManagerAvailableAsync(request.ManagerId, id);
+        }
         department.ParentId = request.ParentId;
         department.Name = name;
         department.ManagerId = request.ManagerId;
@@ -97,6 +102,19 @@ public class BaseDataService : IBaseDataService
         if (await _db.Departments.AnyAsync(x => x.Name == name && x.Id != selfId))
         {
             throw new BizException(4094, "部门名称已存在");
+        }
+    }
+
+    private async Task EnsureDepartmentManagerAvailableAsync(int? managerId, int? selfId = null)
+    {
+        if (managerId is null)
+        {
+            return;
+        }
+
+        if (await _db.Departments.AnyAsync(x => x.ManagerId == managerId && x.IsActive && x.Id != selfId))
+        {
+            throw new BizException(4094, "负责人已负责其他部门");
         }
     }
 
