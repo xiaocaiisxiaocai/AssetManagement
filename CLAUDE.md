@@ -124,7 +124,7 @@ MySQL 连接字符串位置:
 DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 - **Domain**(`AssetManagement.Domain`):实体(`Entities/`)、领域服务(`Services/`,如资产编号 `AssetNoGenerator`、类别编码 `CategoryCodeService`)、**纯函数审批引擎**(`Workflow/`)。
-- **Application**(`AssetManagement.Application`):服务接口(`I*Service`)、DTO、`Common/`(`ApiResult`、`BizException`、`PagedResult`)。仅定义契约与数据形状,不含实现。服务按**限界上下文**粗粒度划分(**非每实体一个**):`IAssetService`(资产 CRUD + 详情/流转时间线 + Excel 批量导入)、`IAuthService`/`IJwtTokenService`、`IBaseDataService`(部门/分类/位置)、`IRbacService`(用户/角色/权限/菜单)、`IWorkflowService`(工作流 + 审批)、`IReportService`(汇总/借用/逾期报表)、`IFileStorageService`(文件存储,见 `Files/`)、`IAuditQueryService`(审计日志查询,见 `Audit/`)、**`ITestProjectService`/`ITestMaterialService`/`IMaterialFlowService`**(测试料件模块,见下「测试料件模块」)。
+- **Application**(`AssetManagement.Application`):服务接口(`I*Service`)、DTO、`Common/`(`ApiResult`、`BizException`、`PagedResult`)。仅定义契约与数据形状,不含实现。服务按**限界上下文**粗粒度划分(**非每实体一个**):`IAssetService`(资产 CRUD + 详情/流转时间线 + Excel 批量导入)、`IAuthService`/`IJwtTokenService`、`IBaseDataService`(部门/分类/位置)、`IRbacService`(用户/角色/权限/菜单)、`IWorkflowService`(工作流 + 审批)、`IReportService`(汇总/借用/逾期报表)、`IFileStorageService`(文件存储,见 `Files/`)、`IAuditQueryService`(审计日志查询)/`IAuditMaintenanceService`(审计日志清理)/`IDatabaseBackupService`(数据库备份,三者均见 `Audit/`)、**`ITestProjectService`/`ITestMaterialService`/`IMaterialFlowService`**(测试料件模块,见下「测试料件模块」)。
 - **Infrastructure**(`AssetManagement.Infrastructure`):服务实现、`Persistence/`(`AppDbContext` + `Configurations/` 每实体一个 `IEntityTypeConfiguration` + `Seed/DbSeeder`)、`Migrations/`、`Auth/`(JWT、权限策略)、`Audit/`(操作审计过滤器 + 审计查询)、`Reports/`(报表服务)、`Files/`(文件存储服务 `FileStorageService`,支持资产图片上传;在 `Program.cs` 注册为 **Singleton**,上传根目录由 `Attachment:Path` 配置,默认 `App_Data/uploads`)。
 - **Api**(`AssetManagement.Api`):瘦控制器,每个 action 一行调用对应 `I*Service`;`Program.cs` 注册所有 DI、JWT、Swagger、自定义权限策略。
 
@@ -311,6 +311,28 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **`api/notification.ts`**：封装以上四个接口。
 - **`layouts/basic.vue`**：页面加载时拉取通知列表，之后每 **5 分钟**轮询一次。铃铛右上角红点表示有未读；点击通知调 `markReadApi` 标记已读；「全部已读」调 `markAllReadApi`。复用 `@vben/layouts` 的 `Notification` 组件，无需额外 UI 组件。
 
+## 数据库备份与审计维护
+
+系统管理下新增「数据库备份」页面(`/admin/backups`),并把审计日志从「只读查询」扩展为「查询 + 导出 + 定时清理」。两者实现都在 `Infrastructure/Audit/` 目录,均由 `DbSeeder` 增量种子补齐权限/菜单/系统参数。
+
+### 数据库备份
+
+- **`IDatabaseBackupService`/`DatabaseBackupService`**:调用 `mysqldump`(可执行文件路径可配,默认 `mysqldump`)导出 `assetmgmt_<时间戳>.sql`,再由 **`DatabaseBackupPackageBuilder`** 打包成含 `database/*.sql` + `attachments/`(复用 `Attachment:Path` 上传目录,默认 `App_Data/uploads`)的完整 ZIP 备份包 `assetmgmt_<时间戳>.zip`。备份目录取系统参数 `database_backup_path`(默认 `Backups/`,即 `AssetManagement.Api/Backups`)。
+- **`DatabaseBackupWorker`**(`BackgroundService`):按 `database_backup_time`(默认 `02:00`)每日定时备份,`database_backup_enabled` 可关闭。
+- **`DatabaseBackupController`**(`api/database-backups`,全部 `[HasPermission("backup:manage")]`):`GET` 列出备份文件、`POST` 立即备份、`GET /{fileName}/download` 下载。
+
+### 审计日志维护
+
+- **`IAuditMaintenanceService`/`AuditMaintenanceService`**:按保留天数预览/执行清理(`PreviewCleanupAsync`/`CleanupAsync`),清理动作记录操作人。
+- **`AuditCleanupWorker`**(`BackgroundService`):按 `audit_cleanup_time`(默认 `02:10`)每日定时清理,`audit_cleanup_enabled` 可关闭,保留天数取 `audit_retention_days`(默认 `30`,可选 7/14/30;旧 `audit_retention_months` 仅历史兼容)。
+- **`AuditLogController`**(`api/audit-logs`)已扩展:`GET`(`audit:view`)分页查询、`GET /export`(`audit:export`)导出 Excel、`GET /cleanup-preview?retentionDays=`(`audit:cleanup`)预览、`DELETE ?retentionDays=`(`audit:cleanup`)清理。
+
+### 权限码、后台任务与前端
+
+- **新增权限码**:`backup:manage`(数据库备份)、`audit:export`(导出审计)、`audit:cleanup`(清理审计);连同已有 `audit:view` 由 `DbSeeder` 授予 `admin`。
+- **`Program.cs` 共注册四个 `BackgroundService`**:`OverdueNotificationWorker`、`PendingApprovalReminderWorker`、`DatabaseBackupWorker`、`AuditCleanupWorker`。
+- **前端**:`views/admin/backups/index.vue`(备份列表 + 立即备份 + 下载);审计日志查询/导出/清理入口在 `views/admin/audit`。
+
 ## 后端测试
 
 - xUnit + FluentAssertions;集成测试用 `Microsoft.AspNetCore.Mvc.Testing` 的 `TestWebAppFactory`。
@@ -399,9 +421,9 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **110 个** `[Fact]`/`[Theory]` 全部通过。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**测试料件**)已全面打通,所有计划待办事项已完成,后端测试 **154 个** `[Fact]`/`[Theory]` 全部通过。
 
-最新里程碑(2026-06-17 ~ 2026-06-28):
+最新里程碑(2026-06-17 ~ 2026-06-30):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)
 - ✅ 资产详情页及流转时间线(`GET /api/assets/{id}/detail`)
 - ✅ 资产照片附件上传与回显(`Asset.ImageUrls` + `FileStorageService`)
@@ -412,5 +434,6 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - ✅ **资产/分类删除子系统重构**(删除即软删除并保留在主清单、`asset:restore` 撤销删除 + `asset:purge` 彻底删除、详情接口支持已删除项、`AssetDetailDialog` 详情页重构)
 - ✅ **测试料件模块**(2026-06-25,独立模块,包含测试项目/料件管理/流转审批,临时编号 `TM-YYYYMMDD-XXX`,可选审批,9 个权限码,7 个单元测试 + 7 个集成测试,Playwright 端到端验证通过)
 - ✅ **全面站内通知系统**(2026-06-28，借用到期提醒 + 审批任务通知 + 审批结果通知 + 资产转让接收通知 + 料件流转通知，共 13 种通知类型；`PendingApprovalReminderWorker` 每日早 9 点催办超 1 天未处理流程；`INotificationService.CreateAsync/CreateBatchAsync` 支持幂等键防重复；铃铛 UI 5 分钟轮询，支持已读/全部已读)
+- ✅ **数据库备份与审计维护**(系统管理新增「数据库备份」页,`mysqldump` 全量导出 + 附件打包为 ZIP 备份包、`DatabaseBackupWorker` 每日定时备份;审计日志支持导出与 `AuditCleanupWorker` 定时清理,新增 `backup:manage`/`audit:export`/`audit:cleanup` 权限码)
 
 系统已进入生产部署准备阶段。详见 `docs/plans/M7-进度分析与待办事项.md`、`docs/plans/M8-测试料件模块设计.md` 与 `docs/BPMN-*.md`。
