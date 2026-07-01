@@ -745,8 +745,13 @@ function onMaterialPageSizeChange() {
   void loadProjectMaterials();
 }
 
+function loadMaterialFormOptions() {
+  void Promise.all([loadUsers(), loadBaseOptions()]);
+}
+
 function openCreateMaterial() {
   editingMaterial.value = null;
+  loadMaterialFormOptions();
   materialFormVisible.value = true;
 }
 
@@ -778,6 +783,7 @@ function onMaterialRowCommand(command: number | string, row: MaterialItem) {
 
 function openEditMaterial(row: MaterialItem) {
   editingMaterial.value = row;
+  loadMaterialFormOptions();
   materialFormVisible.value = true;
 }
 
