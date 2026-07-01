@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Domain.Services;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -52,7 +54,9 @@ public class AuditActionFilter : IAsyncActionFilter
         var targetId = RouteValue(context, "id") ?? RouteValue(context, "assetId");
         var before = await TakeSnapshot(controllerName, targetId);
 
+        var stopwatch = Stopwatch.StartNew();
         var executed = await next();
+        stopwatch.Stop();
         if (!ShouldLog(context, executed))
         {
             return;
@@ -79,7 +83,9 @@ public class AuditActionFilter : IAsyncActionFilter
             TargetId = targetId,
             Summary = $"{context.HttpContext.Request.Method} {context.HttpContext.Request.Path}",
             Detail = BuildDetail(context, executed, success, before, after),
-            Ip = context.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Ip = IpNormalizer.Normalize(context.HttpContext.Connection.RemoteIpAddress?.ToString()),
+            UserAgent = Truncate(context.HttpContext.Request.Headers.UserAgent.ToString(), 500),
+            DurationMs = (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue),
             OccurredAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync(context.HttpContext.RequestAborted);
@@ -209,6 +215,16 @@ public class AuditActionFilter : IAsyncActionFilter
 
     private static string? RouteValue(ActionExecutingContext context, string key)
         => context.RouteData.Values.TryGetValue(key, out var value) ? value?.ToString() : null;
+
+    private static string? Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Length <= maxLength ? value : value[..maxLength];
+    }
 
     private static string? ExtractResultId(ActionExecutedContext executed)
     {

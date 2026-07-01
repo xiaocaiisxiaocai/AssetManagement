@@ -10,5 +10,7 @@ public class AuditLog
     public string Summary { get; set; } = "";
     public string? Detail { get; set; }
     public string? Ip { get; set; }
+    public string? UserAgent { get; set; }
+    public int? DurationMs { get; set; }
     public DateTime OccurredAt { get; set; }
 }

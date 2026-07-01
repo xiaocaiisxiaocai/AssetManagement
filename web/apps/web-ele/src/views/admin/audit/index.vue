@@ -14,6 +14,8 @@ import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-setti
 import {
   ElButton,
   ElDatePicker,
+  ElDescriptions,
+  ElDescriptionsItem,
   ElDialog,
   ElForm,
   ElFormItem,
@@ -28,6 +30,7 @@ import {
   ElTable,
   ElTableColumn,
   ElTag,
+  ElTooltip,
 } from 'element-plus';
 
 defineOptions({ name: 'AdminAudit' });
@@ -152,6 +155,83 @@ function actionType(type: string): TagType | undefined {
   return undefined;
 }
 
+const moduleLabelMap: Record<string, string> = {
+  Approval: '审批流转',
+  Asset: '资产',
+  AssetCategory: '资产分类',
+  AuditLog: '审计日志',
+  Auth: '登录认证',
+  DatabaseBackup: '数据库备份',
+  Department: '部门',
+  File: '文件',
+  Location: '位置',
+  MaterialFlow: '料件流转',
+  Menu: '菜单',
+  Notification: '通知',
+  Permission: '权限',
+  RbacMenu: '菜单',
+  Role: '角色',
+  Setting: '系统参数',
+  TestMaterial: '测试料件',
+  TestProject: '测试项目',
+  User: '用户',
+  Workflow: '工作流',
+};
+
+function moduleLabel(type?: null | string): string {
+  if (!type) return '-';
+  return moduleLabelMap[type] ?? type;
+}
+
+interface AuditChange {
+  after?: unknown;
+  before?: unknown;
+  field: string;
+}
+
+interface ParsedDetail {
+  changes: AuditChange[];
+  error?: null | string;
+  statusCode?: null | number;
+  success: boolean;
+}
+
+const emptyDetail: ParsedDetail = { changes: [], success: true };
+
+function parseDetail(detail?: null | string): ParsedDetail {
+  if (!detail) return emptyDetail;
+  try {
+    const parsed = JSON.parse(detail) as {
+      changes?: AuditChange[];
+      error?: null | string;
+      statusCode?: null | number;
+      success?: boolean;
+    };
+    return {
+      changes: Array.isArray(parsed.changes) ? parsed.changes : [],
+      error: parsed.error,
+      statusCode: parsed.statusCode,
+      success: parsed.success ?? true,
+    };
+  } catch {
+    return emptyDetail;
+  }
+}
+
+function formatDuration(ms?: null | number): string {
+  if (ms === null || ms === undefined) return '-';
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '(空)';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+
 function formatTime(value: string) {
   return value?.replace('T', ' ').slice(0, 19);
 }
@@ -231,6 +311,64 @@ onMounted(async () => {
 
       <div class="table-panel-with-toolbar">
         <ElTable v-loading="loading" :data="rows" border height="100%">
+          <ElTableColumn type="expand">
+            <template #default="{ row }">
+              <div class="audit-detail">
+                <ElDescriptions :column="3" border size="small">
+                  <ElDescriptionsItem label="结果">
+                    <ElTag
+                      :type="parseDetail(row.detail).success ? 'success' : 'danger'"
+                      size="small"
+                    >
+                      {{ parseDetail(row.detail).success ? '成功' : '失败' }}
+                    </ElTag>
+                  </ElDescriptionsItem>
+                  <ElDescriptionsItem label="状态码">
+                    {{ parseDetail(row.detail).statusCode ?? '-' }}
+                  </ElDescriptionsItem>
+                  <ElDescriptionsItem label="耗时">
+                    {{ formatDuration(row.durationMs) }}
+                  </ElDescriptionsItem>
+                  <ElDescriptionsItem :span="2" label="请求">
+                    {{ row.summary }}
+                  </ElDescriptionsItem>
+                  <ElDescriptionsItem label="IP">{{ row.ip || '-' }}</ElDescriptionsItem>
+                  <ElDescriptionsItem :span="3" label="客户端">
+                    {{ row.userAgent || '-' }}
+                  </ElDescriptionsItem>
+                </ElDescriptions>
+
+                <div v-if="parseDetail(row.detail).error" class="audit-error">
+                  错误信息:{{ parseDetail(row.detail).error }}
+                </div>
+
+                <div class="audit-changes">
+                  <div class="audit-changes-title">字段变更</div>
+                  <ElTable
+                    v-if="parseDetail(row.detail).changes.length"
+                    :data="parseDetail(row.detail).changes"
+                    border
+                    size="small"
+                  >
+                    <ElTableColumn label="字段" min-width="160" prop="field" />
+                    <ElTableColumn label="原值" min-width="220">
+                      <template #default="{ row: change }">
+                        <span class="audit-value-before">{{ formatValue(change.before) }}</span>
+                      </template>
+                    </ElTableColumn>
+                    <ElTableColumn label="新值" min-width="220">
+                      <template #default="{ row: change }">
+                        <span class="audit-value-after">{{ formatValue(change.after) }}</span>
+                      </template>
+                    </ElTableColumn>
+                  </ElTable>
+                  <div v-else class="audit-changes-empty">
+                    无字段级变更(该操作未涉及可追踪实体或属性未变化)
+                  </div>
+                </div>
+              </div>
+            </template>
+          </ElTableColumn>
           <ElTableColumn label="时间" min-width="170">
             <template #default="{ row }">{{ formatTime(row.occurredAt) }}</template>
           </ElTableColumn>
@@ -242,10 +380,24 @@ onMounted(async () => {
               <ElTag :type="actionType(row.actionType)" size="small">{{ actionTypeLabel(row.actionType) }}</ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="模块" min-width="120" prop="targetType" />
-          <ElTableColumn class-name="hide-on-mobile" label="目标ID" min-width="100" prop="targetId" />
-          <ElTableColumn label="摘要" min-width="260" prop="summary" />
-          <ElTableColumn class-name="hide-on-mobile" label="IP" min-width="140" prop="ip" />
+          <ElTableColumn class-name="hide-on-mobile" label="模块" min-width="120">
+            <template #default="{ row }">
+              <ElTooltip
+                v-if="row.targetType"
+                :content="row.targetType"
+                placement="top"
+              >
+                <span>{{ moduleLabel(row.targetType) }}</span>
+              </ElTooltip>
+              <span v-else>-</span>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn class-name="hide-on-mobile" label="目标ID" min-width="90" prop="targetId" />
+          <ElTableColumn label="摘要" min-width="240" prop="summary" show-overflow-tooltip />
+          <ElTableColumn class-name="hide-on-mobile" label="IP" min-width="130" prop="ip" />
+          <ElTableColumn class-name="hide-on-mobile" label="耗时" width="96" align="right">
+            <template #default="{ row }">{{ formatDuration(row.durationMs) }}</template>
+          </ElTableColumn>
         </ElTable>
 
         <div class="table-bottom-pager">
@@ -328,6 +480,48 @@ onMounted(async () => {
 .header-actions {
   display: flex;
   gap: 8px;
+}
+
+.audit-detail {
+  padding: 8px 16px 12px;
+}
+
+.audit-error {
+  padding: 8px 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+  border: 1px solid var(--el-color-danger-light-7);
+  border-radius: 4px;
+}
+
+.audit-changes {
+  margin-top: 12px;
+}
+
+.audit-changes-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.audit-changes-empty {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-lighter);
+  border-radius: 4px;
+}
+
+.audit-value-before {
+  color: var(--el-text-color-secondary);
+  text-decoration: line-through;
+}
+
+.audit-value-after {
+  color: var(--el-color-success);
 }
 
 .cleanup-preview {

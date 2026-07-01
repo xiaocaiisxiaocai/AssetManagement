@@ -13,6 +13,8 @@ public record AuditLogDto
     public string Summary { get; init; } = "";
     public string? Detail { get; init; }
     public string? Ip { get; init; }
+    public string? UserAgent { get; init; }
+    public int? DurationMs { get; init; }
     public DateTime OccurredAt { get; init; }
 }
 

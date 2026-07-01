@@ -91,12 +91,14 @@ export interface AuditLogQuery {
 export interface AuditLogRow {
   actionType: string;
   detail?: null | string;
+  durationMs?: null | number;
   id: number;
   ip?: null | string;
   occurredAt: string;
   summary: string;
   targetId?: null | string;
   targetType?: null | string;
+  userAgent?: null | string;
   userId?: null | number;
   userName?: null | string;
 }

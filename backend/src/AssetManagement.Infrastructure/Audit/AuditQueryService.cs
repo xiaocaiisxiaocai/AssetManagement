@@ -1,6 +1,7 @@
 using AssetManagement.Application.Audit;
 using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Domain.Services;
 using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -42,7 +43,7 @@ public class AuditQueryService : IAuditQueryService
     {
         var rows = new List<string[]>
         {
-            new[] { "时间", "操作人", "操作类型", "模块", "目标ID", "摘要", "IP" }
+            new[] { "时间", "操作人", "操作类型", "模块", "目标ID", "摘要", "IP", "客户端", "耗时(ms)" }
         };
         var logs = await ApplyQuery(_db.AuditLogs.AsNoTracking(), query)
             .OrderByDescending(x => x.OccurredAt)
@@ -56,7 +57,9 @@ public class AuditQueryService : IAuditQueryService
             x.TargetType ?? "",
             x.TargetId ?? "",
             x.Summary,
-            x.Ip ?? ""
+            x.Ip ?? "",
+            x.UserAgent ?? "",
+            x.DurationMs?.ToString() ?? ""
         }));
         return XlsxTable.Write(rows);
     }
@@ -111,7 +114,9 @@ public class AuditQueryService : IAuditQueryService
             TargetId = x.TargetId,
             Summary = x.Summary,
             Detail = x.Detail,
-            Ip = x.Ip,
+            Ip = IpNormalizer.Normalize(x.Ip),
+            UserAgent = x.UserAgent,
+            DurationMs = x.DurationMs,
             OccurredAt = x.OccurredAt
         }).ToList();
     }
