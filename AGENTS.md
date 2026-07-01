@@ -39,6 +39,7 @@ pnpm check                                       # monorepo 全局检查
 - 后端 C#:`Nullable` + `ImplicitUsings` 开启;控制器保持瘦,逻辑下沉到 service。
 - 前端:TypeScript + Vue 3 `<script setup>`;遵循上游 Vben 的 ESLint/Prettier/Stylelint 配置。
 - 界面文案、文档、提交说明均用**中文**;提交遵循 Conventional Commits(如 `feat(web): ...`、`fix: ...`、`test: ...`)。
+- 阶段性功能完成并通过关键验证后，应及时进行**本地 commit**，避免长时间堆积未提交改动；提交前确认只包含本阶段相关文件。
 - PR 应包含变更目的、受影响页面/文档、手动测试说明,可见 UI 变更附截图。
 
 ## 安全与配置
