@@ -146,6 +146,7 @@ public class BaseDataService : IBaseDataService
             Code = CategoryCodeService.Compose(parent?.Code, request.CodeSeg),
             Remark = CategoryRemark(request.ParentId, request.Remark)
         };
+        await EnsureCategoryCodeAvailableAsync(category.Code);
         _db.AssetCategories.Add(category);
         await _db.SaveChangesAsync();
 
@@ -176,6 +177,7 @@ public class BaseDataService : IBaseDataService
 
         var subtree = BuildCategoryEntityTree(category, all);
         CategoryCodeService.Recalc(subtree, parent?.Code);
+        await EnsureCategoryCodesAvailableAsync(subtree);
         await _db.SaveChangesAsync();
 
         // 清除分类树缓存
@@ -437,6 +439,41 @@ public class BaseDataService : IBaseDataService
         if (depth > MaxCategoryDepth)
         {
             throw new BizException(4096, "资产分类最多维护三级");
+        }
+    }
+
+    private async Task EnsureCategoryCodeAvailableAsync(string code, int? selfId = null)
+    {
+        if (await _db.AssetCategories.AnyAsync(x => x.Code == code && x.Id != selfId))
+        {
+            throw new BizException(4094, "已存在对应编码段");
+        }
+    }
+
+    private async Task EnsureCategoryCodesAvailableAsync(AssetCategory subtree)
+    {
+        var subtreeItems = FlattenCategorySubtree(subtree).ToList();
+        var subtreeIds = subtreeItems.Select(x => x.Id).ToArray();
+        var subtreeCodes = subtreeItems.Select(x => x.Code).Distinct().ToArray();
+        if (await _db.AssetCategories.AnyAsync(x => subtreeCodes.Contains(x.Code) && !subtreeIds.Contains(x.Id)))
+        {
+            throw new BizException(4094, "已存在对应编码段");
+        }
+        if (subtreeItems.GroupBy(x => x.Code).Any(x => x.Count() > 1))
+        {
+            throw new BizException(4094, "已存在对应编码段");
+        }
+    }
+
+    private static IEnumerable<AssetCategory> FlattenCategorySubtree(AssetCategory node)
+    {
+        yield return node;
+        foreach (var child in node.Children)
+        {
+            foreach (var item in FlattenCategorySubtree(child))
+            {
+                yield return item;
+            }
         }
     }
 

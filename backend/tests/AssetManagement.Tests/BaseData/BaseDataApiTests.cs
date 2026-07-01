@@ -172,6 +172,27 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Category_create_rejects_duplicate_code_with_business_message()
+    {
+        await Login();
+        var codeSeg = Unique("DUP");
+        await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            CodeSeg = codeSeg
+        });
+
+        var res = await _client.PostAsJsonAsync("/api/categories", new CreateCategoryRequest
+        {
+            CodeSeg = codeSeg
+        });
+
+        res.EnsureSuccessStatusCode();
+        var body = await res.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
+        body!.Code.Should().Be(4094);
+        body.Message.Should().Contain("已存在对应编码段");
+    }
+
+    [Fact]
     public async Task Category_update_rejects_move_that_exceeds_third_level()
     {
         await Login();
