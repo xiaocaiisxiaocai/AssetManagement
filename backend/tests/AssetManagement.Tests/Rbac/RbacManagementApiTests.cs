@@ -305,6 +305,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         });
 
         login.Code.Should().Be(4011);
+        login.Message.Should().Be("账号已禁用，请联系系统管理员");
         login.Data.Should().BeNull();
     }
 

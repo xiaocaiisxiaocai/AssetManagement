@@ -47,9 +47,21 @@ public class AuthService : IAuthService
             .ThenInclude(x => x.Role)
             .ThenInclude(x => x.RolePermissions)
             .ThenInclude(x => x.Permission)
-            .FirstOrDefaultAsync(x => x.EmployeeNo == employeeNo && x.IsActive);
+            .FirstOrDefaultAsync(x => x.EmployeeNo == employeeNo);
 
-        if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        if (user is null)
+        {
+            // 登录失败，记录失败次数
+            RecordLoginFailure(accountKey, ipKey);
+            throw new BizException(4011, "工号或密码错误");
+        }
+
+        if (!user.IsActive)
+        {
+            throw new BizException(4011, "账号已禁用，请联系系统管理员");
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
             // 登录失败，记录失败次数
             RecordLoginFailure(accountKey, ipKey);
