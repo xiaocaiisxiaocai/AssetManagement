@@ -83,6 +83,7 @@ import { getUserListApi } from '#/api/user';
 import MaterialDetailDialog from '../components/MaterialDetailDialog.vue';
 import MaterialFormDialog from '../components/MaterialFormDialog.vue';
 import TransferDialog from '../components/TransferDialog.vue';
+import { filterProjects, type ProjectFilter } from './project-filter';
 import { validateProjectForm } from './project-form-rules';
 
 defineOptions({ name: 'MaterialProjects' });
@@ -156,6 +157,13 @@ const pageSizeOptions = ref(createPageSizeOptions(20));
 const projectQuery = reactive({
   page: 1,
   pageSize: 20,
+});
+const projectFilter = reactive<ProjectFilter>({
+  code: '',
+  name: '',
+  ownerId: undefined,
+  progressCode: '',
+  projectTypeCode: '',
 });
 
 const options = ref<TestProjectOption[]>([]);
@@ -268,9 +276,10 @@ const pagedMyFlows = computed(() => {
   const start = (myFlowQuery.page - 1) * myFlowQuery.pageSize;
   return myFlows.value.slice(start, start + myFlowQuery.pageSize);
 });
+const filteredProjects = computed(() => filterProjects(projects.value, projectFilter));
 const pagedProjects = computed(() => {
   const start = (projectQuery.page - 1) * projectQuery.pageSize;
-  return projects.value.slice(start, start + projectQuery.pageSize);
+  return filteredProjects.value.slice(start, start + projectQuery.pageSize);
 });
 
 function activeOptions(kind: OptionKind) {
@@ -331,12 +340,31 @@ async function loadData() {
   loading.value = true;
   try {
     projects.value = await listTestProjectsApi(deleteStatus.value);
-    if ((projectQuery.page - 1) * projectQuery.pageSize >= projects.value.length) {
-      projectQuery.page = 1;
-    }
+    normalizeProjectPage();
   } finally {
     loading.value = false;
   }
+}
+
+function normalizeProjectPage() {
+  if ((projectQuery.page - 1) * projectQuery.pageSize >= filteredProjects.value.length) {
+    projectQuery.page = 1;
+  }
+}
+
+function searchProjects() {
+  projectQuery.page = 1;
+}
+
+function resetProjectFilter() {
+  Object.assign(projectFilter, {
+    code: '',
+    name: '',
+    ownerId: undefined,
+    progressCode: '',
+    projectTypeCode: '',
+  });
+  projectQuery.page = 1;
 }
 
 async function loadOptions() {
@@ -973,7 +1001,7 @@ onMounted(async () => {
   pageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   materialPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   flowPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
-  await Promise.all([loadOptions(), loadData()]);
+  await Promise.all([loadOptions(), loadUsers(), loadData()]);
 });
 </script>
 
@@ -982,6 +1010,60 @@ onMounted(async () => {
     <div class="material-projects-page p-5">
       <div class="project-toolbar">
         <div class="project-toolbar-left">
+          <ElInput
+            v-model="projectFilter.code"
+            clearable
+            placeholder="项目编号"
+            style="width: 150px"
+            @keyup.enter="searchProjects"
+          />
+          <ElInput
+            v-model="projectFilter.name"
+            clearable
+            placeholder="项目名称"
+            style="width: 180px"
+            @keyup.enter="searchProjects"
+          />
+          <ElSelect
+            v-model="projectFilter.projectTypeCode"
+            clearable
+            placeholder="项目类型"
+            style="width: 130px"
+          >
+            <ElOption
+              v-for="item in projectTypeOptions"
+              :key="item.id"
+              :label="item.label"
+              :value="item.code"
+            />
+          </ElSelect>
+          <ElSelect
+            v-model="projectFilter.ownerId"
+            clearable
+            filterable
+            placeholder="负责人"
+            style="width: 150px"
+          >
+            <ElOption
+              v-for="user in users"
+              :key="user.id"
+              :label="`${user.name}（${user.employeeNo}）`"
+              :value="user.id"
+            />
+          </ElSelect>
+          <ElSelect
+            v-model="projectFilter.progressCode"
+            clearable
+            placeholder="进度"
+            style="width: 130px"
+          >
+            <ElOption
+              v-for="item in progressOptions"
+              :key="item.id"
+              :label="item.label"
+              :value="item.code"
+            />
+          </ElSelect>
           <ElSelect
             v-model="deleteStatus"
             placeholder="删除状态"
@@ -992,6 +1074,8 @@ onMounted(async () => {
             <ElOption label="未删除" value="active" />
             <ElOption label="已删除" value="deleted" />
           </ElSelect>
+          <ElButton type="primary" @click="searchProjects">查询</ElButton>
+          <ElButton @click="resetProjectFilter">重置</ElButton>
         </div>
         <div class="project-toolbar-right">
           <ElButton v-if="canManage" @click="openOptionDialog">配置</ElButton>
@@ -1116,7 +1200,7 @@ onMounted(async () => {
       </ElTable>
         <div class="table-bottom-pager">
           <div class="table-bottom-pager-left">
-            <span>共 {{ projects.length }} 条记录</span>
+            <span>共 {{ filteredProjects.length }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
             <ElSelect v-model="projectQuery.pageSize" style="width: 92px" @change="onProjectPageSizeChange">
@@ -1131,7 +1215,7 @@ onMounted(async () => {
           <ElPagination
             v-model:current-page="projectQuery.page"
             :page-size="projectQuery.pageSize"
-            :total="projects.length"
+            :total="filteredProjects.length"
             background
             layout="prev, pager, next"
           />
