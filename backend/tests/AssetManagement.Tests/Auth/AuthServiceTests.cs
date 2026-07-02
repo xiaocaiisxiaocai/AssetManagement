@@ -35,6 +35,17 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task Login_with_default_password_requires_password_change()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var svc = fixture.CreateService();
+
+        var res = await svc.LoginAsync(new LoginRequest { EmployeeNo = "1001", Password = "123456" });
+
+        res.MustChangePassword.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ChangePassword_with_wrong_old_password_throws()
     {
         await using var fixture = await AuthFixture.Create();
@@ -60,6 +71,57 @@ public class AuthServiceTests
         var newHash = fixture.GetUserPasswordHash();
         newHash.Should().NotBe(oldHash);
         BCrypt.Net.BCrypt.Verify("newpwd123", newHash).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ChangePassword_to_default_password_throws()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var svc = fixture.CreateService();
+        var userId = fixture.GetUserId();
+
+        var act = () => svc.ChangePasswordAsync(userId, new ChangePasswordRequest { OldPassword = "123456", NewPassword = "123456" });
+
+        await act.Should().ThrowAsync<BizException>()
+            .Where(x => x.Code == 1003);
+    }
+
+    [Fact]
+    public async Task Login_after_password_changed_does_not_require_password_change()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var svc = fixture.CreateService();
+        var userId = fixture.GetUserId();
+
+        await svc.ChangePasswordAsync(userId, new ChangePasswordRequest { OldPassword = "123456", NewPassword = "newpwd123" });
+
+        var res = await svc.LoginAsync(new LoginRequest { EmployeeNo = "1001", Password = "newpwd123" });
+        res.MustChangePassword.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task User_info_with_default_password_requires_password_change()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var svc = fixture.CreateService();
+        var userId = fixture.GetUserId();
+
+        var res = await svc.GetUserInfoAsync(userId);
+
+        res.MustChangePassword.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task User_info_after_password_changed_does_not_require_password_change()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var svc = fixture.CreateService();
+        var userId = fixture.GetUserId();
+
+        await svc.ChangePasswordAsync(userId, new ChangePasswordRequest { OldPassword = "123456", NewPassword = "newpwd123" });
+
+        var res = await svc.GetUserInfoAsync(userId);
+        res.MustChangePassword.Should().BeFalse();
     }
 
     private sealed class AuthFixture : IAsyncDisposable

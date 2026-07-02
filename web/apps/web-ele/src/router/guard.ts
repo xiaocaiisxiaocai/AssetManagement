@@ -14,6 +14,8 @@ import { useAuthStore } from '#/store';
 
 import { generateAccess } from './access';
 
+const FORCE_CHANGE_PASSWORD_PATH = '/auth/force-change-password';
+
 /**
  * 通用守卫配置
  * @param router
@@ -56,6 +58,9 @@ function setupAccessGuard(router: Router) {
 
     // 基本路由，这些路由不需要进入权限拦截
     if (coreRouteNames.includes(to.name as string)) {
+      if (to.path === FORCE_CHANGE_PASSWORD_PATH) {
+        return accessStore.accessToken ? true : LOGIN_PATH;
+      }
       if (to.path === LOGIN_PATH && accessStore.accessToken) {
         return decodeURIComponent(
           (to.query?.redirect as string) ||
@@ -91,12 +96,25 @@ function setupAccessGuard(router: Router) {
 
     // 是否已经生成过动态路由
     if (accessStore.isAccessChecked) {
+      if (
+        (userStore.userInfo as { mustChangePassword?: boolean } | null)
+          ?.mustChangePassword &&
+        to.path !== FORCE_CHANGE_PASSWORD_PATH
+      ) {
+        return FORCE_CHANGE_PASSWORD_PATH;
+      }
       return true;
     }
 
     // 生成路由表
     // 当前登录用户拥有的角色标识列表
     const userInfo = userStore.userInfo || (await authStore.fetchUserInfo());
+    if (
+      (userInfo as { mustChangePassword?: boolean }).mustChangePassword &&
+      to.path !== FORCE_CHANGE_PASSWORD_PATH
+    ) {
+      return FORCE_CHANGE_PASSWORD_PATH;
+    }
     const userRoles = userInfo.roles ?? [];
 
     // 生成菜单和路由

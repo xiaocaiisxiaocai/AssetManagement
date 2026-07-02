@@ -101,7 +101,9 @@ public class AuthService : IAuthService
 
         return new LoginResponse
         {
-            Token = _jwt.Create(user.Id, user.EmployeeNo, permissionCodes, roleCodes, user.DepartmentId)
+            Token = _jwt.Create(user.Id, user.EmployeeNo, permissionCodes, roleCodes, user.DepartmentId),
+            // 系统创建、导入、重置密码都会落到默认密码，登录后必须立即修改。
+            MustChangePassword = BCrypt.Net.BCrypt.Verify(AppConstants.DefaultUserPassword, user.PasswordHash)
         };
     }
 
@@ -155,6 +157,7 @@ public class AuthService : IAuthService
             Id = user.Id,
             Name = user.Name,
             EmployeeNo = user.EmployeeNo,
+            MustChangePassword = BCrypt.Net.BCrypt.Verify(AppConstants.DefaultUserPassword, user.PasswordHash),
             Roles = roles.Select(x => x.Code).Distinct().OrderBy(x => x).ToArray(),
             Permissions = roles
                 .SelectMany(x => x.RolePermissions)
@@ -201,6 +204,10 @@ public class AuthService : IAuthService
         if (!BCrypt.Net.BCrypt.Verify(request.OldPassword, user.PasswordHash))
         {
             throw new BizException(1002, "旧密码不正确");
+        }
+        if (request.NewPassword == AppConstants.DefaultUserPassword)
+        {
+            throw new BizException(1003, "新密码不能使用系统默认密码");
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);

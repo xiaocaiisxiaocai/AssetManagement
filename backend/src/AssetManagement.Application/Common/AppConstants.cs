@@ -31,6 +31,11 @@ public static class AppConstants
     public const int LoginLockoutMinutes = 10;
 
     /// <summary>
+    /// 系统创建、导入、重置密码后的默认密码
+    /// </summary>
+    public const string DefaultUserPassword = "123456";
+
+    /// <summary>
     /// 部门树缓存时长（分钟）
     /// </summary>
     public const int DepartmentTreeCacheMinutes = 5;

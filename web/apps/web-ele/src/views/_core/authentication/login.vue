@@ -53,6 +53,7 @@ async function handleLogin(values: any) {
     title="资产管理系统"
     :show-code-login="false"
     :show-qrcode-login="false"
+    :show-remember-me="false"
     :show-third-party-login="false"
     :show-register="false"
     @submit="handleLogin"

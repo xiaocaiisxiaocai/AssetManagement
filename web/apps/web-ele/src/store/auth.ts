@@ -12,6 +12,8 @@ import { defineStore } from 'pinia';
 import { getUserInfoApi, loginApi, logoutApi } from '#/api/core/auth';
 import { $t } from '#/locales';
 
+const FORCE_CHANGE_PASSWORD_PATH = '/auth/force-change-password';
+
 export const useAuthStore = defineStore('auth', () => {
   const accessStore = useAccessStore();
   const userStore = useUserStore();
@@ -35,6 +37,13 @@ export const useAuthStore = defineStore('auth', () => {
       const loginResult = await loginApi(params);
       if (loginResult) {
         accessStore.setAccessToken(loginResult.token);
+        if (loginResult.mustChangePassword) {
+          await router.replace({
+            path: FORCE_CHANGE_PASSWORD_PATH,
+          });
+          return { userInfo };
+        }
+
         userInfo = await fetchUserInfo();
         if (accessStore.loginExpired) {
           accessStore.setLoginExpired(false);

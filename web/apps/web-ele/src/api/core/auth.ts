@@ -17,6 +17,7 @@ export namespace AuthApi {
 
   /** 登录接口返回值 */
   export interface LoginResult {
+    mustChangePassword: boolean;
     token: string;
   }
 
@@ -76,6 +77,7 @@ export const getUserInfoApi = async () => {
     ApiResult<{
       employeeNo: string;
       id: number;
+      mustChangePassword: boolean;
       name: string;
       permissions: string[];
       roles: string[];
@@ -91,6 +93,7 @@ export const getUserInfoApi = async () => {
     token: '',
     userId: String(data.id),
     username: data.employeeNo,
+    mustChangePassword: data.mustChangePassword,
     permissions: data.permissions,
   } as UserInfo & { permissions: string[] };
 };
@@ -108,6 +111,6 @@ export const getRoleTreeData = () => {
 /**
  * 修改密码
  */
-export  function changePassword(data: { oldPassword: string; newPassword: string }) {
+export function changePassword(data: { oldPassword: string; newPassword: string }) {
   return requestClient.put('/auth/change-password', data);
 }

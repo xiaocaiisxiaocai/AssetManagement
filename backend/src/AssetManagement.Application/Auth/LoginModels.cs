@@ -9,6 +9,7 @@ public record LoginRequest
 public record LoginResponse
 {
     public string Token { get; init; } = "";
+    public bool MustChangePassword { get; init; }
 }
 
 public record ChangePasswordRequest
