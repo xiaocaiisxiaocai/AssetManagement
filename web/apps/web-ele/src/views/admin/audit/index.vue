@@ -7,7 +7,6 @@ import { useAccess } from '@vben/access';
 
 import {
   cleanupAuditLogsApi,
-  exportAuditLogsApi,
   getAuditCleanupPreviewApi,
   getAuditLogsApi,
 } from '#/api/report';
@@ -41,7 +40,6 @@ type TagType = 'danger' | 'info' | 'success' | 'warning';
 
 const { hasAccessByCodes } = useAccess();
 const canCleanupAudit = computed(() => hasAccessByCodes(['audit:cleanup']));
-const canExportAudit = computed(() => hasAccessByCodes(['audit:export']));
 const loading = ref(false);
 const cleanupLoading = ref(false);
 const cleanupPreviewLoading = ref(false);
@@ -97,15 +95,6 @@ function resetQuery() {
     userId: undefined,
   });
   void loadData();
-}
-
-async function exportReport() {
-  try {
-    const response = await exportAuditLogsApi(buildQuery());
-    downloadBlob(response.data, 'audit-logs.xlsx');
-  } catch {
-    // 错误已由 request.ts 拦截器统一弹出
-  }
 }
 
 async function openCleanupDialog() {
@@ -241,17 +230,6 @@ function formatTime(value: string) {
   return value?.replace('T', ' ').slice(0, 19);
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
   pageSizeOptions.value = createPageSizeOptions(query.pageSize);
@@ -268,7 +246,6 @@ onMounted(async () => {
         </div>
         <div class="header-actions">
           <ElButton v-if="canCleanupAudit" type="warning" @click="openCleanupDialog">清理日志</ElButton>
-          <ElButton v-if="canExportAudit" type="primary" @click="exportReport">导出</ElButton>
         </div>
       </div>
 

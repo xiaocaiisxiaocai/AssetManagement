@@ -50,10 +50,10 @@ public static class DbSeeder
             new Menu { Id = 10, Name = "Admin", Title = "系统管理", Path = "/admin", Component = "BasicLayout", Icon = "lucide:settings", Sort = 40 },
             new Menu { Id = 11, ParentId = 10, Name = "AdminUsers", Title = "用户管理", Path = "/admin/users", Component = "/admin/users/index", Sort = 41, PermissionCode = "user:view" },
             new Menu { Id = 12, ParentId = 10, Name = "AdminRoles", Title = "角色管理", Path = "/admin/roles", Component = "/admin/roles/index", Sort = 42, PermissionCode = "role:view" },
-            new Menu { Id = 13, ParentId = 10, Name = "AdminWorkflows", Title = "审批流程", Path = "/admin/workflows", Component = "/admin/workflows/index", Sort = 43, PermissionCode = "workflow:view" },
-            new Menu { Id = 14, ParentId = 10, Name = "AdminAudit", Title = "审计日志", Path = "/admin/audit", Component = "/admin/audit/index", Sort = 44, PermissionCode = "audit:view" },
-            new Menu { Id = 20, ParentId = 10, Name = "AdminDepartments", Title = "组织架构", Path = "/admin/departments", Component = "/admin/departments/index", Sort = 45, PermissionCode = "department:view" },
-            new Menu { Id = 21, ParentId = 10, Name = "AdminSettings", Title = "系统参数", Path = "/admin/settings", Component = "/admin/settings/index", Sort = 46, PermissionCode = "setting:view" },
+            new Menu { Id = 20, ParentId = 10, Name = "AdminDepartments", Title = "组织架构", Path = "/admin/departments", Component = "/admin/departments/index", Sort = 43, PermissionCode = "department:view" },
+            new Menu { Id = 13, ParentId = 10, Name = "AdminWorkflows", Title = "审批流程", Path = "/admin/workflows", Component = "/admin/workflows/index", Sort = 44, PermissionCode = "workflow:view" },
+            new Menu { Id = 21, ParentId = 10, Name = "AdminSettings", Title = "系统参数", Path = "/admin/settings", Component = "/admin/settings/index", Sort = 45, PermissionCode = "setting:view" },
+            new Menu { Id = 14, ParentId = 10, Name = "AdminAudit", Title = "审计日志", Path = "/admin/audit", Component = "/admin/audit/index", Sort = 46, PermissionCode = "audit:view" },
             new Menu { Id = 26, ParentId = 10, Name = "AdminBackups", Title = "数据库备份", Path = "/admin/backups", Component = "/admin/backups/index", Sort = 47, PermissionCode = "backup:manage" },
             new Menu { Id = 15, ParentId = 2, Name = "AssetCreateButton", Title = "新增资产按钮", Type = "button", Sort = 1, PermissionCode = "asset:create" },
             new Menu { Id = 16, ParentId = 2, Name = "AssetEditButton", Title = "编辑资产按钮", Type = "button", Sort = 2, PermissionCode = "asset:edit" },
@@ -311,6 +311,12 @@ public static class DbSeeder
         }
 
         var adminMenu = EnsureRootMenu(db, "Admin", "系统管理", "/admin", "BasicLayout", "lucide:settings", 40);
+        EnsureChildMenu(db, adminMenu, "AdminUsers", "用户管理", "/admin/users", "/admin/users/index", 41, "user:view");
+        EnsureChildMenu(db, adminMenu, "AdminRoles", "角色管理", "/admin/roles", "/admin/roles/index", 42, "role:view");
+        EnsureChildMenu(db, adminMenu, "AdminDepartments", "组织架构", "/admin/departments", "/admin/departments/index", 43, "department:view");
+        EnsureChildMenu(db, adminMenu, "AdminWorkflows", "审批流程", "/admin/workflows", "/admin/workflows/index", 44, "workflow:view");
+        EnsureChildMenu(db, adminMenu, "AdminSettings", "系统参数", "/admin/settings", "/admin/settings/index", 45, "setting:view");
+        EnsureChildMenu(db, adminMenu, "AdminAudit", "审计日志", "/admin/audit", "/admin/audit/index", 46, "audit:view");
         EnsureChildMenu(db, adminMenu, "AdminBackups", "数据库备份", "/admin/backups", "/admin/backups/index", 47, "backup:manage");
 
         var existingHome = db.Menus.SingleOrDefault(x => x.Name == "Home");
