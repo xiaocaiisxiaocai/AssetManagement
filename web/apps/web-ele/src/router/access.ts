@@ -11,6 +11,7 @@ import { ElMessage } from 'element-plus';
 import { getAllMenusApi } from '#/api/core/menu';
 import { BasicLayout, IFrameView } from '#/layouts';
 import { $t } from '#/locales';
+import { sortBuiltInMenus } from '#/utils/menu-order';
 
 const forbiddenComponent = () => import('#/views/_core/fallback/forbidden.vue');
 
@@ -29,7 +30,7 @@ async function generateAccess(options: GenerateMenuAndRoutesOptions) {
         duration: 1500,
         message: `${$t('common.loadingMenu')}...`,
       });
-      return await getAllMenusApi();
+      return sortBuiltInMenus(await getAllMenusApi());
     },
     // 可以指定没有权限跳转403页面
     forbiddenComponent,

@@ -16,6 +16,7 @@ import {
   updateRoleApi,
 } from '#/api/role';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { sortBuiltInMenus } from '#/utils/menu-order';
 import { buildRoleActionAccess } from '#/views/permissions/action-access';
 
 import { mergeMenuTreeSelection } from './menu-tree-selection';
@@ -345,7 +346,7 @@ async function loadData() {
 async function loadPermissionsAndMenus() {
   const [perms, menus_data] = await Promise.all([getPermissionsApi(), getMenusApi()]);
   permissions.value = perms;
-  menus.value = menus_data;
+  menus.value = sortBuiltInMenus(menus_data);
 }
 
 function openCreate() {

@@ -88,6 +88,41 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         });
     }
 
+    [Fact]
+    public void Incremental_seed_repairs_admin_menu_order_for_existing_database()
+    {
+        SeedLegacyDatabaseState();
+        var adminMenu = new Menu { Name = "Admin", Title = "系统管理", Path = "/admin", Component = "BasicLayout", Sort = 40 };
+        _db.Menus.Add(adminMenu);
+        _db.SaveChanges();
+        _db.Menus.AddRange(
+            new Menu { ParentId = adminMenu.Id, Name = "AdminAudit", Title = "审计日志", Path = "/admin/audit", Component = "/admin/audit/index", Sort = 41 },
+            new Menu { ParentId = adminMenu.Id, Name = "AdminDepartments", Title = "组织架构", Path = "/admin/departments", Component = "/admin/departments/index", Sort = 42 },
+            new Menu { ParentId = adminMenu.Id, Name = "AdminRoles", Title = "角色管理", Path = "/admin/roles", Component = "/admin/roles/index", Sort = 43 },
+            new Menu { ParentId = adminMenu.Id, Name = "AdminUsers", Title = "用户管理", Path = "/admin/users", Component = "/admin/users/index", Sort = 44 },
+            new Menu { ParentId = adminMenu.Id, Name = "AdminSettings", Title = "系统参数", Path = "/admin/settings", Component = "/admin/settings/index", Sort = 45 },
+            new Menu { ParentId = adminMenu.Id, Name = "AdminBackups", Title = "数据库备份", Path = "/admin/backups", Component = "/admin/backups/index", Sort = 46 },
+            new Menu { ParentId = adminMenu.Id, Name = "AdminWorkflows", Title = "审批流程", Path = "/admin/workflows", Component = "/admin/workflows/index", Sort = 47 }
+        );
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.Menus
+            .Where(x => x.ParentId == adminMenu.Id)
+            .OrderBy(x => x.Sort)
+            .Select(x => x.Name)
+            .ToList()
+            .Should().Equal(
+                "AdminUsers",
+                "AdminRoles",
+                "AdminDepartments",
+                "AdminWorkflows",
+                "AdminSettings",
+                "AdminAudit",
+                "AdminBackups");
+    }
+
     private void SeedLegacyDatabaseState()
     {
         var admin = new Role { Code = "admin", Name = "系统管理员" };
