@@ -3,15 +3,13 @@ import type { BorrowReportQuery, BorrowReportRow } from '#/api/report';
 import type { CategoryNode } from '#/api/base-data';
 import type { UserDto } from '#/api/user';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAccess } from '@vben/access';
 
 import { getCategoryTreeApi } from '#/api/base-data';
-import { exportBorrowReportApi, getBorrowReportApi } from '#/api/report';
+import { getBorrowReportApi } from '#/api/report';
 import { getUserListApi } from '#/api/user';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
-import { buildReportActionAccess } from '#/views/permissions/action-access';
 
 import {
   ElButton,
@@ -29,8 +27,6 @@ import {
 defineOptions({ name: 'ReportBorrow' });
 
 const router = useRouter();
-const { hasAccessByCodes } = useAccess();
-const reportActionAccess = computed(() => buildReportActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const rows = ref<BorrowReportRow[]>([]);
 const total = ref(0);
@@ -98,11 +94,6 @@ function resetQuery() {
   void loadData();
 }
 
-async function exportReport() {
-  const response = await exportBorrowReportApi(buildQuery());
-  downloadBlob(response.data, 'borrowed-report.xlsx');
-}
-
 function statusText(status: string) {
   return status === 'returned' ? '已归还' : '借用中';
 }
@@ -119,17 +110,6 @@ function goCategoryAssets(categoryCode: string) {
   });
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
   pageSizeOptions.value = createPageSizeOptions(query.pageSize);
@@ -141,13 +121,6 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="page-container">
-      <div class="page-header">
-        <div>
-          <h2 class="page-title">借用明细报表</h2>
-        </div>
-        <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出</ElButton>
-      </div>
-
       <div class="filter-panel">
         <ElForm class="filter-form" inline>
           <ElFormItem label="申请时间">

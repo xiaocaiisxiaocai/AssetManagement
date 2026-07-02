@@ -1,20 +1,16 @@
 <script lang="ts" setup>
 import type { AssetSummary } from '#/api/report';
 
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAccess } from '@vben/access';
 
-import { exportAssetSummaryApi, getAssetSummaryApi } from '#/api/report';
-import { buildReportActionAccess } from '#/views/permissions/action-access';
+import { getAssetSummaryApi } from '#/api/report';
 
-import { ElButton, ElTable, ElTableColumn } from 'element-plus';
+import { ElTable, ElTableColumn } from 'element-plus';
 
 defineOptions({ name: 'ReportSummary' });
 
 const router = useRouter();
-const { hasAccessByCodes } = useAccess();
-const reportActionAccess = computed(() => buildReportActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const summary = ref<AssetSummary>({
   available: 0,
@@ -33,22 +29,6 @@ async function loadData() {
   }
 }
 
-async function exportReport() {
-  const response = await exportAssetSummaryApi();
-  downloadBlob(response.data, 'asset-summary.xlsx');
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
 function goCategoryAssets(categoryCode: string) {
   if (!categoryCode) return;
   router.push({
@@ -63,15 +43,6 @@ onMounted(loadData);
 <template>
   <re-page>
     <div class="page-container">
-      <div class="page-header">
-        <div>
-          <h2 class="page-title">资产汇总报表</h2>
-        </div>
-        <div class="page-actions">
-          <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出</ElButton>
-        </div>
-      </div>
-
       <div class="stat-cards">
         <div class="stat-card">
           <div class="stat-label">资产总数</div>

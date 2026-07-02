@@ -6,7 +6,6 @@ import { useRouter } from 'vue-router';
 import { useAccess } from '@vben/access';
 
 import {
-  exportOverdueReportApi,
   getOverdueReportApi,
   remindOverdueApi,
   remindOverdueBatchApi,
@@ -82,11 +81,6 @@ async function remindBatch() {
   }
 }
 
-async function exportReport() {
-  const response = await exportOverdueReportApi();
-  downloadBlob(response.data, 'overdue-report.xlsx');
-}
-
 function onSelectionChange(selection: OverdueReportRow[]) {
   selectedRows.value = selection;
 }
@@ -102,15 +96,6 @@ function goCategoryAssets(categoryCode: string) {
     path: '/asset/list',
     query: { categoryCode },
   });
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 onMounted(async () => {
@@ -129,7 +114,6 @@ onMounted(async () => {
         </div>
         <div class="page-actions">
           <ElButton v-if="reportActionAccess.canRemind" :loading="remindingId === -1" type="warning" @click="remindBatch">批量催办</ElButton>
-          <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出</ElButton>
         </div>
       </div>
 
