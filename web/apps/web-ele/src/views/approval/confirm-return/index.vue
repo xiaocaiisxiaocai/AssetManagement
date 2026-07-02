@@ -8,6 +8,10 @@ import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-setti
 
 import {
   ElButton,
+  ElDatePicker,
+  ElForm,
+  ElFormItem,
+  ElInput,
   ElMessage,
   ElMessageBox,
   ElOption,
@@ -27,6 +31,8 @@ const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 
 const query = reactive({
+  keyword: '',
+  returnDate: '',
   page: 1,
   pageSize: 20,
 });
@@ -40,7 +46,6 @@ async function loadData() {
     allFlowsCache.value = allFlows.filter(
       (f) => f.bizType === 'borrow' && f.status === 'approved' && !f.confirmedAt
     );
-    total.value = allFlowsCache.value.length;
     query.page = 1;
     updatePage();
   } finally {
@@ -48,12 +53,49 @@ async function loadData() {
   }
 }
 
+function filteredFlows() {
+  const keyword = query.keyword.trim().toLowerCase();
+  return allFlowsCache.value.filter((flow) => {
+    const matchKeyword =
+      !keyword ||
+      [
+        flow.flowNo,
+        flow.assetNo,
+        flow.assetName,
+        flow.applicant,
+        flow.applicantDept,
+        flow.reason,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword));
+    const matchReturnDate = !query.returnDate || flow.returnDate === query.returnDate;
+    return matchKeyword && matchReturnDate;
+  });
+}
+
 function updatePage() {
+  const filtered = filteredFlows();
+  total.value = filtered.length;
+  if ((query.page - 1) * query.pageSize >= total.value) {
+    query.page = 1;
+  }
   const start = (query.page - 1) * query.pageSize;
-  flows.value = allFlowsCache.value.slice(start, start + query.pageSize);
+  flows.value = filtered.slice(start, start + query.pageSize);
 }
 
 function onPageSizeChange() {
+  query.page = 1;
+  updatePage();
+}
+
+function search() {
+  query.page = 1;
+  updatePage();
+}
+
+function resetQuery() {
+  query.keyword = '';
+  query.returnDate = '';
   query.page = 1;
   updatePage();
 }
@@ -107,13 +149,33 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="page-container">
-      <div class="page-header">
-        <div>
-          <h2 class="page-title">待确认入库</h2>
-        </div>
-        <div class="page-actions">
-          <span class="page-header-total">共 <span>{{ total }}</span> 件待确认</span>
-        </div>
+      <div class="filter-panel">
+        <ElForm class="filter-form" inline>
+          <ElFormItem label="关键字">
+            <ElInput
+              v-model="query.keyword"
+              clearable
+              placeholder="流程编号/资产/借用人"
+              style="width: 260px"
+              @keyup.enter="search"
+            />
+          </ElFormItem>
+          <ElFormItem label="应归还日期">
+            <ElDatePicker
+              v-model="query.returnDate"
+              clearable
+              placeholder="选择日期"
+              style="width: 160px"
+              type="date"
+              value-format="YYYY-MM-DD"
+              @change="search"
+            />
+          </ElFormItem>
+          <ElFormItem>
+            <ElButton type="primary" @click="search">查询</ElButton>
+            <ElButton @click="resetQuery">重置</ElButton>
+          </ElFormItem>
+        </ElForm>
       </div>
 
       <div class="table-panel-with-toolbar">
@@ -177,17 +239,3 @@ onMounted(async () => {
     </div>
   </re-page>
 </template>
-
-<style scoped>
-.page-header-total {
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--asset-page-muted);
-}
-
-.page-header-total span {
-  color: var(--el-color-primary);
-  font-size: 20px;
-  font-weight: 600;
-}
-</style>
