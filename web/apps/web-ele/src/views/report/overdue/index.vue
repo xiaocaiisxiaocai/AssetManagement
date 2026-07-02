@@ -3,6 +3,7 @@ import type { OverdueReportRow } from '#/api/report';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useAccess } from '@vben/access';
 
 import {
   exportOverdueReportApi,
@@ -11,6 +12,7 @@ import {
   remindOverdueBatchApi,
 } from '#/api/report';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { buildReportActionAccess } from '#/views/permissions/action-access';
 
 import {
   ElButton,
@@ -26,6 +28,8 @@ import {
 defineOptions({ name: 'ReportOverdue' });
 
 const router = useRouter();
+const { hasAccessByCodes } = useAccess();
+const reportActionAccess = computed(() => buildReportActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const remindingId = ref<number | null>(null);
 const rows = ref<OverdueReportRow[]>([]);
@@ -126,8 +130,8 @@ onMounted(async () => {
         </div>
         <div class="page-actions">
           <ElButton @click="loadData">刷新</ElButton>
-          <ElButton :loading="remindingId === -1" type="warning" @click="remindBatch">批量催办</ElButton>
-          <ElButton type="primary" @click="exportReport">导出</ElButton>
+          <ElButton v-if="reportActionAccess.canRemind" :loading="remindingId === -1" type="warning" @click="remindBatch">批量催办</ElButton>
+          <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出</ElButton>
         </div>
       </div>
 
@@ -155,7 +159,7 @@ onMounted(async () => {
           row-key="assetId"
           @selection-change="onSelectionChange"
         >
-          <ElTableColumn type="selection" width="48" />
+          <ElTableColumn v-if="reportActionAccess.canRemind" type="selection" width="48" />
           <ElTableColumn label="资产" min-width="220">
             <template #default="{ row }">
               <div>{{ row.assetName }}</div>
@@ -185,7 +189,7 @@ onMounted(async () => {
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn fixed="right" label="操作" width="110" align="center">
+          <ElTableColumn v-if="reportActionAccess.canRemind" fixed="right" label="操作" width="110" align="center">
             <template #default="{ row }">
               <ElButton :loading="remindingId === row.assetId" link type="warning" size="small" @click="remind(row)">
                 催办

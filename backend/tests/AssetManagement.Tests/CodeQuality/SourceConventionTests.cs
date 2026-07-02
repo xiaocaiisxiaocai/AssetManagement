@@ -1,4 +1,5 @@
 using FluentAssertions;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 
 namespace AssetManagement.Tests.CodeQuality;
@@ -133,6 +134,36 @@ public class SourceConventionTests
     }
 
     [Fact]
+    public void Business_controller_actions_do_not_use_plain_authorize_without_permission_code()
+    {
+        var root = FindRepositoryRoot();
+        var controllerRoot = Path.Combine(root, "backend", "src", "AssetManagement.Api", "Controllers");
+        var allowedPlainAuthorizeActions = new HashSet<string>
+        {
+            "AuthController.cs:UserInfo",
+            "AuthController.cs:ChangePassword",
+            "MenuController.cs:Routes",
+            "NotificationController.cs:List",
+            "NotificationController.cs:UnreadCount",
+            "NotificationController.cs:MarkRead",
+            "NotificationController.cs:MarkAllRead",
+            "SettingController.cs:Runtime"
+        };
+
+        var offenders = Directory
+            .EnumerateFiles(controllerRoot, "*Controller.cs")
+            .SelectMany(file => ExtractActionAttributeBlocks(File.ReadAllText(file))
+                .Where(block => block.Contains("[Http", StringComparison.Ordinal))
+                .Where(block => block.Contains("[Authorize]", StringComparison.Ordinal)
+                                && !block.Contains("[HasPermission(", StringComparison.Ordinal))
+                .Where(block => !allowedPlainAuthorizeActions.Contains($"{Path.GetFileName(file)}:{ActionName(block)}"))
+                .Select(block => $"{Path.GetRelativePath(root, file)}:{LineNumber(File.ReadAllText(file), block)}"))
+            .ToList();
+
+        offenders.Should().BeEmpty("业务接口必须绑定具体权限码，不能只要求已登录");
+    }
+
+    [Fact]
     public void Workspace_cli_bins_use_stable_wrappers()
     {
         var root = FindRepositoryRoot();
@@ -179,5 +210,46 @@ public class SourceConventionTests
         }
 
         throw new InvalidOperationException($"无法提取方法：{signature}");
+    }
+
+    private static IEnumerable<string> ExtractActionAttributeBlocks(string source)
+    {
+        var lines = source.Replace("\r\n", "\n").Split('\n');
+        var buffer = new List<string>();
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                buffer.Add(line);
+                continue;
+            }
+
+            if (buffer.Count > 0 && trimmed.StartsWith("public ", StringComparison.Ordinal))
+            {
+                buffer.Add(line);
+                yield return string.Join('\n', buffer);
+                buffer.Clear();
+                continue;
+            }
+
+            if (buffer.Count > 0 && trimmed.Length > 0)
+            {
+                buffer.Clear();
+            }
+        }
+    }
+
+    private static int LineNumber(string source, string block)
+    {
+        var index = source.IndexOf(block.Split('\n')[0], StringComparison.Ordinal);
+        return index < 0 ? 1 : source[..index].Count(c => c == '\n') + 1;
+    }
+
+    private static string ActionName(string block)
+    {
+        var methodLine = block.Split('\n').First(line => line.TrimStart().StartsWith("public ", StringComparison.Ordinal));
+        var match = Regex.Match(methodLine, @"\s([A-Za-z_][A-Za-z0-9_]*)\s*\(");
+        return match.Success ? match.Groups[1].Value : methodLine.Trim();
     }
 }

@@ -1,16 +1,20 @@
 <script lang="ts" setup>
 import type { AssetSummary } from '#/api/report';
 
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useAccess } from '@vben/access';
 
 import { exportAssetSummaryApi, getAssetSummaryApi } from '#/api/report';
+import { buildReportActionAccess } from '#/views/permissions/action-access';
 
 import { ElButton, ElTable, ElTableColumn } from 'element-plus';
 
 defineOptions({ name: 'ReportSummary' });
 
 const router = useRouter();
+const { hasAccessByCodes } = useAccess();
+const reportActionAccess = computed(() => buildReportActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const summary = ref<AssetSummary>({
   available: 0,
@@ -66,7 +70,7 @@ onMounted(loadData);
         </div>
         <div class="page-actions">
           <ElButton @click="loadData">刷新</ElButton>
-          <ElButton type="primary" @click="exportReport">导出</ElButton>
+          <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出</ElButton>
         </div>
       </div>
 

@@ -3,6 +3,8 @@ import type { LocationNode, LocationPayload } from '#/api/base-data';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
+
 import {
   createLocationApi,
   deleteLocationApi,
@@ -10,6 +12,7 @@ import {
   updateLocationApi,
 } from '#/api/base-data';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { buildLocationActionAccess } from '#/views/permissions/action-access';
 
 import {
   ElButton,
@@ -28,6 +31,8 @@ import {
 
 defineOptions({ name: 'AssetLocations' });
 
+const { hasAccessByCodes } = useAccess();
+const locationActionAccess = computed(() => buildLocationActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -123,7 +128,7 @@ onMounted(async () => {
           <h2 class="page-title">存放位置管理</h2>
           <p class="page-subtitle">维护资产存放位置信息</p>
         </div>
-        <ElButton type="primary" @click="openCreate()">新增位置</ElButton>
+        <ElButton v-if="locationActionAccess.canCreate" type="primary" @click="openCreate()">新增位置</ElButton>
       </div>
 
       <div class="table-panel">
@@ -135,10 +140,10 @@ onMounted(async () => {
           height="100%"
         >
           <ElTableColumn label="位置名称" min-width="240" prop="name" />
-          <ElTableColumn fixed="right" label="操作" width="200" align="center">
+          <ElTableColumn v-if="locationActionAccess.canEdit || locationActionAccess.canDelete" fixed="right" label="操作" width="200" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-              <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+              <ElButton v-if="locationActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton v-if="locationActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
             </template>
           </ElTableColumn>
         </ElTable>

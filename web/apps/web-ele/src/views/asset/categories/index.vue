@@ -13,6 +13,7 @@ import {
   restoreCategoryApi,
   updateCategoryApi,
 } from '#/api/base-data';
+import { buildCategoryActionAccess } from '#/views/permissions/action-access';
 
 import {
   ElButton,
@@ -38,8 +39,7 @@ const editingId = ref<null | number>(null);
 const parentCode = ref('');
 const categories = ref<CategoryNode[]>([]);
 const MAX_CATEGORY_LEVEL = 3;
-const canPurgeCategory = computed(() => hasAccessByCodes(['asset:purge']));
-const canRestoreCategory = computed(() => hasAccessByCodes(['asset:restore']));
+const categoryActionAccess = computed(() => buildCategoryActionAccess(hasAccessByCodes));
 const form = reactive<CategoryPayload>({
   codeSeg: '',
   parentId: null,
@@ -188,7 +188,7 @@ onMounted(loadData);
           <p class="page-subtitle">三级分类体系管理</p>
         </div>
         <div class="flex gap-2">
-          <ElButton type="primary" @click="openCreate()">新增顶级分类</ElButton>
+          <ElButton v-if="categoryActionAccess.canCreate" type="primary" @click="openCreate()">新增顶级分类</ElButton>
         </div>
       </div>
 
@@ -222,7 +222,7 @@ onMounted(loadData);
             <template #default="{ row }">
               <template v-if="!row.isDeleted">
                 <ElButton
-                  v-if="canCreateChild(row)"
+                  v-if="categoryActionAccess.canCreate && canCreateChild(row)"
                   link
                   type="primary"
                   size="small"
@@ -230,12 +230,12 @@ onMounted(loadData);
                 >
                   新增下级
                 </ElButton>
-                <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-                <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+                <ElButton v-if="categoryActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+                <ElButton v-if="categoryActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
               </template>
               <template v-else>
                 <ElButton
-                  v-if="canRestoreCategory"
+                  v-if="categoryActionAccess.canRestore"
                   link
                   type="success"
                   size="small"
@@ -244,7 +244,7 @@ onMounted(loadData);
                   撤销删除
                 </ElButton>
                 <ElButton
-                  v-if="canPurgeCategory"
+                  v-if="categoryActionAccess.canPurge"
                   link
                   type="danger"
                   size="small"
@@ -252,7 +252,7 @@ onMounted(loadData);
                 >
                   彻底删除
                 </ElButton>
-                <span v-if="!canRestoreCategory && !canPurgeCategory" class="asset-no-permission">无操作权限</span>
+                <span v-if="!categoryActionAccess.canRestore && !categoryActionAccess.canPurge" class="asset-no-permission">无操作权限</span>
               </template>
             </template>
           </ElTableColumn>

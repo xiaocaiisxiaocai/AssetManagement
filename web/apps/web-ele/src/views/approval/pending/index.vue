@@ -3,6 +3,7 @@ import type { ApprovalFlow } from '#/api/workflow';
 import type { UserDto } from '#/api/user';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
+import { useAccess } from '@vben/access';
 import {
   addSignFlowApi,
   approveFlowApi,
@@ -29,6 +30,8 @@ import {
 
 defineOptions({ name: 'ApprovalPending' });
 
+const { hasAccessByCodes } = useAccess();
+const canAddSign = computed(() => hasAccessByCodes(['approval:add-sign']));
 const loading = ref(false);
 const actionLoading = ref(false);
 const addSignLoading = ref(false);
@@ -393,7 +396,7 @@ onMounted(async () => {
 
         <template #footer>
           <ElButton @click="detailVisible = false">取消</ElButton>
-          <ElButton @click="openAddSign" :loading="addSignLoading">
+          <ElButton v-if="canAddSign" @click="openAddSign" :loading="addSignLoading">
             加签
           </ElButton>
           <ElButton type="danger" @click="debouncedReject" :loading="actionLoading">

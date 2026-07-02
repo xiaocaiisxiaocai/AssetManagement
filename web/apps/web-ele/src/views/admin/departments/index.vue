@@ -2,7 +2,9 @@
 import type { DepartmentNode, DepartmentPayload } from '#/api/base-data';
 import type { UserDto } from '#/api/user';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
+
+import { useAccess } from '@vben/access';
 
 import {
   createDepartmentApi,
@@ -11,6 +13,7 @@ import {
   updateDepartmentApi,
 } from '#/api/base-data';
 import { getUserListApi } from '#/api/user';
+import { buildDepartmentActionAccess } from '#/views/permissions/action-access';
 
 import {
   ElButton,
@@ -30,6 +33,8 @@ import {
 
 defineOptions({ name: 'AdminDepartments' });
 
+const { hasAccessByCodes } = useAccess();
+const departmentActionAccess = computed(() => buildDepartmentActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -133,7 +138,7 @@ onMounted(async () => {
           <h2 class="page-title">组织架构管理</h2>
           <p class="page-subtitle">树形组织结构与部门信息维护</p>
         </div>
-        <ElButton type="primary" @click="openCreate()">新增部门</ElButton>
+        <ElButton v-if="departmentActionAccess.canCreate" type="primary" @click="openCreate()">新增部门</ElButton>
       </div>
 
       <div class="table-panel">
@@ -157,11 +162,11 @@ onMounted(async () => {
           </ElTableColumn>
           <ElTableColumn fixed="right" label="操作" width="240" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" size="small" @click="openCreate(row)">
+              <ElButton v-if="departmentActionAccess.canCreate" link type="primary" size="small" @click="openCreate(row)">
                 新增下级
               </ElButton>
-              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-              <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+              <ElButton v-if="departmentActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton v-if="departmentActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
             </template>
           </ElTableColumn>
         </ElTable>

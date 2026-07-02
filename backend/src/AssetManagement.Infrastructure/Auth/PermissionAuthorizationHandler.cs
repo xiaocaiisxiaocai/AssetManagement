@@ -10,7 +10,7 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
         PermissionRequirement requirement)
     {
         var permissions = context.User.FindAll("perm").Select(x => x.Value);
-        if (context.User.IsInRole("admin") || permissions.Contains(requirement.Permission))
+        if (permissions.Contains(requirement.Permission))
         {
             context.Succeed(requirement);
         }

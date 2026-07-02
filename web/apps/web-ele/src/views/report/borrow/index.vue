@@ -1,11 +1,13 @@
 <script lang="ts" setup>
 import type { BorrowReportQuery, BorrowReportRow } from '#/api/report';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useAccess } from '@vben/access';
 
 import { exportBorrowReportApi, getBorrowReportApi } from '#/api/report';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { buildReportActionAccess } from '#/views/permissions/action-access';
 
 import {
   ElButton,
@@ -24,6 +26,8 @@ import {
 defineOptions({ name: 'ReportBorrow' });
 
 const router = useRouter();
+const { hasAccessByCodes } = useAccess();
+const reportActionAccess = computed(() => buildReportActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const rows = ref<BorrowReportRow[]>([]);
 const total = ref(0);
@@ -123,7 +127,7 @@ onMounted(async () => {
           <h2 class="page-title">借用明细报表</h2>
           <p class="page-subtitle">资产借用记录查询与导出</p>
         </div>
-        <ElButton type="primary" @click="exportReport">导出</ElButton>
+        <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出</ElButton>
       </div>
 
       <div class="filter-panel">

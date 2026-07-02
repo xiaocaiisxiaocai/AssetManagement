@@ -47,6 +47,7 @@ import AssetDetailDialog from './components/AssetDetailDialog.vue';
 import AssetFormDialog from './components/AssetFormDialog.vue';
 import AssetImportDialog from './components/AssetImportDialog.vue';
 import AssetTransferDialog from './components/AssetTransferDialog.vue';
+import { buildAssetRowActionAccess } from './asset-row-actions';
 
 defineOptions({ name: 'AssetList' });
 
@@ -145,6 +146,7 @@ const pagedHierarchyNodes = computed(() => {
 });
 const canPurgeAsset = computed(() => hasAccessByCodes(['asset:purge']));
 const canRestoreAsset = computed(() => hasAccessByCodes(['asset:restore']));
+const assetRowActionAccess = computed(() => buildAssetRowActionAccess(hasAccessByCodes));
 async function loadDictionaries() {
   const [categoryTree, departmentTree, locationTree, userList, workflowList] = await Promise.all([
     getCategoryTreeApi(),
@@ -589,11 +591,11 @@ watch(
               返回上一层
             </ElButton>
             <template v-if="showAssetTable">
-              <ElButton @click="openImport">批量导入</ElButton>
-              <ElButton @click="exportAssets">导出Excel</ElButton>
+              <ElButton v-if="assetRowActionAccess.canImport" @click="openImport">批量导入</ElButton>
+              <ElButton v-if="assetRowActionAccess.canExport" @click="exportAssets">导出Excel</ElButton>
             </template>
             <ElButton
-              v-if="showAssetTable"
+              v-if="showAssetTable && assetRowActionAccess.canCreate"
               type="primary"
               @click="openCreate(hierarchyParent?.id)"
             >
@@ -799,15 +801,19 @@ watch(
                 <template #default="{ row }">
                   <div class="asset-row-actions">
                   <template v-if="!row.isDeleted">
-                    <ElButton link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
-                    <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-                    <ElDropdown @command="(cmd) => onRowCommand(String(cmd), row)">
+                    <ElButton v-if="assetRowActionAccess.canView" link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
+                    <ElButton v-if="assetRowActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+                    <ElDropdown
+                      v-if="assetRowActionAccess.canBorrow || assetRowActionAccess.canTransfer || assetRowActionAccess.canDelete"
+                      @command="(cmd) => onRowCommand(String(cmd), row)"
+                    >
                       <ElButton link type="primary" size="small">更多</ElButton>
                       <template #dropdown>
                         <ElDropdownMenu>
-                          <ElDropdownItem command="borrow">借用</ElDropdownItem>
-                          <ElDropdownItem command="transfer">转让</ElDropdownItem>
+                          <ElDropdownItem v-if="assetRowActionAccess.canBorrow" command="borrow">借用</ElDropdownItem>
+                          <ElDropdownItem v-if="assetRowActionAccess.canTransfer" command="transfer">转让</ElDropdownItem>
                           <ElDropdownItem
+                            v-if="assetRowActionAccess.canDelete"
                             command="delete"
                             divided
                             :disabled="deletingAssetIds.includes(row.id)"
@@ -819,7 +825,7 @@ watch(
                     </ElDropdown>
                   </template>
                   <template v-else>
-                    <ElButton link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
+                    <ElButton v-if="assetRowActionAccess.canView" link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
                     <ElDropdown
                       v-if="canRestoreAsset || canPurgeAsset"
                       @command="(cmd) => onRowCommand(String(cmd), row)"

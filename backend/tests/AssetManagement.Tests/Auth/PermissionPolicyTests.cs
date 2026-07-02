@@ -62,6 +62,19 @@ public class PermissionPolicyTests : IClassFixture<TestWebAppFactory>
         res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task Admin_role_without_required_permission_returns_403()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var jwt = scope.ServiceProvider.GetRequiredService<IJwtTokenService>();
+        var token = jwt.Create(999, "9001", new[] { "report:view" }, new[] { "admin" });
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var res = await _client.GetAsync("/api/test-permissions/asset-view");
+
+        res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     private async Task<string> LoginAdmin()
     {
         var res = await _client.PostAsJsonAsync("/api/auth/login", new

@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import { defineAsyncComponent, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+import { useAccess } from '@vben/access';
 import {
   ElButton,
   ElDialog,
@@ -22,11 +23,14 @@ import {
   type SaveWorkflowPayload,
   type WorkflowItem,
 } from '#/api/workflow';
+import { buildWorkflowActionAccess } from '#/views/permissions/action-access';
 
 defineOptions({ name: 'AdminWorkflows' });
 
 const BpmnModeler = defineAsyncComponent(() => import('./bpmn-modeler.vue'));
 
+const { hasAccessByCodes } = useAccess();
+const workflowActionAccess = computed(() => buildWorkflowActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const workflows = ref<WorkflowItem[]>([]);
 const dialogVisible = ref(false);
@@ -180,7 +184,7 @@ onMounted(() => {
         </div>
         <div class="page-actions">
           <ElButton @click="loadWorkflows" :loading="loading">刷新</ElButton>
-          <ElButton type="primary" @click="openCreateDialog">新增工作流</ElButton>
+          <ElButton v-if="workflowActionAccess.canCreate" type="primary" @click="openCreateDialog">新增工作流</ElButton>
         </div>
       </div>
 
@@ -204,15 +208,15 @@ onMounted(() => {
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="操作" width="240" align="center" fixed="right">
+          <ElTableColumn v-if="workflowActionAccess.canDesign || workflowActionAccess.canEdit || workflowActionAccess.canDelete" label="操作" width="240" align="center" fixed="right">
             <template #default="{ row }">
-              <ElButton type="primary" link size="small" @click="openDesigner(row)">
+              <ElButton v-if="workflowActionAccess.canDesign" type="primary" link size="small" @click="openDesigner(row)">
                 设计流程
               </ElButton>
-              <ElButton type="primary" link size="small" @click="openEditDialog(row)">
+              <ElButton v-if="workflowActionAccess.canEdit" type="primary" link size="small" @click="openEditDialog(row)">
                 编辑
               </ElButton>
-              <ElButton type="danger" link size="small" @click="handleDelete(row)">
+              <ElButton v-if="workflowActionAccess.canDelete" type="danger" link size="small" @click="handleDelete(row)">
                 删除
               </ElButton>
             </template>

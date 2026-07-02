@@ -3,6 +3,8 @@ import type { MenuDto, PermissionDto, RoleDto } from '#/api/role';
 
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
+
 import {
   createRoleApi,
   deleteRoleApi,
@@ -14,6 +16,7 @@ import {
   updateRoleApi,
 } from '#/api/role';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { buildRoleActionAccess } from '#/views/permissions/action-access';
 
 import {
   ElButton,
@@ -38,6 +41,8 @@ import {
 
 defineOptions({ name: 'AdminRoles' });
 
+const { hasAccessByCodes } = useAccess();
+const roleActionAccess = computed(() => buildRoleActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -473,7 +478,7 @@ onMounted(async () => {
           <h2 class="role-title">角色管理</h2>
           <p class="role-subtitle">角色权限与菜单授权配置</p>
         </div>
-        <ElButton type="primary" @click="openCreate">新增角色</ElButton>
+        <ElButton v-if="roleActionAccess.canCreate" type="primary" @click="openCreate">新增角色</ElButton>
       </div>
 
       <div class="role-filter-panel">
@@ -517,10 +522,10 @@ onMounted(async () => {
           </ElTableColumn>
           <ElTableColumn fixed="right" label="操作" width="320" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-              <ElButton link type="primary" size="small" @click="openPermDialog(row)">权限分配</ElButton>
-              <ElButton link type="primary" size="small" @click="openMenuDialog(row)">菜单授权</ElButton>
-              <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+              <ElButton v-if="roleActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton v-if="roleActionAccess.canAssignPermission" link type="primary" size="small" @click="openPermDialog(row)">权限分配</ElButton>
+              <ElButton v-if="roleActionAccess.canAssignMenu" link type="primary" size="small" @click="openMenuDialog(row)">菜单授权</ElButton>
+              <ElButton v-if="roleActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
             </template>
           </ElTableColumn>
         </ElTable>

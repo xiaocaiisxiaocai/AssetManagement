@@ -1,7 +1,9 @@
 <script lang="ts" setup>
 import type { UserDto } from '#/api/user';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
+
+import { useAccess } from '@vben/access';
 
 import {
   createUserApi,
@@ -13,6 +15,7 @@ import {
 } from '#/api/user';
 import { getRoleListApi } from '#/api/role';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { buildUserActionAccess } from '#/views/permissions/action-access';
 
 import {
   ElButton,
@@ -32,6 +35,8 @@ import {
 
 defineOptions({ name: 'AdminUsers' });
 
+const { hasAccessByCodes } = useAccess();
+const userActionAccess = computed(() => buildUserActionAccess(hasAccessByCodes));
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -189,7 +194,7 @@ onMounted(async () => {
           <h2 class="user-title">用户管理</h2>
           <p class="user-subtitle">系统用户账号与权限配置</p>
         </div>
-        <ElButton type="primary" @click="openCreate">新增用户</ElButton>
+        <ElButton v-if="userActionAccess.canCreate" type="primary" @click="openCreate">新增用户</ElButton>
       </div>
 
       <div class="filter-panel">
@@ -234,9 +239,10 @@ onMounted(async () => {
           </ElTableColumn>
           <ElTableColumn fixed="right" label="操作" width="300" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-              <ElButton link type="primary" size="small" @click="resetPassword(row)">重置密码</ElButton>
+              <ElButton v-if="userActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton v-if="userActionAccess.canResetPassword" link type="primary" size="small" @click="resetPassword(row)">重置密码</ElButton>
               <ElButton
+                v-if="userActionAccess.canToggleStatus"
                 link
                 :disabled="loading"
                 :type="row.isActive ? 'danger' : 'primary'"
@@ -245,7 +251,7 @@ onMounted(async () => {
               >
                 {{ row.isActive ? '禁用' : '启用' }}
               </ElButton>
-              <ElButton link type="danger" size="small" @click="remove(row)">删除</ElButton>
+              <ElButton v-if="userActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
             </template>
           </ElTableColumn>
         </ElTable>

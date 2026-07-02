@@ -31,7 +31,7 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
     }
 
     [Fact]
-    public void Incremental_seed_repairs_roles_admin_grants_and_warehouse_user()
+    public void Incremental_seed_repairs_roles_menus_and_warehouse_user_without_overwriting_existing_grants()
     {
         SeedLegacyDatabaseState();
 
@@ -54,9 +54,9 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
 
         warehouse.Should().NotBeNull();
         admin.RolePermissions.Select(x => x.Permission.Code)
-            .Should().BeEquivalentTo(permissions.Select(x => x.Code), "系统管理员应始终拥有全部权限，包含后续增量新增的权限");
+            .Should().BeEquivalentTo(new[] { "asset:view" }, "角色管理中已存在的授权关系不能在启动种子时被覆盖");
         admin.RoleMenus.Select(x => x.MenuId).Distinct()
-            .Should().HaveCount(_db.Menus.Count(), "系统管理员应始终拥有全部菜单，避免新增菜单后没有入口");
+            .Should().BeEquivalentTo(new[] { homeMenuId }, "角色管理中已存在的菜单授权不能在启动种子时被覆盖");
         warehouse!.RoleMenus.Select(x => x.MenuId).Distinct()
             .Should().NotBeEmpty("仓库管理员恢复后也应按权限矩阵补齐菜单入口");
         warehouse.RolePermissions.Select(x => x.Permission.Code)
@@ -139,6 +139,8 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         _db.UserRoles.Add(new UserRole { UserId = systemAdmin.Id, RoleId = admin.Id });
         _db.SaveChanges();
     }
+
+    private int homeMenuId => _db.Menus.Single(x => x.Name == "Home").Id;
 
     private static string FindRepositoryRoot()
     {

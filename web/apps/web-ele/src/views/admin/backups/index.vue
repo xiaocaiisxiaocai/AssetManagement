@@ -3,6 +3,8 @@ import type { DatabaseBackupFile } from '#/api/report';
 
 import { computed, onMounted, ref } from 'vue';
 
+import { useAccess } from '@vben/access';
+
 import {
   backupDatabaseApi,
   downloadDatabaseBackupApi,
@@ -20,6 +22,8 @@ import {
 
 defineOptions({ name: 'AdminBackups' });
 
+const { hasAccessByCodes } = useAccess();
+const canManageBackup = computed(() => hasAccessByCodes(['backup:manage']));
 const loading = ref(false);
 const backupLoading = ref(false);
 const rows = ref<DatabaseBackupFile[]>([]);
@@ -115,7 +119,7 @@ onMounted(loadData);
         </div>
         <div class="backup-actions">
           <ElButton @click="loadData">刷新</ElButton>
-          <ElButton :loading="backupLoading" type="primary" @click="backupDatabase">
+          <ElButton v-if="canManageBackup" :loading="backupLoading" type="primary" @click="backupDatabase">
             生成完整备份包
           </ElButton>
         </div>
@@ -169,7 +173,7 @@ onMounted(loadData);
             <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="完整路径" min-width="360" prop="filePath" />
-          <ElTableColumn fixed="right" label="操作" width="100" align="center">
+          <ElTableColumn v-if="canManageBackup" fixed="right" label="操作" width="100" align="center">
             <template #default="{ row }">
               <ElButton link type="primary" size="small" @click="downloadBackup(row)">下载</ElButton>
             </template>

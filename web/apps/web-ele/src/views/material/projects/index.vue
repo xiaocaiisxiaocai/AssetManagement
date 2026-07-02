@@ -83,6 +83,7 @@ import { getUserListApi } from '#/api/user';
 import MaterialDetailDialog from '../components/MaterialDetailDialog.vue';
 import MaterialFormDialog from '../components/MaterialFormDialog.vue';
 import TransferDialog from '../components/TransferDialog.vue';
+import { buildMaterialActionAccess, buildProjectActionAccess } from '#/views/permissions/action-access';
 import { filterProjects, type ProjectFilter } from './project-filter';
 import { validateProjectForm } from './project-form-rules';
 
@@ -135,19 +136,13 @@ const flowStatusMeta: Record<string, { label: string; tag: 'info' | 'success' | 
 };
 
 const { hasAccessByCodes } = useAccess();
-const canManage = computed(() => hasAccessByCodes(['project:manage']));
-const canPurge = computed(() => hasAccessByCodes(['material:purge']));
-const canCreateMaterial = computed(() => hasAccessByCodes(['material:create']));
-const canEditMaterial = computed(() => hasAccessByCodes(['material:edit']));
-const canDeleteMaterial = computed(() => hasAccessByCodes(['material:delete']));
-const canTransferMaterial = computed(() => hasAccessByCodes(['material:transfer']));
-const canRestoreMaterial = computed(() => hasAccessByCodes(['material:restore']));
-const canApproveMaterial = computed(() => hasAccessByCodes(['material:approve']));
+const projectActionAccess = computed(() => buildProjectActionAccess(hasAccessByCodes));
+const materialActionAccess = computed(() => buildMaterialActionAccess(hasAccessByCodes));
 const canWriteCurrentProjectMaterial = computed(() =>
-  canCreateMaterial.value || currentProject.value?.canWriteFollowUp === true,
+  materialActionAccess.value.canCreate || currentProject.value?.canWriteFollowUp === true,
 );
 const canEditCurrentProjectMaterial = computed(() =>
-  canEditMaterial.value || currentProject.value?.canWriteFollowUp === true,
+  materialActionAccess.value.canEdit || currentProject.value?.canWriteFollowUp === true,
 );
 
 const loading = ref(false);
@@ -1084,8 +1079,8 @@ onMounted(async () => {
           <ElButton @click="resetProjectFilter">重置</ElButton>
         </div>
         <div class="project-toolbar-right">
-          <ElButton v-if="canManage" @click="openOptionDialog">配置</ElButton>
-          <ElButton v-if="canManage" type="primary" @click="openCreate">
+          <ElButton v-if="projectActionAccess.canOption" @click="openOptionDialog">配置</ElButton>
+          <ElButton v-if="projectActionAccess.canCreate" type="primary" @click="openCreate">
             新增项目
           </ElButton>
         </div>
@@ -1163,7 +1158,7 @@ onMounted(async () => {
           <template #default="{ row }">
             <template v-if="!row.isDeleted">
               <ElButton
-                v-if="canManage"
+                v-if="projectActionAccess.canEdit"
                 link
                 size="small"
                 type="primary"
@@ -1172,7 +1167,7 @@ onMounted(async () => {
                 编辑
               </ElButton>
               <ElButton
-                v-if="canManage"
+                v-if="projectActionAccess.canDelete"
                 link
                 size="small"
                 type="danger"
@@ -1183,7 +1178,7 @@ onMounted(async () => {
             </template>
             <template v-else>
               <ElButton
-                v-if="canManage"
+                v-if="projectActionAccess.canRestore"
                 link
                 size="small"
                 type="success"
@@ -1192,7 +1187,7 @@ onMounted(async () => {
                 撤销删除
               </ElButton>
               <ElButton
-                v-if="canPurge"
+                v-if="projectActionAccess.canPurge"
                 link
                 size="small"
                 type="danger"
@@ -1349,10 +1344,10 @@ onMounted(async () => {
             </div>
           </ElForm>
           <div class="option-actions">
-            <ElButton v-if="optionEditingId" @click="openOptionCreate(activeOptionKind)">
+            <ElButton v-if="projectActionAccess.canOption && optionEditingId" @click="openOptionCreate(activeOptionKind)">
               取消编辑
             </ElButton>
-            <ElButton :loading="optionSaving" type="primary" @click="saveOption">
+            <ElButton v-if="projectActionAccess.canOption" :loading="optionSaving" type="primary" @click="saveOption">
               {{ optionEditingId ? '保存修改' : '新增' }}
             </ElButton>
           </div>
@@ -1372,10 +1367,10 @@ onMounted(async () => {
           </ElTableColumn>
           <ElTableColumn align="center" label="操作" width="130">
             <template #default="{ row }">
-              <ElButton link size="small" type="primary" @click="openOptionEdit(row)">
+              <ElButton v-if="projectActionAccess.canOption" link size="small" type="primary" @click="openOptionEdit(row)">
                 编辑
               </ElButton>
-              <ElButton link size="small" type="danger" @click="removeOption(row)">
+              <ElButton v-if="projectActionAccess.canOption" link size="small" type="danger" @click="removeOption(row)">
                 删除
               </ElButton>
             </template>
@@ -1525,9 +1520,9 @@ onMounted(async () => {
                       </ElButton>
                       <ElDropdown
                         v-if="
-                          (canTransferMaterial && canOperateMaterial(row) && !row.hasPendingFlow) ||
-                          (canEditMaterial && canOperateMaterial(row) && !row.hasPendingFlow) ||
-                          (canDeleteMaterial && canOperateMaterial(row))
+                          (materialActionAccess.canTransfer && canOperateMaterial(row) && !row.hasPendingFlow) ||
+                          (materialActionAccess.canReturn && canOperateMaterial(row) && !row.hasPendingFlow) ||
+                          (materialActionAccess.canDelete && canOperateMaterial(row))
                         "
                         @command="(cmd) => onMaterialRowCommand(cmd, row)"
                       >
@@ -1535,19 +1530,19 @@ onMounted(async () => {
                         <template #dropdown>
                           <ElDropdownMenu>
                             <ElDropdownItem
-                              v-if="canTransferMaterial && canOperateMaterial(row) && !row.hasPendingFlow"
+                              v-if="materialActionAccess.canTransfer && canOperateMaterial(row) && !row.hasPendingFlow"
                               command="transfer"
                             >
                               转移
                             </ElDropdownItem>
                             <ElDropdownItem
-                              v-if="canEditMaterial && canOperateMaterial(row) && !row.hasPendingFlow"
+                              v-if="materialActionAccess.canReturn && canOperateMaterial(row) && !row.hasPendingFlow"
                               command="return"
                             >
                               退回厂商
                             </ElDropdownItem>
                             <ElDropdownItem
-                              v-if="canDeleteMaterial && canOperateMaterial(row)"
+                              v-if="materialActionAccess.canDelete && canOperateMaterial(row)"
                               command="delete"
                               divided
                             >
@@ -1562,14 +1557,14 @@ onMounted(async () => {
                         详情
                       </ElButton>
                       <ElDropdown
-                        v-if="canRestoreMaterial || canPurge"
+                        v-if="materialActionAccess.canRestore || materialActionAccess.canPurge"
                         @command="(cmd) => onMaterialRowCommand(cmd, row)"
                       >
                         <ElButton link size="small" type="primary">更多</ElButton>
                         <template #dropdown>
                           <ElDropdownMenu>
-                            <ElDropdownItem v-if="canRestoreMaterial" command="restore">撤销删除</ElDropdownItem>
-                            <ElDropdownItem v-if="canPurge" command="purge" divided>彻底删除</ElDropdownItem>
+                            <ElDropdownItem v-if="materialActionAccess.canRestore" command="restore">撤销删除</ElDropdownItem>
+                            <ElDropdownItem v-if="materialActionAccess.canPurge" command="purge" divided>彻底删除</ElDropdownItem>
                           </ElDropdownMenu>
                         </template>
                       </ElDropdown>
@@ -1627,10 +1622,10 @@ onMounted(async () => {
                       <ElTableColumn label="原因" min-width="150" prop="reason" show-overflow-tooltip />
                       <ElTableColumn align="center" label="操作" width="140">
                         <template #default="{ row }">
-                          <ElButton v-if="canApproveMaterial" link size="small" type="success" @click="approveFlow(row)">
+                          <ElButton v-if="materialActionAccess.canApprove" link size="small" type="success" @click="approveFlow(row)">
                             通过
                           </ElButton>
-                          <ElButton v-if="canApproveMaterial" link size="small" type="danger" @click="rejectFlow(row)">
+                          <ElButton v-if="materialActionAccess.canApprove" link size="small" type="danger" @click="rejectFlow(row)">
                             驳回
                           </ElButton>
                         </template>
@@ -1755,7 +1750,7 @@ onMounted(async () => {
                       <ElButton v-if="editingFollowupId" @click="cancelFollowupEdit">
                         取消编辑
                       </ElButton>
-                      <ElButton :loading="followupSaving" type="primary" @click="saveFollowup">
+                      <ElButton v-if="projectActionAccess.canFollowup" :loading="followupSaving" type="primary" @click="saveFollowup">
                         {{ editingFollowupId ? '保存修改' : '新增跟进' }}
                       </ElButton>
                     </div>
@@ -1794,7 +1789,7 @@ onMounted(async () => {
                           <ElButton link size="small" type="primary" @click="editFollowup(item)">
                             编辑
                           </ElButton>
-                          <ElButton link size="small" type="danger" @click="deleteFollowup(item)">
+                          <ElButton v-if="projectActionAccess.canFollowup" link size="small" type="danger" @click="deleteFollowup(item)">
                             删除
                           </ElButton>
                         </div>

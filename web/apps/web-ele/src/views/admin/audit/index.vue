@@ -1,7 +1,9 @@
 <script lang="ts" setup>
 import type { AuditCleanupPreview, AuditLogQuery, AuditLogRow } from '#/api/report';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
+
+import { useAccess } from '@vben/access';
 
 import {
   cleanupAuditLogsApi,
@@ -37,6 +39,9 @@ defineOptions({ name: 'AdminAudit' });
 
 type TagType = 'danger' | 'info' | 'success' | 'warning';
 
+const { hasAccessByCodes } = useAccess();
+const canCleanupAudit = computed(() => hasAccessByCodes(['audit:cleanup']));
+const canExportAudit = computed(() => hasAccessByCodes(['audit:export']));
 const loading = ref(false);
 const cleanupLoading = ref(false);
 const cleanupPreviewLoading = ref(false);
@@ -263,8 +268,8 @@ onMounted(async () => {
           <p class="page-subtitle">系统操作记录查询与追踪</p>
         </div>
         <div class="header-actions">
-          <ElButton type="warning" @click="openCleanupDialog">清理日志</ElButton>
-          <ElButton type="primary" @click="exportReport">导出</ElButton>
+          <ElButton v-if="canCleanupAudit" type="warning" @click="openCleanupDialog">清理日志</ElButton>
+          <ElButton v-if="canExportAudit" type="primary" @click="exportReport">导出</ElButton>
         </div>
       </div>
 

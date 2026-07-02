@@ -1,7 +1,9 @@
 <script lang="ts" setup>
 import type { SettingPayload, SystemSetting } from '#/api/base-data';
 
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+
+import { useAccess } from '@vben/access';
 
 import { getSettingsApi, saveSettingsApi } from '#/api/base-data';
 import { invalidateRuntimeSettings } from '#/utils/runtime-settings';
@@ -19,6 +21,8 @@ import {
 
 defineOptions({ name: 'AdminSettings' });
 
+const { hasAccessByCodes } = useAccess();
+const canEditSettings = computed(() => hasAccessByCodes(['setting:edit']));
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -113,7 +117,7 @@ onMounted(loadData);
           <h2 class="page-title">系统参数配置</h2>
           <p class="page-subtitle">键值对配置管理</p>
         </div>
-        <ElButton type="primary" @click="openCreate">新增参数</ElButton>
+        <ElButton v-if="canEditSettings" type="primary" @click="openCreate">新增参数</ElButton>
       </div>
 
       <div class="table-panel">
@@ -121,7 +125,7 @@ onMounted(loadData);
           <ElTableColumn label="参数键" min-width="200" prop="key" />
           <ElTableColumn label="参数值" min-width="180" prop="value" />
           <ElTableColumn class-name="hide-on-mobile" label="说明" min-width="260" prop="description" />
-          <ElTableColumn fixed="right" label="操作" width="160" align="center">
+          <ElTableColumn v-if="canEditSettings" fixed="right" label="操作" width="160" align="center">
             <template #default="{ row, $index }">
               <ElButton link type="primary" size="small" @click="openEdit(row, $index)">编辑</ElButton>
               <ElButton link type="danger" size="small" @click="remove($index)">删除</ElButton>
@@ -158,7 +162,7 @@ onMounted(loadData);
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
+          <ElButton v-if="canEditSettings" :loading="saving" type="primary" @click="save">保存</ElButton>
         </template>
       </ElDialog>
     </div>
