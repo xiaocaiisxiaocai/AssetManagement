@@ -1,10 +1,12 @@
 <script lang="ts" setup>
+import type { DepartmentNode } from '#/api/base-data';
 import type { UserDto, UserImportRow } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
 
+import { getDepartmentTreeApi } from '#/api/base-data';
 import {
   createUserApi,
   deleteUserApi,
@@ -48,6 +50,7 @@ const importing = ref(false);
 const editingId = ref<null | number>(null);
 const users = ref<UserDto[]>([]);
 const roles = ref<any[]>([]);
+const departments = ref<DepartmentNode[]>([]);
 const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const importFileInput = ref<HTMLInputElement | null>(null);
@@ -64,12 +67,25 @@ const form = reactive({
   employeeNo: '',
   name: '',
   email: '',
+  departmentId: undefined as number | undefined,
   roleId: undefined as number | undefined,
 });
+
+interface DepartmentOption {
+  id: number;
+  isActive: boolean;
+  label: string;
+}
+
+const departmentOptions = computed(() => flattenDepartments(departments.value));
 
 async function loadRoles() {
   const result = await getRoleListApi();
   roles.value = result.items;
+}
+
+async function loadDepartments() {
+  departments.value = await getDepartmentTreeApi();
 }
 
 async function loadData() {
@@ -89,6 +105,7 @@ function openCreate() {
     employeeNo: '',
     name: '',
     email: '',
+    departmentId: undefined,
     roleId: undefined,
   });
   dialogVisible.value = true;
@@ -100,6 +117,7 @@ function openEdit(row: UserDto) {
     employeeNo: row.employeeNo,
     name: row.name,
     email: row.email ?? '',
+    departmentId: row.departmentId ?? undefined,
     roleId: row.roleIds?.[0],
   });
   dialogVisible.value = true;
@@ -124,6 +142,7 @@ async function save() {
     const payload = {
       name: form.name,
       email: form.email || null,
+      departmentId: form.departmentId ?? null,
       roleIds: form.roleId ? [form.roleId] : [],
     };
 
@@ -261,10 +280,21 @@ function reset() {
   void loadData();
 }
 
+function flattenDepartments(nodes: DepartmentNode[], level = 0): DepartmentOption[] {
+  return nodes.flatMap((node) => [
+    {
+      id: node.id,
+      isActive: node.isActive,
+      label: `${'　'.repeat(level)}${node.name}${node.isActive ? '' : '（停用）'}`,
+    },
+    ...flattenDepartments(node.children, level + 1),
+  ]);
+}
+
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
   pageSizeOptions.value = createPageSizeOptions(query.pageSize);
-  await loadRoles();
+  await Promise.all([loadRoles(), loadDepartments()]);
   await loadData();
 });
 </script>
@@ -304,6 +334,11 @@ onMounted(async () => {
         <ElTable v-loading="loading" :data="users" border height="100%">
           <ElTableColumn label="工号" min-width="120" prop="employeeNo" />
           <ElTableColumn label="姓名" min-width="140" prop="name" />
+          <ElTableColumn class-name="hide-on-mobile" label="部门" min-width="150" prop="departmentName" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.departmentName || '--' }}
+            </template>
+          </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="邮箱" min-width="180" prop="email" />
           <ElTableColumn class-name="hide-on-mobile" label="角色" min-width="180">
             <template #default="{ row }">
@@ -390,6 +425,23 @@ onMounted(async () => {
           <ElFormItem label="邮箱">
             <ElInput v-model="form.email" clearable placeholder="请输入邮箱" type="email" />
           </ElFormItem>
+          <ElFormItem label="部门">
+            <ElSelect
+              v-model="form.departmentId"
+              clearable
+              filterable
+              placeholder="选择部门"
+              style="width: 100%"
+            >
+              <ElOption
+                v-for="department in departmentOptions"
+                :key="department.id"
+                :disabled="!department.isActive"
+                :label="department.label"
+                :value="department.id"
+              />
+            </ElSelect>
+          </ElFormItem>
           <ElFormItem label="角色" required>
             <ElSelect
               v-model="form.roleId"
@@ -440,6 +492,7 @@ onMounted(async () => {
           <ElTableColumn label="工号" prop="employeeNo" min-width="120" />
           <ElTableColumn label="姓名" prop="name" min-width="120" />
           <ElTableColumn label="邮箱" prop="email" min-width="180" />
+          <ElTableColumn label="部门名称" prop="departmentName" min-width="140" />
           <ElTableColumn label="角色名称" prop="roleName" min-width="140" />
           <ElTableColumn label="状态" width="90">
             <template #default="{ row }">

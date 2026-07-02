@@ -9,6 +9,7 @@ public record UserDto
     public string? Phone { get; init; }
     public bool IsActive { get; init; }
     public int? DepartmentId { get; init; }
+    public string? DepartmentName { get; init; }
     public int? SupervisorId { get; init; }
     public int[] RoleIds { get; init; } = Array.Empty<int>();
     public string[] RoleNames { get; init; } = Array.Empty<string>();
@@ -47,6 +48,7 @@ public record UserImportRowDto
     public string EmployeeNo { get; init; } = "";
     public string Name { get; init; } = "";
     public string? Email { get; init; }
+    public string? DepartmentName { get; init; }
     public string RoleName { get; init; } = "";
     public bool IsValid { get; init; }
     public string Error { get; init; } = "";

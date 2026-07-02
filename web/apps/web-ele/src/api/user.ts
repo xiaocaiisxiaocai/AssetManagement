@@ -19,6 +19,8 @@ export interface UserDto {
   name: string;
   email?: string | null;
   isActive: boolean;
+  departmentId?: null | number;
+  departmentName?: null | string;
   roleIds: number[];
   roleNames?: string[];
   supervisorId?: null | number;
@@ -26,6 +28,7 @@ export interface UserDto {
 
 export interface UserImportRow {
   email?: null | string;
+  departmentName?: null | string;
   employeeNo: string;
   error: string;
   isValid: boolean;
@@ -44,6 +47,7 @@ export type UserPayload = {
   employeeNo?: string;
   name: string;
   email?: string | null;
+  departmentId?: null | number;
   roleIds: number[];
 };
 

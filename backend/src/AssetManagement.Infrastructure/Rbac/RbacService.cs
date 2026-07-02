@@ -30,14 +30,15 @@ public class RbacService : IRbacService
         }
 
         var total = await query.CountAsync();
-        var items = await query
+        var users = await query
             .OrderBy(x => x.EmployeeNo)
             .ThenBy(x => x.Name)
             .ThenBy(x => x.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => ToUserDto(x))
             .ToListAsync();
+        var departmentMap = await BuildDepartmentMapAsync(users.Select(x => x.DepartmentId));
+        var items = users.Select(x => ToUserDto(x, departmentMap)).ToList();
 
         return new PagedResult<UserDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
@@ -137,8 +138,8 @@ public class RbacService : IRbacService
 
         return XlsxTable.Write(new[]
         {
-            new[] { "工号", "姓名", "邮箱", "角色名称" },
-            new[] { "1002", "张三", "1002@example.local", roleName }
+            new[] { "工号", "姓名", "邮箱", "部门名称", "角色名称" },
+            new[] { "1002", "张三", "1002@example.local", "", roleName }
         });
     }
 
@@ -155,6 +156,9 @@ public class RbacService : IRbacService
         var roleMap = await _db.Roles
             .Where(x => x.IsActive)
             .ToDictionaryAsync(x => x.Name, x => x.Id);
+        var departmentMap = await _db.Departments
+            .Where(x => x.IsActive)
+            .ToDictionaryAsync(x => x.Name, x => x.Id);
 
         await using var tx = await _db.Database.BeginTransactionAsync();
         foreach (var row in rows)
@@ -164,6 +168,7 @@ public class RbacService : IRbacService
                 EmployeeNo = row.EmployeeNo,
                 Name = row.Name,
                 Email = string.IsNullOrWhiteSpace(row.Email) ? null : row.Email,
+                DepartmentId = string.IsNullOrWhiteSpace(row.DepartmentName) ? null : departmentMap[row.DepartmentName],
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(AppConstants.DefaultUserPassword),
                 IsActive = true
             };
@@ -430,6 +435,11 @@ public class RbacService : IRbacService
             .Select(x => x.Name)
             .ToListAsync();
         var roleNames = activeRoles.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var activeDepartments = await _db.Departments
+            .Where(x => x.IsActive)
+            .Select(x => x.Name)
+            .ToListAsync();
+        var departmentNames = activeDepartments.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var existingEmployeeNos = await _db.Users
             .Select(x => x.EmployeeNo)
             .ToListAsync();
@@ -447,13 +457,16 @@ public class RbacService : IRbacService
             var employeeNo = Cell(cells, 0);
             var name = Cell(cells, 1);
             var email = Cell(cells, 2);
-            var roleName = Cell(cells, 3);
+            var hasDepartmentColumn = cells.Count >= 5;
+            var departmentName = hasDepartmentColumn ? Cell(cells, 3) : "";
+            var roleName = hasDepartmentColumn ? Cell(cells, 4) : Cell(cells, 3);
             var errors = new List<string>();
             if (string.IsNullOrWhiteSpace(employeeNo)) errors.Add("工号必填");
             if (string.IsNullOrWhiteSpace(name)) errors.Add("姓名必填");
             if (string.IsNullOrWhiteSpace(roleName)) errors.Add("角色名称必填");
             if (!string.IsNullOrWhiteSpace(employeeNo) && existingEmployeeNoSet.Contains(employeeNo)) errors.Add("工号已存在");
             if (!string.IsNullOrWhiteSpace(employeeNo) && duplicateInFile.Contains(employeeNo)) errors.Add("工号在导入文件中重复");
+            if (!string.IsNullOrWhiteSpace(departmentName) && !departmentNames.Contains(departmentName)) errors.Add("部门名称不存在或已停用");
             if (!string.IsNullOrWhiteSpace(roleName) && !roleNames.Contains(roleName)) errors.Add("角色名称不存在或已停用");
 
             return new UserImportRowDto
@@ -462,6 +475,7 @@ public class RbacService : IRbacService
                 EmployeeNo = employeeNo,
                 Name = name,
                 Email = string.IsNullOrWhiteSpace(email) ? null : email,
+                DepartmentName = string.IsNullOrWhiteSpace(departmentName) ? null : departmentName,
                 RoleName = roleName,
                 IsValid = errors.Count == 0,
                 Error = string.Join("；", errors)
@@ -550,7 +564,21 @@ public class RbacService : IRbacService
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .SingleAsync(x => x.Id == id);
-        return ToUserDto(user);
+        var departmentMap = await BuildDepartmentMapAsync(new[] { user.DepartmentId });
+        return ToUserDto(user, departmentMap);
+    }
+
+    private async Task<Dictionary<int, string>> BuildDepartmentMapAsync(IEnumerable<int?> ids)
+    {
+        var departmentIds = ids.Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToArray();
+        if (departmentIds.Length == 0)
+        {
+            return new Dictionary<int, string>();
+        }
+
+        return await _db.Departments
+            .Where(x => departmentIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name);
     }
 
     private async Task<RoleDto> LoadRoleDto(int id)
@@ -563,7 +591,7 @@ public class RbacService : IRbacService
         return ToRoleDto(role);
     }
 
-    private static UserDto ToUserDto(User x) => new()
+    private static UserDto ToUserDto(User x, IReadOnlyDictionary<int, string>? departments = null) => new()
     {
         Id = x.Id,
         EmployeeNo = x.EmployeeNo,
@@ -572,6 +600,9 @@ public class RbacService : IRbacService
         Phone = x.Phone,
         IsActive = x.IsActive,
         DepartmentId = x.DepartmentId,
+        DepartmentName = x.DepartmentId.HasValue && departments?.TryGetValue(x.DepartmentId.Value, out var departmentName) == true
+            ? departmentName
+            : null,
         SupervisorId = x.SupervisorId,
         RoleIds = x.UserRoles.Select(r => r.RoleId).ToArray(),
         RoleNames = x.UserRoles

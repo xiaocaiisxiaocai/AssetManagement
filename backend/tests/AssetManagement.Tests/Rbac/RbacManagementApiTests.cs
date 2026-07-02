@@ -65,6 +65,37 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task User_list_returns_department_name()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
+        var manager = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("mgr"),
+            Name = "用户部门负责人",
+            RoleIds = new[] { roleId }
+        });
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = manager.Data!.Id,
+            Name = Unique("用户部门")
+        });
+
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "部门展示用户",
+            DepartmentId = department.Data!.Id,
+            RoleIds = new[] { roleId }
+        });
+
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={employeeNo}");
+
+        list!.Data!.Items.Single().DepartmentName.Should().Be(department.Data.Name);
+    }
+
+    [Fact]
     public async Task User_list_orders_by_employee_no_then_name()
     {
         await Login();
@@ -176,6 +207,64 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             x.Email == $"{employeeNo1}@example.local" &&
             x.RoleNames.Contains(role.Data.Name));
         login.Code.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task User_import_creates_users_by_department_name()
+    {
+        await Login();
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("导入部门角色"),
+            IsActive = true
+        });
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = await CreateDepartmentManagerId(role.Data!.Id),
+            Name = Unique("导入部门")
+        });
+        var employeeNo = Unique("u");
+        var file = BuildXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "部门名称", "角色名称" },
+            new[] { employeeNo, "部门导入用户", $"{employeeNo}@example.local", department.Data!.Name, role.Data.Name }
+        });
+
+        var imported = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import", file);
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            $"/api/users?keyword={employeeNo}");
+
+        imported.Code.Should().Be(0);
+        imported.Data!.Rows.Single().DepartmentName.Should().Be(department.Data.Name);
+        list!.Data!.Items.Should().ContainSingle(x =>
+            x.EmployeeNo == employeeNo &&
+            x.DepartmentId == department.Data.Id &&
+            x.DepartmentName == department.Data.Name);
+    }
+
+    [Fact]
+    public async Task User_import_rejects_unknown_department_name()
+    {
+        await Login();
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("导入未知部门角色"),
+            IsActive = true
+        });
+        var employeeNo = Unique("u");
+        var file = BuildXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "部门名称", "角色名称" },
+            new[] { employeeNo, "未知部门用户", "", "不存在部门", role.Data!.Name }
+        });
+
+        var preview = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import/validate", file);
+
+        preview.Code.Should().Be(0);
+        preview.Data!.FailedCount.Should().Be(1);
+        preview.Data.Rows.Single().Error.Should().Contain("部门名称不存在或已停用");
     }
 
     [Fact]
@@ -945,6 +1034,17 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             IsActive = true
         });
         return role.Data!.Id;
+    }
+
+    private async Task<int> CreateDepartmentManagerId(int roleId)
+    {
+        var manager = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("mgr"),
+            Name = "部门负责人",
+            RoleIds = new[] { roleId }
+        });
+        return manager.Data!.Id;
     }
 
     private static byte[] BuildXlsx(IEnumerable<string[]> rows)
