@@ -213,6 +213,8 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
         if (!m.IsDeleted) throw new BizException(4097, "请先删除料件后再彻底删除");
+        if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id))
+            throw new BizException(4094, "料件存在流转历史，不能彻底删除");
         _db.TestMaterials.Remove(m);
         await _db.SaveChangesAsync();
     }

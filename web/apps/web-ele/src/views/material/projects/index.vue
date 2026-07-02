@@ -1097,7 +1097,7 @@ onMounted(async () => {
           stripe
         >
         <ElTableColumn fixed label="项目编号" min-width="130" prop="code" show-overflow-tooltip />
-        <ElTableColumn label="项目名称" min-width="180" show-overflow-tooltip>
+        <ElTableColumn label="项目名称" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">
             <ElButton link type="primary" @click="openFollowups(row)">
               {{ row.name }}
@@ -1130,7 +1130,7 @@ onMounted(async () => {
             </ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn label="测试情况" min-width="180" show-overflow-tooltip>
+        <ElTableColumn label="测试情况" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
             {{ optionalText(row.testStatus) }}
           </template>

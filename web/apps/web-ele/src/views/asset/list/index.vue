@@ -984,8 +984,8 @@ watch(
 /* ========== 一级分类网格 ========== */
 .asset-root-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 320px);
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, 240px);
+  gap: 16px;
   flex: 1;
   min-height: 0;
   align-content: start;
@@ -1006,8 +1006,8 @@ watch(
 
 .asset-root-card:hover,
 .asset-root-card:focus-visible {
-  border-color: var(--el-color-primary);
-  box-shadow: 0 8px 24px var(--el-color-primary-light-7);
+  border-color: var(--asset-page-border-strong);
+  box-shadow: 0 8px 20px hsl(211 70% 35% / 14%);
   outline: none;
   transform: translateY(-4px);
 }
@@ -1016,31 +1016,20 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 120px;
+  min-height: 84px;
   color: #fff;
-  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+  background: var(--asset-page-panel-header-solid);
   position: relative;
   overflow: hidden;
 }
 
-.asset-root-card-code::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  right: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
-  pointer-events: none;
-}
-
 .asset-root-card-code span {
   max-width: calc(100% - 48px);
-  padding: 8px 20px;
+  padding: 6px 16px;
   overflow: hidden;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 28px;
+  line-height: 24px;
   text-overflow: ellipsis;
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.2);
@@ -1054,11 +1043,11 @@ watch(
 .asset-root-card-body {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
-  min-height: 120px;
-  padding: 20px;
-  background: linear-gradient(to bottom, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+  min-height: 80px;
+  padding: 16px;
+  background: var(--asset-page-surface);
 }
 
 .asset-root-actions {
@@ -1110,7 +1099,7 @@ watch(
   padding: 16px 20px;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -1146,8 +1135,8 @@ watch(
 
 .asset-class-row:hover,
 .asset-class-row:focus-visible {
-  border-color: var(--el-color-primary);
-  box-shadow: 0 8px 24px var(--el-color-primary-light-7);
+  border-color: var(--asset-page-border-strong);
+  box-shadow: 0 8px 20px hsl(211 70% 35% / 14%);
   outline: none;
   transform: translateY(-4px);
 }
@@ -1159,20 +1148,9 @@ watch(
   min-width: 0;
   padding: 12px 16px;
   color: #fff;
-  background: linear-gradient(135deg, var(--el-color-primary) 0%, var(--el-color-primary-dark-2) 100%);
+  background: var(--asset-page-panel-header-solid);
   position: relative;
   overflow: hidden;
-}
-
-.asset-class-code::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  right: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
-  pointer-events: none;
 }
 
 .asset-class-code span {
@@ -1239,7 +1217,7 @@ watch(
   color: var(--asset-page-muted);
   border: 2px dashed var(--asset-page-border);
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--asset-page-surface-soft) 0%, var(--asset-page-surface-hover) 100%);
+  background: var(--asset-page-surface);
 }
 
 /* ========== 表格面板 ========== */

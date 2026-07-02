@@ -129,7 +129,6 @@ onMounted(async () => {
       <div class="mine-header">
         <div>
           <h2 class="mine-title">我的申请</h2>
-          <p class="mine-subtitle">我发起的审批申请记录</p>
         </div>
         <div class="mine-actions">
           <ElButton type="success" @click="openStart('borrow')">发起借用</ElButton>
@@ -250,26 +249,19 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border: 1px solid var(--asset-page-border);
+  border: 1px solid var(--asset-page-border-strong);
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
 .mine-title {
-  margin: 0 0 4px 0;
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
   color: var(--asset-page-text);
-  letter-spacing: -0.02em;
-}
-
-.mine-subtitle {
-  margin: 0;
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--asset-page-muted);
+  letter-spacing: 0;
 }
 
 .mine-actions {
@@ -298,8 +290,8 @@ onMounted(async () => {
 }
 
 .mine-table-panel :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-surface-soft);
-  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-panel-header-solid);
+  color: var(--asset-page-panel-header-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;

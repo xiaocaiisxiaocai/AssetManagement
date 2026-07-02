@@ -215,6 +215,10 @@ public class AssetService : IAssetService
         {
             throw new BizException(4097, "请先删除资产后再彻底删除");
         }
+        if (await _db.ApprovalFlows.AnyAsync(x => x.AssetId == id))
+        {
+            throw new BizException(4094, "资产存在流转历史，不能彻底删除");
+        }
 
         _db.Assets.Remove(asset);
         await _db.SaveChangesAsync();

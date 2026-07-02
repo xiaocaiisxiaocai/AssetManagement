@@ -6,7 +6,11 @@ import { computed, onMounted, ref } from 'vue';
 import { useAccess } from '@vben/access';
 
 import { getSettingsApi, saveSettingsApi } from '#/api/base-data';
-import { invalidateRuntimeSettings } from '#/utils/runtime-settings';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+  invalidateRuntimeSettings,
+} from '#/utils/runtime-settings';
 
 import {
   ElButton,
@@ -14,9 +18,16 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
+  ElInputNumber,
   ElMessage,
+  ElOption,
+  ElPagination,
+  ElRadio,
+  ElRadioGroup,
+  ElSelect,
   ElTable,
   ElTableColumn,
+  ElTimePicker,
 } from 'element-plus';
 
 defineOptions({ name: 'AdminSettings' });
@@ -28,31 +39,68 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const editingIndex = ref<null | number>(null);
 const settings = ref<SystemSetting[]>([]);
+const pageSizeOptions = ref(createPageSizeOptions(20));
+const page = ref(1);
+const pageSize = ref(20);
 
 const form = ref({
   key: '',
-  value: '',
+  value: '' as number | string | undefined,
   description: '',
+});
+
+const booleanSettingKeys = new Set([
+  'audit_cleanup_enabled',
+  'database_backup_enabled',
+  'material.transfer.approval.enabled',
+]);
+
+const timeSettingKeys = new Set([
+  'audit_cleanup_time',
+  'database_backup_time',
+]);
+
+const integerSettingRules: Record<string, { max: number; min: number }> = {
+  attachment_max_mb: { max: 100, min: 1 },
+  audit_retention_months: { max: 120, min: 1 },
+  database_backup_retention_days: { max: 3650, min: 1 },
+  page_size: { max: 200, min: 1 },
+};
+
+const auditRetentionDayOptions = [7, 14, 30];
+
+const pagedSettings = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return settings.value.slice(start, start + pageSize.value);
+});
+
+const formValueType = computed(() => getValueType(form.value.key));
+const formNumberValue = computed<number | undefined>({
+  get: () => (typeof form.value.value === 'number' ? form.value.value : undefined),
+  set: (value) => {
+    form.value.value = value;
+  },
 });
 
 async function loadData() {
   loading.value = true;
   try {
     settings.value = await getSettingsApi();
+    if ((page.value - 1) * pageSize.value >= settings.value.length) {
+      page.value = 1;
+    }
   } finally {
     loading.value = false;
   }
 }
 
-function openCreate() {
-  editingIndex.value = null;
-  form.value = { key: '', value: '', description: '' };
-  dialogVisible.value = true;
-}
-
-function openEdit(row: SystemSetting, index: number) {
-  editingIndex.value = index;
-  form.value = { key: row.key, value: row.value, description: row.description ?? '' };
+function openEdit(row: SystemSetting) {
+  editingIndex.value = settings.value.findIndex((item) => item.key === row.key);
+  form.value = {
+    key: row.key,
+    value: toFormValue(row.key, row.value),
+    description: row.description ?? '',
+  };
   dialogVisible.value = true;
 }
 
@@ -66,16 +114,15 @@ async function save() {
   try {
     const updatedSettings = [...settings.value];
 
-    if (editingIndex.value !== null) {
-      updatedSettings[editingIndex.value] = {
-        ...updatedSettings[editingIndex.value]!,
-        key: form.value.key,
-        value: form.value.value,
-        description: form.value.description,
-      };
-    } else {
-      updatedSettings.push({ id: 0, key: form.value.key, value: form.value.value, description: form.value.description });
+    if (editingIndex.value === null) {
+      ElMessage.warning('请选择要编辑的系统参数');
+      return;
     }
+
+    updatedSettings[editingIndex.value] = {
+      ...updatedSettings[editingIndex.value]!,
+      value: toPayloadValue(form.value.key, form.value.value),
+    };
 
     const payload: SettingPayload[] = updatedSettings
       .filter((item) => item.key.trim())
@@ -90,79 +137,177 @@ async function save() {
   }
 }
 
-async function remove(index: number) {
-  saving.value = true;
-  try {
-    const updatedSettings = settings.value.filter((_, i) => i !== index);
-    const payload: SettingPayload[] = updatedSettings
-      .filter((item) => item.key.trim())
-      .map((item) => ({ description: item.description, key: item.key, value: item.value }));
+function getValueType(key: string) {
+  if (booleanSettingKeys.has(key)) return 'boolean';
+  if (timeSettingKeys.has(key)) return 'time';
+  if (key === 'audit_retention_days') return 'audit-retention-days';
+  if (integerSettingRules[key]) return 'integer';
+  return 'text';
+}
 
-    settings.value = await saveSettingsApi(payload);
-    invalidateRuntimeSettings();
-    ElMessage.success('删除成功');
-  } finally {
-    saving.value = false;
+function toFormValue(key: string, value: string) {
+  const valueType = getValueType(key);
+  if (valueType === 'boolean') {
+    return value.toLowerCase() === 'true' ? 'true' : 'false';
+  }
+  if (valueType === 'integer' || valueType === 'audit-retention-days') {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return value;
+}
+
+function toPayloadValue(key: string, value: number | string | undefined) {
+  const valueType = getValueType(key);
+  if (valueType === 'boolean') {
+    if (value !== 'true' && value !== 'false') {
+      throw new Error('请选择参数值');
+    }
+    return value;
+  }
+
+  if (valueType === 'time') {
+    const text = String(value ?? '').trim();
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(text)) {
+      throw new Error('请选择正确的时间');
+    }
+    return text;
+  }
+
+  if (valueType === 'audit-retention-days') {
+    const numberValue = Number(value);
+    if (!auditRetentionDayOptions.includes(numberValue)) {
+      throw new Error('请选择审计日志保留天数');
+    }
+    return String(numberValue);
+  }
+
+  if (valueType === 'integer') {
+    const rule = integerSettingRules[key]!;
+    const numberValue = Number(value);
+    if (!Number.isInteger(numberValue) || numberValue < rule.min || numberValue > rule.max) {
+      throw new Error(`参数值必须是 ${rule.min}-${rule.max} 的整数`);
+    }
+    return String(numberValue);
+  }
+
+  const text = String(value ?? '').trim();
+  if (key === 'database_backup_path' && !text) {
+    throw new Error('数据库备份目录不能为空');
+  }
+  return text;
+}
+
+async function submitSave() {
+  try {
+    await save();
+  } catch (error) {
+    ElMessage.warning(error instanceof Error ? error.message : '参数值不合法');
   }
 }
 
-onMounted(loadData);
+function onPageSizeChange() {
+  page.value = 1;
+}
+
+onMounted(async () => {
+  pageSize.value = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(pageSize.value);
+  await loadData();
+});
 </script>
 
 <template>
   <re-page>
     <div class="page-container">
-      <div class="page-header">
-        <div>
-          <h2 class="page-title">系统参数配置</h2>
-          <p class="page-subtitle">键值对配置管理</p>
-        </div>
-        <ElButton v-if="canEditSettings" type="primary" @click="openCreate">新增参数</ElButton>
-      </div>
-
       <div class="table-panel">
-        <ElTable v-loading="loading" :data="settings" border height="100%">
+        <ElTable v-loading="loading" :data="pagedSettings" border height="100%">
           <ElTableColumn label="参数键" min-width="200" prop="key" />
           <ElTableColumn label="参数值" min-width="180" prop="value" />
           <ElTableColumn class-name="hide-on-mobile" label="说明" min-width="260" prop="description" />
           <ElTableColumn v-if="canEditSettings" fixed="right" label="操作" width="160" align="center">
-            <template #default="{ row, $index }">
-              <ElButton link type="primary" size="small" @click="openEdit(row, $index)">编辑</ElButton>
-              <ElButton link type="danger" size="small" @click="remove($index)">删除</ElButton>
+            <template #default="{ row }">
+              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
             </template>
           </ElTableColumn>
         </ElTable>
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ settings.length }} 条</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect v-model="pageSize" style="width: 92px" @change="onPageSizeChange">
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size} 条`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
+          <ElPagination
+            v-model:current-page="page"
+            :page-size="pageSize"
+            :total="settings.length"
+            background
+            layout="prev, pager, next, jumper"
+          />
+        </div>
       </div>
 
       <ElDialog
         v-model="dialogVisible"
-        :title="editingIndex === null ? '新增参数' : '编辑参数'"
+        title="编辑参数"
         width="540px"
       >
         <ElForm label-width="100px">
           <ElFormItem label="参数键" required>
             <ElInput
               v-model="form.key"
-              :disabled="editingIndex !== null"
+              disabled
               placeholder="请输入参数键"
             />
           </ElFormItem>
           <ElFormItem label="参数值" required>
-            <ElInput v-model="form.value" placeholder="请输入参数值" />
-          </ElFormItem>
-          <ElFormItem label="说明">
-            <ElInput
-              v-model="form.description"
-              :rows="3"
-              clearable
-              placeholder="请输入说明"
-              type="textarea"
+            <ElRadioGroup v-if="formValueType === 'boolean'" v-model="form.value">
+              <ElRadio label="true">启用</ElRadio>
+              <ElRadio label="false">禁用</ElRadio>
+            </ElRadioGroup>
+            <ElTimePicker
+              v-else-if="formValueType === 'time'"
+              v-model="form.value"
+              format="HH:mm"
+              placeholder="请选择时间"
+              value-format="HH:mm"
             />
+            <ElSelect
+              v-else-if="formValueType === 'audit-retention-days'"
+              v-model="form.value"
+              placeholder="请选择保留天数"
+              style="width: 100%"
+            >
+              <ElOption
+                v-for="days in auditRetentionDayOptions"
+                :key="days"
+                :label="`${days} 天`"
+                :value="days"
+              />
+            </ElSelect>
+            <ElInputNumber
+              v-else-if="formValueType === 'integer'"
+              v-model="formNumberValue"
+              :max="integerSettingRules[form.key]?.max"
+              :min="integerSettingRules[form.key]?.min"
+              :step="1"
+              :step-strictly="true"
+              style="width: 100%"
+            />
+            <ElInput v-else v-model="form.value" placeholder="请输入参数值" />
           </ElFormItem>
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton v-if="canEditSettings" :loading="saving" type="primary" @click="save">保存</ElButton>
+          <ElButton v-if="canEditSettings" :loading="saving" type="primary" @click="submitSave">保存</ElButton>
         </template>
       </ElDialog>
     </div>

@@ -6,10 +6,43 @@
   --asset-page-surface-soft: hsl(var(--foreground) / 3%);
   --asset-page-surface-hover: hsl(var(--foreground) / 5%);
   --asset-page-border: hsl(var(--border));
+  --asset-page-border-strong: #1a5699;
+  --asset-page-blue-soft: #e7f0fa;
+  --asset-page-blue-soft-2: #d5e6f7;
+  --asset-page-blue-muted: #8db6df;
+  --asset-page-panel-header: #1a5699;
+  --asset-page-panel-header-solid: #1a5699;
+  --asset-page-panel-header-text: #ffffff;
+  --asset-page-panel-header-muted: #d9e8f8;
+  --asset-page-panel-accent: #1a5699;
+  --asset-page-panel-accent-soft: #d5e6f7;
   --asset-page-text: hsl(var(--foreground));
   --asset-page-text-secondary: hsl(var(--foreground) / 82%);
   --asset-page-muted: hsl(var(--foreground) / 72%);
-  --asset-page-shadow: 0 2px 8px hsl(var(--foreground) / 4%);
+  --asset-page-shadow: 0 8px 24px hsl(213 58% 52% / 8%);
+  --asset-page-shadow-hover: 0 14px 30px hsl(213 58% 52% / 12%);
+}
+
+.dark {
+  --asset-page-surface: hsl(var(--card));
+  --asset-page-surface-alt: hsl(var(--background));
+  --asset-page-surface-soft: hsl(215 34% 18% / 64%);
+  --asset-page-surface-hover: hsl(211 70% 26% / 34%);
+  --asset-page-border: hsl(215 28% 28%);
+  --asset-page-border-strong: #386ca7;
+  --asset-page-blue-soft: #1f3a5d;
+  --asset-page-blue-soft-2: #264b78;
+  --asset-page-blue-muted: #386ca7;
+  --asset-page-panel-header: #1a5699;
+  --asset-page-panel-header-solid: #1a5699;
+  --asset-page-panel-header-text: #ffffff;
+  --asset-page-panel-header-muted: #d9e8f8;
+  --asset-page-panel-accent: #386ca7;
+  --asset-page-panel-accent-soft: #264b78;
+  --asset-page-text-secondary: hsl(var(--foreground) / 88%);
+  --asset-page-muted: hsl(var(--foreground) / 68%);
+  --asset-page-shadow: 0 10px 28px hsl(215 80% 5% / 34%);
+  --asset-page-shadow-hover: 0 16px 34px hsl(215 80% 5% / 46%);
 }
 
 /* ========== 页面容器 ========== */
@@ -39,19 +72,44 @@
 
 /* ========== 页面头部 ========== */
 .page-header {
+  position: relative;
   display: flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border: 1px solid var(--asset-page-border);
+  border: 1px solid var(--asset-page-border-strong);
   border-radius: 12px;
   background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
+.el-card {
+  border-color: var(--asset-page-border-strong);
+  background-color: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
+}
+
+.el-card__header {
+  border-bottom-color: var(--asset-page-border-strong);
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header);
+}
+
+.el-card__header .page-title {
+  color: var(--asset-page-panel-header-text);
+}
+
+.el-card__header .page-subtitle {
+  color: var(--asset-page-panel-header-muted);
+}
+
+.el-card__header .el-button.is-link {
+  color: var(--asset-page-panel-header-text);
+}
+
 .page-title {
-  margin: 0 0 4px 0;
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
@@ -78,6 +136,14 @@
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
+  box-shadow: var(--asset-page-shadow);
+}
+
+.role-filter-panel,
+.user-filter-panel,
+.filter-panel {
+  border-color: var(--asset-page-border) !important;
+  background: var(--asset-page-surface) !important;
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -123,17 +189,63 @@
   overflow: hidden;
 }
 
+.asset-table-panel,
+.drawer-table-panel,
+.flow-table-panel,
+.material-table-panel,
+.mine-table-panel,
+.pending-table-panel,
+.project-table-panel,
+.role-table-panel,
+.summary-table-panel,
+.user-table-panel,
+.table-panel,
+.table-panel-with-toolbar {
+  border-color: var(--asset-page-border) !important;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.asset-table-panel .el-table,
+.backup-table-panel .el-table,
+.drawer-table-panel .el-table,
+.flow-table-panel .el-table,
+.material-table-panel .el-table,
+.mine-table-panel .el-table,
+.pending-table-panel .el-table,
+.project-table-panel .el-table,
+.role-table-panel .el-table,
+.summary-table-panel .el-table,
+.user-table-panel .el-table,
+.el-table.workspace-table,
+.workspace-table .el-table,
+.table-panel .el-table,
+.table-panel-with-toolbar .el-table {
+  --el-table-bg-color: var(--asset-page-surface);
+  --el-table-tr-bg-color: var(--asset-page-surface);
+  --el-table-row-hover-bg-color: var(--asset-page-surface-hover);
+  --el-table-header-bg-color: var(--asset-page-panel-header-solid);
+  --el-table-header-text-color: var(--asset-page-panel-header-text);
+  --el-table-text-color: var(--asset-page-text);
+
+  color: var(--asset-page-text);
+  background: var(--asset-page-surface);
+}
+
 .table-toolbar {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--asset-page-border-strong);
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header);
 }
 
 .table-total {
   font-size: 14px;
   line-height: 20px;
-  color: var(--asset-page-muted);
+  color: var(--asset-page-panel-header-muted);
 }
 
 .table-pagination {
@@ -150,7 +262,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   padding: 16px 20px;
-  border-top: 1px solid var(--asset-page-border);
+  border-top: 1px solid var(--asset-page-border-strong);
   background: var(--asset-page-surface);
 }
 
@@ -179,11 +291,91 @@
 
 .table-panel .el-table th.el-table__cell,
 .table-panel-with-toolbar .el-table th.el-table__cell {
-  background: var(--asset-page-surface-soft);
-  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-panel-header-solid);
+  color: var(--asset-page-panel-header-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+}
+
+.asset-table-panel .el-table th.el-table__cell,
+.backup-table-panel .el-table th.el-table__cell,
+.drawer-table-panel .el-table th.el-table__cell,
+.flow-table-panel .el-table th.el-table__cell,
+.material-table-panel .el-table th.el-table__cell,
+.mine-table-panel .el-table th.el-table__cell,
+.pending-table-panel .el-table th.el-table__cell,
+.project-table-panel .el-table th.el-table__cell,
+.role-table-panel .el-table th.el-table__cell,
+.summary-table-panel .el-table th.el-table__cell,
+.user-table-panel .el-table th.el-table__cell,
+.el-table.workspace-table th.el-table__cell,
+.workspace-table .el-table th.el-table__cell {
+  background: var(--asset-page-panel-header-solid) !important;
+  color: var(--asset-page-panel-header-text) !important;
+}
+
+.asset-table-panel .el-table td.el-table__cell,
+.asset-table-panel .el-table th.el-table__cell,
+.backup-table-panel .el-table td.el-table__cell,
+.backup-table-panel .el-table th.el-table__cell,
+.drawer-table-panel .el-table td.el-table__cell,
+.drawer-table-panel .el-table th.el-table__cell,
+.flow-table-panel .el-table td.el-table__cell,
+.flow-table-panel .el-table th.el-table__cell,
+.material-table-panel .el-table td.el-table__cell,
+.material-table-panel .el-table th.el-table__cell,
+.mine-table-panel .el-table td.el-table__cell,
+.mine-table-panel .el-table th.el-table__cell,
+.pending-table-panel .el-table td.el-table__cell,
+.pending-table-panel .el-table th.el-table__cell,
+.project-table-panel .el-table td.el-table__cell,
+.project-table-panel .el-table th.el-table__cell,
+.role-table-panel .el-table td.el-table__cell,
+.role-table-panel .el-table th.el-table__cell,
+.summary-table-panel .el-table td.el-table__cell,
+.summary-table-panel .el-table th.el-table__cell,
+.user-table-panel .el-table td.el-table__cell,
+.user-table-panel .el-table th.el-table__cell,
+.el-table.workspace-table td.el-table__cell,
+.el-table.workspace-table th.el-table__cell,
+.workspace-table .el-table td.el-table__cell,
+.workspace-table .el-table th.el-table__cell {
+  border-color: var(--asset-page-border) !important;
+}
+
+.asset-table-panel .el-table tr,
+.asset-table-panel .el-table td.el-table__cell,
+.backup-table-panel .el-table tr,
+.backup-table-panel .el-table td.el-table__cell,
+.drawer-table-panel .el-table tr,
+.drawer-table-panel .el-table td.el-table__cell,
+.flow-table-panel .el-table tr,
+.flow-table-panel .el-table td.el-table__cell,
+.material-table-panel .el-table tr,
+.material-table-panel .el-table td.el-table__cell,
+.mine-table-panel .el-table tr,
+.mine-table-panel .el-table td.el-table__cell,
+.pending-table-panel .el-table tr,
+.pending-table-panel .el-table td.el-table__cell,
+.project-table-panel .el-table tr,
+.project-table-panel .el-table td.el-table__cell,
+.role-table-panel .el-table tr,
+.role-table-panel .el-table td.el-table__cell,
+.summary-table-panel .el-table tr,
+.summary-table-panel .el-table td.el-table__cell,
+.user-table-panel .el-table tr,
+.user-table-panel .el-table td.el-table__cell,
+.el-table.workspace-table tr,
+.el-table.workspace-table td.el-table__cell,
+.workspace-table .el-table tr,
+.workspace-table .el-table td.el-table__cell,
+.table-panel .el-table tr,
+.table-panel .el-table td.el-table__cell,
+.table-panel-with-toolbar .el-table tr,
+.table-panel-with-toolbar .el-table td.el-table__cell {
+  color: var(--asset-page-text);
+  background: var(--asset-page-surface) !important;
 }
 
 .table-panel .el-table--border,
@@ -205,7 +397,7 @@
 
 .table-panel .el-table--striped .el-table__body tr.el-table__row--striped td,
 .table-panel-with-toolbar .el-table--striped .el-table__body tr.el-table__row--striped td {
-  background: var(--asset-page-surface-soft);
+  background: var(--asset-page-blue-soft);
 }
 
 .table-panel .el-table--enable-row-hover .el-table__body tr:hover > td,
@@ -253,25 +445,6 @@
   border-color: var(--el-color-primary);
   background: var(--asset-page-surface-soft);
   outline: none;
-}
-
-/* ========== 对话框优化 ========== */
-.el-dialog {
-  border-radius: 12px;
-}
-
-.el-dialog__header {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--asset-page-border);
-}
-
-.el-dialog__body {
-  padding: 24px;
-}
-
-.el-dialog__footer {
-  padding: 16px 24px;
-  border-top: 1px solid var(--asset-page-border);
 }
 
 .el-form-item {
@@ -322,6 +495,10 @@
   border-radius: 12px;
   background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
+}
+
+.stat-card:hover {
+  box-shadow: var(--asset-page-shadow-hover);
 }
 
 .stat-label {

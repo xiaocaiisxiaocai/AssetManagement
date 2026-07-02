@@ -66,10 +66,8 @@ onMounted(loadData);
       <div class="page-header">
         <div>
           <h2 class="page-title">资产汇总报表</h2>
-          <p class="page-subtitle">资产总览与分类统计</p>
         </div>
         <div class="page-actions">
-          <ElButton @click="loadData">刷新</ElButton>
           <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出</ElButton>
         </div>
       </div>

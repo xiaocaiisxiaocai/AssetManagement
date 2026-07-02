@@ -214,43 +214,22 @@ onBeforeUnmount(() => {
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
   flex-shrink: 0;
-  overflow: hidden;
-  border: 1px solid var(--asset-page-border);
-  border-radius: 8px;
-  background: var(--asset-page-surface);
-  box-shadow: var(--asset-page-shadow);
 }
 
 .summary-card {
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
   min-height: 118px;
   padding: 24px 32px;
-  border-right: 1px solid var(--asset-page-border);
-  border-left: 4px solid transparent;
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
+  text-align: center;
   background: var(--asset-page-surface);
-}
-
-.summary-card:last-child {
-  border-right: 0;
-}
-
-.summary-card-blue {
-  border-left-color: #3b82f6;
-}
-
-.summary-card-green {
-  border-left-color: #22c55e;
-}
-
-.summary-card-purple {
-  border-left-color: #8b5cf6;
-}
-
-.summary-card-red {
-  border-left-color: #ef4444;
+  box-shadow: var(--asset-page-shadow);
 }
 .stat-num {
   @apply text-5xl font-bold leading-none mb-2;
@@ -277,12 +256,7 @@ onBeforeUnmount(() => {
   }
 
   .summary-card {
-    border-right: 0;
-    border-bottom: 1px solid var(--asset-page-border);
-  }
-
-  .summary-card:last-child {
-    border-bottom: 0;
+    min-height: 96px;
   }
 }
 </style>

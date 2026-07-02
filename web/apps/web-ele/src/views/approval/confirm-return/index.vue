@@ -110,10 +110,9 @@ onMounted(async () => {
       <div class="page-header">
         <div>
           <h2 class="page-title">待确认入库</h2>
-          <p class="page-subtitle">借用资产归还确认</p>
         </div>
         <div class="page-actions">
-          <span class="table-total">共 <span style="font-size: 20px; font-weight: 600; color: var(--el-color-primary);">{{ total }}</span> 件待确认</span>
+          <span class="page-header-total">共 <span>{{ total }}</span> 件待确认</span>
         </div>
       </div>
 
@@ -178,3 +177,17 @@ onMounted(async () => {
     </div>
   </re-page>
 </template>
+
+<style scoped>
+.page-header-total {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.page-header-total span {
+  color: var(--el-color-primary);
+  font-size: 20px;
+  font-weight: 600;
+}
+</style>

@@ -126,10 +126,8 @@ onMounted(async () => {
       <div class="page-header">
         <div>
           <h2 class="page-title">逾期资产报表</h2>
-          <p class="page-subtitle">逾期资产查询与催办</p>
         </div>
         <div class="page-actions">
-          <ElButton @click="loadData">刷新</ElButton>
           <ElButton v-if="reportActionAccess.canRemind" :loading="remindingId === -1" type="warning" @click="remindBatch">批量催办</ElButton>
           <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出</ElButton>
         </div>

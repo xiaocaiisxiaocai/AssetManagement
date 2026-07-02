@@ -10,11 +10,15 @@ import {
   downloadDatabaseBackupApi,
   getDatabaseBackupsApi,
 } from '#/api/report';
+import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 
 import {
   ElButton,
   ElMessage,
   ElMessageBox,
+  ElOption,
+  ElPagination,
+  ElSelect,
   ElTable,
   ElTableColumn,
   ElTag,
@@ -27,19 +31,22 @@ const canManageBackup = computed(() => hasAccessByCodes(['backup:manage']));
 const loading = ref(false);
 const backupLoading = ref(false);
 const rows = ref<DatabaseBackupFile[]>([]);
+const page = ref(1);
+const pageSize = ref(20);
+const pageSizeOptions = ref(createPageSizeOptions(20));
 
-const totalSize = computed(() => rows.value.reduce((sum, item) => sum + item.sizeBytes, 0));
-const backupPath = computed(() => {
-  const path = rows.value[0]?.filePath;
-  if (!path) return '暂无备份文件';
-  const normalized = path.replaceAll('\\', '/');
-  return normalized.slice(0, normalized.lastIndexOf('/')) || path;
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return rows.value.slice(start, start + pageSize.value);
 });
 
 async function loadData() {
   loading.value = true;
   try {
     rows.value = await getDatabaseBackupsApi();
+    if ((page.value - 1) * pageSize.value >= rows.value.length) {
+      page.value = 1;
+    }
   } finally {
     loading.value = false;
   }
@@ -95,6 +102,10 @@ function fileTypeTag(type: string) {
   return type === 'package' ? 'success' : 'info';
 }
 
+function onPageSizeChange() {
+  page.value = 1;
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -106,7 +117,11 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-onMounted(loadData);
+onMounted(async () => {
+  pageSize.value = await getDefaultPageSize();
+  pageSizeOptions.value = createPageSizeOptions(pageSize.value);
+  await loadData();
+});
 </script>
 
 <template>
@@ -115,44 +130,16 @@ onMounted(loadData);
       <div class="backup-header">
         <div>
           <h2 class="backup-title">数据库备份</h2>
-          <p class="backup-subtitle">查看、下载备份文件，并手动生成完整备份包</p>
         </div>
         <div class="backup-actions">
-          <ElButton @click="loadData">刷新</ElButton>
           <ElButton v-if="canManageBackup" :loading="backupLoading" type="primary" @click="backupDatabase">
             生成完整备份包
           </ElButton>
         </div>
       </div>
 
-      <div class="backup-notice">
-        <div>
-          <strong>完整备份包</strong>
-          <span>包含当前业务数据库 SQL 与附件上传目录，可用于离线归档或人工恢复。</span>
-        </div>
-        <div>
-          <strong>恢复提醒</strong>
-          <span>恢复会覆盖现有数据，当前不提供页面一键恢复，建议由管理员在停机窗口手工执行。</span>
-        </div>
-      </div>
-
-      <div class="backup-overview">
-        <div class="overview-item">
-          <span>备份文件</span>
-          <strong>{{ rows.length }}</strong>
-        </div>
-        <div class="overview-item">
-          <span>占用空间</span>
-          <strong>{{ formatSize(totalSize) }}</strong>
-        </div>
-        <div class="overview-path">
-          <span>备份目录</span>
-          <strong>{{ backupPath }}</strong>
-        </div>
-      </div>
-
       <div class="backup-table-panel">
-        <ElTable v-loading="loading" :data="rows" border height="100%">
+        <ElTable v-loading="loading" :data="pagedRows" border height="100%">
           <ElTableColumn label="文件名" min-width="260">
             <template #default="{ row }">
               <div class="file-name-cell">
@@ -179,6 +166,28 @@ onMounted(loadData);
             </template>
           </ElTableColumn>
         </ElTable>
+        <div class="table-bottom-pager">
+          <div class="table-bottom-pager-left">
+            <span>共 {{ rows.length }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect v-model="pageSize" style="width: 92px" @change="onPageSizeChange">
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
+          <ElPagination
+            v-model:current-page="page"
+            :page-size="pageSize"
+            :total="rows.length"
+            background
+            layout="prev, pager, next"
+          />
+        </div>
       </div>
     </div>
   </re-page>
@@ -193,8 +202,6 @@ onMounted(loadData);
 }
 
 .backup-header,
-.backup-notice,
-.backup-overview,
 .backup-table-panel {
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
@@ -208,49 +215,16 @@ onMounted(loadData);
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
-}
-
-.backup-notice {
-  display: grid;
-  flex-shrink: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 14px 20px;
-  background: var(--asset-page-surface-soft);
-}
-
-.backup-notice div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.backup-notice strong {
-  color: var(--asset-page-text);
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.backup-notice span {
-  color: var(--asset-page-muted);
-  font-size: 13px;
-  line-height: 20px;
+  border-color: var(--asset-page-border-strong);
+  background: var(--asset-page-surface);
 }
 
 .backup-title {
-  margin: 0 0 4px 0;
+  margin: 0;
   color: var(--asset-page-text);
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
-}
-
-.backup-subtitle {
-  margin: 0;
-  color: var(--asset-page-muted);
-  font-size: 14px;
-  line-height: 20px;
 }
 
 .backup-actions {
@@ -258,51 +232,13 @@ onMounted(loadData);
   gap: 8px;
 }
 
-.backup-overview {
-  display: grid;
-  flex-shrink: 0;
-  grid-template-columns: 160px 160px minmax(0, 1fr);
-  gap: 12px;
-  padding: 16px 20px;
-}
-
-.overview-item,
-.overview-path {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.overview-item span,
-.overview-path span {
-  color: var(--asset-page-muted);
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.overview-item strong,
-.overview-path strong {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--asset-page-text);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 26px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.overview-path strong {
-  font-size: 14px;
-  line-height: 22px;
-}
-
 .backup-table-panel {
   flex: 1;
   display: flex;
   min-height: 0;
   flex-direction: column;
-  padding: 20px;
+  border-color: var(--asset-page-border);
+  overflow: hidden;
 }
 
 .backup-table-panel :deep(.el-table) {
@@ -346,12 +282,5 @@ onMounted(loadData);
     gap: 12px;
   }
 
-  .backup-overview {
-    grid-template-columns: 1fr;
-  }
-
-  .backup-notice {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

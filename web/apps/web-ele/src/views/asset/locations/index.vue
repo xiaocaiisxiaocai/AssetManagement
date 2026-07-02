@@ -126,7 +126,6 @@ onMounted(async () => {
       <div class="page-header">
         <div>
           <h2 class="page-title">存放位置管理</h2>
-          <p class="page-subtitle">维护资产存放位置信息</p>
         </div>
         <ElButton v-if="locationActionAccess.canCreate" type="primary" @click="openCreate()">新增位置</ElButton>
       </div>

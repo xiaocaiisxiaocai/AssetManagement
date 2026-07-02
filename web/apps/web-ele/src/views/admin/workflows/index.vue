@@ -180,10 +180,8 @@ onMounted(() => {
       <div class="page-header">
         <div>
           <h2 class="page-title">工作流设计器</h2>
-          <p class="page-subtitle">BPMN 2.0 可视化审批流程配置</p>
         </div>
         <div class="page-actions">
-          <ElButton @click="loadWorkflows" :loading="loading">刷新</ElButton>
           <ElButton v-if="workflowActionAccess.canCreate" type="primary" @click="openCreateDialog">新增工作流</ElButton>
         </div>
       </div>

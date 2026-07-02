@@ -1,5 +1,8 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.IO.Compression;
+using System.Text;
+using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
@@ -62,6 +65,29 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task User_list_orders_by_employee_no_then_name()
+    {
+        await Login();
+        var roleId = await CreateRoleId();
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = "3002",
+            Name = "排序用户B",
+            RoleIds = new[] { roleId }
+        });
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = "3001",
+            Name = "排序用户A",
+            RoleIds = new[] { roleId }
+        });
+
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>("/api/users?keyword=排序用户&pageSize=20");
+
+        list!.Data!.Items.Select(x => x.EmployeeNo).Should().Equal("3001", "3002");
+    }
+
+    [Fact]
     public async Task Create_user_without_password_uses_default_123456()
     {
         await Login();
@@ -83,6 +109,193 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
         login.Code.Should().Be(0);
         login.Data!.Token.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task User_import_template_can_be_downloaded()
+    {
+        await Login();
+
+        var response = await _client.GetAsync("/api/users/import/template");
+
+        response.EnsureSuccessStatusCode();
+        response.Content.Headers.ContentType!.MediaType.Should()
+            .Be("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        (await response.Content.ReadAsByteArrayAsync()).Length.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task User_import_template_preview_is_valid()
+    {
+        await Login();
+        var response = await _client.GetAsync("/api/users/import/template");
+        var file = await response.Content.ReadAsByteArrayAsync();
+
+        var preview = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import/validate", file);
+
+        preview.Code.Should().Be(0);
+        preview.Data!.Rows.Should().ContainSingle();
+        preview.Data.FailedCount.Should().Be(0);
+        preview.Data.Rows.Single().RoleName.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task User_import_creates_users_by_role_name()
+    {
+        await Login();
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("导入角色"),
+            IsActive = true
+        });
+        var employeeNo1 = Unique("u");
+        var employeeNo2 = Unique("u");
+        var file = BuildXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "角色名称" },
+            new[] { employeeNo1, "导入用户1", $"{employeeNo1}@example.local", role.Data!.Name },
+            new[] { employeeNo2, "导入用户2", "", role.Data.Name }
+        });
+
+        var imported = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import", file);
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            $"/api/users?keyword={employeeNo1[..Math.Min(employeeNo1.Length, 12)]}&pageSize=100");
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo = employeeNo1,
+            password = "123456"
+        });
+
+        imported.Code.Should().Be(0);
+        imported.Data!.SuccessCount.Should().Be(2);
+        imported.Data.FailedCount.Should().Be(0);
+        list!.Data!.Items.Should().Contain(x =>
+            x.EmployeeNo == employeeNo1 &&
+            x.Name == "导入用户1" &&
+            x.Email == $"{employeeNo1}@example.local" &&
+            x.RoleNames.Contains(role.Data.Name));
+        login.Code.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task User_import_validate_previews_rows_without_creating_users()
+    {
+        await Login();
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("导入预览角色"),
+            IsActive = true
+        });
+        var employeeNo = Unique("u");
+        var file = BuildXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "角色名称" },
+            new[] { employeeNo, "预览用户", $"{employeeNo}@example.local", role.Data!.Name }
+        });
+
+        var preview = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import/validate", file);
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            $"/api/users?keyword={employeeNo}");
+
+        preview.Code.Should().Be(0);
+        preview.Data!.SuccessCount.Should().Be(1);
+        preview.Data.FailedCount.Should().Be(0);
+        preview.Data.Rows.Should().ContainSingle(x =>
+            x.EmployeeNo == employeeNo &&
+            x.Name == "预览用户" &&
+            x.RoleName == role.Data.Name &&
+            x.IsValid);
+        list!.Data!.Items.Should().NotContain(x => x.EmployeeNo == employeeNo);
+    }
+
+    [Fact]
+    public async Task User_import_validate_reads_excel_shared_strings()
+    {
+        await Login();
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("共享字符串角色"),
+            IsActive = true
+        });
+        var employeeNo = Unique("u");
+        var file = BuildSharedStringXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "角色名称" },
+            new[] { employeeNo, "共享字符串用户", $"{employeeNo}@example.local", role.Data!.Name }
+        });
+
+        var preview = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import/validate", file);
+
+        preview.Code.Should().Be(0);
+        preview.Data!.FailedCount.Should().Be(0);
+        preview.Data.Rows.Should().ContainSingle(x =>
+            x.EmployeeNo == employeeNo &&
+            x.Name == "共享字符串用户" &&
+            x.Email == $"{employeeNo}@example.local" &&
+            x.RoleName == role.Data.Name &&
+            x.IsValid);
+    }
+
+    [Fact]
+    public async Task User_import_validate_keeps_role_name_when_optional_email_cell_is_blank()
+    {
+        await Login();
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("空邮箱角色"),
+            IsActive = true
+        });
+        var employeeNo = Unique("u");
+        var file = BuildSharedStringXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "角色名称" },
+            new[] { employeeNo, "空邮箱用户", "", role.Data!.Name }
+        });
+
+        var preview = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import/validate", file);
+
+        preview.Code.Should().Be(0);
+        preview.Data!.FailedCount.Should().Be(0);
+        preview.Data.Rows.Should().ContainSingle(x =>
+            x.EmployeeNo == employeeNo &&
+            x.Name == "空邮箱用户" &&
+            x.Email == null &&
+            x.RoleName == role.Data.Name &&
+            x.IsValid);
+    }
+
+    [Fact]
+    public async Task User_import_rejects_invalid_rows_and_does_not_partially_import()
+    {
+        await Login();
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("批量导入角色"),
+            IsActive = true
+        });
+        var validEmployeeNo = Unique("u");
+        var invalidEmployeeNo = Unique("u");
+        var file = BuildXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "角色名称" },
+            new[] { validEmployeeNo, "有效用户", "", role.Data!.Name },
+            new[] { invalidEmployeeNo, "无效用户", "", "不存在角色" }
+        });
+
+        var imported = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import", file);
+        var validList = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            $"/api/users?keyword={validEmployeeNo}");
+
+        imported.Code.Should().Be(4001);
+        imported.Data!.SuccessCount.Should().Be(0);
+        imported.Data.FailedCount.Should().Be(1);
+        imported.Data.Rows.Should().Contain(x => x.Row == 3 && !x.IsValid && x.Error.Contains("角色名称不存在"));
+        validList!.Data!.Items.Should().NotContain(x => x.EmployeeNo == validEmployeeNo);
     }
 
     [Fact]
@@ -528,6 +741,148 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Delete_user_with_business_references_is_blocked()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "资产保管人",
+            RoleIds = new[] { roleId }
+        });
+        var category = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            CodeSeg = Unique("CAT")
+        });
+        await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "占用保管人资产",
+            CategoryId = category.Data!.Id,
+            CustodianId = user.Data!.Id
+        });
+
+        var deleted = await Delete<ApiResult<object?>>($"/api/users/{user.Data.Id}");
+
+        deleted.Code.Should().Be(4094);
+        deleted.Message.Should().Contain("用户已被资产保管人使用");
+    }
+
+    [Fact]
+    public async Task Delete_role_with_users_is_blocked()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "占用角色用户",
+            RoleIds = new[] { roleId }
+        });
+
+        var deleted = await Delete<ApiResult<object?>>($"/api/roles/{roleId}");
+
+        deleted.Code.Should().Be(4094);
+        deleted.Message.Should().Contain("角色已被用户使用");
+    }
+
+    [Fact]
+    public async Task Delete_permission_with_role_or_menu_references_is_blocked()
+    {
+        await Login();
+        var permission = await Post<ApiResult<PermissionDto>>("/api/permissions", new PermissionDto
+        {
+            Code = Unique("perm:delete"),
+            Name = "待保护权限",
+            Module = "test"
+        });
+        var roleId = await CreateRoleId();
+        await Put<ApiResult<RoleDto>>($"/api/roles/{roleId}/permissions", new
+        {
+            permissionIds = new[] { permission.Data!.Id }
+        });
+
+        var roleReferenced = await Delete<ApiResult<object?>>($"/api/permissions/{permission.Data.Id}");
+
+        roleReferenced.Code.Should().Be(4094);
+        roleReferenced.Message.Should().Contain("权限已被角色使用");
+
+        var menuPermission = await Post<ApiResult<PermissionDto>>("/api/permissions", new PermissionDto
+        {
+            Code = Unique("perm:menu"),
+            Name = "菜单引用权限",
+            Module = "test"
+        });
+        await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = Unique("PermMenu"),
+            Title = "权限菜单",
+            Path = "/test/permission-menu",
+            Component = "/test/index",
+            Sort = 120,
+            Type = "menu",
+            PermissionCode = menuPermission.Data!.Code
+        });
+
+        var menuReferenced = await Delete<ApiResult<object?>>($"/api/permissions/{menuPermission.Data.Id}");
+
+        menuReferenced.Code.Should().Be(4094);
+        menuReferenced.Message.Should().Contain("权限已被菜单使用");
+    }
+
+    [Fact]
+    public async Task Delete_menu_with_children_or_role_references_is_blocked()
+    {
+        await Login();
+        var parent = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = Unique("ParentMenu"),
+            Title = "父菜单",
+            Path = "/test/parent",
+            Component = "BasicLayout",
+            Sort = 130,
+            Type = "menu"
+        });
+        await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            ParentId = parent.Data!.Id,
+            Name = Unique("ChildMenu"),
+            Title = "子菜单",
+            Path = "/test/parent/child",
+            Component = "/test/child",
+            Sort = 131,
+            Type = "menu"
+        });
+
+        var parentDeleted = await Delete<ApiResult<object?>>($"/api/menus/{parent.Data.Id}");
+
+        parentDeleted.Code.Should().Be(4094);
+        parentDeleted.Message.Should().Contain("请先删除子菜单");
+
+        var roleMenu = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = Unique("RoleMenu"),
+            Title = "角色菜单",
+            Path = "/test/role-menu",
+            Component = "/test/role-menu",
+            Sort = 140,
+            Type = "menu"
+        });
+        var roleId = await CreateRoleId();
+        await Put<ApiResult<RoleDto>>($"/api/roles/{roleId}/menus", new
+        {
+            menuIds = new[] { roleMenu.Data!.Id }
+        });
+
+        var roleReferenced = await Delete<ApiResult<object?>>($"/api/menus/{roleMenu.Data.Id}");
+
+        roleReferenced.Code.Should().Be(4094);
+        roleReferenced.Message.Should().Contain("菜单已被角色使用");
+    }
+
+    [Fact]
     public async Task Delete_last_admin_user_is_blocked()
     {
         await Login();
@@ -569,6 +924,15 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }
 
+    private async Task<T> PostFile<T>(string url, byte[] bytes)
+    {
+        using var form = new MultipartFormDataContent();
+        form.Add(new ByteArrayContent(bytes), "file", "users.xlsx");
+        var res = await _client.PostAsync(url, form);
+        res.EnsureSuccessStatusCode();
+        return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}";
 
@@ -581,5 +945,134 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             IsActive = true
         });
         return role.Data!.Id;
+    }
+
+    private static byte[] BuildXlsx(IEnumerable<string[]> rows)
+    {
+        using var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WriteEntry(zip, "[Content_Types].xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                  <Default Extension="xml" ContentType="application/xml"/>
+                  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+                  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                </Types>
+                """);
+            WriteEntry(zip, "_rels/.rels", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+                </Relationships>
+                """);
+            WriteEntry(zip, "xl/workbook.xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                  <sheets><sheet name="Users" sheetId="1" r:id="rId1"/></sheets>
+                </workbook>
+                """);
+            WriteEntry(zip, "xl/_rels/workbook.xml.rels", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                </Relationships>
+                """);
+            WriteEntry(zip, "xl/worksheets/sheet1.xml", BuildSheetXml(rows));
+        }
+
+        return ms.ToArray();
+    }
+
+    private static byte[] BuildSharedStringXlsx(IEnumerable<string[]> sourceRows)
+    {
+        var rows = sourceRows.Select(row => row.ToArray()).ToArray();
+        var sharedStrings = rows.SelectMany(row => row).Distinct().ToArray();
+        var sharedStringIndexes = sharedStrings
+            .Select((value, index) => new { value, index })
+            .ToDictionary(x => x.value, x => x.index);
+
+        using var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WriteEntry(zip, "[Content_Types].xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                  <Default Extension="xml" ContentType="application/xml"/>
+                  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+                  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+                  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                </Types>
+                """);
+            WriteEntry(zip, "_rels/.rels", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+                </Relationships>
+                """);
+            WriteEntry(zip, "xl/workbook.xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                  <sheets><sheet name="Users" sheetId="1" r:id="rId1"/></sheets>
+                </workbook>
+                """);
+            WriteEntry(zip, "xl/_rels/workbook.xml.rels", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+                </Relationships>
+                """);
+            WriteEntry(zip, "xl/sharedStrings.xml", BuildSharedStringsXml(sharedStrings));
+            WriteEntry(zip, "xl/worksheets/sheet1.xml", BuildSharedStringSheetXml(rows, sharedStringIndexes));
+        }
+
+        return ms.ToArray();
+    }
+
+    private static string BuildSheetXml(IEnumerable<string[]> rows)
+    {
+        const string ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        var sheetRows = rows.Select((cells, rowIndex) =>
+            $"""<row r="{rowIndex + 1}">{string.Concat(cells.Select((cell, colIndex) => $"""<c r="{ColumnName(colIndex + 1)}{rowIndex + 1}" t="inlineStr"><is><t>{System.Security.SecurityElement.Escape(cell)}</t></is></c>"""))}</row>""");
+        return $"""<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="{ns}"><sheetData>{string.Concat(sheetRows)}</sheetData></worksheet>""";
+    }
+
+    private static string BuildSharedStringsXml(string[] values)
+    {
+        const string ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        var items = string.Concat(values.Select(value => $"""<si><t>{System.Security.SecurityElement.Escape(value)}</t></si>"""));
+        return $"""<?xml version="1.0" encoding="UTF-8"?><sst xmlns="{ns}" count="{values.Length}" uniqueCount="{values.Length}">{items}</sst>""";
+    }
+
+    private static string BuildSharedStringSheetXml(string[][] rows, IReadOnlyDictionary<string, int> sharedStringIndexes)
+    {
+        const string ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        var sheetRows = rows.Select((cells, rowIndex) =>
+            $"""<row r="{rowIndex + 1}">{string.Concat(cells.Select((cell, colIndex) => new { cell, colIndex }).Where(x => x.cell != "").Select(x => $"""<c r="{ColumnName(x.colIndex + 1)}{rowIndex + 1}" t="s"><v>{sharedStringIndexes[x.cell]}</v></c>"""))}</row>""");
+        return $"""<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="{ns}"><sheetData>{string.Concat(sheetRows)}</sheetData></worksheet>""";
+    }
+
+    private static void WriteEntry(ZipArchive zip, string path, string content)
+    {
+        var entry = zip.CreateEntry(path);
+        using var stream = entry.Open();
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+        writer.Write(content);
+    }
+
+    private static string ColumnName(int index)
+    {
+        var name = "";
+        while (index > 0)
+        {
+            index--;
+            name = (char)('A' + index % 26) + name;
+            index /= 26;
+        }
+
+        return name;
     }
 }

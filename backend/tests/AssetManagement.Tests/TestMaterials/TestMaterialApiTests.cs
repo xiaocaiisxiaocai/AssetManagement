@@ -53,14 +53,15 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var project = await CreateProject("停用部门料件项目");
+        var manager = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "停用部门负责人");
         var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = manager.Id,
             Name = "已停用料件部门"
         });
         await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{department.Data!.Id}", new UpdateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = manager.Id,
             Name = department.Data.Name,
             IsActive = false
         });
@@ -206,7 +207,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     public async Task Project_owner_can_create_and_edit_material_without_material_permissions()
     {
         await Login();
-        var owner = await CreateUserInDb("1904", "普通负责人");
+        var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "普通负责人");
         var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
             Code = NewProjectCode(),
@@ -352,11 +353,65 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_option_used_by_project_cannot_be_deleted()
+    {
+        await Login();
+        var option = await Post<ApiResult<TestProjectOptionDto>>("/api/test-projects/options", new SaveTestProjectOptionRequest
+        {
+            Kind = "project_type",
+            Code = $"protect_{Guid.NewGuid():N}"[..20],
+            Label = "被项目引用配置",
+            Sort = 10,
+            IsActive = true
+        });
+        await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Code = NewProjectCode(),
+            Name = "引用项目配置项",
+            ProjectTypeCode = option.Data!.Code
+        });
+
+        var deleted = await _client.DeleteAsync($"/api/test-projects/options/{option.Data.Id}");
+        var body = await deleted.Content.ReadFromJsonAsync<ApiResult<object?>>();
+
+        body!.Code.Should().Be(4094);
+        body.Message.Should().Contain("配置项已被项目使用");
+    }
+
+    [Fact]
+    public async Task Material_with_flow_history_cannot_be_purged()
+    {
+        await Login();
+        var project = await CreateProject("有流转历史料件项目");
+        var material = await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "有流转历史料件",
+            ProjectId = project.Id
+        });
+        var transferee = await CreateUserInDb($"tf{Guid.NewGuid():N}"[..12], "流转接收人");
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Data!.Id,
+            TransfereeId = transferee.Id,
+            Reason = "保留历史"
+        });
+        await Post<ApiResult<MaterialFlowDto>>($"/api/material-flows/{flow.Data!.Id}/reject",
+            new MaterialRejectRequest { NodeId = "dept_manager", Reason = "结束流程" });
+        await _client.DeleteAsync($"/api/test-materials/{material.Data.Id}");
+
+        var purged = await _client.DeleteAsync($"/api/test-materials/{material.Data.Id}/purge");
+        var body = await purged.Content.ReadFromJsonAsync<ApiResult<object?>>();
+
+        body!.Code.Should().Be(4094);
+        body.Message.Should().Contain("料件存在流转历史");
+    }
+
+    [Fact]
     public async Task Only_project_owner_or_admin_can_write_followup()
     {
         await Login();
-        var manager = await CreateManagerInDb("1902", "部门管理员");
-        var outsider = await CreateUserInDb("1903", "无关员工");
+        var manager = await CreateManagerInDb($"u{Guid.NewGuid():N}"[..12], "部门管理员");
+        var outsider = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "无关员工");
         var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
             Code = NewProjectCode(),
@@ -394,7 +449,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     public async Task Followup_is_available_only_when_project_is_landing()
     {
         await Login();
-        var owner = await CreateUserInDb("1905", "落地负责人");
+        var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "落地负责人");
         var planned = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
             Code = NewProjectCode(),

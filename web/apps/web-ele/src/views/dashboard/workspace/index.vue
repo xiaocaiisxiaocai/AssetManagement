@@ -324,8 +324,8 @@ onMounted(loadData);
 
 .workspace-panel :deep(.el-card__header) {
   padding: 16px 20px;
-  border-bottom: 1px solid var(--asset-page-border);
-  background: var(--asset-page-surface-soft);
+  border-bottom: 1px solid var(--asset-page-border-strong);
+  background: var(--asset-page-panel-header);
   flex-shrink: 0;
 }
 
@@ -343,7 +343,11 @@ onMounted(loadData);
   font-size: 16px;
   font-weight: 600;
   line-height: 24px;
-  color: var(--asset-page-text);
+  color: var(--asset-page-panel-header-text);
+}
+
+.workspace-card-header :deep(.el-button.is-link) {
+  color: var(--asset-page-panel-header-text);
 }
 
 /* 侧边栏布局 */
@@ -364,7 +368,7 @@ onMounted(loadData);
   padding: 16px;
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: var(--asset-page-surface-soft);
+  background: var(--asset-page-surface);
 }
 
 .workspace-summary-item span {
@@ -454,8 +458,8 @@ onMounted(loadData);
 }
 
 .workspace-table :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-surface-soft);
-  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-panel-header-solid);
+  color: var(--asset-page-panel-header-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;

@@ -175,6 +175,16 @@ public class TestProjectService : ITestProjectService
     {
         var option = await _db.TestProjectOptions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "项目配置项不存在");
+        if (option.Kind == OptionKindProjectType &&
+            await _db.TestProjects.AnyAsync(x => x.ProjectTypeCode == option.Code))
+        {
+            throw new BizException(4094, "配置项已被项目使用，不能删除");
+        }
+        if (option.Kind == OptionKindProgress &&
+            await _db.TestProjects.AnyAsync(x => x.ProgressCode == option.Code))
+        {
+            throw new BizException(4094, "配置项已被项目使用，不能删除");
+        }
         _db.TestProjectOptions.Remove(option);
         await _db.SaveChangesAsync();
     }

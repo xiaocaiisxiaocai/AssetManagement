@@ -62,6 +62,11 @@ function createRequestClient(baseURL: string) {
       const accessStore = useAccessStore();
       config.headers.Authorization = formatToken(accessStore.accessToken);
       config.headers['Accept-Language'] = preferences.app.locale;
+      // FormData 必须交给浏览器/axios 自动生成 multipart boundary，
+      // 否则会按默认 JSON Content-Type 发出，后端无法绑定 IFormFile。
+      if (config.data instanceof FormData) {
+        delete config.headers['Content-Type'];
+      }
       return config;
     },
   });
@@ -82,6 +87,10 @@ function createRequestClient(baseURL: string) {
         return;
       }
       if (status == HttpStatusCode.Ok) {
+        // 导入类接口需要拿到后端返回的行级错误明细，由调用方显式跳过业务错误拦截。
+        if ((config as { skipBusinessError?: boolean }).skipBusinessError) {
+          return data;
+        }
         if (data?.code && data.code !== 0) {
           ElMessage.error(data.message || '请求失败');
           throw new Error(data.message || '请求失败');

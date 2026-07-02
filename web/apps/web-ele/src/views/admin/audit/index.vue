@@ -265,7 +265,6 @@ onMounted(async () => {
       <div class="page-header">
         <div>
           <h2 class="page-title">审计日志</h2>
-          <p class="page-subtitle">系统操作记录查询与追踪</p>
         </div>
         <div class="header-actions">
           <ElButton v-if="canCleanupAudit" type="warning" @click="openCleanupDialog">清理日志</ElButton>

@@ -10,6 +10,9 @@ public interface IRbacService
     Task DeleteUserAsync(int id);
     Task ResetPasswordAsync(int id);
     Task ToggleUserStatusAsync(int id, bool? isActive = null);
+    Task<byte[]> BuildUserImportTemplateAsync();
+    Task<UserImportResultDto> ValidateUserImportAsync(Stream file);
+    Task<UserImportResultDto> ImportUsersAsync(Stream file);
 
     Task<PagedResult<RoleDto>> GetRolesAsync(int page, int pageSize);
     Task<RoleDto> GetRoleAsync(int id);

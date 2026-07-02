@@ -41,6 +41,24 @@ public record SetUserStatusRequest
     public bool? IsActive { get; init; }
 }
 
+public record UserImportRowDto
+{
+    public int Row { get; init; }
+    public string EmployeeNo { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string? Email { get; init; }
+    public string RoleName { get; init; } = "";
+    public bool IsValid { get; init; }
+    public string Error { get; init; } = "";
+}
+
+public record UserImportResultDto
+{
+    public int SuccessCount { get; init; }
+    public int FailedCount { get; init; }
+    public List<UserImportRowDto> Rows { get; init; } = new();
+}
+
 public record RoleDto
 {
     public int Id { get; init; }

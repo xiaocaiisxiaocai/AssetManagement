@@ -3,6 +3,7 @@ using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Infrastructure.Persistence;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -11,6 +12,21 @@ namespace AssetManagement.Infrastructure.BaseData;
 public class BaseDataService : IBaseDataService
 {
     private const int MaxCategoryDepth = 3;
+    private const int MaxRetentionDays = 3650;
+    private const int MaxRetentionMonths = 120;
+
+    private static readonly HashSet<string> BooleanSettingKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "audit_cleanup_enabled",
+        "database_backup_enabled",
+        "material.transfer.approval.enabled"
+    };
+
+    private static readonly HashSet<string> TimeSettingKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "audit_cleanup_time",
+        "database_backup_time"
+    };
 
     private readonly AppDbContext _db;
     private readonly IMemoryCache _cache;
@@ -123,6 +139,18 @@ public class BaseDataService : IBaseDataService
         if (await _db.Departments.AnyAsync(x => x.ParentId == id))
         {
             throw new BizException(4090, "请先删除子部门");
+        }
+        if (await _db.Users.AnyAsync(x => x.DepartmentId == id))
+        {
+            throw new BizException(4094, "部门已被用户使用，不能删除");
+        }
+        if (await _db.Assets.AnyAsync(x => x.DepartmentId == id))
+        {
+            throw new BizException(4094, "部门已被资产使用，不能删除");
+        }
+        if (await _db.TestMaterials.AnyAsync(x => x.DepartmentId == id))
+        {
+            throw new BizException(4094, "部门已被测试料件使用，不能删除");
         }
 
         var department = await _db.Departments.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
@@ -327,6 +355,14 @@ public class BaseDataService : IBaseDataService
     {
         var location = await _db.Locations.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4047, "位置不存在");
+        if (await _db.Assets.AnyAsync(x => x.LocationId == id))
+        {
+            throw new BizException(4094, "位置已被资产使用，不能删除");
+        }
+        if (await _db.TestMaterials.AnyAsync(x => x.LocationId == id))
+        {
+            throw new BizException(4094, "位置已被测试料件使用，不能删除");
+        }
         _db.Locations.Remove(location);
         await _db.SaveChangesAsync();
     }
@@ -353,22 +389,93 @@ public class BaseDataService : IBaseDataService
 
     public async Task<List<SystemSettingDto>> SaveSettingsAsync(IEnumerable<SaveSystemSettingRequest> requests)
     {
+        var existingKeys = await _db.SystemSettings
+            .AsNoTracking()
+            .Select(x => x.Key)
+            .ToListAsync();
+        var existingKeySet = existingKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         foreach (var request in requests)
         {
             var key = request.Key.Trim();
-            var setting = await _db.SystemSettings.AsTracking().SingleOrDefaultAsync(x => x.Key == key);
-            if (setting is null)
+            if (!existingKeySet.Contains(key))
             {
-                setting = new SystemSetting { Key = key };
-                _db.SystemSettings.Add(setting);
+                throw new BizException(4001, $"系统参数「{key}」不存在，不能新增");
             }
 
-            setting.Value = request.Value;
-            setting.Description = request.Description;
+            var setting = await _db.SystemSettings.AsTracking().SingleOrDefaultAsync(x => x.Key == key)
+                ?? throw new BizException(4001, $"系统参数「{key}」不存在，不能新增");
+            setting.Value = NormalizeSettingValue(key, request.Value);
         }
 
         await _db.SaveChangesAsync();
         return await GetSettingsAsync();
+    }
+
+    private static string NormalizeSettingValue(string key, string value)
+    {
+        var raw = value?.Trim() ?? string.Empty;
+
+        if (BooleanSettingKeys.Contains(key))
+        {
+            if (!bool.TryParse(raw, out var boolValue))
+            {
+                throw new BizException(4001, $"系统参数「{key}」必须是布尔值 true 或 false");
+            }
+
+            return boolValue ? "true" : "false";
+        }
+
+        if (TimeSettingKeys.Contains(key))
+        {
+            if (!TimeSpan.TryParseExact(raw, @"hh\:mm", CultureInfo.InvariantCulture, out var time))
+            {
+                throw new BizException(4001, $"系统参数「{key}」必须是 HH:mm 格式的时间");
+            }
+
+            return time.ToString(@"hh\:mm", CultureInfo.InvariantCulture);
+        }
+
+        return key switch
+        {
+            "attachment_max_mb" => NormalizeIntSetting(key, raw, 1, 100),
+            "audit_retention_months" => NormalizeIntSetting(key, raw, 1, MaxRetentionMonths),
+            "database_backup_retention_days" => NormalizeIntSetting(key, raw, 1, MaxRetentionDays),
+            "page_size" => NormalizeIntSetting(key, raw, 1, AppConstants.MaxPageSize),
+            "audit_retention_days" => NormalizeAuditRetentionDays(raw),
+            "database_backup_path" => NormalizeRequiredTextSetting(key, raw),
+            _ => raw
+        };
+    }
+
+    private static string NormalizeAuditRetentionDays(string raw)
+    {
+        if (!int.TryParse(raw, out var value) || value is not (7 or 14 or 30))
+        {
+            throw new BizException(4001, "系统参数「audit_retention_days」必须是 7/14/30");
+        }
+
+        return value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string NormalizeIntSetting(string key, string raw, int min, int max)
+    {
+        if (!int.TryParse(raw, out var value) || value < min || value > max)
+        {
+            throw new BizException(4001, $"系统参数「{key}」必须是 {min}-{max} 的整数");
+        }
+
+        return value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string NormalizeRequiredTextSetting(string key, string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            throw new BizException(4001, $"系统参数「{key}」不能为空");
+        }
+
+        return raw;
     }
 
     private static List<DepartmentNodeDto> BuildDepartmentTree(int? parentId, List<Department> departments, Dictionary<int, string> managers)

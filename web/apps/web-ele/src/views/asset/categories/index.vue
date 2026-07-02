@@ -185,7 +185,6 @@ onMounted(loadData);
       <div class="page-header">
         <div>
           <h2 class="page-title">资产分类编码树</h2>
-          <p class="page-subtitle">三级分类体系管理</p>
         </div>
         <div class="flex gap-2">
           <ElButton v-if="categoryActionAccess.canCreate" type="primary" @click="openCreate()">新增顶级分类</ElButton>

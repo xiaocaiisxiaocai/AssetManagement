@@ -26,6 +26,38 @@ public class UserController : ControllerBase
     public async Task<ApiResult<UserDto>> Create(CreateUserRequest request)
         => ApiResult<UserDto>.Ok(await _rbac.CreateUserAsync(request));
 
+    [HttpGet("import/template")]
+    [HasPermission("user:create")]
+    public async Task<FileContentResult> ImportTemplate()
+        => File(
+            await _rbac.BuildUserImportTemplateAsync(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "user-import-template.xlsx");
+
+    [HttpPost("import")]
+    [HasPermission("user:create")]
+    public async Task<ApiResult<UserImportResultDto>> Import(IFormFile file)
+    {
+        await using var stream = file.OpenReadStream();
+        var result = await _rbac.ImportUsersAsync(stream);
+        return result.FailedCount > 0
+            ? new ApiResult<UserImportResultDto>
+            {
+                Code = 4001,
+                Message = "导入数据存在错误，请修正后重新导入",
+                Data = result
+            }
+            : ApiResult<UserImportResultDto>.Ok(result);
+    }
+
+    [HttpPost("import/validate")]
+    [HasPermission("user:create")]
+    public async Task<ApiResult<UserImportResultDto>> ValidateImport(IFormFile file)
+    {
+        await using var stream = file.OpenReadStream();
+        return ApiResult<UserImportResultDto>.Ok(await _rbac.ValidateUserImportAsync(stream));
+    }
+
     [HttpPut("{id:int}")]
     [HasPermission("user:edit")]
     public async Task<ApiResult<UserDto>> Update(int id, UpdateUserRequest request)

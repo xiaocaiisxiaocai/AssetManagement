@@ -18,6 +18,8 @@ import {
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { buildRoleActionAccess } from '#/views/permissions/action-access';
 
+import { mergeMenuTreeSelection } from './menu-tree-selection';
+
 import {
   ElButton,
   ElCheckbox,
@@ -426,13 +428,15 @@ async function openMenuDialog(row: RoleDto) {
   menuForm.selectedMenus = [...(row.menuIds ?? [])];
   menuDialogVisible.value = true;
   await nextTick();
-  menuTreeRef.value?.setCheckedKeys(menuForm.selectedMenus, false);
+  menuTreeRef.value?.setCheckedKeys(leafMenuIds(menuForm.selectedMenus), false);
 }
 
 async function saveMenus() {
   saving.value = true;
   try {
-    menuForm.selectedMenus = menuTreeRef.value?.getCheckedKeys(false) as number[] ?? [];
+    const checkedKeys = menuTreeRef.value?.getCheckedKeys(false) as number[] ?? [];
+    const halfCheckedKeys = menuTreeRef.value?.getHalfCheckedKeys() as number[] ?? [];
+    menuForm.selectedMenus = mergeMenuTreeSelection(checkedKeys, halfCheckedKeys);
     await setRoleMenusApi(menuForm.roleId, menuForm.selectedMenus);
     ElMessage.success('菜单授权成功');
     menuDialogVisible.value = false;
@@ -440,6 +444,17 @@ async function saveMenus() {
   } finally {
     saving.value = false;
   }
+}
+
+function leafMenuIds(selectedIds: number[]) {
+  const selected = new Set(selectedIds);
+  return flattenMenus(menus.value)
+    .filter((menu) => selected.has(menu.id) && !(menu.children?.length))
+    .map((menu) => menu.id);
+}
+
+function flattenMenus(items: MenuDto[]): MenuDto[] {
+  return items.flatMap((item) => [item, ...flattenMenus(item.children ?? [])]);
 }
 
 async function remove(row: RoleDto) {
@@ -476,7 +491,6 @@ onMounted(async () => {
       <div class="role-header">
         <div>
           <h2 class="role-title">角色管理</h2>
-          <p class="role-subtitle">角色权限与菜单授权配置</p>
         </div>
         <ElButton v-if="roleActionAccess.canCreate" type="primary" @click="openCreate">新增角色</ElButton>
       </div>
@@ -656,7 +670,6 @@ onMounted(async () => {
           ref="menuTreeRef"
           :data="menus"
           :props="{ children: 'children', label: 'title' }"
-          check-strictly
           show-checkbox
           node-key="id"
         />
@@ -685,26 +698,19 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border: 1px solid var(--asset-page-border);
+  border: 1px solid var(--asset-page-border-strong);
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
 .role-title {
-  margin: 0 0 4px 0;
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
   color: var(--asset-page-text);
-  letter-spacing: -0.02em;
-}
-
-.role-subtitle {
-  margin: 0;
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--asset-page-muted);
+  letter-spacing: 0;
 }
 
 /* ========== 筛选面板 ========== */

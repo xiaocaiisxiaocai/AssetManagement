@@ -47,14 +47,16 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var category = await CreateCategory();
+        var parentManager = await CreateUser();
+        var childManager = await CreateUser();
         var parent = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = parentManager.Id,
             Name = "制造中心"
         });
         var child = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
+            ManagerId = childManager.Id,
             ParentId = parent.Data!.Id,
             Name = "装配组"
         });
@@ -313,6 +315,32 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         detail.Data.RecentLogs.Should().Contain(l => l.ActionType == "PUT" && l.TargetId == id.ToString());
     }
 
+    [Fact]
+    public async Task Asset_with_flow_history_cannot_be_purged()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "有流转历史资产",
+            CategoryId = category.Id,
+        });
+        await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = created.Data!.Id,
+            Reason = "保留历史",
+            ReturnDate = "2026-06-30"
+        });
+        await _client.DeleteAsync($"/api/assets/{created.Data.Id}");
+
+        var purged = await _client.DeleteAsync($"/api/assets/{created.Data.Id}/purge");
+        var body = await purged.Content.ReadFromJsonAsync<ApiResult<object?>>();
+
+        body!.Code.Should().Be(4094);
+        body.Message.Should().Contain("资产存在流转历史");
+    }
+
     private async Task<CategoryNodeDto> CreateCategory()
     {
         var rootSeg = Unique("CAT");
@@ -350,6 +378,19 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var res = await _client.PutAsJsonAsync(url, body);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<AssetManagement.Application.Rbac.UserDto> CreateUser()
+    {
+        var role = await _client.GetFromJsonAsync<ApiResult<AssetManagement.Application.Common.PagedResult<AssetManagement.Application.Rbac.RoleDto>>>("/api/roles?pageSize=100");
+        var employeeRole = role!.Data!.Items.Single(x => x.Code == "employee");
+        var user = await Post<ApiResult<AssetManagement.Application.Rbac.UserDto>>("/api/users", new AssetManagement.Application.Rbac.CreateUserRequest
+        {
+            EmployeeNo = Unique("u"),
+            Name = "资产测试用户",
+            RoleIds = new[] { employeeRole.Id }
+        });
+        return user.Data!;
     }
 
     private async Task<T> PostFile<T>(string url, byte[] bytes)

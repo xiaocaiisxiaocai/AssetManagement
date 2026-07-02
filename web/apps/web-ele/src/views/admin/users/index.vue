@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import type { UserDto } from '#/api/user';
+import type { UserDto, UserImportRow } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -8,10 +8,13 @@ import { useAccess } from '@vben/access';
 import {
   createUserApi,
   deleteUserApi,
+  downloadUserImportTemplateApi,
   getUserListApi,
+  importUsersApi,
   resetUserPasswordApi,
   toggleUserStatusApi,
   updateUserApi,
+  validateUserImportApi,
 } from '#/api/user';
 import { getRoleListApi } from '#/api/role';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
@@ -40,11 +43,16 @@ const userActionAccess = computed(() => buildUserActionAccess(hasAccessByCodes))
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
+const importDialogVisible = ref(false);
+const importing = ref(false);
 const editingId = ref<null | number>(null);
 const users = ref<UserDto[]>([]);
 const roles = ref<any[]>([]);
 const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
+const importFileInput = ref<HTMLInputElement | null>(null);
+const selectedImportFile = ref<File | null>(null);
+const importRows = ref<UserImportRow[]>([]);
 
 const query = reactive({
   keyword: '',
@@ -167,6 +175,81 @@ async function remove(row: UserDto) {
   await loadData();
 }
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadImportTemplate() {
+  const response = await downloadUserImportTemplateApi();
+  downloadBlob(response.data, 'user-import-template.xlsx');
+}
+
+function openImport() {
+  selectedImportFile.value = null;
+  importRows.value = [];
+  if (importFileInput.value) {
+    importFileInput.value.value = '';
+  }
+  importDialogVisible.value = true;
+}
+
+function chooseImportFile() {
+  if (importFileInput.value) {
+    importFileInput.value.value = '';
+    importFileInput.value.click();
+  }
+}
+
+async function onImportFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  selectedImportFile.value = input.files?.[0] ?? null;
+  importRows.value = [];
+  if (!selectedImportFile.value) {
+    return;
+  }
+
+  importing.value = true;
+  try {
+    const result = await validateUserImportApi(selectedImportFile.value);
+    importRows.value = result.rows;
+    if (result.failedCount > 0) {
+      ElMessage.warning(`预览发现 ${result.failedCount} 条错误，请修正后重新选择文件`);
+    } else {
+      ElMessage.success(`预览通过 ${result.successCount} 条`);
+    }
+  } finally {
+    importing.value = false;
+  }
+}
+
+async function confirmImportUsers() {
+  if (!selectedImportFile.value) {
+    ElMessage.warning('请先选择 Excel 文件');
+    return;
+  }
+
+  importing.value = true;
+  try {
+    const result = await importUsersApi(selectedImportFile.value);
+    importRows.value = result.rows;
+    if (result.failedCount > 0) {
+      ElMessage.warning(`导入失败 ${result.failedCount} 条，请修正后重新导入`);
+      return;
+    }
+    ElMessage.success(`导入成功 ${result.successCount} 条`);
+    importDialogVisible.value = false;
+    query.page = 1;
+    await loadData();
+  } finally {
+    importing.value = false;
+  }
+}
+
 function search() {
   query.page = 1;
   void loadData();
@@ -192,9 +275,11 @@ onMounted(async () => {
       <div class="user-header">
         <div>
           <h2 class="user-title">用户管理</h2>
-          <p class="user-subtitle">系统用户账号与权限配置</p>
         </div>
-        <ElButton v-if="userActionAccess.canCreate" type="primary" @click="openCreate">新增用户</ElButton>
+        <div class="user-header-actions">
+          <ElButton v-if="userActionAccess.canCreate" @click="openImport">批量导入</ElButton>
+          <ElButton v-if="userActionAccess.canCreate" type="primary" @click="openCreate">新增用户</ElButton>
+        </div>
       </div>
 
       <div class="filter-panel">
@@ -326,6 +411,46 @@ onMounted(async () => {
           <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
         </template>
       </ElDialog>
+
+      <ElDialog v-model="importDialogVisible" title="批量导入用户" width="920px">
+        <div class="user-import-toolbar">
+          <ElButton @click="downloadImportTemplate">下载模板</ElButton>
+          <input
+            ref="importFileInput"
+            accept=".xlsx"
+            class="user-import-file-input"
+            type="file"
+            @change="onImportFileChange"
+          />
+          <ElButton @click="chooseImportFile">选择文件</ElButton>
+          <span class="user-import-file-name">
+            {{ selectedImportFile?.name || '未选择文件' }}
+          </span>
+          <ElButton
+            :disabled="!importRows.length || importRows.some((row) => !row.isValid)"
+            :loading="importing"
+            type="primary"
+            @click="confirmImportUsers"
+          >
+            确认导入
+          </ElButton>
+        </div>
+        <ElTable :data="importRows" border max-height="360">
+          <ElTableColumn label="行号" prop="row" width="80" />
+          <ElTableColumn label="工号" prop="employeeNo" min-width="120" />
+          <ElTableColumn label="姓名" prop="name" min-width="120" />
+          <ElTableColumn label="邮箱" prop="email" min-width="180" />
+          <ElTableColumn label="角色名称" prop="roleName" min-width="140" />
+          <ElTableColumn label="状态" width="90">
+            <template #default="{ row }">
+              <ElTag :type="row.isValid ? 'success' : 'danger'">
+                {{ row.isValid ? '有效' : '无效' }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="错误" min-width="220" prop="error" />
+        </ElTable>
+      </ElDialog>
     </div>
   </re-page>
 </template>
@@ -346,26 +471,25 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border: 1px solid var(--asset-page-border);
+  border: 1px solid var(--asset-page-border-strong);
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
+  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
 .user-title {
-  margin: 0 0 4px 0;
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
   color: var(--asset-page-text);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
-.user-subtitle {
-  margin: 0;
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--asset-page-muted);
+.user-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ========== 筛选面板 ========== */
@@ -474,6 +598,29 @@ onMounted(async () => {
 .user-edit-form :deep(.el-form-item__label) {
   align-items: center;
   line-height: var(--el-component-size);
+}
+
+.user-import-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.user-import-file-input {
+  display: none;
+}
+
+.user-import-file-name {
+  min-width: 180px;
+  max-width: 320px;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 32px;
+  color: var(--asset-page-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :deep(.el-input__inner) {

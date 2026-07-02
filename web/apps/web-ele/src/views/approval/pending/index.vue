@@ -18,6 +18,8 @@ import {
   ElDialog,
   ElDescriptions,
   ElDescriptionsItem,
+  ElForm,
+  ElFormItem,
   ElInput,
   ElOption,
   ElPagination,
@@ -45,13 +47,39 @@ const opinion = ref('同意');
 const addSignUser = ref('');
 const selectedNodeId = ref('');
 const query = reactive({
+  keyword: '',
+  bizType: '',
   page: 1,
   pageSize: 20,
 });
 
+const filteredFlows = computed(() => {
+  const keyword = query.keyword.trim().toLowerCase();
+
+  return flows.value.filter((flow) => {
+    const matchBizType = !query.bizType || flow.bizType === query.bizType;
+    const currentNodeNames = flow.currentNodeIds
+      .map((nodeId) => flow.bpmnTokens[nodeId]?.nodeName || '')
+      .join(' ');
+    const matchKeyword = !keyword
+      || [
+        flow.flowNo,
+        flow.assetNo,
+        flow.assetName,
+        flow.applicant,
+        flow.applicantDept,
+        currentNodeNames,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword));
+
+    return matchBizType && matchKeyword;
+  });
+});
+
 const pagedFlows = computed(() => {
   const start = (query.page - 1) * query.pageSize;
-  return flows.value.slice(start, start + query.pageSize);
+  return filteredFlows.value.slice(start, start + query.pageSize);
 });
 
 async function loadData() {
@@ -237,6 +265,16 @@ function onPageSizeChange() {
   query.page = 1;
 }
 
+function search() {
+  query.page = 1;
+}
+
+function resetQuery() {
+  query.keyword = '';
+  query.bizType = '';
+  query.page = 1;
+}
+
 function getBizTypeLabel(type: string) {
   const map: Record<string, string> = {
     borrow: '借用',
@@ -256,12 +294,29 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="pending-page">
-      <div class="pending-header">
-        <div>
-          <h2 class="pending-title">待我审批</h2>
-          <p class="pending-subtitle">需要我审批的待办事项</p>
-        </div>
-        <ElButton type="primary" @click="loadData" :loading="loading">刷新</ElButton>
+      <div class="filter-panel">
+        <ElForm class="filter-form" inline>
+          <ElFormItem label="关键字">
+            <ElInput
+              v-model="query.keyword"
+              clearable
+              placeholder="流程单号/资产/申请人/节点"
+              style="width: 260px"
+              @keyup.enter="search"
+            />
+          </ElFormItem>
+          <ElFormItem label="业务类型">
+            <ElSelect v-model="query.bizType" clearable placeholder="全部类型" style="width: 140px">
+              <ElOption label="借用" value="borrow" />
+              <ElOption label="转让" value="transfer" />
+              <ElOption label="归还" value="return" />
+            </ElSelect>
+          </ElFormItem>
+          <ElFormItem>
+            <ElButton type="primary" @click="search">查询</ElButton>
+            <ElButton @click="resetQuery">重置</ElButton>
+          </ElFormItem>
+        </ElForm>
       </div>
 
       <div class="pending-table-panel">
@@ -304,7 +359,7 @@ onMounted(async () => {
         </ElTable>
         <div class="table-bottom-pager">
           <div class="table-bottom-pager-left">
-            <span>共 {{ flows.length }} 条记录</span>
+            <span>共 {{ filteredFlows.length }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
             <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
@@ -319,7 +374,7 @@ onMounted(async () => {
           <ElPagination
             v-model:current-page="query.page"
             :page-size="query.pageSize"
-            :total="flows.length"
+            :total="filteredFlows.length"
             background
             layout="prev, pager, next"
           />
@@ -449,35 +504,6 @@ onMounted(async () => {
   padding: 20px;
 }
 
-/* ========== 页面头部 ========== */
-.pending-header {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  border: 1px solid var(--asset-page-border);
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--asset-page-surface) 0%, var(--asset-page-surface-soft) 100%);
-  box-shadow: var(--asset-page-shadow);
-}
-
-.pending-title {
-  margin: 0 0 4px 0;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 28px;
-  color: var(--asset-page-text);
-  letter-spacing: -0.02em;
-}
-
-.pending-subtitle {
-  margin: 0;
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--asset-page-muted);
-}
-
 /* ========== 表格面板 ========== */
 .pending-table-panel {
   flex: 1;
@@ -499,8 +525,8 @@ onMounted(async () => {
 }
 
 .pending-table-panel :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-surface-soft);
-  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-panel-header-solid);
+  color: var(--asset-page-panel-header-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;

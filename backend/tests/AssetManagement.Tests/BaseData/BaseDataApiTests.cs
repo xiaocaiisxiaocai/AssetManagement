@@ -2,9 +2,11 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AssetManagement.Application.Auth;
+using AssetManagement.Application.Assets;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
+using AssetManagement.Application.TestMaterials;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -474,23 +476,176 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Department_with_asset_or_material_references_cannot_be_deleted()
+    {
+        await Login();
+        var manager = await CreateUser();
+        var assetDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = manager.Id,
+            Name = Unique("资产占用部门")
+        });
+        var category = await CreateCategory();
+        await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "占用部门资产",
+            CategoryId = category.Id,
+            DepartmentId = assetDepartment.Data!.Id
+        });
+
+        var assetDepartmentDeleted = await Delete<ApiResult<object?>>($"/api/departments/{assetDepartment.Data.Id}");
+
+        assetDepartmentDeleted.Code.Should().Be(4094);
+        assetDepartmentDeleted.Message.Should().Contain("部门已被资产使用");
+
+        var materialDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = (await CreateUser()).Id,
+            Name = Unique("料件占用部门")
+        });
+        var project = await CreateProject();
+        await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "占用部门料件",
+            ProjectId = project.Id,
+            DepartmentId = materialDepartment.Data!.Id
+        });
+
+        var materialDepartmentDeleted = await Delete<ApiResult<object?>>($"/api/departments/{materialDepartment.Data.Id}");
+
+        materialDepartmentDeleted.Code.Should().Be(4094);
+        materialDepartmentDeleted.Message.Should().Contain("部门已被测试料件使用");
+    }
+
+    [Fact]
+    public async Task Location_with_asset_or_material_references_cannot_be_deleted()
+    {
+        await Login();
+        var assetLocation = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        {
+            Name = Unique("资产占用位置")
+        });
+        var category = await CreateCategory();
+        await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "占用位置资产",
+            CategoryId = category.Id,
+            LocationId = assetLocation.Data!.Id
+        });
+
+        var assetLocationDeleted = await Delete<ApiResult<object?>>($"/api/locations/{assetLocation.Data.Id}");
+
+        assetLocationDeleted.Code.Should().Be(4094);
+        assetLocationDeleted.Message.Should().Contain("位置已被资产使用");
+
+        var materialLocation = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        {
+            Name = Unique("料件占用位置")
+        });
+        var project = await CreateProject();
+        await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "占用位置料件",
+            ProjectId = project.Id,
+            LocationId = materialLocation.Data!.Id
+        });
+
+        var materialLocationDeleted = await Delete<ApiResult<object?>>($"/api/locations/{materialLocation.Data.Id}");
+
+        materialLocationDeleted.Code.Should().Be(4094);
+        materialLocationDeleted.Message.Should().Contain("位置已被测试料件使用");
+    }
+
+    [Fact]
     public async Task Settings_save_then_read_returns_updated_value()
     {
         await Login();
-        var key = Unique("setting");
 
         await Put<ApiResult<List<SystemSettingDto>>>("/api/settings", new[]
         {
             new SaveSystemSettingRequest
             {
-                Key = key,
+                Key = "page_size",
                 Value = "42",
-                Description = "测试参数"
+                Description = "默认每页记录数"
             }
         });
         var settings = await _client.GetFromJsonAsync<ApiResult<List<SystemSettingDto>>>("/api/settings");
 
-        settings!.Data!.Should().Contain(x => x.Key == key && x.Value == "42");
+        settings!.Data!.Should().Contain(x => x.Key == "page_size" && x.Value == "42");
+    }
+
+    [Fact]
+    public async Task Settings_save_rejects_unknown_key_and_keeps_existing_settings()
+    {
+        await Login();
+        var before = await _client.GetFromJsonAsync<ApiResult<List<SystemSettingDto>>>("/api/settings");
+        var unknownKey = Unique("setting");
+
+        var response = await _client.PutAsJsonAsync("/api/settings", new[]
+        {
+            new SaveSystemSettingRequest
+            {
+                Key = unknownKey,
+                Value = "42",
+                Description = "不应新增"
+            }
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<List<SystemSettingDto>>>();
+        var after = await _client.GetFromJsonAsync<ApiResult<List<SystemSettingDto>>>("/api/settings");
+
+        body!.Code.Should().Be(4001);
+        after!.Data!.Select(x => x.Key).Should().BeEquivalentTo(before!.Data!.Select(x => x.Key));
+    }
+
+    [Theory]
+    [InlineData("audit_cleanup_enabled", "yes", "布尔值")]
+    [InlineData("database_backup_time", "25:61", "时间")]
+    [InlineData("attachment_max_mb", "101", "1-100")]
+    [InlineData("page_size", "201", "1-200")]
+    [InlineData("audit_retention_days", "15", "7/14/30")]
+    [InlineData("database_backup_path", " ", "不能为空")]
+    public async Task Settings_save_rejects_invalid_value(string key, string value, string message)
+    {
+        await Login();
+
+        var response = await _client.PutAsJsonAsync("/api/settings", new[]
+        {
+            new SaveSystemSettingRequest
+            {
+                Key = key,
+                Value = value,
+                Description = "非法值不应保存"
+            }
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<List<SystemSettingDto>>>();
+
+        body!.Code.Should().Be(4001);
+        body.Message.Should().Contain(message);
+    }
+
+    [Fact]
+    public async Task Settings_save_updates_value_without_changing_description()
+    {
+        await Login();
+        var before = await _client.GetFromJsonAsync<ApiResult<List<SystemSettingDto>>>("/api/settings");
+        var originalDescription = before!.Data!.Single(x => x.Key == "page_size").Description;
+
+        await Put<ApiResult<List<SystemSettingDto>>>("/api/settings", new[]
+        {
+            new SaveSystemSettingRequest
+            {
+                Key = "page_size",
+                Value = "43",
+                Description = "前端不允许编辑说明，后端也应忽略"
+            }
+        });
+        var after = await _client.GetFromJsonAsync<ApiResult<List<SystemSettingDto>>>("/api/settings");
+
+        after!.Data!.Should().Contain(x =>
+            x.Key == "page_size"
+            && x.Value == "43"
+            && x.Description == originalDescription);
     }
 
     [Fact]
@@ -536,6 +691,13 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }
 
+    private async Task<T> Delete<T>(string url)
+    {
+        var res = await _client.DeleteAsync(url);
+        res.EnsureSuccessStatusCode();
+        return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
     private async Task<UserDto> CreateUser()
     {
         var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -557,6 +719,27 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         });
         return role.Data!.Id;
     }
+
+    private async Task<CategoryNodeDto> CreateCategory()
+    {
+        var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            CodeSeg = Unique("CAT")
+        });
+        var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            ParentId = root.Data!.Id,
+            CodeSeg = Unique("LEAF")
+        });
+        return child.Data!;
+    }
+
+    private async Task<TestProjectDto> CreateProject()
+        => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Code = Unique("TP"),
+            Name = Unique("测试项目")
+        })).Data!;
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, prefix.Length + 33)];

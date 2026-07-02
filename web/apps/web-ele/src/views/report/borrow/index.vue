@@ -1,11 +1,15 @@
 <script lang="ts" setup>
 import type { BorrowReportQuery, BorrowReportRow } from '#/api/report';
+import type { CategoryNode } from '#/api/base-data';
+import type { UserDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAccess } from '@vben/access';
 
+import { getCategoryTreeApi } from '#/api/base-data';
 import { exportBorrowReportApi, getBorrowReportApi } from '#/api/report';
+import { getUserListApi } from '#/api/user';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { buildReportActionAccess } from '#/views/permissions/action-access';
 
@@ -14,7 +18,6 @@ import {
   ElDatePicker,
   ElForm,
   ElFormItem,
-  ElInput,
   ElOption,
   ElPagination,
   ElSelect,
@@ -32,6 +35,8 @@ const loading = ref(false);
 const rows = ref<BorrowReportRow[]>([]);
 const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
+const borrowerOptions = ref<UserDto[]>([]);
+const categoryOptions = ref<CategoryNode[]>([]);
 const query = reactive({
   borrowerId: undefined as number | undefined,
   categoryId: undefined as number | undefined,
@@ -62,6 +67,19 @@ function buildQuery(): BorrowReportQuery {
     startTime: query.dateRange[0],
     status: query.status,
   };
+}
+
+async function loadFilterOptions() {
+  const [users, categories] = await Promise.all([
+    getUserListApi(undefined, 1, 200),
+    getCategoryTreeApi(),
+  ]);
+  borrowerOptions.value = users.items.filter((user) => user.isActive);
+  categoryOptions.value = flattenCategories(categories);
+}
+
+function flattenCategories(nodes: CategoryNode[]): CategoryNode[] {
+  return nodes.flatMap((node) => [node, ...flattenCategories(node.children ?? [])]);
 }
 
 function search() {
@@ -115,6 +133,7 @@ function downloadBlob(blob: Blob, filename: string) {
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
   pageSizeOptions.value = createPageSizeOptions(query.pageSize);
+  await loadFilterOptions();
   await loadData();
 });
 </script>
@@ -125,7 +144,6 @@ onMounted(async () => {
       <div class="page-header">
         <div>
           <h2 class="page-title">借用明细报表</h2>
-          <p class="page-subtitle">资产借用记录查询与导出</p>
         </div>
         <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出</ElButton>
       </div>
@@ -144,11 +162,39 @@ onMounted(async () => {
               style="width: 240px"
             />
           </ElFormItem>
-          <ElFormItem label="借用人ID">
-            <ElInput v-model.number="query.borrowerId" clearable placeholder="用户ID" style="width: 140px" />
+          <ElFormItem label="借用人">
+            <ElSelect
+              v-model="query.borrowerId"
+              aria-label="借用人"
+              clearable
+              filterable
+              placeholder="选择借用人"
+              style="width: 180px"
+            >
+              <ElOption
+                v-for="user in borrowerOptions"
+                :key="user.id"
+                :label="`${user.name}（${user.employeeNo}）`"
+                :value="user.id"
+              />
+            </ElSelect>
           </ElFormItem>
-          <ElFormItem label="分类ID">
-            <ElInput v-model.number="query.categoryId" clearable placeholder="分类ID" style="width: 140px" />
+          <ElFormItem label="分类">
+            <ElSelect
+              v-model="query.categoryId"
+              aria-label="资产分类"
+              clearable
+              filterable
+              placeholder="选择分类"
+              style="width: 180px"
+            >
+              <ElOption
+                v-for="category in categoryOptions"
+                :key="category.id"
+                :label="category.code"
+                :value="category.id"
+              />
+            </ElSelect>
           </ElFormItem>
           <ElFormItem label="状态">
             <ElSelect
