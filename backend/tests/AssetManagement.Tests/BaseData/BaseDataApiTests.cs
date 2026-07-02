@@ -22,19 +22,18 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Department_create_requires_manager()
+    public async Task Department_create_allows_empty_manager()
     {
         await Login();
 
-        var res = await _client.PostAsJsonAsync("/api/departments", new CreateDepartmentRequest
+        var created = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
             Name = Unique("部门")
         });
 
-        res.EnsureSuccessStatusCode();
-        var body = await res.Content.ReadFromJsonAsync<ApiResult<DepartmentNodeDto>>();
-        body!.Code.Should().Be(4001);
-        body.Message.Should().Contain("负责人");
+        created.Code.Should().Be(0);
+        created.Data!.ManagerId.Should().BeNull();
+        created.Data.ManagerName.Should().BeNull();
     }
 
     [Fact]

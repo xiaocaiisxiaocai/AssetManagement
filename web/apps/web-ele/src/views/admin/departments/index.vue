@@ -106,10 +106,6 @@ async function save() {
     ElMessage.warning('请填写部门名称');
     return;
   }
-  if (!form.managerId) {
-    ElMessage.warning('请选择负责人');
-    return;
-  }
   saving.value = true;
   try {
     const payload: DepartmentPayload = {
@@ -223,11 +219,12 @@ onMounted(async () => {
           <ElFormItem label="部门名称" required>
             <ElInput v-model="form.name" placeholder="请输入部门名称" />
           </ElFormItem>
-          <ElFormItem label="负责人" required>
+          <ElFormItem label="负责人">
             <ElSelect
               v-model="form.managerId"
+              clearable
               filterable
-              placeholder="选择该组织节点负责人"
+              placeholder="可选，选择该组织节点负责人"
               style="width: 100%"
             >
               <ElOption

@@ -56,7 +56,7 @@ public class BaseDataService : IBaseDataService
 
     public async Task<DepartmentNodeDto> CreateDepartmentAsync(CreateDepartmentRequest request)
     {
-        ValidateDepartmentRequest(request.Name, request.ManagerId);
+        ValidateDepartmentRequest(request.Name);
         var name = request.Name.Trim();
         await EnsureDepartmentNameAvailableAsync(name);
         await EnsureDepartmentManagerAvailableAsync(request.ManagerId);
@@ -79,7 +79,7 @@ public class BaseDataService : IBaseDataService
 
     public async Task<DepartmentNodeDto> UpdateDepartmentAsync(int id, UpdateDepartmentRequest request)
     {
-        ValidateDepartmentRequest(request.Name, request.ManagerId);
+        ValidateDepartmentRequest(request.Name);
         var department = await _db.Departments.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4045, "部门不存在");
         var name = request.Name.Trim();
@@ -100,16 +100,11 @@ public class BaseDataService : IBaseDataService
         return ToDepartmentDto(department, null);
     }
 
-    private static void ValidateDepartmentRequest(string name, int? managerId)
+    private static void ValidateDepartmentRequest(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new BizException(4001, "部门名称不能为空");
-        }
-
-        if (managerId is null)
-        {
-            throw new BizException(4001, "请选择负责人");
         }
     }
 
