@@ -61,7 +61,8 @@ cd backend
 # 新增迁移(自动生成类)
 dotnet ef migrations add <Name> --project src\AssetManagement.Infrastructure --startup-project src\AssetManagement.Api
 
-# 无需手动执行 Update:Program.cs 自动在启动时调用 db.Database.Migrate() + DbSeeder.Seed()
+# 应用启动默认不会改库；需要自动迁移/补种子时显式配置 Database:AutoMigrate=true、Database:AutoSeed=true
+# 生产环境建议首次部署或升级时开启一次，确认完成后关闭
 
 # 移除最后一个迁移
 dotnet ef migrations remove

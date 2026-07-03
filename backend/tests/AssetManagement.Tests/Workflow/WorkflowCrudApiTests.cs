@@ -9,6 +9,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Tests.Workflow;
 
@@ -169,6 +170,36 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
         second.Code.Should().Be(0);
         reEnableFirst.Code.Should().Be(4094);
         reEnableFirst.Message.Should().Contain("业务类型已有启用流程");
+    }
+
+    [Fact]
+    public async Task Database_rejects_duplicate_active_workflow_biz_type()
+    {
+        var bizType = Unique("dbactive");
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Workflows.AddRange(
+            new WorkflowEntity { Name = Unique("启用流程A"), BizType = bizType, IsActive = true },
+            new WorkflowEntity { Name = Unique("启用流程B"), BizType = bizType, IsActive = true });
+
+        var act = async () => await db.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task Database_allows_duplicate_disabled_workflow_biz_type()
+    {
+        var bizType = Unique("dbdisabled");
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Workflows.AddRange(
+            new WorkflowEntity { Name = Unique("停用流程A"), BizType = bizType, IsActive = false },
+            new WorkflowEntity { Name = Unique("停用流程B"), BizType = bizType, IsActive = false });
+
+        await db.SaveChangesAsync();
+
+        (await db.Workflows.CountAsync(x => x.BizType == bizType)).Should().Be(2);
     }
 
     [Fact]

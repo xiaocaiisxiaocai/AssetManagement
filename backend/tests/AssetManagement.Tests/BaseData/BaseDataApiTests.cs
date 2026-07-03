@@ -228,6 +228,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             ParentId = root.Data!.Id,
             CodeSeg = UniqueCodeSeg()
         });
+        var childData = child.Data!;
         var nextSeg = UniqueCodeSeg();
 
         await Put<ApiResult<CategoryNodeDto>>($"/api/categories/{root.Data.Id}", new UpdateCategoryRequest
@@ -238,8 +239,8 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
 
         var updatedChild = tree!.Data!
             .Single(x => x.Id == root.Data.Id)
-            .Children.Single(x => x.Id == child.Data!.Id);
-        updatedChild.Code.Should().Be($"{nextSeg}-{child.Data.CodeSeg}");
+            .Children.Single(x => x.Id == childData.Id);
+        updatedChild.Code.Should().Be($"{nextSeg}-{childData.CodeSeg}");
     }
 
     [Fact]

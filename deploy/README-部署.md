@@ -33,7 +33,16 @@ GRANT ALL PRIVILEGES ON assetmgmt.* TO 'assetmgmt_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-程序启动时会自动执行 EF Core `Migrate()` 并写入种子数据，包括管理员、角色权限、菜单、系统参数和默认审批流。
+程序启动默认不会自动改库。首次部署或升级需要自动执行 EF Core `Migrate()`、补齐管理员、角色权限、菜单、系统参数和默认审批流时，在配置中显式开启一次：
+
+```json
+"Database": {
+  "AutoMigrate": true,
+  "AutoSeed": true
+}
+```
+
+确认迁移和种子完成后，生产环境建议改回 `false`。
 
 默认账号：`1001 / 123456`。首次登录后应修改密码。
 

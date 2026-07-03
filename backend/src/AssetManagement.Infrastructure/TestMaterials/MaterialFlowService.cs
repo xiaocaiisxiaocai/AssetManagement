@@ -114,8 +114,13 @@ public class MaterialFlowService : IMaterialFlowService
         }
 
         // 开关开启:走 BPMN 审批
-        var workflow = await _db.Workflows.SingleOrDefaultAsync(x => x.BizType == MaterialBizType)
-            ?? throw new BizException(4049, "测试料件流转流程未配置");
+        var workflow = await _db.Workflows.SingleOrDefaultAsync(x => x.BizType == MaterialBizType && x.IsActive);
+        if (workflow == null)
+        {
+            if (await _db.Workflows.AnyAsync(x => x.BizType == MaterialBizType))
+                throw new BizException(4057, "流程已停用，无法发起审批");
+            throw new BizException(4049, "测试料件流转流程未配置");
+        }
         if (string.IsNullOrWhiteSpace(workflow.BpmnXml))
             throw new BizException(4051, "流程定义不完整,缺少 BPMN XML");
 

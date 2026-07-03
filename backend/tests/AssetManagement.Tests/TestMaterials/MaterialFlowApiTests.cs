@@ -5,8 +5,13 @@ using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.TestMaterials;
+using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
+using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Tests.TestMaterials;
 
@@ -14,8 +19,13 @@ namespace AssetManagement.Tests.TestMaterials;
 // TestWebAppFactory 使用独立 MySQL 数据库(GUID 后缀)，保证本类与其他测试类的数据库完全隔离。
 public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
 {
+    private readonly TestWebAppFactory _factory;
     private readonly HttpClient _client;
-    public MaterialFlowApiTests(TestWebAppFactory factory) => _client = factory.CreateClient();
+    public MaterialFlowApiTests(TestWebAppFactory factory)
+    {
+        _factory = factory;
+        _client = factory.CreateClient();
+    }
 
     [Fact]
     public async Task Transfer_with_switch_off_changes_custodian_directly()
@@ -69,6 +79,65 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
 
         var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
         after!.Data!.CustodianId.Should().Be(transferee.Id);
+    }
+
+    [Fact]
+    public async Task Transfer_with_switch_on_uses_active_material_workflow_only()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var disabledWorkflowId = await AddDisabledMaterialWorkflow();
+        var project = await CreateProject("启用流程优先项目");
+        var transferee = await CreateUser("0912", "受让人启用流程");
+        var material = await CreateMaterial(project.Id, "启用流程优先样品");
+
+        try
+        {
+            var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+            {
+                MaterialId = material.Id,
+                TransfereeId = transferee.Id,
+                Reason = "应只匹配启用流程"
+            });
+
+            flow.Code.Should().Be(0);
+            flow.Data!.Status.Should().Be("pending");
+            var usedWorkflowId = await UsedWorkflowId(flow.Data.Id);
+            usedWorkflowId.Should().Be(await ActiveMaterialWorkflowId());
+        }
+        finally
+        {
+            await DeleteWorkflow(disabledWorkflowId);
+        }
+    }
+
+    [Fact]
+    public async Task Transfer_with_switch_on_rejects_when_material_workflow_is_disabled()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        await DisableActiveMaterialWorkflow();
+        var project = await CreateProject("流程停用项目");
+        var transferee = await CreateUser("0913", "受让人流程停用");
+        var material = await CreateMaterial(project.Id, "流程停用样品");
+
+        try
+        {
+            var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+            {
+                MaterialId = material.Id,
+                TransfereeId = transferee.Id,
+                Reason = "停用后不应发起"
+            });
+            var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+            body!.Code.Should().Be(4057);
+            body.Message.Should().Contain("流程已停用");
+        }
+        finally
+        {
+            await RestoreActiveMaterialWorkflow();
+        }
     }
 
     [Fact]
@@ -240,6 +309,70 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     {
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
         return roles!.Data!.Items.Single(x => x.Code == code);
+    }
+
+    private async Task<int> AddDisabledMaterialWorkflow()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var workflow = new WorkflowEntity
+        {
+            Name = "已停用测试料件流转流程",
+            BizType = "material_transfer",
+            IsActive = false,
+            BpmnXml = null
+        };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        return workflow.Id;
+    }
+
+    private async Task DisableActiveMaterialWorkflow()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var workflow = await db.Workflows.AsTracking().SingleAsync(x => x.BizType == "material_transfer" && x.IsActive);
+        workflow.IsActive = false;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task RestoreActiveMaterialWorkflow()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var workflow = await db.Workflows.AsTracking().FirstAsync(x => x.BizType == "material_transfer");
+        workflow.IsActive = true;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task DeleteWorkflow(int workflowId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var workflow = await db.Workflows.AsTracking().SingleOrDefaultAsync(x => x.Id == workflowId);
+        if (workflow is null) return;
+        db.Workflows.Remove(workflow);
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<int> ActiveMaterialWorkflowId()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Workflows
+            .Where(x => x.BizType == "material_transfer" && x.IsActive)
+            .Select(x => x.Id)
+            .SingleAsync();
+    }
+
+    private async Task<int> UsedWorkflowId(int flowId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.MaterialFlows
+            .Where(x => x.Id == flowId)
+            .Select(x => x.WorkflowId)
+            .SingleAsync();
     }
 
     private async Task Login()
