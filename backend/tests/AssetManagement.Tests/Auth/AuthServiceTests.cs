@@ -46,6 +46,18 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task Login_uses_must_change_password_flag_instead_of_default_password_hash()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var svc = fixture.CreateService();
+        fixture.SetMustChangePassword(false);
+
+        var res = await svc.LoginAsync(new LoginRequest { EmployeeNo = "1001", Password = "123456" });
+
+        res.MustChangePassword.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ChangePassword_with_wrong_old_password_throws()
     {
         await using var fixture = await AuthFixture.Create();
@@ -165,6 +177,7 @@ public class AuthServiceTests
                 EmployeeNo = "1001",
                 Name = "系统管理员",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
+                MustChangePassword = true,
                 IsActive = true
             };
 
@@ -184,6 +197,12 @@ public class AuthServiceTests
 
         public int GetUserId() => _userId;
         public string GetUserPasswordHash() => Db.Users.First(x => x.Id == _userId).PasswordHash;
+        public void SetMustChangePassword(bool value)
+        {
+            var user = Db.Users.First(x => x.Id == _userId);
+            user.MustChangePassword = value;
+            Db.SaveChanges();
+        }
 
         public AuthService CreateService()
         {

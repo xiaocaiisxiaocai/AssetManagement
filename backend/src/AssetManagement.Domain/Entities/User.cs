@@ -11,5 +11,6 @@ public class User
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool MustChangePassword { get; set; }
     public List<UserRole> UserRoles { get; set; } = new();
 }

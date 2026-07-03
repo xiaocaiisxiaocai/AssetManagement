@@ -140,6 +140,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
         login.Code.Should().Be(0);
         login.Data!.Token.Should().NotBeNullOrWhiteSpace();
+        login.Data.MustChangePassword.Should().BeTrue();
     }
 
     [Fact]
@@ -207,6 +208,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             x.Email == $"{employeeNo1}@example.local" &&
             x.RoleNames.Contains(role.Data.Name));
         login.Code.Should().Be(0);
+        login.Data!.MustChangePassword.Should().BeTrue();
     }
 
     [Fact]
@@ -807,6 +809,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
         login.Code.Should().Be(0);
         login.Data!.Token.Should().NotBeNullOrWhiteSpace();
+        login.Data.MustChangePassword.Should().BeTrue();
     }
 
     [Fact]

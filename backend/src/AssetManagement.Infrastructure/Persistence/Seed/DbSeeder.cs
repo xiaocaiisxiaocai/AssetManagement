@@ -1,3 +1,4 @@
+using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
 using Microsoft.EntityFrameworkCore;
@@ -116,12 +117,14 @@ public static class DbSeeder
         {
             adminPassword = "123456";
         }
+        var adminUsesDefaultPassword = adminPassword == "123456";
         var admin = new User
         {
             EmployeeNo = "1001",
             Name = "系统管理员",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
-            IsActive = true
+            IsActive = true,
+            MustChangePassword = adminUsesDefaultPassword
         };
         db.Users.Add(admin);
         db.SaveChanges();
@@ -157,6 +160,7 @@ public static class DbSeeder
 
     private static void SeedIncremental(AppDbContext db)
     {
+        EnsureMustChangePasswordForLegacyDefaultUsers(db);
         EnsureCoreRolePermissions(db);
 
         var defaultWorkflows = DefaultWorkflows();
@@ -492,6 +496,17 @@ public static class DbSeeder
             && !db.RoleMenus.Any(x => x.RoleId == admin.Id && x.MenuId == menu.Id))
         {
             db.RoleMenus.Add(new RoleMenu { RoleId = admin.Id, MenuId = menu.Id });
+        }
+    }
+
+    private static void EnsureMustChangePasswordForLegacyDefaultUsers(AppDbContext db)
+    {
+        foreach (var user in db.Users.Where(x => !x.MustChangePassword).ToList())
+        {
+            if (BCrypt.Net.BCrypt.Verify(AppConstants.DefaultUserPassword, user.PasswordHash))
+            {
+                user.MustChangePassword = true;
+            }
         }
     }
 
