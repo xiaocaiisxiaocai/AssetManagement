@@ -18,8 +18,13 @@ public class UserController : ControllerBase
 
     [HttpGet]
     [HasPermission("user:view")]
-    public async Task<ApiResult<PagedResult<UserDto>>> List(string? keyword, int page = 1, int pageSize = 20)
-        => ApiResult<PagedResult<UserDto>>.Ok(await _rbac.GetUsersAsync(keyword, page, pageSize));
+    public async Task<ApiResult<PagedResult<UserDto>>> List(
+        string? keyword,
+        int page = 1,
+        int pageSize = 20,
+        int? departmentId = null,
+        int? roleId = null)
+        => ApiResult<PagedResult<UserDto>>.Ok(await _rbac.GetUsersAsync(keyword, page, pageSize, departmentId, roleId));
 
     [HttpPost]
     [HasPermission("user:create")]

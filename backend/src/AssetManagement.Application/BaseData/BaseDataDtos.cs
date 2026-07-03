@@ -81,6 +81,20 @@ public record RuntimeSettingsDto
 {
     public int PageSize { get; init; }
     public int AttachmentMaxMb { get; init; }
+    public CategoryCodeRulesDto CategoryCodeRules { get; init; } = new();
+}
+
+public record CategoryCodeRuleDto
+{
+    public string Length { get; init; } = "";
+    public string Regex { get; init; } = "";
+}
+
+public record CategoryCodeRulesDto
+{
+    public CategoryCodeRuleDto Level1 { get; init; } = new();
+    public CategoryCodeRuleDto Level2 { get; init; } = new();
+    public CategoryCodeRuleDto Level3 { get; init; } = new();
 }
 
 public record SaveSystemSettingRequest

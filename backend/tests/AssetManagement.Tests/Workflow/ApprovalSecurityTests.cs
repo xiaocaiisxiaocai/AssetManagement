@@ -172,12 +172,12 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Unique("SEC")
+            CodeSeg = UniqueCodeSeg()
         });
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            CodeSeg = Unique("LEAF")
+            CodeSeg = UniqueCodeSeg()
         });
         var asset = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
@@ -234,4 +234,7 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, prefix.Length + 33)];
+
+    private static string UniqueCodeSeg()
+        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
 }

@@ -497,7 +497,7 @@ onMounted(async () => {
       </div>
 
       <div class="role-filter-panel">
-        <ElForm class="role-search-form" inline>
+        <ElForm class="filter-form" inline>
           <ElFormItem label="搜索">
             <ElInput
               v-model="query.keyword"
@@ -722,18 +722,6 @@ onMounted(async () => {
   border-radius: 12px;
   background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
-}
-
-.role-search-form :deep(.el-form-item) {
-  margin-bottom: 0;
-  margin-right: 12px;
-}
-
-.role-search-form :deep(.el-form-item__label) {
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
-  color: var(--asset-page-text-secondary);
 }
 
 /* ========== 表格面板 ========== */

@@ -4,7 +4,7 @@ namespace AssetManagement.Application.Rbac;
 
 public interface IRbacService
 {
-    Task<PagedResult<UserDto>> GetUsersAsync(string? keyword, int page, int pageSize);
+    Task<PagedResult<UserDto>> GetUsersAsync(string? keyword, int page, int pageSize, int? departmentId = null, int? roleId = null);
     Task<UserDto> CreateUserAsync(CreateUserRequest request);
     Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request);
     Task DeleteUserAsync(int id);

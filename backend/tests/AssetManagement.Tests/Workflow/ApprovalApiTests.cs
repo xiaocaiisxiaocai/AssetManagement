@@ -108,6 +108,29 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Disabled_workflow_cannot_start_approval()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        await Post<ApiResult<WorkflowDto>>("/api/workflows/1/status", new
+        {
+            isActive = false
+        });
+
+        var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "测试停用流程"
+        });
+
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        result!.Code.Should().Be(4057);
+        result.Message.Should().Contain("流程已停用");
+    }
+
+    [Fact]
     public async Task Approve_advances_to_next_node()
     {
         await Login();
@@ -408,12 +431,12 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Unique("TC")
+            CodeSeg = UniqueCodeSeg()
         });
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            CodeSeg = Unique("CH")
+            CodeSeg = UniqueCodeSeg()
         });
         var asset = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
@@ -441,4 +464,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, 50)];
+
+    private static string UniqueCodeSeg()
+        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
 }

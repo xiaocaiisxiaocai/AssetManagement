@@ -124,12 +124,12 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Unique("SG")
+            CodeSeg = UniqueCodeSeg()
         });
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            CodeSeg = Unique("SN")
+            CodeSeg = UniqueCodeSeg()
         });
         var asset = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
@@ -157,6 +157,9 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, 50)];
+
+    private static string UniqueCodeSeg()
+        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
 
     private static string SingleUserBpmn(string userName) => $"""
 <?xml version="1.0" encoding="UTF-8"?>

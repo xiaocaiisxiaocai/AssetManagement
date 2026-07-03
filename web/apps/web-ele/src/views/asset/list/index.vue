@@ -22,6 +22,7 @@ import {
   getDepartmentTreeApi,
   getLocationTreeApi,
 } from '#/api/base-data';
+import { flattenActiveDepartments } from '#/utils/department-options';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { getWorkflowsApi } from '#/api/workflow';
 import { getUserListApi } from '#/api/user';
@@ -109,8 +110,7 @@ const query = reactive({
 });
 
 const categoryOptions = computed(() => flattenCategories(categories.value));
-const departmentOptions = computed(() => flattenDepartments(departments.value));
-const activeDepartmentOptions = computed(() => departmentOptions.value.filter((item) => item.isActive));
+const activeDepartmentOptions = computed(() => flattenActiveDepartments(departments.value));
 const locationOptions = computed(() => flattenLocations(locations.value));
 const hierarchyContext = computed(() => getHierarchyContext());
 const hierarchyNodes = computed(() => hierarchyContext.value.nodes);
@@ -494,17 +494,6 @@ function flattenCategories(nodes: CategoryNode[], level = 0): FlatOption[] {
   return nodes.flatMap((node) => [
     { code: node.code, id: node.id, label: `${'　'.repeat(level)}${node.code}` },
     ...flattenCategories(node.children, level + 1),
-  ]);
-}
-
-function flattenDepartments(nodes: DepartmentNode[], level = 0): FlatOption[] {
-  return nodes.flatMap((node) => [
-    {
-      id: node.id,
-      isActive: node.isActive,
-      label: `${'　'.repeat(level)}${node.name}${node.isActive ? '' : '（停用）'}`,
-    },
-    ...flattenDepartments(node.children, level + 1),
   ]);
 }
 

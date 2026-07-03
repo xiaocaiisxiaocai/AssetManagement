@@ -9,6 +9,7 @@ public record WorkflowDto
     public string BizType { get; init; } = "";
     public string BizTypeLabel { get; init; } = "";
     public string? BpmnXml { get; init; }
+    public bool IsActive { get; init; }
     /// <summary>empty=未配置 / configured=已配置且校验通过 / invalid=配置异常</summary>
     public string BpmnStatus { get; init; } = "empty";
     public List<string> BpmnValidationErrors { get; init; } = new();
@@ -19,6 +20,11 @@ public record SaveWorkflowRequest
     public string Name { get; init; } = "";
     public string BizType { get; init; } = "";
     public string? BpmnXml { get; init; }
+}
+
+public record SetWorkflowStatusRequest
+{
+    public bool IsActive { get; init; }
 }
 
 public record ApprovalFlowDto

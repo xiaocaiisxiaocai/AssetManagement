@@ -54,6 +54,18 @@ public class WorkflowService : IWorkflowService
         return ToWorkflowDto(workflow);
     }
 
+    public async Task<WorkflowDto> SetWorkflowStatusAsync(int id, bool isActive)
+    {
+        var workflow = await LoadWorkflow(id);
+        if (isActive)
+        {
+            await EnsureNoOtherActiveWorkflowForBizType(workflow.BizType, workflow.Id);
+        }
+        workflow.IsActive = isActive;
+        await _db.SaveChangesAsync();
+        return ToWorkflowDto(workflow);
+    }
+
     public async Task DeleteWorkflowAsync(int id)
     {
         var workflow = await LoadWorkflow(id);
@@ -72,8 +84,15 @@ public class WorkflowService : IWorkflowService
 
     public async Task<ApprovalFlowDto> StartAsync(StartApprovalRequest request, int applicantId)
     {
-        var workflow = await _db.Workflows.SingleOrDefaultAsync(x => x.BizType == request.BizType)
-            ?? throw new BizException(4049, "流程不存在");
+        var workflow = await _db.Workflows.SingleOrDefaultAsync(x => x.BizType == request.BizType && x.IsActive);
+        if (workflow == null)
+        {
+            if (await _db.Workflows.AnyAsync(x => x.BizType == request.BizType))
+            {
+                throw new BizException(4057, "流程已停用，无法发起审批");
+            }
+            throw new BizException(4049, "流程不存在");
+        }
 
         if (string.IsNullOrWhiteSpace(workflow.BpmnXml))
             throw new BizException(4051, "流程定义不完整，缺少 BPMN XML");
@@ -478,16 +497,26 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4001, "业务类型不能为空");
         }
 
-        if (await _db.Workflows.AnyAsync(x => x.BizType == bizType && x.Id != workflow.Id))
+        if (await _db.Workflows.AnyAsync(x => x.Name == name && x.Id != workflow.Id))
         {
-            throw new BizException(4094, "业务类型已存在");
+            throw new BizException(4094, "流程名称已存在");
         }
+
+        await EnsureNoOtherActiveWorkflowForBizType(bizType, workflow.Id);
 
         ValidateBpmnXml(request.BpmnXml);
 
         workflow.Name = name;
         workflow.BizType = bizType;
         workflow.BpmnXml = request.BpmnXml;
+    }
+
+    private async Task EnsureNoOtherActiveWorkflowForBizType(string bizType, int workflowId)
+    {
+        if (await _db.Workflows.AnyAsync(x => x.BizType == bizType && x.Id != workflowId && x.IsActive))
+        {
+            throw new BizException(4094, "业务类型已有启用流程");
+        }
     }
 
     private static void ValidateBpmnXml(string? bpmnXml)
@@ -871,6 +900,7 @@ public class WorkflowService : IWorkflowService
             BizType = w.BizType,
             BizTypeLabel = BizTypeLabel(w.BizType),
             BpmnXml = w.BpmnXml,
+            IsActive = w.IsActive,
             BpmnStatus = string.IsNullOrWhiteSpace(w.BpmnXml)
                 ? "empty"
                 : errors.Count == 0 ? "configured" : "invalid",

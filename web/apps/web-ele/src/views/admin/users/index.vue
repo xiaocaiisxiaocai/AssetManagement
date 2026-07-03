@@ -19,6 +19,7 @@ import {
   validateUserImportApi,
 } from '#/api/user';
 import { getRoleListApi } from '#/api/role';
+import { flattenActiveDepartments } from '#/utils/department-options';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { buildUserActionAccess } from '#/views/permissions/action-access';
 
@@ -58,9 +59,11 @@ const selectedImportFile = ref<File | null>(null);
 const importRows = ref<UserImportRow[]>([]);
 
 const query = reactive({
+  departmentId: undefined as number | undefined,
   keyword: '',
   page: 1,
   pageSize: 20,
+  roleId: undefined as number | undefined,
 });
 
 const form = reactive({
@@ -71,13 +74,7 @@ const form = reactive({
   roleId: undefined as number | undefined,
 });
 
-interface DepartmentOption {
-  id: number;
-  isActive: boolean;
-  label: string;
-}
-
-const departmentOptions = computed(() => flattenDepartments(departments.value));
+const departmentOptions = computed(() => flattenActiveDepartments(departments.value));
 
 async function loadRoles() {
   const result = await getRoleListApi();
@@ -91,7 +88,13 @@ async function loadDepartments() {
 async function loadData() {
   loading.value = true;
   try {
-    const result = await getUserListApi(query.keyword, query.page, query.pageSize);
+    const result = await getUserListApi(
+      query.keyword,
+      query.page,
+      query.pageSize,
+      query.departmentId,
+      query.roleId,
+    );
     users.value = result.items;
     total.value = result.total;
   } finally {
@@ -275,20 +278,11 @@ function search() {
 }
 
 function reset() {
+  query.departmentId = undefined;
   query.keyword = '';
   query.page = 1;
+  query.roleId = undefined;
   void loadData();
-}
-
-function flattenDepartments(nodes: DepartmentNode[], level = 0): DepartmentOption[] {
-  return nodes.flatMap((node) => [
-    {
-      id: node.id,
-      isActive: node.isActive,
-      label: `${'　'.repeat(level)}${node.name}${node.isActive ? '' : '（停用）'}`,
-    },
-    ...flattenDepartments(node.children, level + 1),
-  ]);
 }
 
 onMounted(async () => {
@@ -322,6 +316,38 @@ onMounted(async () => {
               style="width: 240px"
               @keyup.enter="search"
             />
+          </ElFormItem>
+          <ElFormItem label="部门">
+            <ElSelect
+              v-model="query.departmentId"
+              clearable
+              filterable
+              placeholder="全部部门"
+              style="width: 200px"
+            >
+              <ElOption
+                v-for="department in departmentOptions"
+                :key="department.id"
+                :label="department.label"
+                :value="department.id"
+              />
+            </ElSelect>
+          </ElFormItem>
+          <ElFormItem label="角色">
+            <ElSelect
+              v-model="query.roleId"
+              clearable
+              filterable
+              placeholder="全部角色"
+              style="width: 180px"
+            >
+              <ElOption
+                v-for="role in roles"
+                :key="role.id"
+                :label="role.name"
+                :value="role.id"
+              />
+            </ElSelect>
           </ElFormItem>
           <ElFormItem>
             <ElButton type="primary" @click="search">查询</ElButton>

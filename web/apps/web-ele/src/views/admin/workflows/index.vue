@@ -20,6 +20,7 @@ import {
   deleteWorkflowApi,
   getWorkflowsApi,
   saveWorkflowApi,
+  setWorkflowStatusApi,
   type SaveWorkflowPayload,
   type WorkflowItem,
 } from '#/api/workflow';
@@ -146,6 +147,22 @@ const handleDelete = async (workflow: WorkflowItem) => {
   }
 };
 
+const handleToggleStatus = async (workflow: WorkflowItem) => {
+  const nextActive = !workflow.isActive;
+  try {
+    await ElMessageBox.confirm(
+      `确认${nextActive ? '启用' : '停用'}工作流「${workflow.name}」？`,
+      `${nextActive ? '启用' : '停用'}工作流`,
+      { type: 'warning' },
+    );
+    await setWorkflowStatusApi(workflow.id, nextActive);
+    ElMessage.success(`${nextActive ? '启用' : '停用'}成功`);
+    await loadWorkflows();
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+  }
+};
+
 const handleSave = async (bpmnXml: string) => {
   if (!currentWorkflow.value) return;
 
@@ -206,13 +223,29 @@ onMounted(() => {
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn v-if="workflowActionAccess.canDesign || workflowActionAccess.canEdit || workflowActionAccess.canDelete" label="操作" width="240" align="center" fixed="right">
+          <ElTableColumn label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <ElTag :type="row.isActive ? 'success' : 'info'" size="small">
+                {{ row.isActive ? '启用' : '停用' }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn v-if="workflowActionAccess.canDesign || workflowActionAccess.canEdit || workflowActionAccess.canDelete" label="操作" width="290" align="center" fixed="right">
             <template #default="{ row }">
               <ElButton v-if="workflowActionAccess.canDesign" type="primary" link size="small" @click="openDesigner(row)">
                 设计流程
               </ElButton>
               <ElButton v-if="workflowActionAccess.canEdit" type="primary" link size="small" @click="openEditDialog(row)">
                 编辑
+              </ElButton>
+              <ElButton
+                v-if="workflowActionAccess.canEdit"
+                :type="row.isActive ? 'warning' : 'success'"
+                link
+                size="small"
+                @click="handleToggleStatus(row)"
+              >
+                {{ row.isActive ? '停用' : '启用' }}
               </ElButton>
               <ElButton v-if="workflowActionAccess.canDelete" type="danger" link size="small" @click="handleDelete(row)">
                 删除

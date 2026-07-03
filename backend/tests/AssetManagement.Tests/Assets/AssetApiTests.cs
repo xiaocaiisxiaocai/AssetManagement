@@ -343,15 +343,14 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
     private async Task<CategoryNodeDto> CreateCategory()
     {
-        var rootSeg = Unique("CAT");
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = rootSeg
+            CodeSeg = UniqueCodeSeg()
         });
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            CodeSeg = Unique("LEAF")
+            CodeSeg = UniqueCodeSeg()
         });
         return child.Data!;
     }
@@ -476,4 +475,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, prefix.Length + 33)];
+
+    private static string UniqueCodeSeg()
+        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
 }

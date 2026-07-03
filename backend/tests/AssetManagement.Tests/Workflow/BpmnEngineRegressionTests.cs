@@ -246,12 +246,12 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Unique("BC")
+            CodeSeg = UniqueCodeSeg()
         });
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            CodeSeg = Unique("BL")
+            CodeSeg = UniqueCodeSeg()
         });
         return await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
@@ -285,6 +285,9 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, 50)];
+
+    private static string UniqueCodeSeg()
+        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
 
     private static string DepartmentGatewayBpmn(string dept, string matchedTaskId, string defaultTaskId) => $$"""
 <?xml version="1.0" encoding="UTF-8"?>

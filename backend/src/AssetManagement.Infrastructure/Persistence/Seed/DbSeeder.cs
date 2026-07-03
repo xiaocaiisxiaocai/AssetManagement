@@ -144,7 +144,13 @@ public static class DbSeeder
             new SystemSetting { Key = "database_backup_path", Value = "Backups", Description = "数据库备份目录" },
             new SystemSetting { Key = "database_backup_retention_days", Value = "30", Description = "数据库备份文件保留天数" },
             new SystemSetting { Key = "attachment_max_mb", Value = "5", Description = "附件大小限制 MB" },
-            new SystemSetting { Key = "page_size", Value = "20", Description = "默认每页记录数" }
+            new SystemSetting { Key = "page_size", Value = "20", Description = "默认每页记录数" },
+            new SystemSetting { Key = "category_code_level1_length", Value = "2-6", Description = "资产分类一级编码段位数" },
+            new SystemSetting { Key = "category_code_level1_regex", Value = "^[A-Za-z0-9]+$", Description = "资产分类一级编码段正则" },
+            new SystemSetting { Key = "category_code_level2_length", Value = "2-6", Description = "资产分类二级编码段位数" },
+            new SystemSetting { Key = "category_code_level2_regex", Value = "^[A-Za-z0-9]+$", Description = "资产分类二级编码段正则" },
+            new SystemSetting { Key = "category_code_level3_length", Value = "2-6", Description = "资产分类三级编码段位数" },
+            new SystemSetting { Key = "category_code_level3_regex", Value = "^[A-Za-z0-9]+$", Description = "资产分类三级编码段正则" }
         );
         db.Workflows.AddRange(DefaultWorkflows());
         db.SaveChanges();
@@ -201,6 +207,13 @@ public static class DbSeeder
         {
             db.SystemSettings.Add(new SystemSetting { Key = "page_size", Value = "20", Description = "默认每页记录数" });
         }
+
+        EnsureSetting(db, "category_code_level1_length", "2-6", "资产分类一级编码段位数");
+        EnsureSetting(db, "category_code_level1_regex", "^[A-Za-z0-9]+$", "资产分类一级编码段正则");
+        EnsureSetting(db, "category_code_level2_length", "2-6", "资产分类二级编码段位数");
+        EnsureSetting(db, "category_code_level2_regex", "^[A-Za-z0-9]+$", "资产分类二级编码段正则");
+        EnsureSetting(db, "category_code_level3_length", "2-6", "资产分类三级编码段位数");
+        EnsureSetting(db, "category_code_level3_regex", "^[A-Za-z0-9]+$", "资产分类三级编码段正则");
 
         var purgePermission = db.Permissions.SingleOrDefault(x => x.Code == "asset:purge");
         if (purgePermission is null)

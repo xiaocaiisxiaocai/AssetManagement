@@ -34,7 +34,9 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Attachment:Path"] = Path.Combine(Path.GetTempPath(), "amtest-uploads", Guid.NewGuid().ToString("N")),
-                ["ConnectionStrings:Default"] = $"{_baseConnStr}Database={_dbName};"
+                ["ConnectionStrings:Default"] = $"{_baseConnStr}Database={_dbName};",
+                ["Database:AutoMigrate"] = "true",
+                ["Database:AutoSeed"] = "true"
             });
         });
 

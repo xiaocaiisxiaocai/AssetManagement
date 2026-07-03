@@ -164,6 +164,7 @@ onMounted(async () => {
           default-expand-all
           height="100%"
         >
+          <ElTableColumn label="ID" prop="id" width="90" align="center" />
           <ElTableColumn label="部门名称" min-width="200" prop="name" />
           <ElTableColumn class-name="hide-on-mobile" label="负责人" min-width="140" prop="managerName" />
           <ElTableColumn label="状态" min-width="100" align="center">

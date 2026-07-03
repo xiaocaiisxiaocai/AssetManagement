@@ -6,6 +6,7 @@ public interface IWorkflowService
     Task<WorkflowDto> GetWorkflowAsync(int id);
     Task<WorkflowDto> CreateWorkflowAsync(SaveWorkflowRequest request);
     Task<WorkflowDto> SaveWorkflowAsync(int id, SaveWorkflowRequest request);
+    Task<WorkflowDto> SetWorkflowStatusAsync(int id, bool isActive);
     Task DeleteWorkflowAsync(int id);
     Task<ApprovalFlowDto> StartAsync(StartApprovalRequest request, int applicantId);
     Task<List<ApprovalFlowDto>> PendingAsync(int userId);

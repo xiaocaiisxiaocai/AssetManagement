@@ -90,6 +90,134 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
         invalidRow.BpmnValidationErrors.Should().NotBeEmpty();
     }
 
+    [Fact]
+    public async Task Workflow_can_toggle_active_status()
+    {
+        await Login();
+        var created = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = "启停测试流程",
+            BizType = Unique("toggle")
+        });
+
+        var disabled = await Post<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data!.Id}/status", new
+        {
+            isActive = false
+        });
+        var enabled = await Post<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data.Id}/status", new
+        {
+            isActive = true
+        });
+
+        disabled.Code.Should().Be(0);
+        disabled.Data!.IsActive.Should().BeFalse();
+        enabled.Code.Should().Be(0);
+        enabled.Data!.IsActive.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Workflow_can_create_same_biz_type_when_existing_one_is_disabled()
+    {
+        await Login();
+        var bizType = Unique("same");
+        var first = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = "旧流程",
+            BizType = bizType
+        });
+        await Post<ApiResult<WorkflowDto>>($"/api/workflows/{first.Data!.Id}/status", new
+        {
+            isActive = false
+        });
+
+        var second = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = "新流程",
+            BizType = bizType
+        });
+
+        second.Code.Should().Be(0);
+        second.Data!.BizType.Should().Be(bizType);
+        second.Data.IsActive.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Workflow_cannot_enable_same_biz_type_when_another_one_is_active()
+    {
+        await Login();
+        var bizType = Unique("active");
+        var first = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = "启用流程",
+            BizType = bizType
+        });
+        await Post<ApiResult<WorkflowDto>>($"/api/workflows/{first.Data!.Id}/status", new
+        {
+            isActive = false
+        });
+        var second = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = "另一个启用流程",
+            BizType = bizType
+        });
+
+        var reEnableFirst = await Post<ApiResult<WorkflowDto>>($"/api/workflows/{first.Data.Id}/status", new
+        {
+            isActive = true
+        });
+
+        second.Code.Should().Be(0);
+        reEnableFirst.Code.Should().Be(4094);
+        reEnableFirst.Message.Should().Contain("业务类型已有启用流程");
+    }
+
+    [Fact]
+    public async Task Workflow_create_rejects_duplicate_name()
+    {
+        await Login();
+        var name = $"重复名称{Guid.NewGuid():N}"[..18];
+        await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = name,
+            BizType = Unique("name1")
+        });
+
+        var duplicated = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = name,
+            BizType = Unique("name2")
+        });
+
+        duplicated.Code.Should().Be(4094);
+        duplicated.Message.Should().Be("流程名称已存在");
+    }
+
+    [Fact]
+    public async Task Workflow_update_rejects_duplicate_name()
+    {
+        await Login();
+        var name = $"编辑重复{Guid.NewGuid():N}"[..18];
+        var first = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = name,
+            BizType = Unique("edit1")
+        });
+        var second = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = $"待修改{Guid.NewGuid():N}"[..18],
+            BizType = Unique("edit2")
+        });
+
+        var duplicated = await Put<ApiResult<WorkflowDto>>($"/api/workflows/{second.Data!.Id}", new SaveWorkflowRequest
+        {
+            Name = first.Data!.Name,
+            BizType = second.Data.BizType
+        });
+
+        duplicated.Code.Should().Be(4094);
+        duplicated.Message.Should().Be("流程名称已存在");
+    }
+
     private async Task Login()
     {
         var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new

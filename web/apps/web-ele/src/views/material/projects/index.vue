@@ -49,6 +49,7 @@ import {
 } from 'element-plus';
 
 import { getDepartmentTreeApi, getLocationTreeApi } from '#/api/base-data';
+import { flattenActiveDepartments } from '#/utils/department-options';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import {
   approveFlowApi,
@@ -246,8 +247,7 @@ const progressOptions = computed(() => activeOptions('project_progress'));
 const displayedOptions = computed(() =>
   options.value.filter((item) => item.kind === activeOptionKind.value),
 );
-const departmentOptions = computed(() => flattenDepartments(departments.value));
-const activeDepartmentOptions = computed(() => departmentOptions.value.filter((item) => item.isActive));
+const activeDepartmentOptions = computed(() => flattenActiveDepartments(departments.value));
 const locationOptions = computed<FlatOption[]>(() =>
   locations.value.map((node) => ({ id: node.id, label: node.name })),
 );
@@ -279,17 +279,6 @@ const pagedProjects = computed(() => {
 
 function activeOptions(kind: OptionKind) {
   return options.value.filter((item) => item.kind === kind && item.isActive);
-}
-
-function flattenDepartments(nodes: DepartmentNode[], level = 0): FlatOption[] {
-  return nodes.flatMap((node) => [
-    {
-      id: node.id,
-      isActive: node.isActive,
-      label: `${'　'.repeat(level)}${node.name}${node.isActive ? '' : '（停用）'}`,
-    },
-    ...flattenDepartments(node.children, level + 1),
-  ]);
 }
 
 function dateText(value?: null | string) {

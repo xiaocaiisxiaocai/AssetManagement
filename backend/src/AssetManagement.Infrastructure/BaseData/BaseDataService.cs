@@ -6,14 +6,18 @@ using AssetManagement.Infrastructure.Persistence;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using System.Text.RegularExpressions;
 
 namespace AssetManagement.Infrastructure.BaseData;
 
 public class BaseDataService : IBaseDataService
 {
     private const int MaxCategoryDepth = 3;
+    private const int MaxCategoryCodeSegLength = 20;
     private const int MaxRetentionDays = 3650;
     private const int MaxRetentionMonths = 120;
+    private const string DefaultCategoryCodeLength = "2-6";
+    private const string DefaultCategoryCodeRegex = "^[A-Za-z0-9]+$";
 
     private static readonly HashSet<string> BooleanSettingKeys = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -199,6 +203,7 @@ public class BaseDataService : IBaseDataService
             Code = CategoryCodeService.Compose(parent?.Code, request.CodeSeg),
             Remark = CategoryRemark(request.ParentId, request.Remark)
         };
+        await ValidateCategoryCodeSegAsync(newDepth, category.CodeSeg);
         await EnsureCategoryCodeAvailableAsync(category.Code);
         _db.AssetCategories.Add(category);
         await _db.SaveChangesAsync();
@@ -227,6 +232,7 @@ public class BaseDataService : IBaseDataService
         category.ParentId = request.ParentId;
         category.CodeSeg = request.CodeSeg.Trim();
         category.Remark = CategoryRemark(request.ParentId, request.Remark);
+        await ValidateCategorySubtreeCodeSegsAsync(category, all, targetDepth);
 
         var subtree = BuildCategoryEntityTree(category, all);
         CategoryCodeService.Recalc(subtree, parent?.Code);
@@ -372,13 +378,17 @@ public class BaseDataService : IBaseDataService
     {
         var settings = await _db.SystemSettings
             .AsNoTracking()
-            .Where(x => x.Key == "page_size" || x.Key == "attachment_max_mb")
+            .Where(x =>
+                x.Key == "page_size"
+                || x.Key == "attachment_max_mb"
+                || x.Key.StartsWith("category_code_level"))
             .ToDictionaryAsync(x => x.Key, x => x.Value);
 
         return new RuntimeSettingsDto
         {
             PageSize = ReadIntSetting(settings, "page_size", 20, 1, AppConstants.MaxPageSize),
-            AttachmentMaxMb = ReadIntSetting(settings, "attachment_max_mb", 5, 1, 100)
+            AttachmentMaxMb = ReadIntSetting(settings, "attachment_max_mb", 5, 1, 100),
+            CategoryCodeRules = BuildCategoryCodeRules(settings)
         };
     }
 
@@ -437,6 +447,12 @@ public class BaseDataService : IBaseDataService
             "audit_retention_months" => NormalizeIntSetting(key, raw, 1, MaxRetentionMonths),
             "database_backup_retention_days" => NormalizeIntSetting(key, raw, 1, MaxRetentionDays),
             "page_size" => NormalizeIntSetting(key, raw, 1, AppConstants.MaxPageSize),
+            "category_code_level1_length" => NormalizeLengthRuleSetting(key, raw),
+            "category_code_level2_length" => NormalizeLengthRuleSetting(key, raw),
+            "category_code_level3_length" => NormalizeLengthRuleSetting(key, raw),
+            "category_code_level1_regex" => NormalizeRegexSetting(key, raw),
+            "category_code_level2_regex" => NormalizeRegexSetting(key, raw),
+            "category_code_level3_regex" => NormalizeRegexSetting(key, raw),
             "audit_retention_days" => NormalizeAuditRetentionDays(raw),
             "database_backup_path" => NormalizeRequiredTextSetting(key, raw),
             _ => raw
@@ -468,6 +484,38 @@ public class BaseDataService : IBaseDataService
         if (string.IsNullOrWhiteSpace(raw))
         {
             throw new BizException(4001, $"系统参数「{key}」不能为空");
+        }
+
+        return raw;
+    }
+
+    private static string NormalizeLengthRuleSetting(string key, string raw)
+    {
+        var parsed = ParseLengthRule(raw);
+        if (parsed is null)
+        {
+            throw new BizException(4001, $"系统参数「{key}」必须是 1-20 的整数或长度范围");
+        }
+
+        return parsed.Value.Min == parsed.Value.Max
+            ? parsed.Value.Min.ToString(CultureInfo.InvariantCulture)
+            : $"{parsed.Value.Min}-{parsed.Value.Max}";
+    }
+
+    private static string NormalizeRegexSetting(string key, string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            throw new BizException(4001, $"系统参数「{key}」不能为空");
+        }
+
+        try
+        {
+            _ = new Regex(raw, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
+        }
+        catch (ArgumentException)
+        {
+            throw new BizException(4001, $"系统参数「{key}」必须是合法正则表达式");
         }
 
         return raw;
@@ -575,6 +623,135 @@ public class BaseDataService : IBaseDataService
         if (depth > MaxCategoryDepth)
         {
             throw new BizException(4096, "资产分类最多维护三级");
+        }
+    }
+
+    private async Task ValidateCategoryCodeSegAsync(int level, string codeSeg)
+    {
+        var rules = await LoadCategoryCodeRulesAsync();
+        var rule = GetCategoryCodeRule(rules, level);
+        var levelName = CategoryLevelName(level);
+        var lengthRule = ParseLengthRule(rule.Length)!.Value;
+        if (codeSeg.Length < lengthRule.Min || codeSeg.Length > lengthRule.Max)
+        {
+            throw new BizException(4001, $"{levelName}分类编码段必须是 {FormatLengthRule(lengthRule)} 位");
+        }
+
+        if (!Regex.IsMatch(codeSeg, rule.Regex, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200)))
+        {
+            throw new BizException(4001, $"{levelName}分类编码段格式不正确，应匹配 {rule.Regex}");
+        }
+    }
+
+    private async Task ValidateCategorySubtreeCodeSegsAsync(AssetCategory root, List<AssetCategory> all, int targetDepth)
+    {
+        var rules = await LoadCategoryCodeRulesAsync();
+        foreach (var item in FlattenCategoryWithDepth(root, all, targetDepth))
+        {
+            var rule = GetCategoryCodeRule(rules, item.Depth);
+            var levelName = CategoryLevelName(item.Depth);
+            var lengthRule = ParseLengthRule(rule.Length)!.Value;
+            if (item.Category.CodeSeg.Length < lengthRule.Min || item.Category.CodeSeg.Length > lengthRule.Max)
+            {
+                throw new BizException(4001, $"{levelName}分类编码段必须是 {FormatLengthRule(lengthRule)} 位");
+            }
+
+            if (!Regex.IsMatch(item.Category.CodeSeg, rule.Regex, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200)))
+            {
+                throw new BizException(4001, $"{levelName}分类编码段格式不正确，应匹配 {rule.Regex}");
+            }
+        }
+    }
+
+    private async Task<CategoryCodeRulesDto> LoadCategoryCodeRulesAsync()
+    {
+        var settings = await _db.SystemSettings
+            .AsNoTracking()
+            .Where(x => x.Key.StartsWith("category_code_level"))
+            .ToDictionaryAsync(x => x.Key, x => x.Value);
+        return BuildCategoryCodeRules(settings);
+    }
+
+    private static CategoryCodeRulesDto BuildCategoryCodeRules(IReadOnlyDictionary<string, string> settings)
+        => new()
+        {
+            Level1 = BuildCategoryCodeRule(settings, 1),
+            Level2 = BuildCategoryCodeRule(settings, 2),
+            Level3 = BuildCategoryCodeRule(settings, 3)
+        };
+
+    private static CategoryCodeRuleDto BuildCategoryCodeRule(IReadOnlyDictionary<string, string> settings, int level)
+    {
+        var length = settings.TryGetValue($"category_code_level{level}_length", out var rawLength)
+            ? NormalizeLengthRuleSetting($"category_code_level{level}_length", rawLength)
+            : DefaultCategoryCodeLength;
+
+        return new CategoryCodeRuleDto
+        {
+            Length = length,
+            Regex = settings.TryGetValue($"category_code_level{level}_regex", out var regex) && !string.IsNullOrWhiteSpace(regex)
+                ? regex
+                : DefaultCategoryCodeRegex
+        };
+    }
+
+    private static (int Min, int Max)? ParseLengthRule(string raw)
+    {
+        var text = raw.Trim();
+        if (int.TryParse(text, out var exact))
+        {
+            return exact is >= 1 and <= MaxCategoryCodeSegLength ? (exact, exact) : null;
+        }
+
+        var parts = text.Split('-', StringSplitOptions.TrimEntries);
+        if (parts.Length != 2
+            || !int.TryParse(parts[0], out var min)
+            || !int.TryParse(parts[1], out var max)
+            || min < 1
+            || max > MaxCategoryCodeSegLength
+            || min > max)
+        {
+            return null;
+        }
+
+        return (min, max);
+    }
+
+    private static string FormatLengthRule((int Min, int Max) rule)
+        => rule.Min == rule.Max
+            ? rule.Min.ToString(CultureInfo.InvariantCulture)
+            : $"{rule.Min}-{rule.Max}";
+
+    private static CategoryCodeRuleDto GetCategoryCodeRule(CategoryCodeRulesDto rules, int level)
+        => level switch
+        {
+            1 => rules.Level1,
+            2 => rules.Level2,
+            3 => rules.Level3,
+            _ => throw new BizException(4096, "资产分类最多维护三级")
+        };
+
+    private static string CategoryLevelName(int level)
+        => level switch
+        {
+            1 => "一级",
+            2 => "二级",
+            3 => "三级",
+            _ => $"{level}级"
+        };
+
+    private static IEnumerable<(AssetCategory Category, int Depth)> FlattenCategoryWithDepth(
+        AssetCategory root,
+        List<AssetCategory> all,
+        int depth)
+    {
+        yield return (root, depth);
+        foreach (var child in all.Where(x => x.ParentId == root.Id))
+        {
+            foreach (var item in FlattenCategoryWithDepth(child, all, depth + 1))
+            {
+                yield return item;
+            }
         }
     }
 

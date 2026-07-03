@@ -157,7 +157,7 @@ function toFormValue(key: string, value: string) {
   return value;
 }
 
-function toPayloadValue(key: string, value: number | string | undefined) {
+function toPayloadValue(key: string, value: number | string | undefined): string {
   const valueType = getValueType(key);
   if (valueType === 'boolean') {
     if (value !== 'true' && value !== 'false') {
@@ -195,7 +195,40 @@ function toPayloadValue(key: string, value: number | string | undefined) {
   if (key === 'database_backup_path' && !text) {
     throw new Error('数据库备份目录不能为空');
   }
+  if (key.startsWith('category_code_level') && key.endsWith('_length')) {
+    const normalized = normalizeLengthRule(text);
+    if (normalized === null) {
+      throw new Error('编码段位数必须是 1-20 的整数或范围，例如 2 或 2-6');
+    }
+    return normalized;
+  }
+  if (key.startsWith('category_code_level') && key.endsWith('_regex')) {
+    if (!text) {
+      throw new Error('分类编码正则不能为空');
+    }
+    try {
+      new RegExp(text);
+    } catch {
+      throw new Error('请输入合法正则表达式');
+    }
+  }
   return text;
+}
+
+function normalizeLengthRule(value: string) {
+  const text = value.trim();
+  if (/^\d+$/.test(text)) {
+    const exact = Number(text);
+    return exact >= 1 && exact <= 20 ? String(exact) : null;
+  }
+  const match = /^(\d+)\s*-\s*(\d+)$/.exec(text);
+  if (!match) return null;
+  const min = Number(match[1]);
+  const max = Number(match[2]);
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 20 || min > max) {
+    return null;
+  }
+  return `${min}-${max}`;
 }
 
 async function submitSave() {

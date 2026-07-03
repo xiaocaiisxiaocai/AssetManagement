@@ -218,7 +218,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     public async Task Category_update_recalculates_descendant_codes()
     {
         await Login();
-        var seg = Unique("PLC");
+        var seg = UniqueCodeSeg();
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             CodeSeg = seg
@@ -226,26 +226,84 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            CodeSeg = "MIT"
+            CodeSeg = UniqueCodeSeg()
         });
+        var nextSeg = UniqueCodeSeg();
 
         await Put<ApiResult<CategoryNodeDto>>($"/api/categories/{root.Data.Id}", new UpdateCategoryRequest
         {
-            CodeSeg = $"{seg}X"
+            CodeSeg = nextSeg
         });
         var tree = await _client.GetFromJsonAsync<ApiResult<List<CategoryNodeDto>>>("/api/categories/tree");
 
         var updatedChild = tree!.Data!
             .Single(x => x.Id == root.Data.Id)
             .Children.Single(x => x.Id == child.Data!.Id);
-        updatedChild.Code.Should().Be($"{seg}X-MIT");
+        updatedChild.Code.Should().Be($"{nextSeg}-{child.Data.CodeSeg}");
+    }
+
+    [Fact]
+    public async Task Category_create_validates_level_length_and_regex()
+    {
+        await Login();
+        try
+        {
+            await Put<ApiResult<List<SystemSettingDto>>>("/api/settings", new[]
+            {
+                new SaveSystemSettingRequest { Key = "category_code_level1_length", Value = "2-4" },
+                new SaveSystemSettingRequest { Key = "category_code_level1_regex", Value = "^[A-Za-z]{2,4}$" },
+                new SaveSystemSettingRequest { Key = "category_code_level2_length", Value = "3-5" },
+                new SaveSystemSettingRequest { Key = "category_code_level2_regex", Value = "^[0-9]{3,5}$" },
+                new SaveSystemSettingRequest { Key = "category_code_level3_length", Value = "2-6" },
+                new SaveSystemSettingRequest { Key = "category_code_level3_regex", Value = "^[A-Za-z0-9]{2,6}$" },
+            });
+            var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+            {
+                CodeSeg = "AB"
+            });
+
+            var invalidLength = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+            {
+                ParentId = root.Data!.Id,
+                CodeSeg = "12"
+            });
+            var invalidRegex = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+            {
+                ParentId = root.Data.Id,
+                CodeSeg = "ABC"
+            });
+            var valid = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+            {
+                ParentId = root.Data.Id,
+                CodeSeg = "12345"
+            });
+
+            invalidLength.Code.Should().Be(4001);
+            invalidLength.Message.Should().Contain("二级分类编码段必须是 3-5 位");
+            invalidRegex.Code.Should().Be(4001);
+            invalidRegex.Message.Should().Contain("二级分类编码段格式不正确");
+            valid.Code.Should().Be(0);
+            valid.Data!.Code.Should().Be("AB-12345");
+        }
+        finally
+        {
+            await Put<ApiResult<List<SystemSettingDto>>>("/api/settings", new[]
+            {
+                new SaveSystemSettingRequest { Key = "category_code_level1_length", Value = "2-6" },
+                new SaveSystemSettingRequest { Key = "category_code_level1_regex", Value = "^[A-Za-z0-9]+$" },
+                new SaveSystemSettingRequest { Key = "category_code_level2_length", Value = "2-6" },
+                new SaveSystemSettingRequest { Key = "category_code_level2_regex", Value = "^[A-Za-z0-9]+$" },
+                new SaveSystemSettingRequest { Key = "category_code_level3_length", Value = "2-6" },
+                new SaveSystemSettingRequest { Key = "category_code_level3_regex", Value = "^[A-Za-z0-9]+$" },
+            });
+        }
     }
 
     [Fact]
     public async Task Category_tree_uses_code_and_optional_child_remark_without_name()
     {
         await Login();
-        var seg = Unique("CAT");
+        var seg = UniqueCodeSeg();
         var rootRes = await _client.PostAsJsonAsync("/api/categories", new
         {
             codeSeg = seg,
@@ -285,23 +343,23 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         await Login();
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Unique("L1")
+            CodeSeg = UniqueCodeSeg()
         });
         var second = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            CodeSeg = "L2"
+            CodeSeg = UniqueCodeSeg()
         });
         var third = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = second.Data!.Id,
-            CodeSeg = "L3"
+            CodeSeg = UniqueThirdLevelCodeSeg()
         });
 
         var res = await _client.PostAsJsonAsync("/api/categories", new CreateCategoryRequest
         {
             ParentId = third.Data!.Id,
-            CodeSeg = "L4"
+            CodeSeg = UniqueThirdLevelCodeSeg()
         });
 
         res.EnsureSuccessStatusCode();
@@ -314,7 +372,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     public async Task Category_create_rejects_duplicate_code_with_business_message()
     {
         await Login();
-        var codeSeg = Unique("DUP");
+        var codeSeg = UniqueCodeSeg();
         await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             CodeSeg = codeSeg
@@ -337,26 +395,26 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         await Login();
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Unique("R")
+            CodeSeg = UniqueCodeSeg()
         });
         var second = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            CodeSeg = "S"
+            CodeSeg = UniqueCodeSeg()
         });
         await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = second.Data!.Id,
-            CodeSeg = "T"
+            CodeSeg = UniqueThirdLevelCodeSeg()
         });
         var anotherRoot = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Unique("A")
+            CodeSeg = UniqueCodeSeg()
         });
         var anotherSecond = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = anotherRoot.Data!.Id,
-            CodeSeg = "B"
+            CodeSeg = UniqueCodeSeg()
         });
 
         var res = await _client.PutAsJsonAsync($"/api/categories/{second.Data!.Id}", new UpdateCategoryRequest
@@ -602,6 +660,10 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     [InlineData("database_backup_time", "25:61", "时间")]
     [InlineData("attachment_max_mb", "101", "1-100")]
     [InlineData("page_size", "201", "1-200")]
+    [InlineData("category_code_level1_length", "21", "1-20")]
+    [InlineData("category_code_level1_length", "8-2", "长度范围")]
+    [InlineData("category_code_level1_length", "abc", "1-20")]
+    [InlineData("category_code_level1_regex", "[", "合法正则表达式")]
     [InlineData("audit_retention_days", "15", "7/14/30")]
     [InlineData("database_backup_path", " ", "不能为空")]
     public async Task Settings_save_rejects_invalid_value(string key, string value, string message)
@@ -723,12 +785,12 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Unique("CAT")
+            CodeSeg = UniqueCodeSeg()
         });
         var child = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
-            CodeSeg = Unique("LEAF")
+            CodeSeg = UniqueCodeSeg()
         });
         return child.Data!;
     }
@@ -742,4 +804,10 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, prefix.Length + 33)];
+
+    private static string UniqueCodeSeg()
+        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
+
+    private static string UniqueThirdLevelCodeSeg()
+        => Guid.NewGuid().ToString("N")[..3].ToUpperInvariant();
 }

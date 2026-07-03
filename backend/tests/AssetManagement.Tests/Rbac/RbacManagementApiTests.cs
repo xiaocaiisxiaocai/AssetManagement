@@ -96,26 +96,99 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task User_list_orders_by_employee_no_then_name()
+    public async Task User_list_can_filter_by_department()
+    {
+        await Login();
+        var roleId = await CreateRoleId();
+        var targetDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("筛选部门A")
+        });
+        var otherDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("筛选部门B")
+        });
+        var targetEmployeeNo = Unique("u");
+        var otherEmployeeNo = Unique("u");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            DepartmentId = targetDepartment.Data!.Id,
+            EmployeeNo = targetEmployeeNo,
+            Name = "部门筛选用户",
+            RoleIds = new[] { roleId }
+        });
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            DepartmentId = otherDepartment.Data!.Id,
+            EmployeeNo = otherEmployeeNo,
+            Name = "部门筛选用户",
+            RoleIds = new[] { roleId }
+        });
+
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            $"/api/users?keyword=部门筛选用户&departmentId={targetDepartment.Data.Id}&pageSize=20");
+
+        list!.Data!.Items.Select(x => x.EmployeeNo).Should().Equal(targetEmployeeNo);
+    }
+
+    [Fact]
+    public async Task User_list_can_filter_by_role()
+    {
+        await Login();
+        var targetRole = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("筛选角色A"),
+            IsActive = true
+        });
+        var otherRole = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("role"),
+            Name = Unique("筛选角色B"),
+            IsActive = true
+        });
+        var targetEmployeeNo = Unique("u");
+        var otherEmployeeNo = Unique("u");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = targetEmployeeNo,
+            Name = "角色筛选用户",
+            RoleIds = new[] { targetRole.Data!.Id }
+        });
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = otherEmployeeNo,
+            Name = "角色筛选用户",
+            RoleIds = new[] { otherRole.Data!.Id }
+        });
+
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            $"/api/users?keyword=角色筛选用户&roleId={targetRole.Data.Id}&pageSize=20");
+
+        list!.Data!.Items.Select(x => x.EmployeeNo).Should().Equal(targetEmployeeNo);
+    }
+
+    [Fact]
+    public async Task User_list_orders_numeric_employee_no_by_number_then_name()
     {
         await Login();
         var roleId = await CreateRoleId();
         await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
-            EmployeeNo = "3002",
+            EmployeeNo = "2571",
             Name = "排序用户B",
             RoleIds = new[] { roleId }
         });
         await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
-            EmployeeNo = "3001",
+            EmployeeNo = "434",
             Name = "排序用户A",
             RoleIds = new[] { roleId }
         });
 
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>("/api/users?keyword=排序用户&pageSize=20");
 
-        list!.Data!.Items.Select(x => x.EmployeeNo).Should().Equal("3001", "3002");
+        list!.Data!.Items.Select(x => x.EmployeeNo).Should().Equal("434", "2571");
     }
 
     [Fact]
@@ -846,7 +919,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         });
         var category = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Unique("CAT")
+            CodeSeg = Guid.NewGuid().ToString("N")[..2].ToUpperInvariant()
         });
         await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {

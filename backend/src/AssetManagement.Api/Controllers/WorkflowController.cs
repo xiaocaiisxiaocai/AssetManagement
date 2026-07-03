@@ -36,6 +36,11 @@ public class WorkflowController : ControllerBase
     public async Task<ApiResult<WorkflowDto>> Save(int id, SaveWorkflowRequest request)
         => ApiResult<WorkflowDto>.Ok(await _service.SaveWorkflowAsync(id, request));
 
+    [HttpPost("{id:int}/status")]
+    [HasPermission("workflow:edit")]
+    public async Task<ApiResult<WorkflowDto>> SetStatus(int id, SetWorkflowStatusRequest request)
+        => ApiResult<WorkflowDto>.Ok(await _service.SetWorkflowStatusAsync(id, request.IsActive));
+
     [HttpDelete("{id:int}")]
     [HasPermission("workflow:delete")]
     public async Task<ApiResult<bool>> Delete(int id)

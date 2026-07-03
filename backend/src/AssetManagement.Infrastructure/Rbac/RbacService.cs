@@ -17,7 +17,12 @@ public class RbacService : IRbacService
         _db = db;
     }
 
-    public async Task<PagedResult<UserDto>> GetUsersAsync(string? keyword, int page, int pageSize)
+    public async Task<PagedResult<UserDto>> GetUsersAsync(
+        string? keyword,
+        int page,
+        int pageSize,
+        int? departmentId = null,
+        int? roleId = null)
     {
         var query = _db.Users
             .Include(x => x.UserRoles)
@@ -28,10 +33,20 @@ public class RbacService : IRbacService
             var kw = keyword.Trim();
             query = query.Where(x => x.EmployeeNo.Contains(kw) || x.Name.Contains(kw));
         }
+        if (departmentId.HasValue)
+        {
+            query = query.Where(x => x.DepartmentId == departmentId.Value);
+        }
+        if (roleId.HasValue)
+        {
+            query = query.Where(x => x.UserRoles.Any(r => r.RoleId == roleId.Value));
+        }
 
         var total = await query.CountAsync();
         var users = await query
-            .OrderBy(x => x.EmployeeNo)
+            // 工号是 varchar，直接字符串排序会把 2571 排在 434 前面；按长度再按文本实现数字工号自然升序。
+            .OrderBy(x => x.EmployeeNo.Length)
+            .ThenBy(x => x.EmployeeNo)
             .ThenBy(x => x.Name)
             .ThenBy(x => x.Id)
             .Skip((page - 1) * pageSize)

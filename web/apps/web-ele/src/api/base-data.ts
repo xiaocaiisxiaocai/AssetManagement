@@ -46,6 +46,20 @@ export interface SystemSetting {
 
 export interface RuntimeSettings {
   attachmentMaxMb: number;
+  categoryCodeRules: {
+    level1: {
+      length: string;
+      regex: string;
+    };
+    level2: {
+      length: string;
+      regex: string;
+    };
+    level3: {
+      length: string;
+      regex: string;
+    };
+  };
   pageSize: number;
 }
 

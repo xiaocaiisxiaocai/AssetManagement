@@ -29,6 +29,7 @@ export interface WorkflowItem {
   bizType: string;
   bizTypeLabel: string;
   id: number;
+  isActive: boolean;
   name: string;
   bpmnXml?: string | null; // BPMN 2.0 XML
   bpmnStatus: 'configured' | 'empty' | 'invalid';
@@ -102,6 +103,9 @@ export const createWorkflowApi = (data: SaveWorkflowPayload) =>
 
 export const saveWorkflowApi = (id: number, data: SaveWorkflowPayload) =>
   unwrap(requestClient.put<ApiResult<WorkflowItem>>(`/workflows/${id}`, data));
+
+export const setWorkflowStatusApi = (id: number, isActive: boolean) =>
+  unwrap(requestClient.post<ApiResult<WorkflowItem>>(`/workflows/${id}/status`, { isActive }));
 
 export const deleteWorkflowApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<boolean>>(`/workflows/${id}`));

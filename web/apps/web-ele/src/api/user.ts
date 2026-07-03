@@ -61,8 +61,18 @@ async function unwrapPaged<T>(request: Promise<ApiResult<PagedResult<T>>>) {
   return result.data;
 }
 
-export const getUserListApi = (keyword?: string, page: number = 1, pageSize: number = 20) =>
-  unwrapPaged(requestClient.get<ApiResult<PagedResult<UserDto>>>('/users', { params: { keyword, page, pageSize } }));
+export const getUserListApi = (
+  keyword?: string,
+  page: number = 1,
+  pageSize: number = 20,
+  departmentId?: number,
+  roleId?: number,
+) =>
+  unwrapPaged(
+    requestClient.get<ApiResult<PagedResult<UserDto>>>('/users', {
+      params: { departmentId, keyword, page, pageSize, roleId },
+    }),
+  );
 
 export const createUserApi = (data: UserPayload) =>
   unwrap(requestClient.post<ApiResult<UserDto>>('/users', data));

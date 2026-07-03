@@ -6,6 +6,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useAccess } from '@vben/access';
 
 import {
+  getRuntimeSettingsApi,
   createCategoryApi,
   deleteCategoryApi,
   getCategoryTreeApi,
@@ -27,6 +28,12 @@ import {
   ElTableColumn,
   ElTag,
 } from 'element-plus';
+import {
+  categoryCodeRuleHint,
+  defaultCategoryCodeRules,
+  validateCategoryCodeSeg,
+  type CategoryCodeRules,
+} from './category-code-rules';
 
 defineOptions({ name: 'AssetCategories' });
 
@@ -38,6 +45,7 @@ const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const parentCode = ref('');
 const categories = ref<CategoryNode[]>([]);
+const categoryCodeRules = ref<CategoryCodeRules>(defaultCategoryCodeRules);
 const MAX_CATEGORY_LEVEL = 3;
 const categoryActionAccess = computed(() => buildCategoryActionAccess(hasAccessByCodes));
 const form = reactive<CategoryPayload>({
@@ -51,11 +59,24 @@ const previewCode = computed(() =>
 );
 const isRootCategory = computed(() => !form.parentId);
 const parentDisplay = computed(() => parentCode.value || '顶级分类');
+const currentCategoryLevel = computed(() => {
+  if (!form.parentId) return 1;
+  const parent = findNode(categories.value, form.parentId);
+  return parent ? categoryLevel(parent) + 1 : 1;
+});
+const codeRuleHint = computed(() =>
+  categoryCodeRuleHint(currentCategoryLevel.value, categoryCodeRules.value),
+);
 
 async function loadData() {
   loading.value = true;
   try {
-    categories.value = await getCategoryTreeApi('all');
+    const [tree, runtimeSettings] = await Promise.all([
+      getCategoryTreeApi('all'),
+      getRuntimeSettingsApi(),
+    ]);
+    categories.value = tree;
+    categoryCodeRules.value = runtimeSettings.categoryCodeRules ?? defaultCategoryCodeRules;
   } finally {
     loading.value = false;
   }
@@ -89,8 +110,13 @@ function openEdit(row: CategoryNode) {
 }
 
 async function save() {
-  if (!form.codeSeg.trim()) {
-    ElMessage.warning('请填写编码段');
+  const validationMessage = validateCategoryCodeSeg(
+    form.codeSeg,
+    currentCategoryLevel.value,
+    categoryCodeRules.value,
+  );
+  if (validationMessage) {
+    ElMessage.warning(validationMessage);
     return;
   }
   const payload: CategoryPayload = {
@@ -268,7 +294,8 @@ onMounted(loadData);
             <ElTag size="default">{{ parentDisplay }}</ElTag>
           </ElFormItem>
           <ElFormItem label="编码段" required>
-            <ElInput v-model="form.codeSeg" placeholder="请输入编码段" />
+            <ElInput v-model="form.codeSeg" :placeholder="codeRuleHint" />
+            <div class="form-tip">{{ codeRuleHint }}</div>
           </ElFormItem>
           <ElFormItem v-if="!isRootCategory" label="备注">
             <ElInput v-model="form.remark" :rows="3" type="textarea" placeholder="请输入备注信息" />
@@ -299,6 +326,13 @@ onMounted(loadData);
 
 .asset-no-permission {
   font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.form-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--el-text-color-secondary);
 }
 </style>

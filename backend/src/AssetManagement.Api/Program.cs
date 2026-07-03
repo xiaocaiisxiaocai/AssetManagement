@@ -191,8 +191,16 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-    DbSeeder.Seed(db);
+    if (builder.Configuration.GetValue<bool>("Database:AutoMigrate"))
+    {
+        // 内网部署默认不在应用重启时改库；需要自动迁移时显式开启 Database:AutoMigrate。
+        db.Database.Migrate();
+    }
+    if (builder.Configuration.GetValue<bool>("Database:AutoSeed"))
+    {
+        // 种子会同步角色权限、菜单等基础数据；需要初始化/修复时显式开启 Database:AutoSeed。
+        DbSeeder.Seed(db);
+    }
 }
 
 // Configure the HTTP request pipeline.

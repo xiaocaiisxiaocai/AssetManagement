@@ -7,6 +7,32 @@ namespace AssetManagement.Tests.CodeQuality;
 public class SourceConventionTests
 {
     [Fact]
+    public void Entity_string_properties_have_explicit_database_length_or_column_type()
+    {
+        var root = FindRepositoryRoot();
+        var entityRoot = Path.Combine(root, "backend", "src", "AssetManagement.Domain", "Entities");
+        var configRoot = Path.Combine(root, "backend", "src", "AssetManagement.Infrastructure", "Persistence", "Configurations");
+
+        var offenders = Directory
+            .EnumerateFiles(entityRoot, "*.cs")
+            .SelectMany(entityFile =>
+            {
+                var entityName = Path.GetFileNameWithoutExtension(entityFile);
+                var source = File.ReadAllText(entityFile);
+                var configFile = Path.Combine(configRoot, $"{entityName}Configuration.cs");
+                var configSource = File.Exists(configFile) ? File.ReadAllText(configFile) : "";
+
+                return Regex.Matches(source, @"public\s+string\??\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{\s*get;\s*set;\s*\}")
+                    .Select(match => match.Groups[1].Value)
+                    .Where(prop => !PropertyHasLengthOrColumnType(configSource, prop))
+                    .Select(prop => $"{Path.GetRelativePath(root, entityFile)}:{prop}");
+            })
+            .ToList();
+
+        offenders.Should().BeEmpty("实体字符串字段必须显式配置 HasMaxLength 或 HasColumnType，避免 MySQL 隐式列类型和长度不可控");
+    }
+
+    [Fact]
     public void Infrastructure_sources_do_not_use_find_async_under_global_no_tracking()
     {
         var root = FindRepositoryRoot();
@@ -134,6 +160,34 @@ public class SourceConventionTests
     }
 
     [Fact]
+    public void Startup_does_not_run_database_migrations_unconditionally()
+    {
+        var root = FindRepositoryRoot();
+        var programFile = Path.Combine(root, "backend", "src", "AssetManagement.Api", "Program.cs");
+        var source = File.ReadAllText(programFile);
+        var migrateIndex = source.IndexOf("db.Database.Migrate();", StringComparison.Ordinal);
+        var autoMigrateIndex = source.IndexOf("GetValue<bool>(\"Database:AutoMigrate\")", StringComparison.Ordinal);
+        var seedIndex = source.IndexOf("DbSeeder.Seed(db);", StringComparison.Ordinal);
+
+        migrateIndex.Should().BeGreaterThan(0);
+        autoMigrateIndex.Should().BeInRange(0, migrateIndex - 1, "启动迁移必须由显式配置开关控制，避免每次重启后端都自动迁移数据库");
+        seedIndex.Should().BeGreaterThan(migrateIndex, "种子逻辑仍应在迁移判断之后执行");
+    }
+
+    [Fact]
+    public void Startup_does_not_run_database_seed_unconditionally()
+    {
+        var root = FindRepositoryRoot();
+        var programFile = Path.Combine(root, "backend", "src", "AssetManagement.Api", "Program.cs");
+        var source = File.ReadAllText(programFile);
+        var seedIndex = source.IndexOf("DbSeeder.Seed(db);", StringComparison.Ordinal);
+        var autoSeedIndex = source.IndexOf("GetValue<bool>(\"Database:AutoSeed\")", StringComparison.Ordinal);
+
+        seedIndex.Should().BeGreaterThan(0);
+        autoSeedIndex.Should().BeInRange(0, seedIndex - 1, "启动种子会同步角色权限、菜单等基础数据，必须由显式配置开关控制");
+    }
+
+    [Fact]
     public void Business_controller_actions_do_not_use_plain_authorize_without_permission_code()
     {
         var root = FindRepositoryRoot();
@@ -251,5 +305,17 @@ public class SourceConventionTests
         var methodLine = block.Split('\n').First(line => line.TrimStart().StartsWith("public ", StringComparison.Ordinal));
         var match = Regex.Match(methodLine, @"\s([A-Za-z_][A-Za-z0-9_]*)\s*\(");
         return match.Success ? match.Groups[1].Value : methodLine.Trim();
+    }
+
+    private static bool PropertyHasLengthOrColumnType(string configSource, string propertyName)
+    {
+        var match = Regex.Match(
+            configSource,
+            $@"Property\(x\s*=>\s*x\.{Regex.Escape(propertyName)}\)(?<chain>.*?);",
+            RegexOptions.Singleline);
+
+        return match.Success
+               && (match.Groups["chain"].Value.Contains("HasMaxLength(", StringComparison.Ordinal)
+                   || match.Groups["chain"].Value.Contains("HasColumnType(", StringComparison.Ordinal));
     }
 }

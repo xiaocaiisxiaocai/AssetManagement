@@ -14,7 +14,8 @@ public class WorkflowConfiguration : IEntityTypeConfiguration<WorkflowEntity>
         b.HasKey(x => x.Id);
         b.Property(x => x.Name).HasMaxLength(100).IsRequired();
         b.Property(x => x.BizType).HasMaxLength(50).IsRequired();
-        b.HasIndex(x => x.BizType).IsUnique();
+        b.Property(x => x.IsActive).IsRequired();
+        b.HasIndex(x => x.BizType);
 
         // BPMN XML 存储
         b.Property(x => x.BpmnXml).HasColumnType("TEXT");
