@@ -53,16 +53,19 @@ public class TestProjectController : ControllerBase
         => ApiResult<List<TestProjectFollowupDto>>.Ok(await _service.ListFollowupsAsync(id));
 
     [HttpPost("{id:int}/followups")]
+    // 落地跟进按项目进度和负责人关系授权，控制器只拦截未登录用户。
     [Authorize]
     public async Task<ApiResult<TestProjectFollowupDto>> CreateFollowup(int id, SaveTestProjectFollowupRequest request)
         => ApiResult<TestProjectFollowupDto>.Ok(await _service.CreateFollowupAsync(id, request, CurrentUserId()));
 
     [HttpPut("{id:int}/followups/{followupId:int}")]
+    // 具体写入权限由 Service 判断，避免固定权限码绕开“仅负责人可跟进”的业务规则。
     [Authorize]
     public async Task<ApiResult<TestProjectFollowupDto>> UpdateFollowup(int id, int followupId, SaveTestProjectFollowupRequest request)
         => ApiResult<TestProjectFollowupDto>.Ok(await _service.UpdateFollowupAsync(id, followupId, request, CurrentUserId()));
 
     [HttpDelete("{id:int}/followups/{followupId:int}")]
+    // 删除跟进记录与新增、编辑保持同一套负责人/管理员业务授权。
     [Authorize]
     public async Task<ApiResult<object?>> DeleteFollowup(int id, int followupId)
     {

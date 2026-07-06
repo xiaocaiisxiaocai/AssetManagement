@@ -392,6 +392,7 @@ public class TestProjectService : ITestProjectService
 
     private async Task EnsureCanWriteFollowup(TestProject project, int currentUserId)
     {
+        // 落地跟进不是普通项目编辑权限：只有进入落地阶段后，项目负责人或管理员才能填写。
         if (!IsLandingProgress(project))
             throw new BizException(4031, "项目进入落地跟进后才能填写落地跟进");
         if (project.OwnerId == currentUserId || await IsAdmin(currentUserId)) return;

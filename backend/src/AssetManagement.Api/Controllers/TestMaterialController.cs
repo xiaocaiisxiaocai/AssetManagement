@@ -29,11 +29,13 @@ public class TestMaterialController : ControllerBase
         => ApiResult<TestMaterialDetailDto>.Ok(await _service.GetDetailAsync(id));
 
     [HttpPost]
+    // 料件写入同时支持“料件权限码”和“项目负责人”两类入口，具体业务权限在 Service 中按项目判断。
     [Authorize]
     public async Task<ApiResult<TestMaterialDto>> Create(SaveTestMaterialRequest request)
         => ApiResult<TestMaterialDto>.Ok(await _service.CreateAsync(request));
 
     [HttpPut("{id:int}")]
+    // 不能在控制器绑定固定权限码，否则项目负责人无法维护自己负责项目下的料件。
     [Authorize]
     public async Task<ApiResult<TestMaterialDto>> Update(int id, SaveTestMaterialRequest request)
         => ApiResult<TestMaterialDto>.Ok(await _service.UpdateAsync(id, request));

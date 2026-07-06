@@ -338,6 +338,7 @@ public class TestMaterialService : ITestMaterialService
 
     private async Task EnsureCanWriteMaterialAsync(TestProject project, string permission)
     {
+        // 料件维护既允许拥有菜单权限的角色操作，也允许项目负责人维护自己负责项目下的料件。
         var user = _http.HttpContext?.User;
         var currentUserId = CurrentUserId();
         var permissions = user?.FindAll("perm").Select(x => x.Value).ToArray() ?? Array.Empty<string>();

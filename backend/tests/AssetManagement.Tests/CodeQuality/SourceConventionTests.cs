@@ -202,6 +202,7 @@ public class SourceConventionTests
             "NotificationController.cs:MarkRead",
             "NotificationController.cs:MarkAllRead",
             "SettingController.cs:Runtime",
+            // 以下接口的最终授权依赖业务数据，必须在 Service 层结合项目负责人、项目进度等条件判断。
             "TestMaterialController.cs:Create",
             "TestMaterialController.cs:Update",
             "TestProjectController.cs:CreateFollowup",
