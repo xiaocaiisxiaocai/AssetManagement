@@ -112,14 +112,20 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var asset = await CreateAsset();
-        await Post<ApiResult<WorkflowDto>>("/api/workflows/1/status", new
+        var workflow = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = Unique("停用流程"),
+            BizType = Unique("disabled"),
+            BpmnXml = SimpleBpmn("Disabled_Task")
+        });
+        await Post<ApiResult<WorkflowDto>>($"/api/workflows/{workflow.Data!.Id}/status", new
         {
             isActive = false
         });
 
         var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
         {
-            BizType = "borrow",
+            BizType = workflow.Data.BizType,
             AssetId = asset.Id,
             Reason = "测试停用流程"
         });
@@ -211,8 +217,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var employeeRole = roles.Data.Items.Single(r => r.Code == "employee");
         var deptAdminRole = roles.Data.Items.Single(r => r.Code == "dept_admin");
 
-        var sourceDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { ManagerId = 1, Name = Unique("SRC") });
-        var targetDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { ManagerId = 1, Name = Unique("DST") });
+        var sourceDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { Name = Unique("SRC") });
+        var targetDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { Name = Unique("DST") });
 
         var supervisorNo = Unique("SUP");
         var supervisor = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -300,7 +306,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
         var employeeRole = roles.Data.Items.Single(r => r.Code == "employee");
 
-        var dept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { ManagerId = 1, Name = Unique("课别") });
+        var dept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { Name = Unique("课别") });
         var managerNo = Unique("MGR");
         var manager = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
@@ -467,4 +473,17 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
 
     private static string UniqueCodeSeg()
         => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
+
+    private static string SimpleBpmn(string taskId) => $$"""
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="Process_Simple" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:userTask id="{{taskId}}" name="审批" camunda:assignee="系统管理员" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="{{taskId}}" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="{{taskId}}" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
 }

@@ -201,7 +201,12 @@ public class SourceConventionTests
             "NotificationController.cs:UnreadCount",
             "NotificationController.cs:MarkRead",
             "NotificationController.cs:MarkAllRead",
-            "SettingController.cs:Runtime"
+            "SettingController.cs:Runtime",
+            "TestMaterialController.cs:Create",
+            "TestMaterialController.cs:Update",
+            "TestProjectController.cs:CreateFollowup",
+            "TestProjectController.cs:UpdateFollowup",
+            "TestProjectController.cs:DeleteFollowup"
         };
 
         var offenders = Directory

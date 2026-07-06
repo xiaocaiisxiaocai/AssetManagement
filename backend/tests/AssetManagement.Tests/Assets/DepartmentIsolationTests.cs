@@ -33,19 +33,17 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
         var dept1 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
-            Name = "研发部"
+            Name = Unique("研发部")
         });
         var dept2 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
-            Name = "市场部"
+            Name = Unique("市场部")
         });
 
         // 创建两个部门管理员用户，直接传入 RoleIds
         var deptAdmin1 = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
-            EmployeeNo = $"DA{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 100000}",
+            EmployeeNo = Unique("DA"),
             Name = "研发部经理",
             Password = "123456",
             DepartmentId = dept1.Data!.Id,
@@ -53,7 +51,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         });
         var deptAdmin2 = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
-            EmployeeNo = $"DA{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 100000 + 1}",
+            EmployeeNo = Unique("DB"),
             Name = "市场部经理",
             Password = "123456",
             DepartmentId = dept2.Data!.Id,
@@ -118,18 +116,16 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
         var dept1 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
-            Name = "研发部"
+            Name = Unique("研发部")
         });
         var dept2 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
-            Name = "市场部"
+            Name = Unique("市场部")
         });
 
         var deptAdmin1 = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
-            EmployeeNo = $"DX{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 100000}",
+            EmployeeNo = Unique("DX"),
             Name = "研发部经理X",
             Password = "123456",
             DepartmentId = dept1.Data!.Id,

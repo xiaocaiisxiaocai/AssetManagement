@@ -216,7 +216,6 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     private Task<ApiResult<DepartmentNodeDto>> CreateDepartment(string name)
         => Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = 1,
             Name = $"{name}{Guid.NewGuid():N}"[..20]
         });
 

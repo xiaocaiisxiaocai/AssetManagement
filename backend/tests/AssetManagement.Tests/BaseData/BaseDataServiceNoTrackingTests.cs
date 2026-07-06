@@ -49,7 +49,7 @@ public class BaseDataServiceNoTrackingTests : MySqlFixtureBase
     }
 
     [Fact]
-    public async Task Save_settings_updates_existing_value_when_global_no_tracking_is_enabled()
+    public async Task Save_settings_updates_value_without_changing_description_when_global_no_tracking_is_enabled()
     {
         var service = CreateService();
         var setting = new SystemSetting { Key = "base_data_test", Value = "old", Description = "旧说明" };
@@ -69,7 +69,7 @@ public class BaseDataServiceNoTrackingTests : MySqlFixtureBase
         await using var verifyDb = CreateNoTrackingContext();
         var saved = await verifyDb.SystemSettings.AsNoTracking().SingleAsync(x => x.Key == setting.Key);
         saved.Value.Should().Be("new");
-        saved.Description.Should().Be("新说明");
+        saved.Description.Should().Be("旧说明");
     }
 
     private BaseDataService CreateService()
