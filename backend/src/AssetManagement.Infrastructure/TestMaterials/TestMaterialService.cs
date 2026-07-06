@@ -267,7 +267,7 @@ public class TestMaterialService : ITestMaterialService
         return q;
     }
 
-    // TODO: 与 AssetService.DescendantDepartmentIdsAsync 逻辑一致，共用同一缓存 key；如两处逻辑发生变化须保持同步，后续可提取到共享帮助类
+    // 与 AssetService.DescendantDepartmentIds 共享部门树缓存键；两处隔离口径必须保持一致。
     private async Task<int[]> DescendantDepartmentIdsAsync(int rootId)
     {
         var departments = await _cache.GetOrCreateAsync(DepartmentTreeCacheKey, async entry =>

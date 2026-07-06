@@ -241,8 +241,10 @@ public class PendingApprovalReminderWorker : BackgroundService
             }
             else if (assignee == "supervisor")
             {
-                var applicant = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId);
-                if (applicant?.SupervisorId is not null) result.Add(applicant.SupervisorId.Value);
+                foreach (var supervisorId in await ResolveSupervisorApproverUserIdsAsync(db, applicantId))
+                {
+                    if (!result.Contains(supervisorId)) result.Add(supervisorId);
+                }
             }
             else if (int.TryParse(assignee, out var uid)) result.Add(uid);
             else
@@ -277,6 +279,28 @@ public class PendingApprovalReminderWorker : BackgroundService
                 .Select(u => u.Id).ToListAsync();
             foreach (var uid in groupUsers)
                 if (!result.Contains(uid)) result.Add(uid);
+        }
+
+        return result;
+    }
+
+    private static async Task<List<int>> ResolveSupervisorApproverUserIdsAsync(AppDbContext db, int applicantId)
+    {
+        var result = new List<int>();
+        var applicant = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId);
+        if (applicant?.DepartmentId is not null)
+        {
+            var department = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
+            if (department?.ManagerId is not null)
+            {
+                result.Add(department.ManagerId.Value);
+            }
+        }
+
+        // 与正式审批权限解析保持一致：组织负责人优先，旧库未配置负责人时再兼容直属上级字段。
+        if (result.Count == 0 && applicant?.SupervisorId is not null)
+        {
+            result.Add(applicant.SupervisorId.Value);
         }
 
         return result;
