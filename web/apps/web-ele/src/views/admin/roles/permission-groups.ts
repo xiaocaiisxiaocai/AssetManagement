@@ -55,13 +55,6 @@ const menuPermissionModules: Record<string, string[]> = {
   ReportSummary: ['report'],
 };
 
-const menuPermissionCodes: Record<string, string[]> = {
-  AdminAudit: ['admin:audit'],
-  AdminRoles: ['admin:role'],
-  AdminSettings: ['admin:setting'],
-  AdminUsers: ['admin:user'],
-};
-
 interface BuildPermissionGroupsOptions {
   menus: MenuDto[];
   permissions: PermissionDto[];
@@ -103,13 +96,11 @@ export function buildPermissionGroups({
   function collectMenuPermissions(menu: MenuDto) {
     const modulePermissions = collectMenuPermissionModules(menu)
       .flatMap((module) => permissionsByModule[module] ?? []);
-    const configuredCodePermissions = (menuPermissionCodes[menu.name] ?? [])
-      .flatMap((code) => permissions.filter((perm) => perm.code === code));
     const codePermissions = menu.permissionCode
       ? permissions.filter((perm) => perm.code === menu.permissionCode)
       : [];
 
-    return uniquePermissions([...modulePermissions, ...configuredCodePermissions, ...codePermissions])
+    return uniquePermissions([...modulePermissions, ...codePermissions])
       .sort(comparePermissions);
   }
 
@@ -127,7 +118,24 @@ export function buildPermissionGroups({
     menuList
       .filter((menu) => menu.type !== 'button')
       .forEach((menu) => {
-        const childGroups = buildMenuPermissionGroups(menu.children ?? [], level + 1);
+        const rawChildGroups = buildMenuPermissionGroups(menu.children ?? [], level + 1);
+        const rawChildPermissionIds = new Set(
+          rawChildGroups.flatMap((group) => group.permissions.map((perm) => perm.id)),
+        );
+        const rawOwnPermissions = collectMenuPermissions(menu)
+          .filter((perm) => !rawChildPermissionIds.has(perm.id));
+
+        if (rawOwnPermissions.length === 0 && hasSamePermissionSignature(rawChildGroups)) {
+          groups.push(toPermissionGroup({
+            key: `menu:${menu.id}`,
+            label: menu.title || menu.name,
+            level,
+            permissions: rawChildGroups[0]!.permissions,
+          }));
+          return;
+        }
+
+        const childGroups = removeSubsetGroups(rawChildGroups);
         const childPermissionIds = new Set(
           childGroups.flatMap((group) => group.permissions.map((perm) => perm.id)),
         );
@@ -186,4 +194,30 @@ function uniquePermissions(permissions: PermissionDto[]) {
   return permissions.filter(
     (perm, index, list) => list.findIndex((item) => item.id === perm.id) === index,
   );
+}
+
+function hasSamePermissionSignature(groups: PermissionGroup[]) {
+  if (groups.length < 2) return false;
+  const signatures = groups.map((group) => permissionSignature(group.permissions));
+  return signatures.every((signature) => signature && signature === signatures[0]);
+}
+
+function permissionSignature(permissions: PermissionDto[]) {
+  return permissions
+    .map((perm) => perm.id)
+    .sort((a, b) => a - b)
+    .join(',');
+}
+
+function removeSubsetGroups(groups: PermissionGroup[]) {
+  return groups.filter((group, index) => {
+    const groupIds = new Set(group.permissions.map((perm) => perm.id));
+    return !groups.some((candidate, candidateIndex) => {
+      if (candidateIndex === index || candidate.permissions.length <= group.permissions.length) {
+        return false;
+      }
+      const candidateIds = new Set(candidate.permissions.map((perm) => perm.id));
+      return [...groupIds].every((id) => candidateIds.has(id));
+    });
+  });
 }
