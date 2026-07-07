@@ -295,6 +295,18 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
 
         var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
         notifications!.Data.Should().Contain(x => x.Type == "approval_pending" && x.FlowId == flow.Data.Id);
+
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
+            new ApprovalActionRequest { NodeId = "Task_receiver", Opinion = "同意" });
+        approved.Data!.Status.Should().Be("approved");
+
+        Auth(await LoginToken(receiverNo, "123456"));
+        var receiverNotifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
+        receiverNotifications!.Data.Should().Contain(x =>
+            x.Type == "transfer_received"
+            && x.FlowId == flow.Data.Id
+            && x.Title.Contains(flow.Data.AssetName),
+            "资产转让全部审批通过后应通知接收人");
     }
 
     [Fact]
@@ -472,7 +484,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, 50)];
 
     private static string UniqueCodeSeg()
-        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
+        => Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
 
     private static string SimpleBpmn(string taskId) => $$"""
 <?xml version="1.0" encoding="UTF-8"?>

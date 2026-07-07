@@ -2,6 +2,7 @@ using AssetManagement.Application.Reports;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Reports;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,7 @@ public class ReportServiceTests : MySqlFixtureBase
 
     public ReportServiceTests()
     {
-        _service = new ReportService(_db);
+        _service = new ReportService(_db, new NotificationService(_db));
     }
 
     [Fact]

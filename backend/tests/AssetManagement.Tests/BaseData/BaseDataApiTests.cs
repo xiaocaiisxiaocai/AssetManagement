@@ -800,14 +800,20 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
             Code = Unique("TP"),
-            Name = Unique("测试项目")
+            FollowUpIntervalDays = 14,
+            Name = Unique("测试项目"),
+            OwnerId = 1,
+            PlannedFinishDate = new DateTime(2026, 7, 29),
+            ProgressCode = "testing",
+            ProjectTypeCode = "prototype",
+            StartDate = new DateTime(2026, 6, 29)
         })).Data!;
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, prefix.Length + 33)];
 
     private static string UniqueCodeSeg()
-        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
+        => Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
 
     private static string UniqueThirdLevelCodeSeg()
         => Guid.NewGuid().ToString("N")[..3].ToUpperInvariant();

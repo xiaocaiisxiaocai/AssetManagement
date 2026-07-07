@@ -39,6 +39,7 @@ web/perf-flow.cjs
 /node_modules/
 /package.json
 /package-lock.json
+backend/.tmp-test-bin/
 test-screenshots/
 .playwright-cli/
 web/.playwright-cli/

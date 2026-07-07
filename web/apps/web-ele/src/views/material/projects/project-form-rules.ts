@@ -11,10 +11,9 @@ export type ProjectFormLike = {
   testStatus: string;
 };
 
-export function validateProjectForm(form: ProjectFormLike, isEdit: boolean) {
+export function validateProjectForm(form: ProjectFormLike) {
   if (!form.code.trim()) return '请填写项目编号';
   if (!form.name.trim()) return '请填写项目名称';
-  if (isEdit) return null;
   if (!form.projectTypeCode) return '请选择项目类型';
   if (!form.progressCode) return '请选择进度';
   if (!form.ownerId) return '请选择负责人';

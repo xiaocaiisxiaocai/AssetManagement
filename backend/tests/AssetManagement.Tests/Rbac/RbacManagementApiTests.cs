@@ -919,7 +919,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         });
         var category = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
-            CodeSeg = Guid.NewGuid().ToString("N")[..2].ToUpperInvariant()
+            CodeSeg = Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()
         });
         await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {

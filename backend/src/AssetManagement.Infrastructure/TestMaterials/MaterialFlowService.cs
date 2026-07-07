@@ -469,13 +469,17 @@ public class MaterialFlowService : IMaterialFlowService
                 var approverIds = await ResolveSupervisorApproverUserIdsAsync(flow);
                 return approverIds.Contains(user.Id);
             }
-            if (int.TryParse(assignee, out var uid)) return user.Id == uid;
+            if (int.TryParse(assignee, out var uid)) return user.Id == uid || user.EmployeeNo == assignee;
             return user.Name == assignee || user.EmployeeNo == assignee;
         }
         if (!string.IsNullOrEmpty(candidateUsers))
         {
             var users = candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            if (users.Any(u => u.Trim() == user.Id.ToString() || u.Trim() == user.Name)) return true;
+            if (users.Any(u =>
+            {
+                var value = u.Trim();
+                return value == user.Id.ToString() || value == user.EmployeeNo || value == user.Name;
+            })) return true;
         }
         if (!string.IsNullOrEmpty(candidateGroups))
         {
@@ -627,11 +631,9 @@ public class MaterialFlowService : IMaterialFlowService
                     if (!result.Contains(supervisorId)) result.Add(supervisorId);
                 }
             }
-            else if (int.TryParse(assignee, out var uid)) result.Add(uid);
             else
             {
-                var u = await _db.Users.FirstOrDefaultAsync(x => x.Name == assignee || x.EmployeeNo == assignee);
-                if (u is not null) result.Add(u.Id);
+                await AddExplicitApproverUserIds(result, assignee);
             }
         }
 
@@ -639,13 +641,7 @@ public class MaterialFlowService : IMaterialFlowService
         {
             foreach (var part in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
-                var p = part.Trim();
-                if (int.TryParse(p, out var uid)) { if (!result.Contains(uid)) result.Add(uid); }
-                else
-                {
-                    var u = await _db.Users.FirstOrDefaultAsync(x => x.Name == p);
-                    if (u is not null && !result.Contains(u.Id)) result.Add(u.Id);
-                }
+                await AddExplicitApproverUserIds(result, part.Trim());
             }
         }
 
@@ -663,6 +659,19 @@ public class MaterialFlowService : IMaterialFlowService
         }
 
         return result;
+    }
+
+    private async Task AddExplicitApproverUserIds(List<int> result, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var hasUserId = int.TryParse(value, out var parsedUserId);
+        var users = await _db.Users
+            .AsNoTracking()
+            .Where(x => x.Name == value || x.EmployeeNo == value || (hasUserId && x.Id == parsedUserId))
+            .Select(x => x.Id)
+            .ToListAsync();
+        foreach (var userId in users)
+            if (!result.Contains(userId)) result.Add(userId);
     }
 
     private static MaterialFlowDto ToDto(MaterialFlow f) => new()

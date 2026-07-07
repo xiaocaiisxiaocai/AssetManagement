@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Notifications;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
@@ -50,6 +51,36 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Direct_transfer_writes_detail_flow_and_operation_record()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var project = await CreateProject("直转详情项目");
+        var transferee = await CreateUser("0920", "直转详情受让人");
+        var material = await CreateMaterial(project.Id, "直转详情样品");
+
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "详情应保留流转历史"
+        });
+
+        var detail = await _client.GetFromJsonAsync<ApiResult<TestMaterialDetailDto>>(
+            $"/api/test-materials/{material.Id}/detail");
+
+        detail!.Data!.Flows.Should().ContainSingle(x =>
+            x.Id == flow.Data!.Id &&
+            x.Status == "approved" &&
+            x.Transferee == transferee.Name &&
+            x.Reason == "详情应保留流转历史");
+        detail.Data.Records.Should().ContainSingle(x =>
+            x.Action == "direct_transfer" &&
+            x.Operator == "系统管理员" &&
+            x.Comment!.Contains(transferee.Name));
+    }
+
+    [Fact]
     public async Task Transfer_with_switch_on_creates_pending_flow_then_approval_changes_custodian()
     {
         await Login();
@@ -79,6 +110,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
 
         var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
         after!.Data!.CustodianId.Should().Be(transferee.Id);
+        after.Data.HasPendingFlow.Should().BeFalse();
     }
 
     [Fact]
@@ -174,6 +206,34 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             $"/api/material-flows/{flow.Data.Id}/approve",
             new MaterialApprovalRequest { Opinion = "指定人员审批通过" });
         approved.Data!.Status.Should().Be("approved");
+    }
+
+    [Fact]
+    public async Task Project_owner_transfer_notifies_configured_employee_no_assignee()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var owner = await CreateUser("0921", "项目负责人通知", "supervisor");
+        var transferee = await CreateUser("0922", "通知接收人");
+        var project = await CreateProject("负责人通知项目", owner.Id);
+        var material = await CreateMaterial(project.Id, "负责人通知样品");
+
+        Auth(await LoginToken(owner.EmployeeNo, "123456"));
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "应通知工号1001对应的系统管理员"
+        });
+
+        await Login();
+        var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>(
+            "/api/notifications?unreadOnly=true");
+
+        notifications!.Data.Should().Contain(x =>
+            x.FlowId == flow.Data!.Id &&
+            x.Type == "material_approval_pending" &&
+            x.Title.Contains(material.Name));
     }
 
     [Fact]
@@ -287,8 +347,13 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
         {
             Code = NewProjectCode(),
+            FollowUpIntervalDays = 14,
             Name = name,
-            OwnerId = ownerId
+            OwnerId = ownerId ?? 1,
+            PlannedFinishDate = new DateTime(2026, 7, 29),
+            ProgressCode = "testing",
+            ProjectTypeCode = "prototype",
+            StartDate = new DateTime(2026, 6, 29)
         })).Data!;
 
     private static string NewProjectCode() => $"TP-{Guid.NewGuid():N}"[..20];

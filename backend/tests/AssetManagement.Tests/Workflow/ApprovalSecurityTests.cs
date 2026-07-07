@@ -236,5 +236,5 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, prefix.Length + 33)];
 
     private static string UniqueCodeSeg()
-        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
+        => Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
 }

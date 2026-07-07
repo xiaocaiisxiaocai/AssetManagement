@@ -427,7 +427,7 @@ function buildProjectPayload(): SaveTestProjectPayload {
 }
 
 async function save() {
-  const validationMessage = validateProjectForm(form, !!editingId.value);
+  const validationMessage = validateProjectForm(form);
   if (validationMessage) {
     ElMessage.warning(validationMessage);
     return;

@@ -304,14 +304,30 @@ public class WorkflowService : IWorkflowService
         {
             if (flow.Status == "approved")
             {
-                await _notifications.CreateAsync(new CreateNotificationRequest
+                var notifications = new List<CreateNotificationRequest>
                 {
-                    Type = "approval_approved",
-                    Title = $"审批通过：{flow.AssetName}",
-                    Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请已通过审批。",
-                    FlowId = id,
-                    UserId = flow.ApplicantId,
-                });
+                    new()
+                    {
+                        Type = "approval_approved",
+                        Title = $"审批通过：{flow.AssetName}",
+                        Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请已通过审批。",
+                        FlowId = id,
+                        UserId = flow.ApplicantId,
+                    }
+                };
+                if (flow.BizType == "transfer" && flow.TransfereeId.HasValue && flow.TransfereeId.Value != flow.ApplicantId)
+                {
+                    notifications.Add(new CreateNotificationRequest
+                    {
+                        Type = "transfer_received",
+                        Title = $"资产已转让给您：{flow.AssetName}",
+                        Body = $"资产 {flow.AssetNo}（{flow.AssetName}）已完成转让审批，当前保管人为您。",
+                        FlowId = id,
+                        UserId = flow.TransfereeId.Value,
+                        IdempotencyKey = $"transfer_received_{id}_{flow.TransfereeId.Value}"
+                    });
+                }
+                await _notifications.CreateBatchAsync(notifications);
             }
             else if (flow.Status == "pending")
             {
@@ -653,7 +669,7 @@ public class WorkflowService : IWorkflowService
             }
             else if (int.TryParse(assignee, out var userId))
             {
-                return user.Id == userId;
+                return user.Id == userId || user.EmployeeNo == assignee;
             }
             else
             {
@@ -665,7 +681,11 @@ public class WorkflowService : IWorkflowService
         if (!string.IsNullOrEmpty(candidateUsers))
         {
             var users = candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            if (users.Any(u => u.Trim() == user.Id.ToString() || u.Trim() == user.Name))
+            if (users.Any(u =>
+            {
+                var value = u.Trim();
+                return value == user.Id.ToString() || value == user.EmployeeNo || value == user.Name;
+            }))
             {
                 return true;
             }
@@ -758,14 +778,9 @@ public class WorkflowService : IWorkflowService
                     if (!result.Contains(supervisorId)) result.Add(supervisorId);
                 }
             }
-            else if (int.TryParse(assignee, out var uid))
-            {
-                result.Add(uid);
-            }
             else
             {
-                var u = await _db.Users.FirstOrDefaultAsync(x => x.Name == assignee || x.EmployeeNo == assignee);
-                if (u is not null) result.Add(u.Id);
+                await AddExplicitApproverUserIdsAsync(result, assignee);
             }
         }
 
@@ -773,13 +788,7 @@ public class WorkflowService : IWorkflowService
         {
             foreach (var part in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
-                var p = part.Trim();
-                if (int.TryParse(p, out var uid)) { if (!result.Contains(uid)) result.Add(uid); }
-                else
-                {
-                    var u = await _db.Users.FirstOrDefaultAsync(x => x.Name == p);
-                    if (u is not null && !result.Contains(u.Id)) result.Add(u.Id);
-                }
+                await AddExplicitApproverUserIdsAsync(result, part.Trim());
             }
         }
 
@@ -836,6 +845,19 @@ public class WorkflowService : IWorkflowService
         }
 
         return result;
+    }
+
+    private async Task AddExplicitApproverUserIdsAsync(List<int> result, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var hasUserId = int.TryParse(value, out var parsedUserId);
+        var users = await _db.Users
+            .AsNoTracking()
+            .Where(x => x.Name == value || x.EmployeeNo == value || (hasUserId && x.Id == parsedUserId))
+            .Select(x => x.Id)
+            .ToListAsync();
+        foreach (var userId in users)
+            if (!result.Contains(userId)) result.Add(userId);
     }
 
     private async Task<string?> DepartmentName(int? deptId)

@@ -695,19 +695,42 @@ public static class DbSeeder
             var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
             if (role is null) continue;
 
-            if (!db.RolePermissions.Any(x => x.RoleId == role.Id))
-            {
-                var permissions = db.Permissions.Where(x => permissionCodes.Contains(x.Code)).ToList();
-                foreach (var permission in permissions)
-                {
-                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id });
-                }
-            }
+            EnsureRolePermissionsForMatrix(db, role, permissionCodes);
 
             EnsureRoleMenusForPermissions(db, role, permissionCodes);
         }
         EnsureWarehouseUsersHaveRole(db);
         db.SaveChanges();
+    }
+
+    private static void EnsureRolePermissionsForMatrix(AppDbContext db, Role role, string[] permissionCodes)
+    {
+        var desiredCodes = permissionCodes.ToHashSet(StringComparer.Ordinal);
+        var desiredPermissions = db.Permissions.Where(x => desiredCodes.Contains(x.Code)).ToList();
+        var existing = db.RolePermissions
+            .Where(x => x.RoleId == role.Id)
+            .ToList();
+
+        foreach (var permission in desiredPermissions)
+        {
+            if (!existing.Any(x => x.PermissionId == permission.Id))
+            {
+                db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id });
+            }
+        }
+
+        // 主管角色历史上误授过用户管理权限；增量种子需要主动收敛，避免旧库继续越权。
+        if (role.Code == "supervisor")
+        {
+            var userPermissionIds = db.Permissions
+                .Where(x => x.Code.StartsWith("user:"))
+                .Select(x => x.Id)
+                .ToHashSet();
+            foreach (var grant in existing.Where(x => userPermissionIds.Contains(x.PermissionId)))
+            {
+                db.RolePermissions.Remove(grant);
+            }
+        }
     }
 
     private static void EnsureAdminDefaultPermissionsAndMenus(AppDbContext db)

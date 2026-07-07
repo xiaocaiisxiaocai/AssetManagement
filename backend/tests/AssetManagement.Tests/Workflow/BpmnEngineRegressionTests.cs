@@ -286,7 +286,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, 50)];
 
     private static string UniqueCodeSeg()
-        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
+        => Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
 
     private static string DepartmentGatewayBpmn(string dept, string matchedTaskId, string defaultTaskId) => $$"""
 <?xml version="1.0" encoding="UTF-8"?>

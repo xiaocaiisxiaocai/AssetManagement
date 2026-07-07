@@ -6,7 +6,9 @@ using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Notifications;
 using AssetManagement.Application.Reports;
+using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
@@ -93,8 +95,27 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
     public async Task Overdue_report_and_remind_creates_notification()
     {
         await Login();
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var employeeRole = roles!.Data!.Items.Single(r => r.Code == "employee");
+        var borrowerNo = Unique("BOR");
+        var borrower = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = borrowerNo,
+            Name = "逾期借用人",
+            Password = "123456",
+            RoleIds = new[] { employeeRole.Id }
+        });
         var category = await CreateCategory();
         var asset = await CreateAsset(category.Id, null, "逾期资产", AssetStatus.Available);
+        await Put<ApiResult<AssetDto>>($"/api/assets/{asset.Id}", new UpdateAssetRequest
+        {
+            Name = asset.Name,
+            CategoryId = category.Id,
+            Quantity = 1,
+            Status = AssetStatus.Available,
+            CustodianId = borrower.Data!.Id
+        });
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await LoginToken(borrowerNo, "123456"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
@@ -107,6 +128,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         flow.Should().NotBeNull();
         flow.Data.Should().NotBeNull();
 
+        await Login();
         // 审批完成流程
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve", new ApprovalActionRequest { Opinion = "同意" });
         approved.Data.Should().NotBeNull();
@@ -115,9 +137,15 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         var overdue = await _client.GetFromJsonAsync<ApiResult<List<OverdueReportRow>>>("/api/reports/overdue");
         await Post<ApiResult<object?>>($"/api/reports/overdue/{asset.Id}/remind", new { });
         var audit = await _client.GetFromJsonAsync<ApiResult<PagedResult<AuditLogDto>>>("/api/audit-logs?actionType=remind");
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await LoginToken(borrowerNo, "123456"));
+        var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
 
         overdue!.Data!.Should().Contain(x => x.AssetId == asset.Id && x.OverdueDays > 0);
         audit!.Data!.Items.Should().Contain(x => x.TargetId == asset.Id.ToString());
+        notifications!.Data.Should().Contain(x =>
+            x.Type == "overdue"
+            && x.FlowId == flow.Data.Id
+            && x.Title.Contains(asset.AssetNo));
     }
 
     [Fact]
@@ -251,6 +279,16 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.Data!.Token);
     }
 
+    private async Task<string> LoginToken(string employeeNo, string password)
+    {
+        var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password
+        });
+        return body.Data!.Token;
+    }
+
     private async Task<T> Post<T>(string url, object body)
     {
         var res = await _client.PostAsJsonAsync(url, body);
@@ -269,5 +307,5 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, prefix.Length + 33)];
 
     private static string UniqueCodeSeg()
-        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
+        => Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
 }

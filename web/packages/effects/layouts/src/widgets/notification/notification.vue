@@ -10,7 +10,7 @@ import {
   VbenScrollbar,
 } from '@vben-core/shadcn-ui';
 
-import { useToggle } from '@vueuse/core';
+import { ref } from 'vue';
 
 interface Props {
   /**
@@ -37,7 +37,7 @@ const emit = defineEmits<{
   viewAll: [];
 }>();
 
-const [open, toggle] = useToggle();
+const open = ref(false);
 
 function close() {
   open.value = false;
@@ -66,7 +66,7 @@ function handleClick(item: NotificationItem) {
     content-class="relative right-2 w-[360px] p-0"
   >
     <template #trigger>
-      <div class="flex-center mr-2 h-full" @click.stop="toggle()">
+      <button class="flex-center mr-2 h-full" type="button">
         <VbenIconButton
           aria-label="通知中心"
           class="bell-button text-foreground relative"
@@ -78,7 +78,7 @@ function handleClick(item: NotificationItem) {
           ></span>
           <Bell class="size-4" />
         </VbenIconButton>
-      </div>
+      </button>
     </template>
 
     <div class="relative">

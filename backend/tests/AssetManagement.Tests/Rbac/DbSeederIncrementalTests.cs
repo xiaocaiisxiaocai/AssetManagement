@@ -64,6 +64,9 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         roles.Single(x => x.Code == "supervisor")
             .RolePermissions.Select(x => x.Permission.Code)
             .Should().Contain("project:view", "部门主管已有测试项目菜单时必须能访问测试项目接口");
+        roles.Single(x => x.Code == "supervisor")
+            .RolePermissions.Select(x => x.Permission.Code)
+            .Should().NotContain(code => code.StartsWith("user:"), "部门主管不应具备用户管理权限");
         warehouseUser.UserRoles.Select(x => x.RoleId)
             .Should().Contain(warehouse!.Id, "现有仓库管理员测试用户不能保持无角色状态");
         normalUser.UserRoles.Select(x => x.RoleId)
@@ -169,6 +172,11 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         {
             RoleId = admin.Id,
             PermissionId = permissions.Single(x => x.Code == "asset:view").Id
+        });
+        _db.RolePermissions.Add(new RolePermission
+        {
+            RoleId = supervisor.Id,
+            PermissionId = permissions.Single(x => x.Code == "approval:create").Id
         });
         _db.RoleMenus.Add(new RoleMenu { RoleId = admin.Id, MenuId = home.Id });
         _db.UserRoles.Add(new UserRole { UserId = systemAdmin.Id, RoleId = admin.Id });

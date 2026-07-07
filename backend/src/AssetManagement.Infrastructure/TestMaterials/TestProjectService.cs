@@ -42,6 +42,7 @@ public class TestProjectService : ITestProjectService
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
         var code = (request.Code ?? "").Trim();
         if (string.IsNullOrWhiteSpace(code)) throw new BizException(4001, "项目编号不能为空");
+        ValidateProjectRequiredFields(request);
         await EnsureProjectUnique(code, name);
         await ValidateProjectReferences(request);
         var project = new TestProject
@@ -72,6 +73,7 @@ public class TestProjectService : ITestProjectService
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
         var code = (request.Code ?? "").Trim();
         if (string.IsNullOrWhiteSpace(code)) throw new BizException(4001, "项目编号不能为空");
+        ValidateProjectRequiredFields(request);
         await EnsureProjectUnique(code, name, id);
         await ValidateProjectReferences(request);
         project.Name = name;
@@ -381,6 +383,16 @@ public class TestProjectService : ITestProjectService
         if (request.OwnerId.HasValue &&
             !await _db.Users.AnyAsync(x => x.Id == request.OwnerId.Value && x.IsActive))
             throw new BizException(4041, "负责人不存在或已停用");
+    }
+
+    private static void ValidateProjectRequiredFields(SaveTestProjectRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.ProjectTypeCode)) throw new BizException(4001, "项目类型不能为空");
+        if (string.IsNullOrWhiteSpace(request.ProgressCode)) throw new BizException(4001, "项目进度不能为空");
+        if (!request.OwnerId.HasValue) throw new BizException(4001, "负责人不能为空");
+        if (!request.StartDate.HasValue) throw new BizException(4001, "开始时间不能为空");
+        if (!request.PlannedFinishDate.HasValue) throw new BizException(4001, "计划完成时间不能为空");
+        if (request.FollowUpIntervalDays < 1) throw new BizException(4001, "跟进间隔必须大于 0");
     }
 
     private async Task<TestProject> LoadProject(int projectId)

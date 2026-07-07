@@ -159,7 +159,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, 50)];
 
     private static string UniqueCodeSeg()
-        => Guid.NewGuid().ToString("N")[..2].ToUpperInvariant();
+        => Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
 
     private static string SingleUserBpmn(string userName) => $"""
 <?xml version="1.0" encoding="UTF-8"?>

@@ -1,8 +1,10 @@
 using System.Globalization;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Notifications;
 using AssetManagement.Application.Reports;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Common;
+using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,10 +13,12 @@ namespace AssetManagement.Infrastructure.Reports;
 public class ReportService : IReportService
 {
     private readonly AppDbContext _db;
+    private readonly INotificationService _notifications;
 
-    public ReportService(AppDbContext db)
+    public ReportService(AppDbContext db, INotificationService notifications)
     {
         _db = db;
+        _notifications = notifications;
     }
 
     public async Task<AssetSummaryDto> GetSummaryAsync()
@@ -213,6 +217,15 @@ public class ReportService : IReportService
             OccurredAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "overdue",
+            Title = $"逾期催办：{row.AssetNo} {row.AssetName}",
+            Body = $"您借用的 {row.AssetName}（{row.AssetNo}）预计归还日期为 {row.ReturnDate}，已逾期 {row.OverdueDays} 天，请尽快归还。",
+            FlowId = row.FlowId,
+            UserId = row.BorrowerId,
+            IdempotencyKey = $"overdue_remind_{row.FlowId}_{DateTime.UtcNow:yyyyMMdd}_{userId ?? 0}"
+        });
     }
 
     public async Task<int> RemindOverdueBatchAsync(IReadOnlyCollection<int> assetIds, int? userId)
