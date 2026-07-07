@@ -5,14 +5,14 @@ namespace AssetManagement.Application.Rbac;
 public interface IRbacService
 {
     Task<PagedResult<UserDto>> GetUsersAsync(string? keyword, int page, int pageSize, int? departmentId = null, int? roleId = null);
-    Task<UserDto> CreateUserAsync(CreateUserRequest request);
-    Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request);
+    Task<UserDto> CreateUserAsync(CreateUserRequest request, bool canAssignRole);
+    Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request, int currentUserId, bool canAssignRole);
     Task DeleteUserAsync(int id);
     Task ResetPasswordAsync(int id);
     Task ToggleUserStatusAsync(int id, bool? isActive = null);
     Task<byte[]> BuildUserImportTemplateAsync();
     Task<UserImportResultDto> ValidateUserImportAsync(Stream file);
-    Task<UserImportResultDto> ImportUsersAsync(Stream file);
+    Task<UserImportResultDto> ImportUsersAsync(Stream file, bool canAssignRole);
 
     Task<PagedResult<RoleDto>> GetRolesAsync(int page, int pageSize);
     Task<RoleDto> GetRoleAsync(int id);

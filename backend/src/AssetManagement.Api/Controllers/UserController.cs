@@ -2,6 +2,7 @@ using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Infrastructure.Auth;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace AssetManagement.Api.Controllers;
 
@@ -29,7 +30,7 @@ public class UserController : ControllerBase
     [HttpPost]
     [HasPermission("user:create")]
     public async Task<ApiResult<UserDto>> Create(CreateUserRequest request)
-        => ApiResult<UserDto>.Ok(await _rbac.CreateUserAsync(request));
+        => ApiResult<UserDto>.Ok(await _rbac.CreateUserAsync(request, CanAssignRole()));
 
     [HttpGet("import/template")]
     [HasPermission("user:create")]
@@ -44,7 +45,7 @@ public class UserController : ControllerBase
     public async Task<ApiResult<UserImportResultDto>> Import(IFormFile file)
     {
         await using var stream = file.OpenReadStream();
-        var result = await _rbac.ImportUsersAsync(stream);
+        var result = await _rbac.ImportUsersAsync(stream, CanAssignRole());
         return result.FailedCount > 0
             ? new ApiResult<UserImportResultDto>
             {
@@ -66,7 +67,7 @@ public class UserController : ControllerBase
     [HttpPut("{id:int}")]
     [HasPermission("user:edit")]
     public async Task<ApiResult<UserDto>> Update(int id, UpdateUserRequest request)
-        => ApiResult<UserDto>.Ok(await _rbac.UpdateUserAsync(id, request));
+        => ApiResult<UserDto>.Ok(await _rbac.UpdateUserAsync(id, request, CurrentUserId(), CanAssignRole()));
 
     [HttpDelete("{id:int}")]
     [HasPermission("user:delete")]
@@ -91,5 +92,11 @@ public class UserController : ControllerBase
         await _rbac.ToggleUserStatusAsync(id, request?.IsActive);
         return ApiResult.Ok();
     }
+
+    private int CurrentUserId()
+        => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");
+
+    private bool CanAssignRole()
+        => User.FindAll("perm").Any(x => x.Value == "user:assign-role");
 }
 

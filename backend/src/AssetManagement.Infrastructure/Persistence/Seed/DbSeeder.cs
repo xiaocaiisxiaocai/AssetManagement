@@ -570,6 +570,7 @@ public static class DbSeeder
         ("user:view", "查看用户", "user"),
         ("user:create", "新增用户", "user"),
         ("user:edit", "编辑用户", "user"),
+        ("user:assign-role", "分配用户角色", "user"),
         ("user:delete", "删除用户", "user"),
         ("user:reset-password", "重置用户密码", "user"),
         ("user:toggle-status", "启停用户", "user"),
@@ -611,17 +612,9 @@ public static class DbSeeder
         ("material:restore", "恢复测试料件", "material"),
         ("material:purge", "彻底删除测试料件", "material"),
         ("material:return", "退回测试料件", "material"),
-        ("material:transfer", "发起料件流转", "material"),
-        ("material:approve", "审批料件流转", "material"),
         ("material-flow:view", "查看料件流转", "material-flow"),
         ("material-flow:transfer", "发起料件流转", "material-flow"),
-        ("material-flow:approve", "审批料件流转", "material-flow"),
-
-        // 旧权限码保留，避免历史角色和前端缓存失效。
-        ("admin:user", "用户管理", "admin"),
-        ("admin:role", "角色管理", "admin"),
-        ("admin:audit", "审计日志", "admin"),
-        ("admin:setting", "系统参数", "admin")
+        ("material-flow:approve", "审批料件流转", "material-flow")
     };
 
     private static Dictionary<string, string[]> CoreRolePermissionMap() => new()
@@ -637,8 +630,7 @@ public static class DbSeeder
             "audit:view", "audit:export", "audit:cleanup", "backup:manage", "setting:view", "setting:edit",
             "workflow:view", "workflow:create", "workflow:edit", "workflow:delete", "workflow:design",
             "project:view",
-            "material:view", "material:create", "material:edit", "material:transfer", "material-flow:view", "material-flow:transfer",
-            "admin:audit", "admin:setting"
+            "material:view", "material:create", "material:edit", "material-flow:view", "material-flow:transfer"
         },
         ["supervisor"] = new[]
         {
@@ -646,7 +638,7 @@ public static class DbSeeder
             "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign",
             "report:view", "report:export",
             "project:view",
-            "material:view", "material:approve", "material:transfer", "material-flow:view", "material-flow:transfer", "material-flow:approve"
+            "material:view", "material-flow:view", "material-flow:transfer", "material-flow:approve"
         },
         ["dept_admin"] = new[]
         {
@@ -658,7 +650,7 @@ public static class DbSeeder
             "report:view", "report:export",
             "department:view", "user:view",
             "project:view", "project:create", "project:edit", "project:delete", "project:restore", "project:option", "project:followup", "project:manage",
-            "material:view", "material:create", "material:edit", "material:restore", "material:transfer", "material:approve",
+            "material:view", "material:create", "material:edit", "material:restore",
             "material-flow:view", "material-flow:transfer", "material-flow:approve"
         },
         ["employee"] = new[]
@@ -688,6 +680,8 @@ public static class DbSeeder
         }
         db.SaveChanges();
 
+        MigrateLegacyPermissions(db);
+
         EnsureAdminDefaultPermissionsAndMenus(db);
 
         foreach (var (roleCode, permissionCodes) in CoreRolePermissionMap())
@@ -700,6 +694,52 @@ public static class DbSeeder
             EnsureRoleMenusForPermissions(db, role, permissionCodes);
         }
         EnsureWarehouseUsersHaveRole(db);
+        db.SaveChanges();
+    }
+
+    private static void MigrateLegacyPermissions(AppDbContext db)
+    {
+        var legacyToCurrentCode = new Dictionary<string, string>
+        {
+            ["material:transfer"] = "material-flow:transfer",
+            ["material:approve"] = "material-flow:approve",
+            ["admin:user"] = "user:view",
+            ["admin:role"] = "role:view",
+            ["admin:audit"] = "audit:view",
+            ["admin:setting"] = "setting:view"
+        };
+        var relatedCodes = legacyToCurrentCode.Keys
+            .Concat(legacyToCurrentCode.Values)
+            .ToHashSet(StringComparer.Ordinal);
+        var permissions = db.Permissions
+            .Where(x => relatedCodes.Contains(x.Code))
+            .ToList();
+
+        foreach (var (legacyCode, currentCode) in legacyToCurrentCode)
+        {
+            var legacyPermission = permissions.SingleOrDefault(x => x.Code == legacyCode);
+            var currentPermission = permissions.SingleOrDefault(x => x.Code == currentCode);
+            if (legacyPermission is null || currentPermission is null) continue;
+
+            var legacyGrants = db.RolePermissions
+                .Where(x => x.PermissionId == legacyPermission.Id)
+                .ToList();
+            foreach (var grant in legacyGrants)
+            {
+                if (!db.RolePermissions.Any(x => x.RoleId == grant.RoleId && x.PermissionId == currentPermission.Id))
+                {
+                    db.RolePermissions.Add(new RolePermission
+                    {
+                        RoleId = grant.RoleId,
+                        PermissionId = currentPermission.Id
+                    });
+                }
+                db.RolePermissions.Remove(grant);
+            }
+
+            db.Permissions.Remove(legacyPermission);
+        }
+
         db.SaveChanges();
     }
 

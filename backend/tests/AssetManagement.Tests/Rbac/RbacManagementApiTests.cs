@@ -1060,6 +1060,174 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         deleted.Message.Should().Be("至少保留一个系统管理员");
     }
 
+    [Fact]
+    public async Task User_cannot_change_own_role_even_with_user_edit_permission()
+    {
+        await Login();
+        var employeeNo = Unique("self");
+        var editorRole = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("self_editor"),
+            Name = Unique("自编辑角色"),
+            IsActive = true
+        });
+        var userEditPermission = (await _client.GetFromJsonAsync<ApiResult<List<PermissionDto>>>("/api/permissions"))!
+            .Data!
+            .Single(x => x.Code == "user:edit");
+        await Put<ApiResult<RoleDto>>($"/api/roles/{editorRole.Data!.Id}/permissions", new
+        {
+            permissionIds = new[] { userEditPermission.Id }
+        });
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "自改角色用户",
+            Password = "123456",
+            RoleIds = new[] { editorRole.Data.Id }
+        });
+        var adminRole = (await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100"))!
+            .Data!
+            .Items
+            .Single(x => x.Code == "admin");
+
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "123456"
+        });
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
+        var updated = await Put<ApiResult<UserDto>>($"/api/users/{user.Data!.Id}", new UpdateUserRequest
+        {
+            Name = "自改角色用户",
+            RoleIds = new[] { adminRole.Id }
+        });
+
+        updated.Code.Should().Be(4094);
+        updated.Message.Should().Be("不能修改自己的角色");
+        await Login();
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={employeeNo}");
+        list!.Data!.Items.Single().RoleIds.Should().Equal(editorRole.Data.Id);
+    }
+
+    [Fact]
+    public async Task User_edit_permission_without_assign_role_cannot_change_other_user_role()
+    {
+        await Login();
+        var editorEmployeeNo = Unique("editor");
+        var targetEmployeeNo = Unique("target");
+        var editorRole = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("editor"),
+            Name = Unique("用户编辑员"),
+            IsActive = true
+        });
+        var normalRole = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("normal"),
+            Name = Unique("普通目标角色"),
+            IsActive = true
+        });
+        var userEditPermission = (await _client.GetFromJsonAsync<ApiResult<List<PermissionDto>>>("/api/permissions"))!
+            .Data!
+            .Single(x => x.Code == "user:edit");
+        await Put<ApiResult<RoleDto>>($"/api/roles/{editorRole.Data!.Id}/permissions", new
+        {
+            permissionIds = new[] { userEditPermission.Id }
+        });
+        var editor = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = editorEmployeeNo,
+            Name = "用户编辑员",
+            Password = "123456",
+            RoleIds = new[] { editorRole.Data.Id }
+        });
+        var target = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = targetEmployeeNo,
+            Name = "被改角色用户",
+            RoleIds = new[] { normalRole.Data!.Id }
+        });
+        var adminRole = (await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100"))!
+            .Data!
+            .Items
+            .Single(x => x.Code == "admin");
+
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo = editorEmployeeNo,
+            password = "123456"
+        });
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
+        var updated = await Put<ApiResult<UserDto>>($"/api/users/{target.Data!.Id}", new UpdateUserRequest
+        {
+            Name = "被改角色用户",
+            RoleIds = new[] { adminRole.Id }
+        });
+
+        updated.Code.Should().Be(4031);
+        updated.Message.Should().Be("没有分配用户角色权限");
+        await Login();
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={targetEmployeeNo}");
+        list!.Data!.Items.Single().RoleIds.Should().Equal(normalRole.Data.Id);
+        editor.Data!.RoleIds.Should().Equal(editorRole.Data.Id);
+    }
+
+    [Fact]
+    public async Task User_edit_permission_without_assign_role_can_update_basic_profile_when_role_unchanged()
+    {
+        await Login();
+        var editorEmployeeNo = Unique("editor");
+        var targetEmployeeNo = Unique("target");
+        var editorRole = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("editor"),
+            Name = Unique("资料编辑员"),
+            IsActive = true
+        });
+        var normalRole = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("normal"),
+            Name = Unique("资料目标角色"),
+            IsActive = true
+        });
+        var userEditPermission = (await _client.GetFromJsonAsync<ApiResult<List<PermissionDto>>>("/api/permissions"))!
+            .Data!
+            .Single(x => x.Code == "user:edit");
+        await Put<ApiResult<RoleDto>>($"/api/roles/{editorRole.Data!.Id}/permissions", new
+        {
+            permissionIds = new[] { userEditPermission.Id }
+        });
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = editorEmployeeNo,
+            Name = "资料编辑员",
+            Password = "123456",
+            RoleIds = new[] { editorRole.Data.Id }
+        });
+        var target = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = targetEmployeeNo,
+            Name = "待改资料用户",
+            RoleIds = new[] { normalRole.Data!.Id }
+        });
+
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo = editorEmployeeNo,
+            password = "123456"
+        });
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
+        var updated = await Put<ApiResult<UserDto>>($"/api/users/{target.Data!.Id}", new UpdateUserRequest
+        {
+            Name = "已改资料用户",
+            RoleIds = new[] { normalRole.Data.Id }
+        });
+
+        updated.Code.Should().Be(0);
+        updated.Data!.Name.Should().Be("已改资料用户");
+        updated.Data.RoleIds.Should().Equal(normalRole.Data.Id);
+    }
+
     private async Task Login()
     {
         var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new

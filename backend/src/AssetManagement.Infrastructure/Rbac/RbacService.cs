@@ -58,9 +58,10 @@ public class RbacService : IRbacService
         return new PagedResult<UserDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
 
-    public async Task<UserDto> CreateUserAsync(CreateUserRequest request)
+    public async Task<UserDto> CreateUserAsync(CreateUserRequest request, bool canAssignRole)
     {
         EnsureSingleRole(request.RoleIds);
+        EnsureCanAssignUserRole(canAssignRole);
         var employeeNo = request.EmployeeNo.Trim();
         await EnsureEmployeeNoAvailable(employeeNo);
         var password = !string.IsNullOrWhiteSpace(request.Password)
@@ -85,9 +86,10 @@ public class RbacService : IRbacService
         return await LoadUserDto(user.Id);
     }
 
-    public async Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request)
+    public async Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request, int currentUserId, bool canAssignRole)
     {
         EnsureSingleRole(request.RoleIds);
+        await EnsureUserRoleChangeAllowed(id, request.RoleIds, currentUserId, canAssignRole);
         var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
         user.Name = request.Name.Trim();
@@ -160,8 +162,9 @@ public class RbacService : IRbacService
         });
     }
 
-    public async Task<UserImportResultDto> ImportUsersAsync(Stream file)
+    public async Task<UserImportResultDto> ImportUsersAsync(Stream file, bool canAssignRole)
     {
+        EnsureCanAssignUserRole(canAssignRole);
         var preview = await ValidateUserImportAsync(file);
         var rows = preview.Rows;
         var invalidRows = rows.Where(x => !x.IsValid).ToList();
@@ -398,6 +401,34 @@ public class RbacService : IRbacService
         var distinctIds = roleIds.Distinct().ToArray();
         _db.UserRoles.AddRange(distinctIds.Select(roleId => new UserRole { UserId = userId, RoleId = roleId }));
         await _db.SaveChangesAsync();
+    }
+
+    private async Task EnsureUserRoleChangeAllowed(int userId, IEnumerable<int> requestedRoleIds, int currentUserId, bool canAssignRole)
+    {
+        var requested = requestedRoleIds.Distinct().OrderBy(x => x).ToArray();
+        var existing = await _db.UserRoles
+            .Where(x => x.UserId == userId)
+            .Select(x => x.RoleId)
+            .ToArrayAsync();
+        if (existing.OrderBy(x => x).SequenceEqual(requested))
+        {
+            return;
+        }
+
+        if (userId == currentUserId)
+        {
+            throw new BizException(4094, "不能修改自己的角色");
+        }
+
+        EnsureCanAssignUserRole(canAssignRole);
+    }
+
+    private static void EnsureCanAssignUserRole(bool canAssignRole)
+    {
+        if (!canAssignRole)
+        {
+            throw new BizException(4031, "没有分配用户角色权限");
+        }
     }
 
     private async Task EnsureUserNotReferencedAsync(int id)

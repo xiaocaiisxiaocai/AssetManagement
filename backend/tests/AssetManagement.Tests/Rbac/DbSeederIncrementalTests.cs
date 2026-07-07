@@ -80,7 +80,7 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
             "file:upload", "file:view",
             "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
             "report:export", "report:remind",
-            "user:view", "user:create", "user:edit", "user:delete", "user:reset-password", "user:toggle-status",
+            "user:view", "user:create", "user:edit", "user:assign-role", "user:delete", "user:reset-password", "user:toggle-status",
             "department:view", "department:create", "department:edit", "department:delete",
             "role:view", "role:create", "role:edit", "role:delete", "role:assign-permission", "role:assign-menu",
             "permission:manage", "menu:manage",
@@ -124,6 +124,42 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
                 "AdminSettings",
                 "AdminAudit",
                 "AdminBackups");
+    }
+
+    [Fact]
+    public void Incremental_seed_removes_legacy_material_flow_permissions_and_migrates_role_grants()
+    {
+        SeedLegacyDatabaseState();
+        var admin = _db.Roles.Single(x => x.Code == "admin");
+        var supervisor = _db.Roles.Single(x => x.Code == "supervisor");
+        var legacyTransfer = new Permission { Code = "material:transfer", Name = "发起料件流转", Module = "material" };
+        var legacyApprove = new Permission { Code = "material:approve", Name = "审批料件流转", Module = "material" };
+        var legacyAdminUser = new Permission { Code = "admin:user", Name = "用户管理", Module = "admin" };
+        _db.Permissions.AddRange(legacyTransfer, legacyApprove, legacyAdminUser);
+        _db.SaveChanges();
+        _db.RolePermissions.AddRange(
+            new RolePermission { RoleId = admin.Id, PermissionId = legacyAdminUser.Id },
+            new RolePermission { RoleId = supervisor.Id, PermissionId = legacyTransfer.Id },
+            new RolePermission { RoleId = supervisor.Id, PermissionId = legacyApprove.Id });
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        _db.Permissions.Select(x => x.Code)
+            .Should().NotContain(new[] { "material:transfer", "material:approve", "admin:user" });
+        _db.Roles
+            .Include(x => x.RolePermissions)
+            .ThenInclude(x => x.Permission)
+            .Single(x => x.Code == "admin")
+            .RolePermissions.Select(x => x.Permission.Code)
+            .Should().Contain("user:view");
+        _db.Roles
+            .Include(x => x.RolePermissions)
+            .ThenInclude(x => x.Permission)
+            .Single(x => x.Code == "supervisor")
+            .RolePermissions.Select(x => x.Permission.Code)
+            .Should().Contain(new[] { "material-flow:transfer", "material-flow:approve" });
     }
 
     private void SeedLegacyDatabaseState()
