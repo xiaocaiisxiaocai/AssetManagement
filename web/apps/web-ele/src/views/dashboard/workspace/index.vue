@@ -196,7 +196,7 @@ onMounted(loadData);
                 <strong>{{ pendingMineCount }}</strong>
               </button>
               <button class="workspace-todo-item" type="button" @click="go('/approval/confirm-return')">
-                <span>待确认入库</span>
+                <span>待接收确认</span>
                 <strong>{{ pendingReturns.length }}</strong>
               </button>
               <button class="workspace-todo-item" type="button" @click="go('/report/overdue')">

@@ -1,9 +1,15 @@
 <script lang="ts" setup>
+import type { ApprovalWorkItem } from '../approval-work-items';
 import type { ApprovalFlow } from '#/api/workflow';
 import type { UserDto } from '#/api/user';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import { useAccess } from '@vben/access';
+import {
+  approveFlowApi as approveMaterialFlowApi,
+  listPendingFlowsApi,
+  rejectFlowApi as rejectMaterialFlowApi,
+} from '#/api/material';
 import {
   addSignFlowApi,
   approveFlowApi,
@@ -13,6 +19,7 @@ import {
 } from '#/api/workflow';
 import { getUserListApi } from '#/api/user';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { mergeApprovalWorkItems, normalizeAssetApproval } from '../approval-work-items';
 import {
   ElButton,
   ElDialog,
@@ -28,20 +35,23 @@ import {
   ElTableColumn,
   ElTag,
   ElMessage,
+  ElMessageBox,
 } from 'element-plus';
 
 defineOptions({ name: 'ApprovalPending' });
 
 const { hasAccessByCodes } = useAccess();
 const canAddSign = computed(() => hasAccessByCodes(['approval:add-sign']));
+const canHandleMaterialFlow = computed(() => hasAccessByCodes(['material-flow:approve']));
 const loading = ref(false);
 const actionLoading = ref(false);
 const addSignLoading = ref(false);
 const detailVisible = ref(false);
 const addSignVisible = ref(false);
 const selected = ref<ApprovalFlow | null>(null);
-const flows = ref<ApprovalFlow[]>([]);
+const flows = ref<ApprovalWorkItem[]>([]);
 const users = ref<UserDto[]>([]);
+const materialActionLoadingIds = ref(new Set<number>());
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const opinion = ref('同意');
 const addSignUser = ref('');
@@ -58,17 +68,15 @@ const filteredFlows = computed(() => {
 
   return flows.value.filter((flow) => {
     const matchBizType = !query.bizType || flow.bizType === query.bizType;
-    const currentNodeNames = flow.currentNodeIds
-      .map((nodeId) => flow.bpmnTokens[nodeId]?.nodeName || '')
-      .join(' ');
     const matchKeyword = !keyword
       || [
         flow.flowNo,
-        flow.assetNo,
-        flow.assetName,
+        flow.objectNo,
+        flow.objectName,
         flow.applicant,
         flow.applicantDept,
-        currentNodeNames,
+        flow.transferee,
+        flow.currentNodeLabel,
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(keyword));
@@ -85,11 +93,15 @@ const pagedFlows = computed(() => {
 async function loadData() {
   loading.value = true;
   try {
-    const [pending, userPage] = await Promise.all([
+    const materialPendingPromise = canHandleMaterialFlow.value
+      ? listPendingFlowsApi()
+      : Promise.resolve([]);
+    const [pending, materialPending, userPage] = await Promise.all([
       getPendingApprovalsApi(),
+      materialPendingPromise,
       getUserListApi('', 1, 200),
     ]);
-    flows.value = pending;
+    flows.value = mergeApprovalWorkItems(pending, materialPending);
     if ((query.page - 1) * query.pageSize >= flows.value.length) {
       query.page = 1;
     }
@@ -101,7 +113,9 @@ async function loadData() {
   }
 }
 
-function openDetail(flow: ApprovalFlow) {
+function openDetail(item: ApprovalWorkItem) {
+  if (item.source !== 'asset') return;
+  const flow = item.raw as ApprovalFlow;
   selected.value = flow;
   opinion.value = '同意';
   addSignUser.value = '';
@@ -198,7 +212,7 @@ async function addSign() {
     });
     selected.value = updated;
     const index = flows.value.findIndex((item) => item.id === updated.id);
-    if (index >= 0) flows.value[index] = updated;
+    if (index >= 0) flows.value[index] = normalizeAssetApproval(updated);
     ElMessage.success('已加签');
     addSignVisible.value = false;
   } catch {
@@ -257,6 +271,52 @@ async function reject() {
   }
 }
 
+async function approveMaterial(item: ApprovalWorkItem) {
+  try {
+    await ElMessageBox.confirm(
+      `确认通过料件「${item.objectName}」的流转申请？`,
+      '审批通过',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
+
+  materialActionLoadingIds.value.add(item.id);
+  try {
+    await approveMaterialFlowApi(item.id, '同意');
+    ElMessage.success('已通过');
+    await loadData();
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    materialActionLoadingIds.value.delete(item.id);
+  }
+}
+
+async function rejectMaterial(item: ApprovalWorkItem) {
+  let reason = '不同意';
+  try {
+    const result = await ElMessageBox.prompt('请输入驳回原因', '驳回', {
+      inputPlaceholder: '驳回原因',
+    });
+    reason = result.value || reason;
+  } catch {
+    return;
+  }
+
+  materialActionLoadingIds.value.add(item.id);
+  try {
+    await rejectMaterialFlowApi(item.id, reason);
+    ElMessage.success('已驳回');
+    await loadData();
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    materialActionLoadingIds.value.delete(item.id);
+  }
+}
+
 // 防抖版本的审批/驳回方法,防止用户快速点击导致重复提交
 const debouncedApprove = useDebounceFn(approve, 300);
 const debouncedReject = useDebounceFn(reject, 300);
@@ -280,6 +340,7 @@ function getBizTypeLabel(type: string) {
     borrow: '借用',
     transfer: '转让',
     return: '归还',
+    material_transfer: '测试料件流转',
   };
   return map[type] || type;
 }
@@ -300,7 +361,7 @@ onMounted(async () => {
             <ElInput
               v-model="query.keyword"
               clearable
-              placeholder="流程单号/资产/申请人/节点"
+              placeholder="流程单号/资产/料件/申请人/节点"
               style="width: 260px"
               @keyup.enter="search"
             />
@@ -310,6 +371,7 @@ onMounted(async () => {
               <ElOption label="借用" value="borrow" />
               <ElOption label="转让" value="transfer" />
               <ElOption label="归还" value="return" />
+              <ElOption label="测试料件流转" value="material_transfer" />
             </ElSelect>
           </ElFormItem>
           <ElFormItem>
@@ -322,38 +384,63 @@ onMounted(async () => {
       <div class="pending-table-panel">
         <ElTable :data="pagedFlows" v-loading="loading" border height="100%">
           <ElTableColumn prop="flowNo" label="流程单号" width="180" />
+          <ElTableColumn label="来源" width="110" align="center">
+            <template #default="{ row }">
+              <ElTag :type="row.source === 'asset' ? 'primary' : 'success'" size="small">
+                {{ row.sourceLabel }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
           <ElTableColumn prop="bizType" label="业务类型" width="120" align="center">
             <template #default="{ row }">
               <ElTag v-if="row.bizType === 'borrow'" type="success" size="small">
-                {{ getBizTypeLabel(row.bizType) }}
+                {{ row.typeLabel }}
               </ElTag>
               <ElTag v-else-if="row.bizType === 'transfer'" type="warning" size="small">
-                {{ getBizTypeLabel(row.bizType) }}
+                {{ row.typeLabel }}
+              </ElTag>
+              <ElTag v-else-if="row.bizType === 'material_transfer'" type="primary" size="small">
+                {{ row.typeLabel }}
               </ElTag>
               <ElTag v-else type="info" size="small">
-                {{ getBizTypeLabel(row.bizType) }}
+                {{ row.typeLabel }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn prop="assetName" label="资产名称" min-width="160" />
+          <ElTableColumn prop="objectName" label="对象名称" min-width="160" />
           <ElTableColumn class-name="hide-on-mobile" prop="applicant" label="申请人" width="120" />
+          <ElTableColumn class-name="hide-on-mobile" prop="transferee" label="接收人" width="120" />
           <ElTableColumn class-name="hide-on-mobile" prop="applyTime" label="申请时间" width="170" />
           <ElTableColumn label="当前节点" width="160">
             <template #default="{ row }">
-              <span v-if="row.currentNodeIds.length === 1">
-                {{ row.bpmnTokens[row.currentNodeIds[0]]?.nodeName || '-' }}
-              </span>
-              <ElTag v-else-if="row.currentNodeIds.length > 1" type="info" size="small">
-                {{ row.currentNodeIds.length }} 个并行节点
-              </ElTag>
-              <span v-else>-</span>
+              {{ row.currentNodeLabel }}
             </template>
           </ElTableColumn>
-          <ElTableColumn label="操作" width="120" fixed="right" align="center">
+          <ElTableColumn label="操作" width="150" fixed="right" align="center">
             <template #default="{ row }">
-              <ElButton type="primary" link size="small" @click="openDetail(row)">
+              <ElButton v-if="row.source === 'asset'" type="primary" link size="small" @click="openDetail(row)">
                 审批
               </ElButton>
+              <template v-else>
+                <ElButton
+                  :loading="materialActionLoadingIds.has(row.id)"
+                  link
+                  size="small"
+                  type="success"
+                  @click="approveMaterial(row)"
+                >
+                  通过
+                </ElButton>
+                <ElButton
+                  :loading="materialActionLoadingIds.has(row.id)"
+                  link
+                  size="small"
+                  type="danger"
+                  @click="rejectMaterial(row)"
+                >
+                  驳回
+                </ElButton>
+              </template>
             </template>
           </ElTableColumn>
         </ElTable>

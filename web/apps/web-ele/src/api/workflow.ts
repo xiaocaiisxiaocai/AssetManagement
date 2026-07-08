@@ -119,7 +119,7 @@ export const getPendingApprovalsApi = () =>
 export const getMineApprovalsApi = () =>
   unwrap(requestClient.get<ApiResult<ApprovalFlow[]>>('/approvals/mine'));
 
-// 待入库:全局已审批通过、尚未确认入库的借用单(资产管理员处理,需 asset:edit 权限)
+// 待接收确认:已审批通过、尚未确认接收归还的借用单
 export const getPendingReturnsApi = () =>
   unwrap(requestClient.get<ApiResult<ApprovalFlow[]>>('/approvals/pending-return'));
 

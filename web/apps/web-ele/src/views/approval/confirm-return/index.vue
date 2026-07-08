@@ -103,8 +103,8 @@ function resetQuery() {
 async function confirmReturn(row: ApprovalFlow) {
   try {
     await ElMessageBox.confirm(
-      `确认资产「${row.assetName}」已由「${row.applicant}」归还入库？`,
-      '确认入库',
+      `确认已接收「${row.applicant}」归还的资产「${row.assetName}」？`,
+      '接收确认',
       { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
     );
   } catch {
@@ -114,7 +114,7 @@ async function confirmReturn(row: ApprovalFlow) {
   confirmingIds.value.add(row.id);
   try {
     await confirmReturnApi(row.id);
-    ElMessage.success('确认入库成功，资产已恢复在库状态');
+    ElMessage.success('接收确认成功，资产已恢复可用状态');
     await loadData();
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
@@ -206,7 +206,7 @@ onMounted(async () => {
                 size="small"
                 @click="confirmReturn(row)"
               >
-                确认入库
+                确认接收
               </ElButton>
             </template>
           </ElTableColumn>

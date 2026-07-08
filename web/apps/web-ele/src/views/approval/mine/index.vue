@@ -1,12 +1,15 @@
 <script lang="ts" setup>
+import type { ApprovalWorkItem } from '../approval-work-items';
 import type { AssetItem } from '#/api/asset';
-import type { ApprovalFlow } from '#/api/workflow';
 
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useAccess } from '@vben/access';
 
 import { getAssetListApi } from '#/api/asset';
+import { listMyFlowsApi } from '#/api/material';
 import { getMineApprovalsApi, startApprovalApi } from '#/api/workflow';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { mergeApprovalWorkItems } from '../approval-work-items';
 
 import {
   ElButton,
@@ -26,10 +29,12 @@ import {
 
 defineOptions({ name: 'ApprovalMine' });
 
+const { hasAccessByCodes } = useAccess();
+const canViewMaterialFlow = computed(() => hasAccessByCodes(['material-flow:view']));
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
-const flows = ref<ApprovalFlow[]>([]);
+const flows = ref<ApprovalWorkItem[]>([]);
 const assets = ref<AssetItem[]>([]);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const form = reactive({
@@ -51,11 +56,15 @@ const pagedFlows = computed(() => {
 async function loadData() {
   loading.value = true;
   try {
-    const [mine, assetPage] = await Promise.all([
+    const materialMinePromise = canViewMaterialFlow.value
+      ? listMyFlowsApi()
+      : Promise.resolve([]);
+    const [mine, materialMine, assetPage] = await Promise.all([
       getMineApprovalsApi(),
+      materialMinePromise,
       getAssetListApi({ page: 1, pageSize: 500 }),
     ]);
-    flows.value = mine;
+    flows.value = mergeApprovalWorkItems(mine, materialMine);
     if ((query.page - 1) * query.pageSize >= flows.value.length) {
       query.page = 1;
     }
@@ -104,10 +113,6 @@ async function submit() {
   }
 }
 
-function bizText(type: string) {
-  return { borrow: '借用', return: '归还', transfer: '转让' }[type] ?? type;
-}
-
 function statusText(status: string) {
   return { approved: '已通过', pending: '审批中', rejected: '已驳回' }[status] ?? status;
 }
@@ -140,26 +145,30 @@ onMounted(async () => {
       <div class="mine-table-panel">
         <ElTable v-loading="loading" :data="pagedFlows" border height="100%">
           <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
-          <ElTableColumn label="类型" width="100" align="center">
+          <ElTableColumn label="来源" width="110" align="center">
             <template #default="{ row }">
-              <ElTag
-                :type="row.bizType === 'borrow' ? 'success' : row.bizType === 'transfer' ? 'warning' : 'info'"
-                size="small"
-              >
-                {{ bizText(row.bizType) }}
+              <ElTag :type="row.source === 'asset' ? 'primary' : 'success'" size="small">
+                {{ row.sourceLabel }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="资产" min-width="180" prop="assetName" />
+          <ElTableColumn label="类型" width="100" align="center">
+            <template #default="{ row }">
+              <ElTag
+                :type="row.bizType === 'borrow' ? 'success' : row.bizType === 'transfer' ? 'warning' : row.bizType === 'material_transfer' ? 'primary' : 'info'"
+                size="small"
+              >
+                {{ row.typeLabel }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn label="对象" min-width="180" prop="objectName" />
+          <ElTableColumn class-name="hide-on-mobile" label="接收人" min-width="120" prop="transferee" />
           <ElTableColumn label="当前节点" min-width="150">
             <template #default="{ row }">
-              <span v-if="row.currentNodeIds?.length === 1">
-                {{ row.bpmnTokens?.[row.currentNodeIds[0]]?.nodeName || '-' }}
+              <span :class="{ 'mine-empty-text': row.currentNodeLabel === '-' }">
+                {{ row.currentNodeLabel }}
               </span>
-              <ElTag v-else-if="row.currentNodeIds?.length > 1" type="info" size="small">
-                {{ row.currentNodeIds.length }} 个并行节点
-              </ElTag>
-              <span v-else class="mine-empty-text">-</span>
             </template>
           </ElTableColumn>
           <ElTableColumn label="状态" width="100" align="center">

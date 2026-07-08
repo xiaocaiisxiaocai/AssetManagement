@@ -448,12 +448,12 @@ public class WorkflowService : IWorkflowService
         var flow = await LoadFlow(id);
         if (flow.Status != "approved" || flow.BizType != "borrow")
         {
-            throw new BizException(4011, "该工单不可确认入库");
+            throw new BizException(4011, "该工单不可确认接收");
         }
 
         if (flow.ConfirmedAt.HasValue)
         {
-            throw new BizException(4012, "该工单已确认入库");
+            throw new BizException(4012, "该工单已确认接收");
         }
 
         var user = await LoadUser(userId);
@@ -469,7 +469,7 @@ public class WorkflowService : IWorkflowService
         }
 
         await _db.SaveChangesAsync();
-        await AddRecord(id, "confirm_return", user.Name, "确认归还入库");
+        await AddRecord(id, "confirm_return", user.Name, "确认归还接收");
         await tx.CommitAsync();
 
         // 通知借用人资产已确认归还
@@ -478,15 +478,15 @@ public class WorkflowService : IWorkflowService
             await _notifications.CreateAsync(new CreateNotificationRequest
             {
                 Type = "return_confirmed",
-                Title = $"归还确认：{flow.AssetName}",
-                Body = $"您借用的 {flow.AssetName}（{flow.AssetNo}）已确认归还入库。",
+                Title = $"归还接收确认：{flow.AssetName}",
+                Body = $"您借用的 {flow.AssetName}（{flow.AssetNo}）已确认接收归还。",
                 FlowId = id,
                 UserId = flow.ApplicantId,
             });
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "通知发送失败，不影响入库结果");
+            _logger.LogWarning(ex, "通知发送失败，不影响接收确认结果");
         }
 
         return ToFlowDto(flow);

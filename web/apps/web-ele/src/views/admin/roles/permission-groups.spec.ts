@@ -85,7 +85,7 @@ describe('角色权限分组', () => {
           children: [
             { id: 11, name: 'ApprovalPending', title: '待我审批', sort: 1, type: 'menu' },
             { id: 12, name: 'ApprovalMine', title: '我的申请', sort: 2, type: 'menu' },
-            { id: 13, name: 'ConfirmReturn', title: '待确认入库', sort: 3, type: 'menu' },
+            { id: 13, name: 'ConfirmReturn', title: '待接收确认', sort: 3, type: 'menu' },
           ],
         },
       ],
