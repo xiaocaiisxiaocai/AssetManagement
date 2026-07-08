@@ -2,7 +2,10 @@ using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using AssetManagement.Application.Assets;
 using AssetManagement.Application.BaseData;
+using AssetManagement.Application.Rbac;
+using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Infrastructure.Persistence;
@@ -83,7 +86,7 @@ public class AuditActionFilter : IAsyncActionFilter
             ActionType = context.HttpContext.Request.Method,
             TargetType = controllerName,
             TargetId = targetId ?? BuildBatchTargetId(controllerName, changes),
-            Summary = BuildSummary(context, controllerName, changes),
+            Summary = BuildSummary(context, executed, controllerName, changes),
             Detail = BuildDetail(context, executed, success, before, after, changes),
             Ip = IpNormalizer.Normalize(context.HttpContext.Connection.RemoteIpAddress?.ToString()),
             UserAgent = Truncate(context.HttpContext.Request.Headers.UserAgent.ToString(), 500),
@@ -253,14 +256,19 @@ public class AuditActionFilter : IAsyncActionFilter
 
     private static string? ExtractResultId(ActionExecutedContext executed)
     {
+        var data = ExtractResultData(executed);
+        var id = data?.GetType().GetProperty("Id")?.GetValue(data);
+        return id?.ToString();
+    }
+
+    private static object? ExtractResultData(ActionExecutedContext executed)
+    {
         if (executed.Result is not ObjectResult objectResult || objectResult.Value is null)
         {
             return null;
         }
 
-        var data = objectResult.Value.GetType().GetProperty("Data")?.GetValue(objectResult.Value);
-        var id = data?.GetType().GetProperty("Id")?.GetValue(data);
-        return id?.ToString();
+        return objectResult.Value.GetType().GetProperty("Data")?.GetValue(objectResult.Value);
     }
 
     private static string BuildDetail(
@@ -287,6 +295,7 @@ public class AuditActionFilter : IAsyncActionFilter
 
     private static string BuildSummary(
         ActionExecutingContext context,
+        ActionExecutedContext executed,
         string? controllerName,
         List<AuditChange> changes)
     {
@@ -297,7 +306,79 @@ public class AuditActionFilter : IAsyncActionFilter
             return Truncate($"修改系统参数：{changedText}", 500) ?? "";
         }
 
+        var path = context.HttpContext.Request.Path.Value ?? "";
+        var data = ExtractResultData(executed);
+        var businessSummary = data switch
+        {
+            RoleDto role => BuildRoleAssignmentSummary(path, role),
+            ApprovalFlowDto flow => BuildApprovalSummary(path, flow),
+            ImportConfirmResult result => BuildAssetImportSummary(path, result),
+            UserImportResultDto result => BuildUserImportSummary(path, result),
+            _ => null
+        };
+        if (!string.IsNullOrWhiteSpace(businessSummary))
+        {
+            return Truncate(businessSummary, 500) ?? "";
+        }
+
         return $"{context.HttpContext.Request.Method} {context.HttpContext.Request.Path}";
+    }
+
+    private static string? BuildRoleAssignmentSummary(string path, RoleDto role)
+    {
+        if (ContainsPath(path, "/permissions"))
+        {
+            return $"分配角色权限：{role.Name}（{role.Code}），权限数 {role.PermissionIds.Length}";
+        }
+
+        if (ContainsPath(path, "/menus"))
+        {
+            return $"分配角色菜单：{role.Name}（{role.Code}），菜单数 {role.MenuIds.Length}";
+        }
+
+        return null;
+    }
+
+    private static string? BuildApprovalSummary(string path, ApprovalFlowDto flow)
+    {
+        var action = true switch
+        {
+            _ when ContainsPath(path, "/approve") => "审批通过",
+            _ when ContainsPath(path, "/reject") => "审批驳回",
+            _ when ContainsPath(path, "/add-sign") => "审批加签",
+            _ when ContainsPath(path, "/transfer-sign") => "审批转签",
+            _ when ContainsPath(path, "/confirm-return") => "确认归还",
+            _ when EndsWithPath(path, "/approvals") => "发起审批",
+            _ => null
+        };
+        if (action is null)
+        {
+            return null;
+        }
+
+        return $"{action}：{flow.FlowNo}，{ApprovalBizTypeLabel(flow.BizType)}，{flow.AssetNo} {flow.AssetName}";
+    }
+
+    private static string? BuildAssetImportSummary(string path, ImportConfirmResult result)
+    {
+        if (!ContainsPath(path, "/assets/import"))
+        {
+            return null;
+        }
+
+        var action = ContainsPath(path, "/confirm") ? "确认导入资产" : "校验资产导入";
+        return $"{action}：成功 {result.SuccessCount} 条，失败 {result.FailedCount} 条，样例 {ImportPreview(result.Rows.Select(x => x.Name))}";
+    }
+
+    private static string? BuildUserImportSummary(string path, UserImportResultDto result)
+    {
+        if (!ContainsPath(path, "/users/import"))
+        {
+            return null;
+        }
+
+        var action = ContainsPath(path, "/validate") ? "校验用户导入" : "导入用户";
+        return $"{action}：成功 {result.SuccessCount} 条，失败 {result.FailedCount} 条，样例 {ImportPreview(result.Rows.Select(x => $"{x.EmployeeNo}/{x.Name}"))}";
     }
 
     private static int EffectiveStatusCode(ActionExecutingContext context, ActionExecutedContext executed)
@@ -370,6 +451,30 @@ public class AuditActionFilter : IAsyncActionFilter
             null => "(空)",
             "" => "(空)",
             _ => value.ToString() ?? "(空)"
+        };
+
+    private static string ImportPreview(IEnumerable<string> values)
+    {
+        var items = values
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Take(3)
+            .ToArray();
+        return items.Length == 0 ? "-" : string.Join("、", items);
+    }
+
+    private static bool ContainsPath(string path, string value)
+        => path.Contains(value, StringComparison.OrdinalIgnoreCase);
+
+    private static bool EndsWithPath(string path, string value)
+        => path.EndsWith(value, StringComparison.OrdinalIgnoreCase);
+
+    private static string ApprovalBizTypeLabel(string bizType)
+        => bizType switch
+        {
+            "borrow" => "借用",
+            "return" => "归还",
+            "transfer" => "转让",
+            _ => bizType
         };
 
     private sealed record AuditChange(string Field, object? Before, object? After);

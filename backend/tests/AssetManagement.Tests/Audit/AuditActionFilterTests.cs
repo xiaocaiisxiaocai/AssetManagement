@@ -4,6 +4,8 @@ using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Rbac;
+using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
@@ -147,6 +149,86 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
         latest.Detail.Should().Contain("42");
     }
 
+    [Theory]
+    [InlineData("/api/test-audit/roles/7/permissions", "分配角色权限", "部门主管", "权限数 3")]
+    [InlineData("/api/test-audit/roles/7/menus", "分配角色菜单", "部门主管", "菜单数 2")]
+    public async Task Role_assignment_audit_log_uses_business_summary(string url, string action, string roleName, string countText)
+    {
+        await Login();
+
+        await Put<ApiResult<RoleDto>>(url, new { });
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var latest = db.AuditLogs
+            .Where(x => x.Summary.Contains(action))
+            .OrderByDescending(x => x.Id)
+            .First();
+        latest.Summary.Should().Contain(action);
+        latest.Summary.Should().Contain(roleName);
+        latest.Summary.Should().Contain(countText);
+        latest.TargetId.Should().Be("7");
+    }
+
+    [Theory]
+    [InlineData("/api/test-audit/approvals/9/approve", "审批通过")]
+    [InlineData("/api/test-audit/approvals/9/reject", "审批驳回")]
+    [InlineData("/api/test-audit/approvals/9/confirm-return", "确认归还")]
+    public async Task Approval_action_audit_log_uses_business_summary(string url, string action)
+    {
+        await Login();
+
+        await Post<ApiResult<ApprovalFlowDto>>(url, new { });
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var latest = db.AuditLogs
+            .Where(x => x.Summary.Contains(action))
+            .OrderByDescending(x => x.Id)
+            .First();
+        latest.Summary.Should().Contain(action);
+        latest.Summary.Should().Contain("AF-TEST-001");
+        latest.Summary.Should().Contain("A-001");
+        latest.Summary.Should().Contain("测试资产");
+        latest.TargetId.Should().Be("9");
+    }
+
+    [Fact]
+    public async Task Asset_import_confirm_audit_log_uses_result_summary()
+    {
+        await Login();
+
+        await Post<ApiResult<ImportConfirmResult>>("/api/test-audit/assets/import/confirm", new { });
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var latest = db.AuditLogs
+            .Where(x => x.Summary.Contains("确认导入资产"))
+            .OrderByDescending(x => x.Id)
+            .First();
+        latest.Summary.Should().Contain("成功 2 条");
+        latest.Summary.Should().Contain("失败 1 条");
+        latest.Summary.Should().Contain("电脑");
+    }
+
+    [Fact]
+    public async Task User_import_audit_log_uses_result_summary()
+    {
+        await Login();
+
+        await Post<ApiResult<UserImportResultDto>>("/api/test-audit/users/import", new { });
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var latest = db.AuditLogs
+            .Where(x => x.Summary.Contains("导入用户"))
+            .OrderByDescending(x => x.Id)
+            .First();
+        latest.Summary.Should().Contain("成功 3 条");
+        latest.Summary.Should().Contain("失败 1 条");
+        latest.Summary.Should().Contain("1001");
+    }
+
     private async Task Login()
     {
         var res = await _client.PostAsJsonAsync("/api/auth/login", new
@@ -186,4 +268,80 @@ public class AuditProbeController : ControllerBase
     [HttpPost("fail")]
     public ActionResult<ApiResult<object?>> Fail()
         => BadRequest(ApiResult<object?>.Fail(4001, "探针失败"));
+
+    [HttpPut("roles/{id:int}/permissions")]
+    public ApiResult<RoleDto> SetRolePermissions(int id)
+        => ApiResult<RoleDto>.Ok(new RoleDto
+        {
+            Id = id,
+            Code = "dept_admin",
+            Name = "部门主管",
+            PermissionIds = new[] { 1, 2, 3 },
+            MenuIds = new[] { 10, 11 }
+        });
+
+    [HttpPut("roles/{id:int}/menus")]
+    public ApiResult<RoleDto> SetRoleMenus(int id)
+        => ApiResult<RoleDto>.Ok(new RoleDto
+        {
+            Id = id,
+            Code = "dept_admin",
+            Name = "部门主管",
+            PermissionIds = new[] { 1, 2, 3 },
+            MenuIds = new[] { 10, 11 }
+        });
+
+    [HttpPost("approvals/{id:int}/approve")]
+    public ApiResult<ApprovalFlowDto> Approve(int id)
+        => ApiResult<ApprovalFlowDto>.Ok(BuildApprovalFlow(id));
+
+    [HttpPost("approvals/{id:int}/reject")]
+    public ApiResult<ApprovalFlowDto> Reject(int id)
+        => ApiResult<ApprovalFlowDto>.Ok(BuildApprovalFlow(id) with { Status = "rejected" });
+
+    [HttpPost("approvals/{id:int}/confirm-return")]
+    public ApiResult<ApprovalFlowDto> ConfirmReturn(int id)
+        => ApiResult<ApprovalFlowDto>.Ok(BuildApprovalFlow(id) with { Status = "returned" });
+
+    [HttpPost("assets/import/confirm")]
+    public ApiResult<ImportConfirmResult> AssetImportConfirm()
+        => ApiResult<ImportConfirmResult>.Ok(new ImportConfirmResult
+        {
+            SuccessCount = 2,
+            FailedCount = 1,
+            Rows = new List<ImportPreviewRow>
+            {
+                new() { Row = 2, Name = "电脑", CategoryCode = "IT-PC", IsValid = true },
+                new() { Row = 3, Name = "显示器", CategoryCode = "IT-MON", IsValid = true },
+                new() { Row = 4, Name = "错误资产", CategoryCode = "BAD", IsValid = false, Error = "分类不存在" }
+            }
+        });
+
+    [HttpPost("users/import")]
+    public ApiResult<UserImportResultDto> UserImport()
+        => ApiResult<UserImportResultDto>.Ok(new UserImportResultDto
+        {
+            SuccessCount = 3,
+            FailedCount = 1,
+            Rows = new List<UserImportRowDto>
+            {
+                new() { Row = 2, EmployeeNo = "1001", Name = "系统管理员", IsValid = true },
+                new() { Row = 3, EmployeeNo = "1002", Name = "张三", IsValid = true },
+                new() { Row = 4, EmployeeNo = "1003", Name = "李四", IsValid = true },
+                new() { Row = 5, EmployeeNo = "BAD", Name = "错误用户", IsValid = false, Error = "角色不存在" }
+            }
+        });
+
+    private static ApprovalFlowDto BuildApprovalFlow(int id)
+        => new()
+        {
+            Id = id,
+            FlowNo = "AF-TEST-001",
+            BizType = "borrow",
+            AssetId = 100,
+            AssetNo = "A-001",
+            AssetName = "测试资产",
+            Applicant = "系统管理员",
+            Status = "pending"
+        };
 }
