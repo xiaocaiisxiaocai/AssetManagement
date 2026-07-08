@@ -315,6 +315,11 @@
   color: var(--asset-page-panel-header-text) !important;
 }
 
+.el-table td.el-table__cell > .cell,
+.el-table th.el-table__cell > .cell {
+  text-align: center !important;
+}
+
 .asset-table-panel .el-table td.el-table__cell,
 .asset-table-panel .el-table th.el-table__cell,
 .backup-table-panel .el-table td.el-table__cell,

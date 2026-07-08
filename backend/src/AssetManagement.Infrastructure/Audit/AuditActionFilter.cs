@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using AssetManagement.Application.BaseData;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Infrastructure.Persistence;
@@ -52,7 +53,7 @@ public class AuditActionFilter : IAsyncActionFilter
     {
         var controllerName = (context.ActionDescriptor as ControllerActionDescriptor)?.ControllerName;
         var targetId = RouteValue(context, "id") ?? RouteValue(context, "assetId");
-        var before = await TakeSnapshot(controllerName, targetId);
+        var before = await TakeSnapshot(context, controllerName, targetId);
 
         var stopwatch = Stopwatch.StartNew();
         var executed = await next();
@@ -72,17 +73,18 @@ public class AuditActionFilter : IAsyncActionFilter
         int? userId = int.TryParse(userIdText, out var value) ? value : null;
         // 从路由 {id} 捕获目标实体主键,便于按实体回溯其操作日志(如资产详情)
         targetId ??= ExtractResultId(executed);
-        var after = await TakeSnapshot(controllerName, targetId);
+        var after = await TakeSnapshot(context, controllerName, targetId);
         var success = IsSuccess(context, executed);
+        var changes = BuildChanges(before, after);
 
         _db.AuditLogs.Add(new AuditLog
         {
             UserId = userId,
             ActionType = context.HttpContext.Request.Method,
             TargetType = controllerName,
-            TargetId = targetId,
-            Summary = $"{context.HttpContext.Request.Method} {context.HttpContext.Request.Path}",
-            Detail = BuildDetail(context, executed, success, before, after),
+            TargetId = targetId ?? BuildBatchTargetId(controllerName, changes),
+            Summary = BuildSummary(context, controllerName, changes),
+            Detail = BuildDetail(context, executed, success, before, after, changes),
             Ip = IpNormalizer.Normalize(context.HttpContext.Connection.RemoteIpAddress?.ToString()),
             UserAgent = Truncate(context.HttpContext.Request.Headers.UserAgent.ToString(), 500),
             DurationMs = (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue),
@@ -110,8 +112,16 @@ public class AuditActionFilter : IAsyncActionFilter
         return codeProperty?.GetValue(objectResult.Value) as int?;
     }
 
-    private async Task<Dictionary<string, object?>?> TakeSnapshot(string? controllerName, string? targetId)
+    private async Task<Dictionary<string, object?>?> TakeSnapshot(
+        ActionExecutingContext context,
+        string? controllerName,
+        string? targetId)
     {
+        if (IsSettingsBatchSave(controllerName, targetId))
+        {
+            return await TakeSettingsSnapshot(context);
+        }
+
         if (string.IsNullOrWhiteSpace(controllerName) || string.IsNullOrWhiteSpace(targetId))
         {
             return null;
@@ -143,6 +153,21 @@ public class AuditActionFilter : IAsyncActionFilter
             .Where(x => !x.IsShadowProperty() && x.PropertyInfo is not null && !IsSensitive(x.Name))
             .OrderBy(x => x.Name)
             .ToDictionary(x => x.Name, x => NormalizeValue(x.PropertyInfo!.GetValue(entity)));
+    }
+
+    private async Task<Dictionary<string, object?>?> TakeSettingsSnapshot(ActionExecutingContext context)
+    {
+        var keys = ExtractSettingKeys(context).ToArray();
+        if (keys.Length == 0)
+        {
+            return null;
+        }
+
+        return await _db.SystemSettings
+            .AsNoTracking()
+            .Where(x => keys.Contains(x.Key))
+            .OrderBy(x => x.Key)
+            .ToDictionaryAsync(x => x.Key, x => NormalizeValue(x.Value));
     }
 
     private async Task<object?> QueryEntitySnapshot(Type entityClrType, string keyPropertyName, object keyValue)
@@ -243,7 +268,8 @@ public class AuditActionFilter : IAsyncActionFilter
         ActionExecutedContext executed,
         bool success,
         Dictionary<string, object?>? before,
-        Dictionary<string, object?>? after)
+        Dictionary<string, object?>? after,
+        List<AuditChange> changes)
     {
         var detail = new
         {
@@ -253,10 +279,25 @@ public class AuditActionFilter : IAsyncActionFilter
             Error = executed.Exception?.Message,
             Before = before,
             After = after,
-            Changes = BuildChanges(before, after)
+            Changes = changes
         };
 
         return JsonSerializer.Serialize(detail, JsonOptions);
+    }
+
+    private static string BuildSummary(
+        ActionExecutingContext context,
+        string? controllerName,
+        List<AuditChange> changes)
+    {
+        if (string.Equals(controllerName, "Setting", StringComparison.OrdinalIgnoreCase) && changes.Count > 0)
+        {
+            var changedText = string.Join("；", changes.Select(x =>
+                $"{x.Field}: {FormatSummaryValue(x.Before)} -> {FormatSummaryValue(x.After)}"));
+            return Truncate($"修改系统参数：{changedText}", 500) ?? "";
+        }
+
+        return $"{context.HttpContext.Request.Method} {context.HttpContext.Request.Path}";
     }
 
     private static int EffectiveStatusCode(ActionExecutingContext context, ActionExecutedContext executed)
@@ -267,11 +308,11 @@ public class AuditActionFilter : IAsyncActionFilter
             _ => context.HttpContext.Response.StatusCode
         };
 
-    private static List<object> BuildChanges(Dictionary<string, object?>? before, Dictionary<string, object?>? after)
+    private static List<AuditChange> BuildChanges(Dictionary<string, object?>? before, Dictionary<string, object?>? after)
     {
         if (before is null && after is null)
         {
-            return new List<object>();
+            return new List<AuditChange>();
         }
 
         var keys = before?.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -283,13 +324,53 @@ public class AuditActionFilter : IAsyncActionFilter
         return keys
             .Where(key => !Equals(before?.GetValueOrDefault(key), after?.GetValueOrDefault(key)))
             .OrderBy(key => key)
-            .Select(key => new
-            {
-                Field = key,
-                Before = before?.GetValueOrDefault(key),
-                After = after?.GetValueOrDefault(key)
-            })
-            .Cast<object>()
+            .Select(key => new AuditChange(
+                key,
+                before?.GetValueOrDefault(key),
+                after?.GetValueOrDefault(key)))
             .ToList();
     }
+
+    private static bool IsSettingsBatchSave(string? controllerName, string? targetId)
+        => string.Equals(controllerName, "Setting", StringComparison.OrdinalIgnoreCase)
+           && string.IsNullOrWhiteSpace(targetId);
+
+    private static IEnumerable<string> ExtractSettingKeys(ActionExecutingContext context)
+    {
+        foreach (var value in context.ActionArguments.Values)
+        {
+            if (value is not IEnumerable<SaveSystemSettingRequest> requests)
+            {
+                continue;
+            }
+
+            foreach (var request in requests)
+            {
+                if (!string.IsNullOrWhiteSpace(request.Key))
+                {
+                    yield return request.Key.Trim();
+                }
+            }
+        }
+    }
+
+    private static string? BuildBatchTargetId(string? controllerName, List<AuditChange> changes)
+    {
+        if (!string.Equals(controllerName, "Setting", StringComparison.OrdinalIgnoreCase) || changes.Count == 0)
+        {
+            return null;
+        }
+
+        return Truncate(string.Join(",", changes.Select(x => x.Field)), 100);
+    }
+
+    private static string FormatSummaryValue(object? value)
+        => value switch
+        {
+            null => "(空)",
+            "" => "(空)",
+            _ => value.ToString() ?? "(空)"
+        };
+
+    private sealed record AuditChange(string Field, object? Before, object? After);
 }

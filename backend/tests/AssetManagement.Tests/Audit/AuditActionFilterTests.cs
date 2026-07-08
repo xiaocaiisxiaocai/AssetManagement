@@ -118,6 +118,35 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
         latest.Detail.Should().Contain("审计后名称");
     }
 
+    [Fact]
+    public async Task Settings_save_audit_log_records_changed_keys_and_values()
+    {
+        await Login();
+
+        await Put<ApiResult<List<SystemSettingDto>>>("/api/settings", new[]
+        {
+            new SaveSystemSettingRequest
+            {
+                Key = "page_size",
+                Value = "42"
+            }
+        });
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var latest = db.AuditLogs
+            .Where(x => x.TargetType == "Setting")
+            .OrderByDescending(x => x.Id)
+            .First();
+        latest.Summary.Should().Contain("page_size");
+        latest.Summary.Should().Contain("20");
+        latest.Summary.Should().Contain("42");
+        latest.Detail.Should().Contain("\"changes\"");
+        latest.Detail.Should().Contain("page_size");
+        latest.Detail.Should().Contain("20");
+        latest.Detail.Should().Contain("42");
+    }
+
     private async Task Login()
     {
         var res = await _client.PostAsJsonAsync("/api/auth/login", new
