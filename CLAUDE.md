@@ -210,7 +210,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 #### 前端页面
 
 - `views/material/home/index.vue`:**项目总览**仪表盘(ECharts:测评类型分布/进度状态分布饼图 + 结案/落地月度柱线组合图),数据来自 `getTestProjectStatsApi`;图表 option 构造抽到纯函数 `home/chart-options.ts`(带 `chart-options.spec.ts` 单测)。
-- `views/material/projects/index.vue`:**测试项目**主页面(约 2200 行,模块的核心工作台)。外层项目表格 CRUD(类型/进度/负责人/起止/结案/跟进);选中项目后内嵌多个 Tab——**料件清单**(`activeProjectTab`,含新增/编辑/详情/转移)、**流转审批**(`flowActiveTab`:待我审批 / 我的发起)、项目跟进等。
+- `views/material/projects/index.vue`:**测试项目**主页面与状态编排入口。页面展示按职责拆分为 `ProjectTable`、`ProjectFormDialog`、`ProjectOptionDialog`、`ProjectMaterialsTab`、`ProjectFlowsTab`、`ProjectFollowupsTab`;父组件继续统一负责 API 调用、权限、状态与请求时序。
 - `views/material/components/`:三个对话框 `MaterialFormDialog.vue`(含图片上传,复用 `asset.ts` 的 `uploadAssetImageApi`/`assetImageUrl`/`stripImageToken`)、`MaterialDetailDialog.vue`(流转时间线)、`TransferDialog.vue`;以及表单校验纯函数 `material-form-rules.ts` 与 `projects/project-form-rules.ts`(均带 `.spec.ts` 单测)。
 - 前端 API:`api/material.ts`(料件/流转)、`api/test-project.ts`(项目/选项/跟进/统计 `getTestProjectStatsApi`)。
 
