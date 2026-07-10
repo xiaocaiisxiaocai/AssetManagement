@@ -53,15 +53,19 @@ async function loadData() {
 }
 
 async function backupDatabase() {
-  await ElMessageBox.confirm(
-    '确认立即生成完整备份包？备份包会包含数据库 SQL 和附件目录，过程可能需要等待一段时间。',
-    '生成完整备份包',
-    {
-      confirmButtonText: '开始备份',
-      cancelButtonText: '取消',
-      type: 'warning',
-    },
-  );
+  try {
+    await ElMessageBox.confirm(
+      '确认立即生成完整备份包？备份包会包含数据库 SQL 和附件目录，过程可能需要等待一段时间。',
+      '生成完整备份包',
+      {
+        confirmButtonText: '开始备份',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    );
+  } catch {
+    return;
+  }
 
   backupLoading.value = true;
   try {

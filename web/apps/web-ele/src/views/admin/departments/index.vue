@@ -126,9 +126,13 @@ async function save() {
 }
 
 async function remove(row: DepartmentNode) {
-  await ElMessageBox.confirm(`确认删除部门「${row.name}」？`, '删除确认', {
-    type: 'warning',
-  });
+  try {
+    await ElMessageBox.confirm(`确认删除部门「${row.name}」？`, '删除确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
   await deleteDepartmentApi(row.id);
   ElMessage.success('删除成功');
   await loadData();

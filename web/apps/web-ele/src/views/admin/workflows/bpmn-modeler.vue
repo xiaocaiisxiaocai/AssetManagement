@@ -30,7 +30,9 @@ const elementTypeText = computed(() => {
   const map: Record<string, string> = {
     'bpmn:EndEvent': '结束',
     'bpmn:ExclusiveGateway': '条件分支',
+    'bpmn:InclusiveGateway': '包容分支',
     'bpmn:ParallelGateway': '并行审批',
+    'bpmn:ServiceTask': '自动任务',
     'bpmn:SequenceFlow': '流转线',
     'bpmn:StartEvent': '发起',
     'bpmn:UserTask': '审批节点',
@@ -47,6 +49,8 @@ const allowedPaletteEntries = new Set([
   'create.end-event',
   'create.exclusive-gateway',
   'create.parallel-gateway',
+  'create.inclusive-gateway',
+  'create.service-task',
   'create.task',
 ]);
 
@@ -141,6 +145,19 @@ function installWorkflowPalette(modelerInstance: any) {
             '创建审批节点',
           );
         }
+
+        nextEntries['create.inclusive-gateway'] = createShapeEntry(
+          'bpmn:InclusiveGateway',
+          'gateway',
+          'bpmn-icon-gateway-or',
+          '创建包容网关',
+        );
+        nextEntries['create.service-task'] = createShapeEntry(
+          'bpmn:ServiceTask',
+          'activity',
+          'bpmn-icon-service-task',
+          '创建自动任务',
+        );
 
         return nextEntries;
       };
@@ -318,6 +335,9 @@ onUnmounted(() => {
   if (import.meta.env.DEV) {
     delete (window as any).__bpmnModeler;
   }
+  modeler.value?.destroy();
+  modeler.value = undefined;
+  selectedElement.value = null;
 });
 </script>
 
@@ -394,6 +414,28 @@ onUnmounted(() => {
           <div>
             <strong>并行审批</strong>
             <span>多个分支同时处理</span>
+          </div>
+        </div>
+        <div
+          class="node-card node-gateway"
+          draggable="true"
+          @dragstart="startCreateShape($event, 'bpmn:InclusiveGateway')"
+        >
+          <span class="node-icon bpmn-icon-gateway-or"></span>
+          <div>
+            <strong>包容分支</strong>
+            <span>同时进入所有满足条件的分支</span>
+          </div>
+        </div>
+        <div
+          class="node-card node-approval"
+          draggable="true"
+          @dragstart="startCreateShape($event, 'bpmn:ServiceTask')"
+        >
+          <span class="node-icon bpmn-icon-service-task"></span>
+          <div>
+            <strong>自动任务</strong>
+            <span>无需人工审批并自动继续</span>
           </div>
         </div>
         <div

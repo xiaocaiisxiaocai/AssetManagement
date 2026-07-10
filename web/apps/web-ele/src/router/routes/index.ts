@@ -29,7 +29,11 @@ const routes: RouteRecordRaw[] = [
 ];
 
 /** 基本路由列表，这些路由不需要进入权限拦截 */
-const coreRouteNames = traverseTreeValues(coreRoutes, (route) => route.name);
+// 根路径需要经过权限守卫，先装载动态路由后再跳转首页；否则首次访问时
+// Vue Router 会尝试解析尚未注册的 /home，并在控制台留下导航异常。
+const coreRouteNames = traverseTreeValues(coreRoutes, (route) => route.name).filter(
+  (name) => name !== 'Root',
+);
 
 /** 有权限校验的路由列表，包含动态路由和静态路由 */
 const accessRoutes = [...dynamicRoutes, ...staticRoutes];

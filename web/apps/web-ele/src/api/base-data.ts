@@ -21,6 +21,13 @@ export interface DepartmentNode extends TreeNodeBase {
   children: DepartmentNode[];
 }
 
+export interface DepartmentOptionNode {
+  children: DepartmentOptionNode[];
+  id: number;
+  isActive: boolean;
+  name: string;
+}
+
 export interface CategoryNode {
   children: CategoryNode[];
   code: string;
@@ -93,6 +100,10 @@ async function unwrap<T>(request: Promise<ApiResult<T>>) {
 
 export const getDepartmentTreeApi = () =>
   unwrap(requestClient.get<ApiResult<DepartmentNode[]>>('/departments/tree'));
+
+/** 业务表单部门选择器；只返回活动部门。 */
+export const getDepartmentOptionsApi = () =>
+  unwrap(requestClient.get<ApiResult<DepartmentOptionNode[]>>('/departments/options'));
 
 export const createDepartmentApi = (data: DepartmentPayload) =>
   unwrap(requestClient.post<ApiResult<DepartmentNode>>('/departments', data));

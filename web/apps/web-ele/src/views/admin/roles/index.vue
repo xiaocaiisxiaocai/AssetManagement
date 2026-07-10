@@ -299,9 +299,13 @@ function flattenMenus(items: MenuDto[]): MenuDto[] {
 }
 
 async function remove(row: RoleDto) {
-  await ElMessageBox.confirm(`确认删除角色「${row.name}」？`, '删除确认', {
-    type: 'warning',
-  });
+  try {
+    await ElMessageBox.confirm(`确认删除角色「${row.name}」？`, '删除确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
   await deleteRoleApi(row.id);
   ElMessage.success('删除成功');
   await loadData();

@@ -21,21 +21,6 @@ export namespace AuthApi {
     token: string;
   }
 
-  /** 组织架构树节点 */
-  export interface OrganizationTreeNode {
-    id: number;
-    name: string;
-    children?: OrganizationTreeNode[];
-    remark: string;
-  }
-
-  /** 角色树节点 */
-  export interface RoleTreeNode {
-    id: number;
-    name: string;
-    children?: RoleTreeNode[];
-    remark: string;
-  }
 }
 
 /**
@@ -96,16 +81,6 @@ export const getUserInfoApi = async () => {
     mustChangePassword: data.mustChangePassword,
     permissions: data.permissions,
   } as UserInfo & { permissions: string[] };
-};
-
-/** 获取组织机构 */
-export const getOrganizationTreeData = () => {
-  return requestClient.get<AuthApi.OrganizationTreeNode[]>('/auth/organization-tree');
-};
-
-/** 获取角色树 */
-export const getRoleTreeData = () => {
-  return requestClient.get<AuthApi.RoleTreeNode[]>('/auth/role-tree');
 };
 
 /**

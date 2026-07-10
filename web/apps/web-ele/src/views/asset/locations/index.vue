@@ -101,9 +101,13 @@ async function save() {
 }
 
 async function remove(row: LocationNode) {
-  await ElMessageBox.confirm(`确认删除位置「${row.name}」？`, '删除确认', {
-    type: 'warning',
-  });
+  try {
+    await ElMessageBox.confirm(`确认删除位置「${row.name}」？`, '删除确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
   await deleteLocationApi(row.id);
   ElMessage.success('删除成功');
   await loadData();

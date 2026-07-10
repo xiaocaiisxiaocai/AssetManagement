@@ -1,15 +1,18 @@
 <script lang="ts" setup>
 import type { BorrowReportQuery, BorrowReportRow } from '#/api/report';
 import type { CategoryNode } from '#/api/base-data';
-import type { UserDto } from '#/api/user';
+import type { UserOptionDto } from '#/api/user';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useAccess } from '@vben/access';
 
 import { getCategoryTreeApi } from '#/api/base-data';
-import { getBorrowReportApi } from '#/api/report';
-import { getUserListApi } from '#/api/user';
+import { exportBorrowReportApi, getBorrowReportApi } from '#/api/report';
+import { getUserOptionsApi } from '#/api/user';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
+import { downloadBlob } from '#/utils/download';
 
 import {
   ElButton,
@@ -27,11 +30,13 @@ import {
 defineOptions({ name: 'ReportBorrow' });
 
 const router = useRouter();
+const { hasAccessByCodes } = useAccess();
+const canExport = computed(() => hasAccessByCodes(['report:export']));
 const loading = ref(false);
 const rows = ref<BorrowReportRow[]>([]);
 const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
-const borrowerOptions = ref<UserDto[]>([]);
+const borrowerOptions = ref<UserOptionDto[]>([]);
 const categoryOptions = ref<CategoryNode[]>([]);
 const query = reactive({
   borrowerId: undefined as number | undefined,
@@ -57,21 +62,26 @@ function buildQuery(): BorrowReportQuery {
   return {
     borrowerId: query.borrowerId,
     categoryId: query.categoryId,
-    endTime: query.dateRange[1],
+    endTime: endOfSelectedDay(query.dateRange[1]),
     page: query.page,
     pageSize: query.pageSize,
-    startTime: query.dateRange[0],
+    startTime: startOfSelectedDay(query.dateRange[0]),
     status: query.status,
   };
 }
 
 async function loadFilterOptions() {
-  const [users, categories] = await Promise.all([
-    getUserListApi(undefined, 1, 200),
-    getCategoryTreeApi(),
+  const [users, categories] = await Promise.allSettled([
+    hasAccessByCodes(['approval:create']) ? getUserOptionsApi() : Promise.resolve([]),
+    hasAccessByCodes(['category:view']) ? getCategoryTreeApi() : Promise.resolve([]),
   ]);
-  borrowerOptions.value = users.items.filter((user) => user.isActive);
-  categoryOptions.value = flattenCategories(categories);
+  if (users.status === 'fulfilled') borrowerOptions.value = users.value;
+  if (categories.status === 'fulfilled') categoryOptions.value = flattenCategories(categories.value);
+}
+
+async function exportReport() {
+  const response = await exportBorrowReportApi(buildQuery());
+  downloadBlob(response.data, '借用明细.xlsx');
 }
 
 function flattenCategories(nodes: CategoryNode[]): CategoryNode[] {
@@ -189,6 +199,9 @@ onMounted(async () => {
       </div>
 
       <div class="table-panel-with-toolbar">
+        <div v-if="canExport" class="table-toolbar">
+          <ElButton type="primary" @click="exportReport">导出 Excel</ElButton>
+        </div>
         <ElTable v-loading="loading" :data="rows" border height="100%">
           <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
           <ElTableColumn label="资产" min-width="220">

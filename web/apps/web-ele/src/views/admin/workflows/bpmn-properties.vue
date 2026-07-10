@@ -89,28 +89,28 @@ const assigneeValueOptions = computed(() => {
   if (assigneeType.value === 'username') {
     return userOptions.value.map((user) => ({
       label: `${user.name}（${user.employeeNo}）`,
-      value: user.name,
+      value: String(user.id),
     }));
   }
 
   if (assigneeType.value === 'usernames') {
     return userOptions.value.map((user) => ({
       label: `${user.name}（${user.employeeNo}）`,
-      value: user.name,
+      value: String(user.id),
     }));
   }
 
   if (assigneeType.value === 'roleName') {
     return roleOptions.value.map((role) => ({
       label: `${role.name}（${role.code}）`,
-      value: role.name,
+      value: role.code,
     }));
   }
 
   return [];
 });
 const assigneeValuePlaceholder = computed(() =>
-  assigneeType.value === 'roleName' ? '选择角色名称' : '选择用户名'
+  assigneeType.value === 'roleName' ? '选择角色' : '选择审批人员'
 );
 
 async function loadAssigneeOptions() {
@@ -499,8 +499,7 @@ onMounted(() => {
             >
               <ElSelect
                 v-model="assigneeValue"
-                allow-create
-                clearable
+              clearable
                 filterable
                 :multiple="assigneeType === 'usernames'"
                 collapse-tags
@@ -531,7 +530,7 @@ onMounted(() => {
               <div v-else-if="assigneeType === 'deptManager'">自动解析申请人所在部门的管理员。</div>
               <div v-else-if="assigneeType === 'username'">指定一名固定审批人。</div>
               <div v-else-if="assigneeType === 'usernames'">可选择多人；“全部人通过”表示会签。</div>
-              <div v-else-if="assigneeType === 'roleName'">按角色名称匹配审批人。</div>
+              <div v-else-if="assigneeType === 'roleName'">按唯一角色编码匹配审批人。</div>
               <div v-else>请选择审批人来源。</div>
             </div>
           </section>

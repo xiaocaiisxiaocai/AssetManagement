@@ -5,33 +5,21 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 
 async function runComprehensiveTest() {
+  const testEmployeeNo = process.env.E2E_EMPLOYEE_NO || '1001';
+  const testPassword = process.env.E2E_PASSWORD;
+  if (!testPassword) {
+    throw new Error('缺少 E2E_PASSWORD 环境变量，拒绝在测试脚本中保存默认或真实密码');
+  }
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
-
-  // 监听浏览器控制台输出
-  page.on('console', msg => {
-    if (msg.type() === 'error') {
-      log(`浏览器控制台错误: ${msg.text()}`, 'warn');
-    }
-  });
-
-  // 监听失败的请求
-  page.on('requestfailed', request => {
-    log(`网络请求失败: ${request.url()} - ${request.failure()?.errorText}`, 'warn');
-  });
-
-  page.on('response', response => {
-    if (response.status() >= 400) {
-      log(`HTTP 错误响应: ${response.status()} ${response.url()}`, 'warn');
-    }
-  });
 
   const results = {
     passed: [],
     failed: [],
     warnings: []
   };
+  const failedHttpResponses = new Set();
 
   function log(message, type = 'info') {
     const timestamp = new Date().toISOString();
@@ -40,6 +28,25 @@ async function runComprehensiveTest() {
     if (type === 'fail') results.failed.push(message);
     if (type === 'warn') results.warnings.push(message);
   }
+
+  // 监听浏览器控制台输出
+  page.on('console', msg => {
+    if (msg.type() === 'error') {
+      log(`浏览器控制台错误: ${msg.text()}`, 'fail');
+    }
+  });
+
+  // 监听失败的请求
+  page.on('requestfailed', request => {
+    log(`网络请求失败: ${request.url()} - ${request.failure()?.errorText}`, 'fail');
+  });
+
+  page.on('response', response => {
+    if (response.status() >= 400 && !failedHttpResponses.has(`${response.status()} ${response.url()}`)) {
+      failedHttpResponses.add(`${response.status()} ${response.url()}`);
+      log(`HTTP 错误响应: ${response.status()} ${response.url()}`, 'fail');
+    }
+  });
 
   // 辅助函数：安全地前往URL（支持Vue Router和传统跳转）
   async function safeGoto(route, pageName) {
@@ -124,8 +131,8 @@ async function runComprehensiveTest() {
     }
 
     // 测试登录
-    await page.fill('input[name="account"]', '1001');
-    await page.fill('input[name="password"]', '123456');
+    await page.fill('input[name="account"]', testEmployeeNo);
+    await page.fill('input[name="password"]', testPassword);
     await page.click('button:has-text("登录")');
 
     // 等待登录成功并跳转（修正：实际跳转到 /home）
@@ -210,6 +217,14 @@ async function runComprehensiveTest() {
     // 3.2 我的申请
     if (await safeGoto('/approval/mine', '我的申请')) {
       await checkContentWithRetry(['工单', '类型', '状态', '申请', '新增申请'], '我的申请', 'approval-mine-fail');
+      const transferButton = page.getByRole('button', { name: '发起转让' });
+      if (await transferButton.count()) {
+        await transferButton.click();
+        const recipient = page.getByText('接收人', { exact: true });
+        if (await recipient.count()) log('✓ 转让申请强制提供接收人选择', 'pass');
+        else log('✗ 转让申请缺少接收人选择', 'fail');
+        await page.keyboard.press('Escape');
+      }
     }
 
     // 3.3 待确认入库
@@ -268,7 +283,35 @@ async function runComprehensiveTest() {
       await checkContentWithRetry(['参数', '键', '值', '配置', '系统参数'], '系统参数', 'admin-settings-fail');
     }
 
-    // ==================== 6. 保存最终截图 ====================
+    // ==================== 6. 新产品新技术模块 ====================
+    log('--- 测试模块: 新产品新技术 ---');
+    if (await safeGoto('/material/home', '项目总览')) {
+      await checkContentWithRetry(['总测评数', '已结案', '进行中', '已落地'], '项目总览', 'material-home-fail');
+    }
+    if (await safeGoto('/material/projects', '测试项目')) {
+      await checkContentWithRetry(['项目编号', '项目名称', '负责人', '下次跟进'], '测试项目', 'material-projects-fail');
+    }
+
+    if (await safeGoto('/admin/backups', '数据库备份')) {
+      await checkContentWithRetry(['数据库备份', '备份文件', '立即备份'], '数据库备份', 'admin-backups-fail');
+    }
+
+    // 窄屏回归：固定像素弹窗不得超出视口。
+    await page.setViewportSize({ width: 390, height: 844 });
+    if (await safeGoto('/admin/users', '移动端用户管理')) {
+      const createUser = page.getByRole('button', { name: /新增用户/ });
+      if (await createUser.count()) {
+        await createUser.click();
+        const dialog = page.locator('.el-dialog:visible');
+        const box = await dialog.boundingBox();
+        if (box && box.x >= 0 && box.x + box.width <= 390) log('✓ 移动端弹窗未超出视口', 'pass');
+        else log('✗ 移动端弹窗超出视口', 'fail');
+        await page.keyboard.press('Escape');
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+
+    // ==================== 7. 保存最终截图 ====================
     log('--- 保存测试截图 ---');
     await page.screenshot({ path: 'e2e-final-state.png', fullPage: true });
     log('✓ 最终页面测试截图已保存: e2e-final-state.png', 'pass');
@@ -311,4 +354,7 @@ async function runComprehensiveTest() {
   }
 }
 
-runComprehensiveTest().catch(console.error);
+runComprehensiveTest().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

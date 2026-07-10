@@ -23,6 +23,46 @@
   --asset-page-shadow-hover: 0 14px 30px hsl(213 58% 52% / 12%);
 }
 
+/* Element Plus 对话框常使用像素宽度；在窄屏统一限制到可视区域，避免表单和底部按钮被裁切。 */
+.el-dialog {
+  max-width: calc(100vw - 24px);
+}
+
+.el-dialog__body {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .el-dialog {
+    width: calc(100vw - 24px) !important;
+    margin-right: 12px !important;
+    margin-left: 12px !important;
+  }
+
+  .el-dialog__header,
+  .el-dialog__body,
+  .el-dialog__footer {
+    padding-right: 16px !important;
+    padding-left: 16px !important;
+  }
+
+  .el-dialog .el-form:not(.el-form--inline) .el-form-item {
+    display: block;
+  }
+
+  .el-dialog .el-form:not(.el-form--inline) .el-form-item__label {
+    width: auto !important;
+    height: auto;
+    margin-bottom: 6px;
+    line-height: 22px;
+  }
+
+  .el-dialog .el-form:not(.el-form--inline) .el-form-item__content {
+    margin-left: 0 !important;
+  }
+}
+
 .dark {
   --asset-page-surface: hsl(var(--card));
   --asset-page-surface-alt: hsl(var(--background));

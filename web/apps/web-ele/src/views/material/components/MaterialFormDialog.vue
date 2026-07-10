@@ -3,9 +3,9 @@ import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
 
 import type { MaterialItem, SaveMaterialPayload } from '#/api/material';
 import type { TestProjectItem } from '#/api/test-project';
-import type { UserDto } from '#/api/user';
+import type { UserDto, UserOptionDto } from '#/api/user';
 
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 
 import { useDebounceFn } from '@vueuse/core';
 
@@ -25,6 +25,7 @@ import {
 
 import { assetImageUrl, stripImageToken, uploadAssetImageApi } from '#/api/asset';
 import { createMaterialApi, updateMaterialApi } from '#/api/material';
+import { getRuntimeSettings } from '#/utils/runtime-settings';
 import { getDefaultCustodianId, validateMaterialForm } from './material-form-rules';
 
 type FlatOption = { id: number; label: string };
@@ -36,12 +37,15 @@ const props = defineProps<{
   material: MaterialItem | null;
   projectLocked?: boolean;
   projects: TestProjectItem[];
-  users: UserDto[];
+  users: (UserDto | UserOptionDto)[];
 }>();
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 
 const saving = ref(false);
+const attachmentMaxMb = ref(5);
+const pendingUploads = new Set<Promise<unknown>>();
+const uploading = ref(false);
 const imageFileList = ref<UploadUserFile[]>([]);
 const form = reactive({
   brand: '',
@@ -74,6 +78,9 @@ watch(visible, (opened) => {
   if (!opened) {
     return;
   }
+  void getRuntimeSettings().then((settings) => {
+    attachmentMaxMb.value = settings.attachmentMaxMb;
+  }).catch(() => {});
   if (props.material) {
     Object.assign(form, {
       brand: props.material.brand ?? '',
@@ -139,15 +146,25 @@ function beforeImageUpload(file: File) {
     ElMessage.warning('仅支持 jpg/png/gif/webp 格式图片');
     return false;
   }
-  if (file.size > 5 * 1024 * 1024) {
-    ElMessage.warning('单张图片大小不能超过 5MB');
+  if (file.size > attachmentMaxMb.value * 1024 * 1024) {
+    ElMessage.warning(`单张图片大小不能超过 ${attachmentMaxMb.value}MB`);
     return false;
   }
   return true;
 }
 
-async function customImageUpload(options: UploadRequestOptions) {
-  return await uploadAssetImageApi(options.file);
+function customImageUpload(options: UploadRequestOptions) {
+  const request = uploadAssetImageApi(options.file);
+  pendingUploads.add(request);
+  uploading.value = true;
+  void request.then(() => {
+    pendingUploads.delete(request);
+    uploading.value = pendingUploads.size > 0;
+  }, () => {
+    pendingUploads.delete(request);
+    uploading.value = pendingUploads.size > 0;
+  });
+  return request;
 }
 
 function onImageExceed() {
@@ -162,6 +179,8 @@ async function save() {
   }
   saving.value = true;
   try {
+    await Promise.all([...pendingUploads]);
+    await nextTick();
     await (props.material
       ? updateMaterialApi(props.material.id, buildPayload())
       : createMaterialApi(buildPayload()));
@@ -300,7 +319,7 @@ const debouncedSave = useDebounceFn(save, 300);
     </ElForm>
     <template #footer>
       <ElButton @click="visible = false">取消</ElButton>
-      <ElButton :loading="saving" type="primary" @click="debouncedSave">
+      <ElButton :loading="saving || uploading" type="primary" @click="debouncedSave">
         保存
       </ElButton>
     </template>

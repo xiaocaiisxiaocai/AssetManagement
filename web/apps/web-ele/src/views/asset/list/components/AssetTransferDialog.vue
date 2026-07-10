@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { AssetItem } from '#/api/asset';
-import type { UserDto } from '#/api/user';
+import type { UserOptionDto } from '#/api/user';
 
 import { reactive, ref, watch } from 'vue';
 
@@ -21,7 +21,7 @@ import { startApprovalApi } from '#/api/workflow';
 
 const router = useRouter();
 
-const props = defineProps<{ asset: AssetItem | null; users: UserDto[] }>();
+const props = defineProps<{ asset: AssetItem | null; users: UserOptionDto[] }>();
 const emit = defineEmits<{ submitted: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 

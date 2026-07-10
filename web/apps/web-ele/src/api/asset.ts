@@ -126,6 +126,21 @@ async function unwrap<T>(request: Promise<ApiResult<T>>) {
 export const getAssetListApi = (params: AssetQuery) =>
   unwrap(requestClient.get<ApiResult<PagedResult<AssetItem>>>('/assets', { params }));
 
+export async function getAllAssetsApi(
+  params: Omit<AssetQuery, 'page' | 'pageSize'> = {},
+): Promise<AssetItem[]> {
+  const pageSize = 200;
+  const first = await getAssetListApi({ ...params, page: 1, pageSize });
+  const pageCount = Math.ceil(first.total / pageSize);
+  if (pageCount <= 1) return first.items;
+  const remaining = await Promise.all(
+    Array.from({ length: pageCount - 1 }, (_, index) =>
+      getAssetListApi({ ...params, page: index + 2, pageSize }),
+    ),
+  );
+  return [first, ...remaining].flatMap((page) => page.items);
+}
+
 export const getAssetDetailApi = (id: number) =>
   unwrap(requestClient.get<ApiResult<AssetDetail>>(`/assets/${id}/detail`));
 

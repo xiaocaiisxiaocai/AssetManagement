@@ -26,6 +26,13 @@ export interface UserDto {
   supervisorId?: null | number;
 }
 
+export interface UserOptionDto {
+  departmentName?: null | string;
+  employeeNo: string;
+  id: number;
+  name: string;
+}
+
 export interface UserImportRow {
   email?: null | string;
   departmentName?: null | string;
@@ -71,6 +78,14 @@ export const getUserListApi = (
   unwrapPaged(
     requestClient.get<ApiResult<PagedResult<UserDto>>>('/users', {
       params: { departmentId, keyword, page, pageSize, roleId },
+    }),
+  );
+
+/** 业务人员选择器；仅返回活动用户，不要求用户管理权限。 */
+export const getUserOptionsApi = (keyword?: string) =>
+  unwrap(
+    requestClient.get<ApiResult<UserOptionDto[]>>('/users/options', {
+      params: { keyword },
     }),
   );
 

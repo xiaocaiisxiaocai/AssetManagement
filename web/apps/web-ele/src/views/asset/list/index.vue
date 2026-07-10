@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { AssetDetail, AssetItem, AssetQuery, AssetStatus } from '#/api/asset';
-import type { CategoryNode, DepartmentNode, LocationNode } from '#/api/base-data';
-import type { UserDto } from '#/api/user';
+import type { CategoryNode, DepartmentNode, DepartmentOptionNode, LocationNode } from '#/api/base-data';
+import type { UserDto, UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -12,6 +12,7 @@ import { useAccess } from '@vben/access';
 import {
   deleteAssetApi,
   exportAssetsApi,
+  getAllAssetsApi,
   getAssetDetailApi,
   getAssetListApi,
   purgeAssetApi,
@@ -19,13 +20,13 @@ import {
 } from '#/api/asset';
 import {
   getCategoryTreeApi,
+  getDepartmentOptionsApi,
   getDepartmentTreeApi,
   getLocationTreeApi,
 } from '#/api/base-data';
 import { flattenActiveDepartments } from '#/utils/department-options';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
-import { getWorkflowsApi } from '#/api/workflow';
-import { getUserListApi } from '#/api/user';
+import { getUserListApi, getUserOptionsApi } from '#/api/user';
 
 import {
   ElButton,
@@ -48,7 +49,7 @@ import AssetDetailDialog from './components/AssetDetailDialog.vue';
 import AssetFormDialog from './components/AssetFormDialog.vue';
 import AssetImportDialog from './components/AssetImportDialog.vue';
 import AssetTransferDialog from './components/AssetTransferDialog.vue';
-import { buildAssetRowActionAccess } from './asset-row-actions';
+import { buildAssetRowActionAccess, canRunAvailableAssetAction } from './asset-row-actions';
 
 defineOptions({ name: 'AssetList' });
 
@@ -87,10 +88,9 @@ const categoryPage = ref(1);
 const categoryPageSize = ref(20);
 const hierarchyKeyword = ref('');
 const categories = ref<CategoryNode[]>([]);
-const departments = ref<DepartmentNode[]>([]);
+const departments = ref<(DepartmentNode | DepartmentOptionNode)[]>([]);
 const locations = ref<LocationNode[]>([]);
-const users = ref<UserDto[]>([]);
-const workflows = ref<any[]>([]);
+const users = ref<(UserDto | UserOptionDto)[]>([]);
 const currentAssetForAction = ref<AssetItem | null>(null);
 const detailVisible = ref(false);
 const detailLoading = ref(false);
@@ -148,18 +148,24 @@ const canPurgeAsset = computed(() => hasAccessByCodes(['asset:purge']));
 const canRestoreAsset = computed(() => hasAccessByCodes(['asset:restore']));
 const assetRowActionAccess = computed(() => buildAssetRowActionAccess(hasAccessByCodes));
 async function loadDictionaries() {
-  const [categoryTree, departmentTree, locationTree, userList, workflowList] = await Promise.all([
-    getCategoryTreeApi(),
-    getDepartmentTreeApi(),
-    getLocationTreeApi(),
-    getUserListApi('', 1, 500).then((result) => result.items),
-    getWorkflowsApi(),
+  const requests = await Promise.allSettled([
+    hasAccessByCodes(['category:view']) ? getCategoryTreeApi() : Promise.resolve([]),
+    hasAccessByCodes(['department:view'])
+      ? getDepartmentTreeApi()
+      : hasAccessByCodes(['asset:create']) || hasAccessByCodes(['asset:edit'])
+        ? getDepartmentOptionsApi()
+        : Promise.resolve([]),
+    hasAccessByCodes(['location:view']) ? getLocationTreeApi() : Promise.resolve([]),
+    hasAccessByCodes(['user:view'])
+      ? getUserListApi('', 1, 500).then((result) => result.items)
+      : hasAccessByCodes(['approval:create'])
+        ? getUserOptionsApi()
+        : Promise.resolve([]),
   ]);
-  categories.value = categoryTree;
-  departments.value = departmentTree;
-  locations.value = locationTree;
-  users.value = userList;
-  workflows.value = workflowList;
+  if (requests[0].status === 'fulfilled') categories.value = requests[0].value;
+  if (requests[1].status === 'fulfilled') departments.value = requests[1].value;
+  if (requests[2].status === 'fulfilled') locations.value = requests[2].value;
+  if (requests[3].status === 'fulfilled') users.value = requests[3].value;
 }
 
 async function loadData() {
@@ -174,8 +180,7 @@ async function loadData() {
 }
 
 async function loadHierarchyAssets() {
-  const result = await getAssetListApi({ page: 1, pageSize: 1000 });
-  allAssets.value = result.items;
+  allAssets.value = await getAllAssetsApi();
 }
 
 async function applyCategoryCodeFromRoute() {
@@ -793,7 +798,7 @@ watch(
                     <ElButton v-if="assetRowActionAccess.canView" link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
                     <ElButton v-if="assetRowActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
                     <ElDropdown
-                      v-if="assetRowActionAccess.canBorrow || assetRowActionAccess.canTransfer || assetRowActionAccess.canDelete"
+                      v-if="canRunAvailableAssetAction(row) && (assetRowActionAccess.canBorrow || assetRowActionAccess.canTransfer || assetRowActionAccess.canDelete)"
                       @command="(cmd) => onRowCommand(String(cmd), row)"
                     >
                       <ElButton link type="primary" size="small">更多</ElButton>

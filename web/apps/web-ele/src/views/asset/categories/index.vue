@@ -140,33 +140,45 @@ async function save() {
 }
 
 async function remove(row: CategoryNode) {
-  await ElMessageBox.confirm(
-    `确认删除分类「${row.code}」？子分类会一并删除，删除后仍显示在列表中，可由管理员彻底删除。`,
-    '删除确认',
-    { type: 'warning' },
-  );
+  try {
+    await ElMessageBox.confirm(
+      `确认删除分类「${row.code}」？子分类会一并删除，删除后仍显示在列表中，可由管理员彻底删除。`,
+      '删除确认',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
   await deleteCategoryApi(row.id);
   ElMessage.success('已删除');
   await loadData();
 }
 
 async function purge(row: CategoryNode) {
-  await ElMessageBox.confirm(
-    `彻底删除分类「${row.code}」后不可恢复，确认继续？`,
-    '彻底删除确认',
-    { type: 'warning' },
-  );
+  try {
+    await ElMessageBox.confirm(
+      `彻底删除分类「${row.code}」后不可恢复，确认继续？`,
+      '彻底删除确认',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
   await purgeCategoryApi(row.id);
   ElMessage.success('已彻底删除');
   await loadData();
 }
 
 async function restore(row: CategoryNode) {
-  await ElMessageBox.confirm(
-    `确认撤销删除分类「${row.code}」？将连同其子分类一并恢复。`,
-    '撤销删除确认',
-    { type: 'warning' },
-  );
+  try {
+    await ElMessageBox.confirm(
+      `确认撤销删除分类「${row.code}」？将连同其子分类一并恢复。`,
+      '撤销删除确认',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
   await restoreCategoryApi(row.id);
   ElMessage.success('已恢复');
   await loadData();

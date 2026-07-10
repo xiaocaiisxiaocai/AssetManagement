@@ -1,9 +1,9 @@
 <script lang="ts" setup>
 import type { AssetItem, AssetPayload, AssetStatus } from '#/api/asset';
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
-import type { UserDto } from '#/api/user';
+import type { UserDto, UserOptionDto } from '#/api/user';
 
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 
 import {
@@ -26,6 +26,7 @@ import {
   updateAssetApi,
   uploadAssetImageApi,
 } from '#/api/asset';
+import { getRuntimeSettings } from '#/utils/runtime-settings';
 
 import { validateAssetForm } from './asset-form-rules';
 
@@ -37,7 +38,7 @@ const props = defineProps<{
   defaultCategoryId: number;
   departmentOptions: FlatOption[];
   locationOptions: FlatOption[];
-  users: UserDto[];
+  users: (UserDto | UserOptionDto)[];
 }>();
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
@@ -52,6 +53,9 @@ const statusOptions: Array<{
 ];
 
 const saving = ref(false);
+const attachmentMaxMb = ref(5);
+const pendingUploads = new Set<Promise<unknown>>();
+const uploading = ref(false);
 const imageFileList = ref<UploadUserFile[]>([]);
 const form = reactive({
   brand: '',
@@ -87,6 +91,9 @@ watch(visible, (opened) => {
   if (!opened) {
     return;
   }
+  void getRuntimeSettings().then((settings) => {
+    attachmentMaxMb.value = settings.attachmentMaxMb;
+  }).catch(() => {});
   if (props.asset) {
     Object.assign(form, {
       brand: props.asset.brand ?? '',
@@ -145,16 +152,25 @@ function beforeImageUpload(file: File) {
     ElMessage.warning('仅支持 jpg/png/gif/webp 格式图片');
     return false;
   }
-  if (file.size > 5 * 1024 * 1024) {
-    ElMessage.warning('单张图片大小不能超过 5MB');
+  if (file.size > attachmentMaxMb.value * 1024 * 1024) {
+    ElMessage.warning(`单张图片大小不能超过 ${attachmentMaxMb.value}MB`);
     return false;
   }
   return true;
 }
 
-async function customImageUpload(options: UploadRequestOptions) {
-  // 返回值会成为该文件的 response,buildPayload 据此取 url
-  return await uploadAssetImageApi(options.file);
+function customImageUpload(options: UploadRequestOptions) {
+  const request = uploadAssetImageApi(options.file);
+  pendingUploads.add(request);
+  uploading.value = true;
+  void request.then(() => {
+    pendingUploads.delete(request);
+    uploading.value = pendingUploads.size > 0;
+  }, () => {
+    pendingUploads.delete(request);
+    uploading.value = pendingUploads.size > 0;
+  });
+  return request;
 }
 
 function onImageExceed() {
@@ -172,6 +188,8 @@ async function save() {
   }
   saving.value = true;
   try {
+    await Promise.all([...pendingUploads]);
+    await nextTick();
     if (props.asset) {
       await updateAssetApi(props.asset.id, buildPayload());
     } else {
@@ -300,7 +318,7 @@ const debouncedSave = useDebounceFn(save, 300);
     </ElForm>
     <template #footer>
       <ElButton @click="visible = false">取消</ElButton>
-      <ElButton :loading="saving" type="primary" @click="debouncedSave">保存</ElButton>
+      <ElButton :loading="saving || uploading" type="primary" @click="debouncedSave">保存</ElButton>
     </template>
   </ElDialog>
 </template>

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { MaterialItem } from '#/api/material';
-import type { UserDto } from '#/api/user';
+import type { UserOptionDto } from '#/api/user';
 
 import { reactive, ref, watch } from 'vue';
 
@@ -17,7 +17,7 @@ import {
 
 import { initiateTransferApi } from '#/api/material';
 
-const props = defineProps<{ material: MaterialItem | null; users: UserDto[] }>();
+const props = defineProps<{ material: MaterialItem | null; users: UserOptionDto[] }>();
 const emit = defineEmits<{ done: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 

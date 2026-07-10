@@ -20,7 +20,6 @@ const formSchema = computed((): VbenFormSchema[] => {
         placeholder: $t('authentication.usernameTip'),
       },
       fieldName: 'account',
-      defaultValue: '1001',
       label: $t('authentication.username'),
       rules: z.string().min(1, { message: $t('authentication.usernameTip') }),
     },
@@ -31,7 +30,6 @@ const formSchema = computed((): VbenFormSchema[] => {
       },
       fieldName: 'password',
       label: $t('authentication.password'),
-      defaultValue: '123456',
       rules: z.string().min(1, { message: $t('authentication.passwordTip') }),
     },
   ];

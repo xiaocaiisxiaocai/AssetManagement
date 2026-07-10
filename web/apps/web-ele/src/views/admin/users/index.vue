@@ -167,31 +167,41 @@ async function save() {
 }
 
 async function resetPassword(row: UserDto) {
-  await ElMessageBox.confirm(
-    `确认重置用户「${row.name}」的密码？重置后默认密码为 123456`,
-    '重置密码',
-    {
-      type: 'warning',
-    }
-  );
+  try {
+    await ElMessageBox.confirm(
+      `确认重置用户「${row.name}」的密码？重置后默认密码为 123456`,
+      '重置密码',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
   await resetUserPasswordApi(row.id);
   ElMessage.success('密码已重置');
 }
 
 async function toggleStatus(row: UserDto) {
   const action = row.isActive ? '禁用' : '启用';
-  await ElMessageBox.confirm(`确认${action}用户「${row.name}」？`, '确认', {
-    type: 'warning',
-  });
+  try {
+    await ElMessageBox.confirm(`确认${action}用户「${row.name}」？`, '确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
   await toggleUserStatusApi(row.id, !row.isActive);
   ElMessage.success(`${action}成功`);
   await loadData();
 }
 
 async function remove(row: UserDto) {
-  await ElMessageBox.confirm(`确认删除用户「${row.name}」？`, '删除确认', {
-    type: 'warning',
-  });
+  try {
+    await ElMessageBox.confirm(`确认删除用户「${row.name}」？`, '删除确认', {
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
   await deleteUserApi(row.id);
   ElMessage.success('删除成功');
   await loadData();

@@ -1,11 +1,13 @@
 <script lang="ts" setup>
 import type { ApprovalWorkItem } from '../approval-work-items';
 import type { AssetItem } from '#/api/asset';
+import type { UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useAccess } from '@vben/access';
 
-import { getAssetListApi } from '#/api/asset';
+import { getAllAssetsApi } from '#/api/asset';
+import { getUserOptionsApi } from '#/api/user';
 import { listMyFlowsApi } from '#/api/material';
 import { getMineApprovalsApi, startApprovalApi } from '#/api/workflow';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
@@ -36,12 +38,14 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const flows = ref<ApprovalWorkItem[]>([]);
 const assets = ref<AssetItem[]>([]);
+const users = ref<UserOptionDto[]>([]);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const form = reactive({
   assetId: undefined as number | undefined,
   bizType: 'borrow',
   reason: '',
   returnDate: '',
+  transfereeId: undefined as number | undefined,
 });
 const query = reactive({
   page: 1,
@@ -59,16 +63,14 @@ async function loadData() {
     const materialMinePromise = canViewMaterialFlow.value
       ? listMyFlowsApi()
       : Promise.resolve([]);
-    const [mine, materialMine, assetPage] = await Promise.all([
+    const [mine, materialMine] = await Promise.all([
       getMineApprovalsApi(),
       materialMinePromise,
-      getAssetListApi({ page: 1, pageSize: 500 }),
     ]);
     flows.value = mergeApprovalWorkItems(mine, materialMine);
     if ((query.page - 1) * query.pageSize >= flows.value.length) {
       query.page = 1;
     }
-    assets.value = assetPage.items;
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
@@ -76,13 +78,28 @@ async function loadData() {
   }
 }
 
-function openStart(type = 'borrow') {
+async function openStart(type = 'borrow') {
   Object.assign(form, {
     assetId: undefined,
     bizType: type,
     reason: '',
     returnDate: '',
+    transfereeId: undefined,
   });
+  if (assets.value.length === 0) {
+    try {
+      assets.value = await getAllAssetsApi();
+    } catch {
+      return;
+    }
+  }
+  if (users.value.length === 0) {
+    try {
+      users.value = await getUserOptionsApi();
+    } catch {
+      return;
+    }
+  }
   dialogVisible.value = true;
 }
 
@@ -95,6 +112,10 @@ async function submit() {
     ElMessage.warning('请选择归还日期');
     return;
   }
+  if (form.bizType === 'transfer' && !form.transfereeId) {
+    ElMessage.warning('请选择接收人');
+    return;
+  }
   saving.value = true;
   try {
     await startApprovalApi({
@@ -102,6 +123,7 @@ async function submit() {
       bizType: form.bizType,
       reason: form.reason,
       returnDate: showReturnDate.value ? form.returnDate : undefined,
+      transfereeId: form.bizType === 'transfer' ? form.transfereeId : undefined,
     });
     ElMessage.success('申请已提交');
     dialogVisible.value = false;
@@ -228,6 +250,16 @@ onMounted(async () => {
           </ElFormItem>
           <ElFormItem v-if="showReturnDate" label="归还日期" required>
             <ElDatePicker v-model="form.returnDate" type="date" value-format="YYYY-MM-DD" placeholder="选择归还日期" style="width: 100%" />
+          </ElFormItem>
+          <ElFormItem v-if="form.bizType === 'transfer'" label="接收人" required>
+            <ElSelect v-model="form.transfereeId" filterable placeholder="选择接收人" style="width: 100%">
+              <ElOption
+                v-for="user in users"
+                :key="user.id"
+                :label="`${user.name}（${user.employeeNo}）`"
+                :value="user.id"
+              />
+            </ElSelect>
           </ElFormItem>
           <ElFormItem label="申请事由">
             <ElInput v-model="form.reason" :rows="3" type="textarea" placeholder="请输入申请事由" />

@@ -1,4 +1,4 @@
-import type { DepartmentNode } from '#/api/base-data';
+import type { DepartmentNode, DepartmentOptionNode } from '#/api/base-data';
 
 export interface DepartmentOption {
   id: number;
@@ -7,11 +7,11 @@ export interface DepartmentOption {
 }
 
 export function flattenActiveDepartments(
-  nodes: DepartmentNode[],
+  nodes: (DepartmentNode | DepartmentOptionNode)[],
   level = 0,
 ): DepartmentOption[] {
   return nodes.flatMap((node) => {
-    if (!node.isActive) {
+    if ('isActive' in node && !node.isActive) {
       return [];
     }
 

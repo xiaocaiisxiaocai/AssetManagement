@@ -4,6 +4,7 @@ import type { ApprovalFlow } from '#/api/workflow';
 
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useAccess } from '@vben/access';
 
 import { getAssetSummaryApi, getOverdueReportApi } from '#/api/report';
 import {
@@ -25,6 +26,14 @@ import {
 defineOptions({ name: 'Workspace' });
 
 const router = useRouter();
+const { hasAccessByCodes } = useAccess();
+const canViewAssets = computed(() => hasAccessByCodes(['asset:view']));
+const canViewCategories = computed(() => hasAccessByCodes(['category:view']));
+const canViewLocations = computed(() => hasAccessByCodes(['location:view']));
+const canViewApprovals = computed(() => hasAccessByCodes(['approval:view']));
+const canHandleApprovals = computed(() => hasAccessByCodes(['approval:handle']));
+const canConfirmReturns = computed(() => hasAccessByCodes(['approval:confirm-return']));
+const canViewReports = computed(() => hasAccessByCodes(['report:view']));
 const loading = ref(false);
 const summary = ref<AssetSummary>({
   available: 0,
@@ -52,45 +61,49 @@ const metricCards = computed(() => [
     value: summary.value.total,
     tone: 'primary',
     path: '/asset/list',
+    visible: canViewAssets.value && canViewReports.value,
   },
   {
     label: '在库资产',
     value: summary.value.available,
     tone: 'success',
     path: '/asset/list',
+    visible: canViewAssets.value && canViewReports.value,
   },
   {
     label: '借出资产',
     value: summary.value.borrowed,
     tone: 'warning',
     path: '/report/borrow',
+    visible: canViewReports.value,
   },
   {
     label: '逾期资产',
     value: overdueRows.value.length,
     tone: overdueRows.value.length > 0 ? 'danger' : 'success',
     path: '/report/overdue',
+    visible: canViewReports.value,
   },
-]);
+].filter((item) => item.visible));
 
-const shortcuts = [
-  { label: '资产列表', path: '/asset/list' },
-  { label: '资产分类', path: '/asset/categories' },
-  { label: '存放位置', path: '/asset/locations' },
-  { label: '待我审批', path: '/approval/pending' },
-  { label: '我的申请', path: '/approval/mine' },
-  { label: '资产汇总', path: '/report/summary' },
-];
+const shortcuts = computed(() => [
+  { label: '资产列表', path: '/asset/list', visible: canViewAssets.value },
+  { label: '资产分类', path: '/asset/categories', visible: canViewCategories.value },
+  { label: '存放位置', path: '/asset/locations', visible: canViewLocations.value },
+  { label: '待我审批', path: '/approval/pending', visible: canHandleApprovals.value },
+  { label: '我的申请', path: '/approval/mine', visible: canViewApprovals.value },
+  { label: '资产汇总', path: '/report/summary', visible: canViewReports.value },
+].filter((item) => item.visible));
 
 async function loadData() {
   loading.value = true;
   try {
     const [assetSummary, overdue, pending, mine, returns] = await Promise.all([
-      getAssetSummaryApi().catch(() => summary.value),
-      getOverdueReportApi().catch(() => []),
-      getPendingApprovalsApi().catch(() => []),
-      getMineApprovalsApi().catch(() => []),
-      getPendingReturnsApi().catch(() => []),
+      canViewReports.value ? getAssetSummaryApi() : Promise.resolve(summary.value),
+      canViewReports.value ? getOverdueReportApi() : Promise.resolve([]),
+      canHandleApprovals.value ? getPendingApprovalsApi() : Promise.resolve([]),
+      canViewApprovals.value ? getMineApprovalsApi() : Promise.resolve([]),
+      canConfirmReturns.value ? getPendingReturnsApi() : Promise.resolve([]),
     ]);
     summary.value = assetSummary;
     overdueRows.value = overdue;
@@ -147,7 +160,7 @@ onMounted(loadData);
       </ElSkeleton>
 
       <section class="workspace-dashboard">
-        <ElCard class="workspace-panel" shadow="never">
+        <ElCard v-if="canViewReports" class="workspace-panel" shadow="never">
           <template #header>
             <div class="workspace-card-header">
               <span>资产概况</span>
@@ -181,25 +194,25 @@ onMounted(loadData);
             <template #header>
               <div class="workspace-card-header">
                 <span>待办提醒</span>
-                <ElButton link type="primary" @click="go('/approval/pending')">
+                <ElButton v-if="canHandleApprovals" link type="primary" @click="go('/approval/pending')">
                   处理审批
                 </ElButton>
               </div>
             </template>
             <div class="workspace-todo-list">
-              <button class="workspace-todo-item" type="button" @click="go('/approval/pending')">
+              <button v-if="canHandleApprovals" class="workspace-todo-item" type="button" @click="go('/approval/pending')">
                 <span>待我审批</span>
                 <strong>{{ pendingApprovals.length }}</strong>
               </button>
-              <button class="workspace-todo-item" type="button" @click="go('/approval/mine')">
+              <button v-if="canViewApprovals" class="workspace-todo-item" type="button" @click="go('/approval/mine')">
                 <span>我的审批中申请</span>
                 <strong>{{ pendingMineCount }}</strong>
               </button>
-              <button class="workspace-todo-item" type="button" @click="go('/approval/confirm-return')">
+              <button v-if="canConfirmReturns" class="workspace-todo-item" type="button" @click="go('/approval/confirm-return')">
                 <span>待接收确认</span>
                 <strong>{{ pendingReturns.length }}</strong>
               </button>
-              <button class="workspace-todo-item" type="button" @click="go('/report/overdue')">
+              <button v-if="canViewReports" class="workspace-todo-item" type="button" @click="go('/report/overdue')">
                 <span>逾期未归还</span>
                 <strong>{{ overdueRows.length }}</strong>
               </button>
@@ -226,7 +239,7 @@ onMounted(loadData);
           </ElCard>
         </div>
 
-        <ElCard class="workspace-panel" shadow="never">
+        <ElCard v-if="canViewReports" class="workspace-panel" shadow="never">
           <template #header>
             <div class="workspace-card-header">
               <span>逾期资产</span>
@@ -496,6 +509,8 @@ onMounted(loadData);
 @media (max-width: 768px) {
   .workspace-dashboard {
     grid-template-columns: 1fr;
+    max-height: none;
+    overflow: visible;
   }
 
   .workspace-stat-grid {

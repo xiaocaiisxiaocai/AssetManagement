@@ -6,7 +6,7 @@ import type {
   MaterialQuery,
   MaterialStatus,
 } from '#/api/material';
-import type { DepartmentNode, LocationNode } from '#/api/base-data';
+import type { DepartmentOptionNode, LocationNode } from '#/api/base-data';
 import type {
   SaveTestProjectOptionPayload,
   SaveTestProjectPayload,
@@ -14,11 +14,12 @@ import type {
   TestProjectItem,
   TestProjectOption,
 } from '#/api/test-project';
-import type { UserDto } from '#/api/user';
+import type { UserDto, UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
+import { useUserStore } from '@vben/stores';
 
 import {
   ElButton,
@@ -48,7 +49,7 @@ import {
   ElTimelineItem,
 } from 'element-plus';
 
-import { getDepartmentTreeApi, getLocationTreeApi } from '#/api/base-data';
+import { getDepartmentOptionsApi, getLocationTreeApi } from '#/api/base-data';
 import { flattenActiveDepartments } from '#/utils/department-options';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import {
@@ -79,7 +80,7 @@ import {
   updateTestProjectFollowupApi,
   updateTestProjectOptionApi,
 } from '#/api/test-project';
-import { getUserListApi } from '#/api/user';
+import { getUserListApi, getUserOptionsApi } from '#/api/user';
 
 import MaterialDetailDialog from '../components/MaterialDetailDialog.vue';
 import MaterialFormDialog from '../components/MaterialFormDialog.vue';
@@ -137,13 +138,18 @@ const flowStatusMeta: Record<string, { label: string; tag: 'info' | 'success' | 
 };
 
 const { hasAccessByCodes } = useAccess();
+const userStore = useUserStore();
 const projectActionAccess = computed(() => buildProjectActionAccess(hasAccessByCodes));
 const materialActionAccess = computed(() => buildMaterialActionAccess(hasAccessByCodes));
+const isCurrentProjectOwner = computed(() =>
+  !!currentProject.value?.ownerId
+  && String(currentProject.value.ownerId) === String(userStore.userInfo?.userId ?? ''),
+);
 const canWriteCurrentProjectMaterial = computed(() =>
-  materialActionAccess.value.canCreate || currentProject.value?.canWriteFollowUp === true,
+  materialActionAccess.value.canCreate || isCurrentProjectOwner.value,
 );
 const canEditCurrentProjectMaterial = computed(() =>
-  materialActionAccess.value.canEdit || currentProject.value?.canWriteFollowUp === true,
+  materialActionAccess.value.canEdit || isCurrentProjectOwner.value,
 );
 
 const loading = ref(false);
@@ -163,8 +169,8 @@ const projectFilter = reactive<ProjectFilter>({
 });
 
 const options = ref<TestProjectOption[]>([]);
-const users = ref<UserDto[]>([]);
-const departments = ref<DepartmentNode[]>([]);
+const users = ref<(UserDto | UserOptionDto)[]>([]);
+const departments = ref<DepartmentOptionNode[]>([]);
 const locations = ref<LocationNode[]>([]);
 
 const dialogVisible = ref(false);
@@ -227,7 +233,7 @@ const materialQuery = reactive({
 });
 const materialPageSizeOptions = ref(createPageSizeOptions(20));
 
-const flowActiveTab = ref('pending');
+const flowActiveTab = ref('mine');
 const pendingFlowLoading = ref(false);
 const myFlowLoading = ref(false);
 const pendingFlows = ref<MaterialFlowItem[]>([]);
@@ -272,6 +278,15 @@ const pagedMyFlows = computed(() => {
   return myFlows.value.slice(start, start + myFlowQuery.pageSize);
 });
 const filteredProjects = computed(() => filterProjects(projects.value, projectFilter));
+const projectOwnerOptions = computed(() => {
+  const ownerMap = new Map<number, { id: number; name: string }>();
+  for (const project of projects.value) {
+    if (project.ownerId && project.ownerName) {
+      ownerMap.set(project.ownerId, { id: project.ownerId, name: project.ownerName });
+    }
+  }
+  return [...ownerMap.values()];
+});
 const pagedProjects = computed(() => {
   const start = (projectQuery.page - 1) * projectQuery.pageSize;
   return filteredProjects.value.slice(start, start + projectQuery.pageSize);
@@ -356,17 +371,23 @@ async function loadOptions() {
 }
 
 async function loadUsers() {
-  const result = await getUserListApi('', 1, 500);
-  users.value = result.items.filter((user) => user.isActive);
+  if (hasAccessByCodes(['user:view'])) {
+    const result = await getUserListApi('', 1, 500);
+    users.value = result.items.filter((user) => user.isActive);
+    return;
+  }
+  if (hasAccessByCodes(['approval:create']) || hasAccessByCodes(['material-flow:transfer'])) {
+    users.value = await getUserOptionsApi();
+  }
 }
 
 async function loadBaseOptions() {
-  const [departmentTree, locationTree] = await Promise.all([
-    getDepartmentTreeApi(),
-    getLocationTreeApi(),
+  const [departmentTree, locationTree] = await Promise.allSettled([
+    getDepartmentOptionsApi(),
+    hasAccessByCodes(['location:view']) ? getLocationTreeApi() : Promise.resolve([]),
   ]);
-  departments.value = departmentTree;
-  locations.value = locationTree;
+  if (departmentTree.status === 'fulfilled') departments.value = departmentTree.value;
+  if (locationTree.status === 'fulfilled') locations.value = locationTree.value;
 }
 
 function resetProjectForm() {
@@ -588,7 +609,7 @@ async function openFollowups(row: TestProjectItem) {
   currentProject.value = row;
   pendingFlows.value = [];
   myFlows.value = [];
-  flowActiveTab.value = 'pending';
+  flowActiveTab.value = materialActionAccess.value.canApprove ? 'pending' : 'mine';
   pendingFlowQuery.page = 1;
   myFlowQuery.page = 1;
   resetMaterialQuery();
@@ -878,10 +899,12 @@ async function afterMaterialChanged() {
   await loadProjectMaterials();
   if (currentProject.value?.id) {
     const id = currentProject.value.id;
-    void listPendingFlowsApi(id).then((v) => {
-      pendingFlows.value = v;
-      normalizeFlowPage('pending');
-    }).catch(() => {});
+    if (materialActionAccess.value.canApprove) {
+      void listPendingFlowsApi(id).then((v) => {
+        pendingFlows.value = v;
+        normalizeFlowPage('pending');
+      }).catch(() => {});
+    }
     void listMyFlowsApi(id).then((v) => {
       myFlows.value = v;
       normalizeFlowPage('mine');
@@ -892,6 +915,7 @@ async function afterMaterialChanged() {
 async function loadProjectFlows(projectId = currentProject.value?.id) {
   if (!projectId) return;
   const loadMine = flowActiveTab.value === 'mine';
+  if (!loadMine && !materialActionAccess.value.canApprove) return;
   if (loadMine) myFlowLoading.value = true;
   else pendingFlowLoading.value = true;
   try {
@@ -991,7 +1015,7 @@ onMounted(async () => {
   pageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   materialPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   flowPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
-  await Promise.all([loadOptions(), loadUsers(), loadData()]);
+  await Promise.all([loadOptions(), loadData()]);
 });
 </script>
 
@@ -1035,9 +1059,9 @@ onMounted(async () => {
             style="width: 150px"
           >
             <ElOption
-              v-for="user in users"
+              v-for="user in projectOwnerOptions"
               :key="user.id"
-              :label="`${user.name}（${user.employeeNo}）`"
+              :label="user.name"
               :value="user.id"
             />
           </ElSelect>
@@ -1599,7 +1623,7 @@ onMounted(async () => {
                 <span class="tab-count">{{ pendingFlowCount + myFlowCount }}</span>
               </template>
               <ElTabs v-model="flowActiveTab" class="inner-flow-tabs" @tab-change="onFlowTabChange">
-                <ElTabPane name="pending">
+                <ElTabPane v-if="materialActionAccess.canApprove" name="pending">
                   <template #label>待我审批 {{ pendingFlowCount }}</template>
                   <div class="drawer-table-panel flow-table-panel">
                     <ElTable v-loading="pendingFlowLoading" :data="pagedPendingFlows" border height="100%" stripe>
@@ -2290,6 +2314,15 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
+  .material-projects-page {
+    min-height: 100%;
+    overflow-y: auto;
+  }
+
+  :deep(.el-drawer) {
+    width: 100% !important;
+  }
+
   .form-grid,
   .option-form-grid,
   .project-brief,

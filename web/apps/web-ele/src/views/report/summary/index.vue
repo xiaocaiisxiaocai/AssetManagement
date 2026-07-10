@@ -1,16 +1,20 @@
 <script lang="ts" setup>
 import type { AssetSummary } from '#/api/report';
 
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { useAccess } from '@vben/access';
 
-import { getAssetSummaryApi } from '#/api/report';
+import { exportAssetSummaryApi, getAssetSummaryApi } from '#/api/report';
+import { downloadBlob } from '#/utils/download';
 
-import { ElTable, ElTableColumn } from 'element-plus';
+import { ElButton, ElTable, ElTableColumn } from 'element-plus';
 
 defineOptions({ name: 'ReportSummary' });
 
 const router = useRouter();
+const { hasAccessByCodes } = useAccess();
+const canExport = computed(() => hasAccessByCodes(['report:export']));
 const loading = ref(false);
 const summary = ref<AssetSummary>({
   available: 0,
@@ -37,12 +41,21 @@ function goCategoryAssets(categoryCode: string) {
   });
 }
 
+async function exportReport() {
+  const response = await exportAssetSummaryApi();
+  downloadBlob(response.data, '资产汇总.xlsx');
+}
+
 onMounted(loadData);
 </script>
 
 <template>
   <re-page>
     <div class="page-container">
+      <div v-if="canExport" class="page-header">
+        <h2 class="page-title">资产汇总</h2>
+        <ElButton type="primary" @click="exportReport">导出 Excel</ElButton>
+      </div>
       <div class="stat-cards">
         <div class="stat-card">
           <div class="stat-label">资产总数</div>

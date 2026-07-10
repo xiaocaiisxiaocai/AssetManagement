@@ -25,3 +25,7 @@ export function buildAssetRowActionAccess(hasAccess: (codes: string[]) => boolea
     canView: hasAccess(['asset:view']),
   };
 }
+
+export function canRunAvailableAssetAction(asset: { isDeleted: boolean; status: number }) {
+  return !asset.isDeleted && asset.status === 0;
+}

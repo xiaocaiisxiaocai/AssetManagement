@@ -7,10 +7,13 @@ import { useAccess } from '@vben/access';
 
 import {
   cleanupAuditLogsApi,
+  exportAuditLogsApi,
   getAuditCleanupPreviewApi,
   getAuditLogsApi,
 } from '#/api/report';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
+import { downloadBlob } from '#/utils/download';
 
 import {
   ElButton,
@@ -40,6 +43,7 @@ type TagType = 'danger' | 'info' | 'success' | 'warning';
 
 const { hasAccessByCodes } = useAccess();
 const canCleanupAudit = computed(() => hasAccessByCodes(['audit:cleanup']));
+const canExportAudit = computed(() => hasAccessByCodes(['audit:export']));
 const loading = ref(false);
 const cleanupLoading = ref(false);
 const cleanupPreviewLoading = ref(false);
@@ -72,11 +76,11 @@ async function loadData() {
 function buildQuery(): AuditLogQuery {
   return {
     actionType: query.actionType || undefined,
-    endTime: query.dateRange[1],
+    endTime: endOfSelectedDay(query.dateRange[1]),
     module: query.module || undefined,
     page: query.page,
     pageSize: query.pageSize,
-    startTime: query.dateRange[0],
+    startTime: startOfSelectedDay(query.dateRange[0]),
     userId: query.userId,
   };
 }
@@ -113,15 +117,19 @@ async function loadCleanupPreview() {
 
 async function confirmCleanup() {
   const preview = cleanupPreview.value ?? await getAuditCleanupPreviewApi(cleanupRetentionDays.value);
-  await ElMessageBox.confirm(
-    `确认清理 ${formatTime(preview.cutoffTime)} 之前的审计日志？预计删除 ${preview.deleteCount} 条。`,
-    '清理审计日志',
-    {
-      confirmButtonText: '确认清理',
-      cancelButtonText: '取消',
-      type: 'warning',
-    },
-  );
+  try {
+    await ElMessageBox.confirm(
+      `确认清理 ${formatTime(preview.cutoffTime)} 之前的审计日志？预计删除 ${preview.deleteCount} 条。`,
+      '清理审计日志',
+      {
+        confirmButtonText: '确认清理',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    );
+  } catch {
+    return;
+  }
 
   cleanupLoading.value = true;
   try {
@@ -132,6 +140,11 @@ async function confirmCleanup() {
   } finally {
     cleanupLoading.value = false;
   }
+}
+
+async function exportLogs() {
+  const response = await exportAuditLogsApi(buildQuery());
+  downloadBlob(response.data, '审计日志.xlsx');
 }
 
 function actionTypeLabel(type: string): string {
@@ -245,6 +258,7 @@ onMounted(async () => {
           <h2 class="page-title">审计日志</h2>
         </div>
         <div class="header-actions">
+          <ElButton v-if="canExportAudit" type="primary" @click="exportLogs">导出 Excel</ElButton>
           <ElButton v-if="canCleanupAudit" type="warning" @click="openCleanupDialog">清理日志</ElButton>
         </div>
       </div>

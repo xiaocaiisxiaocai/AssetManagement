@@ -250,6 +250,12 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1024px) {
+  .material-home-page {
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+  }
+
   .summary-grid,
   .grid-cols-2 {
     grid-template-columns: 1fr;

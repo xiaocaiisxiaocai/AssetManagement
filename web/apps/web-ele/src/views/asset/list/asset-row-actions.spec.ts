@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAssetRowActionAccess } from './asset-row-actions';
+import { buildAssetRowActionAccess, canRunAvailableAssetAction } from './asset-row-actions';
 
 describe('资产清单行操作权限', () => {
   it('未授予 asset:delete 时不允许显示删除操作', () => {
@@ -27,5 +27,13 @@ describe('资产清单行操作权限', () => {
     expect(access.canCreate).toBe(true);
     expect(access.canExport).toBe(true);
     expect(access.canImport).toBe(false);
+  });
+});
+
+describe('资产状态操作', () => {
+  it('只有未删除的在库资产允许发起借用、转让或删除', () => {
+    expect(canRunAvailableAssetAction({ isDeleted: false, status: 0 })).toBe(true);
+    expect(canRunAvailableAssetAction({ isDeleted: false, status: 1 })).toBe(false);
+    expect(canRunAvailableAssetAction({ isDeleted: true, status: 0 })).toBe(false);
   });
 });

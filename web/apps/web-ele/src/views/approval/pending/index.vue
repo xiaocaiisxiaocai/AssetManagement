@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { ApprovalWorkItem } from '../approval-work-items';
 import type { ApprovalFlow } from '#/api/workflow';
-import type { UserDto } from '#/api/user';
+import type { UserOptionDto } from '#/api/user';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import { useAccess } from '@vben/access';
@@ -17,7 +17,7 @@ import {
   getPendingApprovalsApi,
   rejectFlowApi,
 } from '#/api/workflow';
-import { getUserListApi } from '#/api/user';
+import { getUserOptionsApi } from '#/api/user';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { mergeApprovalWorkItems, normalizeAssetApproval } from '../approval-work-items';
 import {
@@ -50,7 +50,7 @@ const detailVisible = ref(false);
 const addSignVisible = ref(false);
 const selected = ref<ApprovalFlow | null>(null);
 const flows = ref<ApprovalWorkItem[]>([]);
-const users = ref<UserDto[]>([]);
+const users = ref<UserOptionDto[]>([]);
 const materialActionLoadingIds = ref(new Set<number>());
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const opinion = ref('同意');
@@ -96,16 +96,17 @@ async function loadData() {
     const materialPendingPromise = canHandleMaterialFlow.value
       ? listPendingFlowsApi()
       : Promise.resolve([]);
-    const [pending, materialPending, userPage] = await Promise.all([
+    const usersPromise = canAddSign.value ? getUserOptionsApi() : Promise.resolve([]);
+    const [pending, materialPending, userOptions] = await Promise.all([
       getPendingApprovalsApi(),
       materialPendingPromise,
-      getUserListApi('', 1, 200),
+      usersPromise,
     ]);
     flows.value = mergeApprovalWorkItems(pending, materialPending);
     if ((query.page - 1) * query.pageSize >= flows.value.length) {
       query.page = 1;
     }
-    users.value = userPage.items.filter((user) => user.isActive);
+    users.value = userOptions;
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
@@ -567,7 +568,7 @@ onMounted(async () => {
             v-for="user in users"
             :key="user.id"
             :label="`${user.name}（${user.employeeNo}）`"
-            :value="user.name"
+            :value="String(user.id)"
           />
         </ElSelect>
 

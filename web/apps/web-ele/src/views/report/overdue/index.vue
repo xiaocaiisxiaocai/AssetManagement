@@ -6,12 +6,14 @@ import { useRouter } from 'vue-router';
 import { useAccess } from '@vben/access';
 
 import {
+  exportOverdueReportApi,
   getOverdueReportApi,
   remindOverdueApi,
   remindOverdueBatchApi,
 } from '#/api/report';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { buildReportActionAccess } from '#/views/permissions/action-access';
+import { downloadBlob } from '#/utils/download';
 
 import {
   ElButton,
@@ -81,6 +83,11 @@ async function remindBatch() {
   }
 }
 
+async function exportReport() {
+  const response = await exportOverdueReportApi();
+  downloadBlob(response.data, '逾期资产.xlsx');
+}
+
 function onSelectionChange(selection: OverdueReportRow[]) {
   selectedRows.value = selection;
 }
@@ -113,6 +120,7 @@ onMounted(async () => {
           <h2 class="page-title">逾期资产报表</h2>
         </div>
         <div class="page-actions">
+          <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出 Excel</ElButton>
           <ElButton v-if="reportActionAccess.canRemind" :loading="remindingId === -1" type="warning" @click="remindBatch">批量催办</ElButton>
         </div>
       </div>
