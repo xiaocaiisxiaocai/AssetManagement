@@ -15,7 +15,7 @@ export default defineConfig(async () => {
         proxy: {
           '/api': {
             // 这里填写后端地址
-            target: 'http://localhost:5000',
+            target: 'http://localhost:5292',
             changeOrigin: true,
           },
         },
