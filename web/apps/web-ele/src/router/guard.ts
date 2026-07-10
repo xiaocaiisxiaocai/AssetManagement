@@ -132,13 +132,19 @@ function setupAccessGuard(router: Router) {
     if (!router.hasRoute(fallbackNotFoundRoute.name!)) {
       router.addRoute(fallbackNotFoundRoute);
     }
-    const redirectPath = (from.query.redirect ??
-      (to.path === '/' || to.path === DEFAULT_HOME_PATH
-        ? userInfo.homePath || DEFAULT_HOME_PATH
-        : to.fullPath)) as string;
+    const queryRedirect =
+      typeof from.query.redirect === 'string'
+        ? decodeURIComponent(from.query.redirect)
+        : undefined;
+    const redirectPath =
+      queryRedirect && queryRedirect !== '/'
+        ? queryRedirect
+        : to.path === '/' || to.path === DEFAULT_HOME_PATH
+          ? userInfo.homePath || DEFAULT_HOME_PATH
+          : to.fullPath;
 
     return {
-      ...router.resolve(decodeURIComponent(redirectPath)),
+      ...router.resolve(redirectPath),
       replace: true,
     };
   });
