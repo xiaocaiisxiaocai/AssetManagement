@@ -107,10 +107,17 @@ node e2e-comprehensive-test.js
 
 ### 数据库配置
 
-MySQL 连接字符串位置:
-- **开发环境**: `backend\src\AssetManagement.Api\appsettings.Development.json` → `ConnectionStrings:DefaultConnection`
-- **生产环境**: `deploy\appsettings.Production.json` → 需替换占位符
-- **默认凭证**: 用户 `1001` 密码 `123456`(已在 `DbSeeder` 种子数据中)
+仓库不保存可用的数据库口令或 JWT 密钥。启动前通过环境变量或部署平台的密钥配置注入:
+
+```powershell
+$env:ConnectionStrings__Default = 'Server=localhost;Port=3306;Database=assetmgmt;User=<本地用户>;Password=<本地密码>;CharSet=utf8mb4;'
+$env:Jwt__Key = '<至少 32 字符的随机密钥>'
+$env:ASSET_ADMIN_PASSWORD = '<首次初始化管理员的强密码>' # 可选；生产环境必须设置
+```
+
+- **配置键**:`ConnectionStrings:Default`、`Jwt:Key`。
+- **生产模板**:`deploy\appsettings.Production.json` 仅含占位符，部署时必须替换或用环境变量覆盖。
+- **初始化账号**:工号 `1001`;未设置 `ASSET_ADMIN_PASSWORD` 时仅在本地回退 `123456`，并强制首次改密，改密前不能访问业务接口。
 
 ## 前后端集成约定(关键)
 
@@ -126,7 +133,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 - **Domain**(`AssetManagement.Domain`):实体(`Entities/`)、领域服务(`Services/`,如资产编号 `AssetNoGenerator`、类别编码 `CategoryCodeService`)、**纯函数审批引擎**(`Workflow/`)。
 - **Application**(`AssetManagement.Application`):服务接口(`I*Service`)、DTO、`Common/`(`ApiResult`、`BizException`、`PagedResult`)。仅定义契约与数据形状,不含实现。服务按**限界上下文**粗粒度划分(**非每实体一个**):`IAssetService`(资产 CRUD + 详情/流转时间线 + Excel 批量导入)、`IAuthService`/`IJwtTokenService`、`IBaseDataService`(部门/分类/位置)、`IRbacService`(用户/角色/权限/菜单)、`IWorkflowService`(工作流 + 审批)、`IReportService`(汇总/借用/逾期报表)、`IFileStorageService`(文件存储,见 `Files/`)、`IAuditQueryService`(审计日志查询)/`IAuditMaintenanceService`(审计日志清理)/`IDatabaseBackupService`(数据库备份,三者均见 `Audit/`)、**`ITestProjectService`/`ITestMaterialService`/`IMaterialFlowService`**(新产品新技术(测试料件)模块,见下「新产品新技术(测试料件)模块」)。
-- **Infrastructure**(`AssetManagement.Infrastructure`):服务实现、`Persistence/`(`AppDbContext` + `Configurations/` 每实体一个 `IEntityTypeConfiguration` + `Seed/DbSeeder`)、`Migrations/`、`Auth/`(JWT、权限策略)、`Audit/`(操作审计过滤器 + 审计查询)、`Reports/`(报表服务)、`Files/`(文件存储服务 `FileStorageService`,支持资产图片上传;在 `Program.cs` 注册为 **Singleton**,上传根目录由 `Attachment:Path` 配置,默认 `App_Data/uploads`)。
+- **Infrastructure**(`AssetManagement.Infrastructure`):服务实现、`Persistence/`(`AppDbContext` + `Configurations/` 每实体一个 `IEntityTypeConfiguration` + `Seed/DbSeeder`)、`Migrations/`、`Auth/`(JWT、权限策略)、`Audit/`(操作审计过滤器 + 审计查询)、`Reports/`(报表服务)、`Files/`(文件存储服务 `FileStorageService`,支持资产图片上传;在 `Program.cs` 注册为 **Scoped**,上传根目录由 `Attachment:Path` 配置,默认 `App_Data/uploads`)。
 - **Api**(`AssetManagement.Api`):瘦控制器,每个 action 一行调用对应 `I*Service`;`Program.cs` 注册所有 DI、JWT、Swagger、自定义权限策略。
 
 新增一个后端功能模块的路径:Domain 加实体/领域逻辑 → Application 定义 `IXxxService` + DTO → Infrastructure 实现并加 `EntityTypeConfiguration` → `Program.cs` 注册 DI → Api 加瘦控制器 → 加迁移 → 在 `DbSeeder` 注册菜单/权限。
@@ -363,7 +370,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - 复用上游 `@vben/*`、`@core/*` 包的能力(布局、请求客户端、preferences、stores),不要重复造轮子;改动 `web/packages/` 下的核心包会影响所有 app,需谨慎。
 - 提交前跑 `pnpm -F @vben/web-ele run typecheck`;monorepo 根有 `pnpm check`(circular/dep/type/cspell)。
 - **前端单元测试**:纯函数(表单校验规则、图表 option 构造)用 Vitest,`*.spec.ts` 与被测源码**同目录 colocated**(如 `views/material/**/*.spec.ts`);在 `web/` 下跑 `pnpm test:unit`(`vitest run --dom`)。
-- **端到端测试**:`web/e2e-comprehensive-test.js`(Playwright,覆盖登录 + 资产/审批/报表/系统管理全部页面)。须先起后端(5000)再起前端(5777),然后 `cd web && node e2e-comprehensive-test.js`(依赖 `web/node_modules/playwright`,用默认账号 `1001/123456` 跑通全流程)。截图产物(`e2e-final-state.png`、`debug-*.png`)已在 `.gitignore` 忽略,不入库。
+- **端到端测试**:`web/e2e-comprehensive-test.js`(Playwright,覆盖登录 + 资产/审批/报表/系统管理全部页面)。须先起后端(5000)再起前端(5777),设置临时环境变量 `E2E_PASSWORD`(可选 `E2E_EMPLOYEE_NO`,默认 `1001`),然后 `cd web && node e2e-comprehensive-test.js`。脚本不保存密码,截图产物(`e2e-final-state.png`、`debug-*.png`)已在 `.gitignore` 忽略,不入库。
 
 ## 常见开发场景速查
 
@@ -395,7 +402,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 3. **EF 迁移冲突**
    - 现象: `dotnet ef migrations add` 报错或 `Migrate()` 失败
-   - 解决: 删除 `Migrations/` 下冲突的迁移文件 → 重新 `add` → 删除旧 `.db` 文件让 `Program.cs` 重建
+   - 解决:确认迁移顺序与模型快照,修正最后一个未部署迁移后重新生成；已部署迁移不得直接删除或改写
 
 4. **前端请求 404**
    - 检查: 后端是否启动在 5000 端口(`dotnet run` 输出确认)
@@ -411,7 +418,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 6. **文件上传失败**
    - 检查: `Attachment:Path` 配置的目录是否存在且有写权限(默认 `App_Data/uploads`)
    - 检查: 文件大小是否超过 5MB 或格式不在白名单(jpg/png/gif/webp)
-   - 检查: `FileStorageService` 是否注册为 Singleton(`Program.cs`)
+   - 检查: `FileStorageService` 是否按 Scoped 注册(`Program.cs`),并能读取当前请求作用域的 `AppDbContext`
 
 7. **测试失败(Flaky)**
    - 确认: 每个测试类使用独立的 MySQL 数据库(GUID 后缀,见 `MySqlFixtureBase`/`TestWebAppFactory`)
@@ -436,7 +443,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通,所有计划待办事项已完成,后端测试 **168 个** `[Fact]`/`[Theory]`(33 个测试文件)全部通过。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通。2026-07-10 安全与一致性加固后，后端 **272 个**测试、前端 **309 个**单元测试及全页面 E2E 均通过。
 
 最新里程碑(2026-06-17 ~ 2026-06-30):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)
@@ -444,7 +451,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - ✅ 资产照片附件上传与回显(`Asset.ImageUrls` + `FileStorageService`)
 - ✅ 多部门数据权限隔离(部门管理员仅看本部门资产,JWT 携带 `departmentId`)
 - ✅ **BPMN 2.0 工作流引擎升级**(从简单线性引擎升级到标准 BPMN,支持并行网关/包容网关/排他网关)
-- ✅ P0/P1/P2 优化任务全部完成,后端测试覆盖率提升至 100%
+- ✅ P0/P1/P2 优化任务全部完成,关键业务与权限边界均有自动化回归测试
 - ✅ 前端 UI 统一优化(样式规范与布局改进、登录跳转修复)
 - ✅ **资产/分类删除子系统重构**(删除即软删除并保留在主清单、`asset:restore` 撤销删除 + `asset:purge` 彻底删除、详情接口支持已删除项、`AssetDetailDialog` 详情页重构)
 - ✅ **新产品新技术(测试料件)模块**(2026-06-25 起,独立模块并持续扩展:测评项目全生命周期(类型/进度/负责人/计划结案/定期跟进)+ 项目总览仪表盘 + 料件管理 + 流转审批(可选);临时编号 `TM-YYYYMMDD-XXX`;权限码扩至约 20 个(`project:*`/`material:*`/`material-flow:*`);界面一级菜单已更名为"新产品新技术")

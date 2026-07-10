@@ -24,6 +24,14 @@ dotnet publish backend/src/AssetManagement.Api -c Release -o deploy/api --self-c
 - `ConnectionStrings:Default`：替换 `REPLACE_MYSQL_HOST`、`REPLACE_MYSQL_USER`、`REPLACE_MYSQL_PASSWORD` 为实际 MySQL 连接信息。
   示例：`Server=localhost;Port=3306;Database=assetmgmt;User=assetmgmt_user;Password=YourStrongPassword;CharSet=utf8mb4;`
 
+更推荐由服务管理器或部署平台注入敏感配置，避免把真实凭据写入发布目录：
+
+```powershell
+$env:ConnectionStrings__Default = '<MySQL 连接字符串>'
+$env:Jwt__Key = '<至少 32 字符的随机密钥>'
+$env:ASSET_ADMIN_PASSWORD = '<首次初始化管理员的强密码>'
+```
+
 提前在 MySQL 中创建数据库与用户：
 
 ```sql
@@ -44,7 +52,7 @@ FLUSH PRIVILEGES;
 
 确认迁移和种子完成后，生产环境建议改回 `false`。
 
-默认账号：`1001 / 123456`。首次登录后应修改密码。
+初始化管理员工号为 `1001`。生产环境必须设置 `ASSET_ADMIN_PASSWORD`；未设置时的回退密码 `123456` 仅供本地开发，并会强制首次改密，改密前不能访问其他业务接口。
 
 ## 3. 运行方式
 
