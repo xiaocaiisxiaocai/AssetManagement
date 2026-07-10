@@ -150,8 +150,8 @@ public class TestMaterialService : ITestMaterialService
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
         EnsureInUse(m, "已退回厂商的料件不能编辑");
-        await EnsureCanAssignDepartmentAsync(request.DepartmentId);
-        await EnsureActiveDepartmentAsync(request.DepartmentId);
+        if (request.DepartmentId != m.DepartmentId || request.CustodianId != m.CustodianId)
+            throw new BizException(4095, "料件保管人和归属部门只能通过流转变更");
         var originalProject = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == m.ProjectId && !x.IsDeleted)
             ?? throw new BizException(4046, "测试项目不存在");
         await EnsureCanWriteMaterialAsync(originalProject, "material:edit");
@@ -172,13 +172,19 @@ public class TestMaterialService : ITestMaterialService
         m.Model = request.Model?.Trim();
         m.Brand = request.Brand?.Trim();
         m.Quantity = Math.Max(request.Quantity, 1);
-        m.DepartmentId = request.DepartmentId;
         m.LocationId = request.LocationId;
-        m.CustodianId = request.CustodianId;
         m.ReceivedDate = request.ReceivedDate;
         m.Remark = request.Remark?.Trim();
         if (request.Images is not null) m.ImageUrls = JoinImages(request.Images);
-        await _db.SaveChangesAsync();
+        m.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "料件已被其他操作更新，请刷新后重试");
+        }
         return await GetAsync(id);
     }
 
@@ -193,6 +199,7 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4092, "该料件有进行中的流转,不能删除");
         m.IsDeleted = true;
         m.DeletedAt = DateTime.UtcNow;
+        m.RowVersion++;
         await _db.SaveChangesAsync();
     }
 
@@ -202,8 +209,11 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
         if (!m.IsDeleted) throw new BizException(4099, "料件未删除,无需恢复");
+        if (!await _db.TestProjects.AnyAsync(x => x.Id == m.ProjectId && !x.IsDeleted))
+            throw new BizException(4094, "料件所属项目已删除，请先恢复项目");
         m.IsDeleted = false;
         m.DeletedAt = null;
+        m.RowVersion++;
         await _db.SaveChangesAsync();
     }
 
@@ -216,7 +226,14 @@ public class TestMaterialService : ITestMaterialService
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id))
             throw new BizException(4094, "料件存在流转历史，不能彻底删除");
         _db.TestMaterials.Remove(m);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "料件已被其他操作更新，请刷新后重试");
+        }
     }
 
     public async Task<TestMaterialDto> ReturnToVendorAsync(int id)
@@ -228,6 +245,7 @@ public class TestMaterialService : ITestMaterialService
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能退回厂商");
         m.Status = MaterialStatus.ReturnedToVendor;
+        m.RowVersion++;
         await _db.SaveChangesAsync();
         return await GetAsync(id);
     }
@@ -299,6 +317,7 @@ public class TestMaterialService : ITestMaterialService
             var deptIdClaim = user.FindFirst("departmentId")?.Value;
             if (int.TryParse(deptIdClaim, out var deptId))
                 return await DescendantDepartmentIdsAsync(deptId);
+            return Array.Empty<int>();
         }
         return null;
     }
@@ -363,8 +382,15 @@ public class TestMaterialService : ITestMaterialService
     {
         var today = DateTime.UtcNow.Date;
         var prefix = $"TM-{today:yyyyMMdd}-";
-        var countToday = await _db.TestMaterials.CountAsync(x => x.MaterialNo.StartsWith(prefix));
-        return MaterialNoGenerator.Next(today, countToday);
+        var existing = await _db.TestMaterials
+            .Where(x => x.MaterialNo.StartsWith(prefix))
+            .Select(x => x.MaterialNo)
+            .ToListAsync();
+        var maxSequence = existing
+            .Select(x => int.TryParse(x[prefix.Length..], out var sequence) ? sequence : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+        return MaterialNoGenerator.Next(today, maxSequence);
     }
 
     private async Task<List<TestMaterialDto>> ToDtos(IEnumerable<TestMaterial> materials)

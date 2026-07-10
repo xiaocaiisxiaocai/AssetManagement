@@ -34,11 +34,32 @@ public class FileStorageService : IFileStorageService
         {
             throw new BizException(4151, $"单张图片大小不能超过 {maxMb}MB");
         }
+        if (length <= 0) throw new BizException(4150, "图片内容为空");
+
+        var header = new byte[12];
+        var headerLength = 0;
+        while (headerLength < header.Length)
+        {
+            var read = await content.ReadAsync(header.AsMemory(headerLength, header.Length - headerLength));
+            if (read == 0) break;
+            headerLength += read;
+        }
+        if (!MatchesImageSignature(ext, header.AsSpan(0, headerLength)))
+            throw new BizException(4150, "文件内容与图片格式不匹配");
 
         var name = $"{Guid.NewGuid():N}{ext.ToLowerInvariant()}";
         var fullPath = Path.Combine(_root, name);
-        await using var fs = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        await content.CopyToAsync(fs);
+        try
+        {
+            await using var fs = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            await fs.WriteAsync(header.AsMemory(0, headerLength));
+            await content.CopyToAsync(fs);
+        }
+        catch
+        {
+            File.Delete(fullPath);
+            throw;
+        }
 
         return new FileUploadResult { Name = name, Url = $"/api/files/{name}" };
     }
@@ -72,6 +93,20 @@ public class FileStorageService : IFileStorageService
         ".webp" => "image/webp",
         _ => "application/octet-stream"
     };
+
+    internal static bool MatchesImageSignature(string extension, ReadOnlySpan<byte> header)
+    {
+        extension = extension.ToLowerInvariant();
+        return extension switch
+        {
+            ".jpg" or ".jpeg" => header.Length >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
+            ".png" => header.Length >= 8 && header[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }),
+            ".gif" => header.Length >= 6 &&
+                      (header[..6].SequenceEqual("GIF87a"u8) || header[..6].SequenceEqual("GIF89a"u8)),
+            ".webp" => header.Length >= 12 && header[..4].SequenceEqual("RIFF"u8) && header.Slice(8, 4).SequenceEqual("WEBP"u8),
+            _ => false
+        };
+    }
 
     private async Task<int> LoadAttachmentMaxMbAsync()
     {

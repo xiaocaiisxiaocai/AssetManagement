@@ -98,6 +98,32 @@ public class AuthServiceTests
             .Where(x => x.Code == 1003);
     }
 
+    [Theory]
+    [InlineData("short1")]
+    [InlineData("onlyletters")]
+    [InlineData("12345678")]
+    public async Task ChangePassword_with_weak_password_throws(string newPassword)
+    {
+        await using var fixture = await AuthFixture.Create();
+        var act = () => fixture.CreateService().ChangePasswordAsync(
+            fixture.GetUserId(),
+            new ChangePasswordRequest { OldPassword = "123456", NewPassword = newPassword });
+
+        await act.Should().ThrowAsync<BizException>().Where(x => x.Code == 1004);
+    }
+
+    [Fact]
+    public async Task Login_department_admin_without_department_fails_closed()
+    {
+        await using var fixture = await AuthFixture.Create();
+        fixture.SetRoleCode("dept_admin");
+
+        var act = () => fixture.CreateService().LoginAsync(
+            new LoginRequest { EmployeeNo = "1001", Password = "123456" });
+
+        await act.Should().ThrowAsync<BizException>().Where(x => x.Code == 4013);
+    }
+
     [Fact]
     public async Task Login_after_password_changed_does_not_require_password_change()
     {
@@ -134,6 +160,18 @@ public class AuthServiceTests
 
         var res = await svc.GetUserInfoAsync(userId);
         res.MustChangePassword.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Routes_only_exposes_button_permissions_owned_by_current_user()
+    {
+        await using var fixture = await AuthFixture.Create();
+        fixture.AddRouteWithOwnedAndUnownedButtons();
+
+        var routes = await fixture.CreateService().GetRoutesAsync(fixture.GetUserId());
+
+        routes.Should().ContainSingle();
+        routes[0].Meta.Permissions.Should().Equal("asset:view");
     }
 
     private sealed class AuthFixture : IAsyncDisposable
@@ -202,6 +240,35 @@ public class AuthServiceTests
             var user = Db.Users.First(x => x.Id == _userId);
             user.MustChangePassword = value;
             Db.SaveChanges();
+        }
+
+        public void SetRoleCode(string code)
+        {
+            var role = Db.Roles.AsTracking().Single();
+            role.Code = code;
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+        }
+
+        public void AddRouteWithOwnedAndUnownedButtons()
+        {
+            var role = Db.Roles.Single();
+            var route = new Menu
+            {
+                Name = "AssetList",
+                Title = "资产列表",
+                Path = "/asset/list",
+                Component = "/asset/list/index",
+                Type = "menu"
+            };
+            Db.Menus.Add(route);
+            Db.SaveChanges();
+            Db.Menus.AddRange(
+                new Menu { ParentId = route.Id, Name = "ViewButton", Title = "查看", Type = "button", PermissionCode = "asset:view" },
+                new Menu { ParentId = route.Id, Name = "EditButton", Title = "编辑", Type = "button", PermissionCode = "asset:edit" });
+            Db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = route.Id });
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
         }
 
         public AuthService CreateService()

@@ -22,5 +22,6 @@ public class TestMaterialConfiguration : IEntityTypeConfiguration<TestMaterial>
         b.HasIndex(x => x.DepartmentId);
         b.HasIndex(x => x.IsDeleted);
         b.HasIndex(x => x.Status);
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
     }
 }

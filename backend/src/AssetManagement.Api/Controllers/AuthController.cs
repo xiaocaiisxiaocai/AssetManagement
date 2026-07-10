@@ -3,6 +3,7 @@ using AssetManagement.Application.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AssetManagement.Api.Controllers;
 
@@ -19,6 +20,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("login")]
     public async Task<ApiResult<LoginResponse>> Login(LoginRequest request)
         => ApiResult<LoginResponse>.Ok(await _auth.LoginAsync(request));
 

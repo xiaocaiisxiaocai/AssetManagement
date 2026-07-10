@@ -30,6 +30,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using System.Net;
+using System.Threading.RateLimiting;
 
 // 配置 Serilog
 Log.Logger = new LoggerConfiguration()
@@ -57,11 +59,42 @@ builder.Host.UseSerilog();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("login", context =>
+    {
+        // 生产环境始终启用；开发环境默认启用，仅测试工厂可通过配置显式关闭，
+        // 避免同一 TestServer IP 的大量独立登录场景互相干扰。
+        var enabled = !builder.Environment.IsDevelopment()
+            || builder.Configuration.GetValue("Security:LoginRateLimitEnabled", true);
+        if (!enabled)
+        {
+            return RateLimitPartition.GetNoLimiter("test-disabled");
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+});
 builder.Services.AddScoped<AuditActionFilter>();
 builder.Services.AddControllers(o => o.Filters.Add<AuditActionFilter>());
 builder.Services.AddDbContext<AppDbContext>(o =>
 {
-    var connStr = builder.Configuration.GetConnectionString("Default");
+    var connStr = builder.Configuration.GetConnectionString("Default")
+        ?? throw new InvalidOperationException("缺少 ConnectionStrings:Default 配置，请通过环境变量 ConnectionStrings__Default 注入");
+    if (!builder.Environment.IsDevelopment()
+        && connStr.Contains("REPLACE_", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("生产环境必须通过环境变量 ConnectionStrings__Default 配置真实 MySQL 连接串");
+    }
     o.UseMySql(connStr, ServerVersion.AutoDetect(connStr));
 
     // 默认不跟踪查询，提升只读查询性能
@@ -109,18 +142,18 @@ builder.Services.AddHostedService<OverdueNotificationWorker>();
 builder.Services.AddHostedService<PendingApprovalReminderWorker>();
 builder.Services.AddHostedService<DatabaseBackupWorker>();
 builder.Services.AddHostedService<AuditCleanupWorker>();
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
-// 生产环境纵深防御:禁止以占位符或弱密钥(<32 字符)启动,密钥应通过环境变量 Jwt__Key 注入
-if (!builder.Environment.IsDevelopment()
-    && (jwtKey.Length < AppConstants.JwtKeyMinLength || jwtKey.StartsWith("REPLACE_WITH", StringComparison.Ordinal)))
-{
-    throw new InvalidOperationException($"生产环境必须配置强随机 Jwt:Key(至少 {AppConstants.JwtKeyMinLength} 字符),请通过环境变量 Jwt__Key 注入");
-}
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "AssetManagement";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
+        var jwtKey = builder.Configuration["Jwt:Key"]
+            ?? throw new InvalidOperationException("缺少 Jwt:Key 配置，请通过环境变量 Jwt__Key 注入");
+        // 生产环境纵深防御:禁止以占位符或弱密钥(<32 字符)启动,密钥应通过环境变量 Jwt__Key 注入
+        if (!builder.Environment.IsDevelopment()
+            && (jwtKey.Length < AppConstants.JwtKeyMinLength || jwtKey.StartsWith("REPLACE_WITH", StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException($"生产环境必须配置强随机 Jwt:Key(至少 {AppConstants.JwtKeyMinLength} 字符),请通过环境变量 Jwt__Key 注入");
+        }
+        var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "AssetManagement";
         o.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -214,17 +247,28 @@ app.UseMiddleware<ExceptionMiddleware>();
 
 // 反向代理场景（Nginx/Caddy）：解析 X-Forwarded-For / X-Forwarded-Proto，
 // 确保 HttpContext.Connection.RemoteIpAddress 和 Request.Scheme 为真实客户端 IP
-app.UseForwardedHeaders(new ForwardedHeadersOptions
+var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-});
+};
+foreach (var proxyText in builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? Array.Empty<string>())
+{
+    if (IPAddress.TryParse(proxyText, out var proxy))
+    {
+        forwardedHeadersOptions.KnownProxies.Add(proxy);
+    }
+}
+app.UseForwardedHeaders(forwardedHeadersOptions);
 
 if (corsOrigins is { Length: > 0 })
 {
     app.UseCors();
 }
 
+app.UseRouting();
+app.UseRateLimiter();
 app.UseAuthentication();
+app.UseMiddleware<AccountSecurityMiddleware>();
 app.UseMiddleware<SlidingTokenMiddleware>();
 app.UseAuthorization();
 

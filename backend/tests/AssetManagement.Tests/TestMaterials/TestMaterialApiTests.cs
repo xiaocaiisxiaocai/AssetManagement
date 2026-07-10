@@ -153,6 +153,27 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Deleted_material_cannot_be_restored_while_its_project_is_deleted()
+    {
+        await Login();
+        var project = await CreateProject("恢复关联校验项目");
+        var material = (await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            ProjectId = project.Id,
+            Name = "恢复关联校验料件"
+        })).Data!;
+        (await _client.DeleteAsync($"/api/test-materials/{material.Id}")).EnsureSuccessStatusCode();
+        (await _client.DeleteAsync($"/api/test-projects/{project.Id}")).EnsureSuccessStatusCode();
+
+        var blocked = await _client.PostAsync($"/api/test-materials/{material.Id}/restore", null);
+        var blockedBody = await blocked.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        blockedBody!.Code.Should().Be(4094);
+
+        (await _client.PostAsync($"/api/test-projects/{project.Id}/restore", null)).EnsureSuccessStatusCode();
+        (await _client.PostAsync($"/api/test-materials/{material.Id}/restore", null)).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task Project_with_materials_cannot_be_deleted()
     {
         await Login();
@@ -676,12 +697,25 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var managerRole = db.Roles.Single(x => x.Code == "dept_admin");
+        var department = db.Departments.FirstOrDefault(x => x.IsActive);
+        if (department is null)
+        {
+            department = new Department
+            {
+                Code = $"D{Guid.NewGuid():N}"[..12],
+                Name = "测试管理部门",
+                IsActive = true
+            };
+            db.Departments.Add(department);
+            await db.SaveChangesAsync();
+        }
         var user = new User
         {
             EmployeeNo = employeeNo,
             Name = name,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
-            IsActive = true
+            IsActive = true,
+            DepartmentId = department.Id
         };
         db.Users.Add(user);
         await db.SaveChangesAsync();

@@ -3,7 +3,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.Common;
+using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Auth;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -53,8 +55,28 @@ public class PermissionPolicyTests : IClassFixture<TestWebAppFactory>
     public async Task Protected_permission_endpoint_without_permission_returns_403()
     {
         using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var role = new Role
+        {
+            Code = $"limited-{Guid.NewGuid():N}"[..20],
+            Name = "受限测试角色",
+            IsActive = true
+        };
+        var user = new User
+        {
+            EmployeeNo = $"u{Guid.NewGuid():N}"[..12],
+            Name = "受限测试用户",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("not-used-123"),
+            IsActive = true
+        };
+        db.AddRange(role, user);
+        await db.SaveChangesAsync();
+        db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
+        await db.SaveChangesAsync();
+
         var jwt = scope.ServiceProvider.GetRequiredService<IJwtTokenService>();
-        var token = jwt.Create(999, "9001", new[] { "report:view" }, new[] { "employee" });
+        // 即使伪造 token claims，中间件也必须以数据库中的空权限角色覆盖它们。
+        var token = jwt.Create(user.Id, user.EmployeeNo, new[] { "asset:view" }, new[] { "admin" });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         var res = await _client.GetAsync("/api/test-permissions/asset-view");
@@ -63,7 +85,7 @@ public class PermissionPolicyTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Admin_role_without_required_permission_returns_403()
+    public async Task Fabricated_admin_token_for_unknown_user_returns_401()
     {
         using var scope = _factory.Services.CreateScope();
         var jwt = scope.ServiceProvider.GetRequiredService<IJwtTokenService>();
@@ -72,7 +94,7 @@ public class PermissionPolicyTests : IClassFixture<TestWebAppFactory>
 
         var res = await _client.GetAsync("/api/test-permissions/asset-view");
 
-        res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        res.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     private async Task<string> LoginAdmin()

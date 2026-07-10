@@ -27,4 +27,7 @@ public class TestMaterial
     public DateTime CreatedAt { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
+
+    /// <summary>乐观并发令牌，防止并发转移覆盖保管人。</summary>
+    public uint RowVersion { get; set; }
 }

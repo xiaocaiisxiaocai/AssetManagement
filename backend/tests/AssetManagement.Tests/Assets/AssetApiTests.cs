@@ -135,13 +135,17 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             Name = "借用中的资产",
             CategoryId = category.Id,
         });
-        await Put<ApiResult<AssetDto>>($"/api/assets/{created.Data!.Id}", new UpdateAssetRequest
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
-            Name = created.Data.Name,
-            CategoryId = category.Id,
-            Quantity = 1,
-            Status = AssetStatus.Borrowed
+            BizType = "borrow",
+            AssetId = created.Data!.Id,
+            Reason = "借出后验证删除保护"
         });
+        while (flow.Data!.Status == "pending")
+        {
+            flow = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
+                new ApprovalActionRequest { NodeId = flow.Data.CurrentNodeIds.FirstOrDefault(), Opinion = "同意" });
+        }
 
         var res = await _client.DeleteAsync($"/api/assets/{created.Data.Id}");
         var body = await res.Content.ReadFromJsonAsync<ApiResult<object?>>();
@@ -159,6 +163,12 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             Name = "待软删除资产",
             CategoryId = category.Id,
         });
+        var second = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "保留的第二项资产",
+            CategoryId = category.Id,
+        });
+        second.Data!.AssetNo.Should().EndWith("-002");
 
         var purgeBeforeDelete = await _client.DeleteAsync($"/api/assets/{created.Data!.Id}/purge");
         var purgeBeforeDeleteBody = await purgeBeforeDelete.Content.ReadFromJsonAsync<ApiResult<object?>>();
@@ -192,6 +202,13 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
         var deletedAfterPurge = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?deletedOnly=true");
         deletedAfterPurge!.Data!.Items.Should().NotContain(x => x.Id == created.Data.Id);
+
+        var third = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "彻底删除中间项后新增",
+            CategoryId = category.Id,
+        });
+        third.Data!.AssetNo.Should().EndWith("-003", "编号应按历史最大序号递增，不能按 COUNT 与保留项冲突");
     }
 
     [Fact]

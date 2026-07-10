@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Collections.ObjectModel;
 using AssetManagement.Application.Audit;
 using AssetManagement.Application.Common;
 using AssetManagement.Infrastructure.Persistence;
@@ -12,6 +13,7 @@ namespace AssetManagement.Infrastructure.Audit;
 
 public class DatabaseBackupService : IDatabaseBackupService
 {
+    private static readonly SemaphoreSlim BackupGate = new(1, 1);
     private readonly IConfiguration _configuration;
     private readonly AppDbContext _db;
     private readonly IHostEnvironment _environment;
@@ -31,6 +33,10 @@ public class DatabaseBackupService : IDatabaseBackupService
 
     public async Task<DatabaseBackupResultDto> BackupAsync(CancellationToken cancellationToken = default)
     {
+        if (!await BackupGate.WaitAsync(0, cancellationToken))
+            throw new BizException(4090, "已有数据库备份正在执行，请稍后重试");
+        try
+        {
         var settings = await LoadSettingsAsync();
         var connStr = _configuration.GetConnectionString("Default")
             ?? throw new BizException(500, "缺少数据库连接配置");
@@ -38,41 +44,47 @@ public class DatabaseBackupService : IDatabaseBackupService
         var backupPath = ResolveBackupPath(settings);
         Directory.CreateDirectory(backupPath);
 
-        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var timestamp = $"{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid().ToString("N")[..6]}";
         var filePath = Path.Combine(backupPath, $"assetmgmt_{timestamp}.sql");
         var packagePath = Path.Combine(backupPath, $"assetmgmt_{timestamp}.zip");
         var dumpExe = _configuration["DatabaseBackup:MysqldumpPath"];
         if (string.IsNullOrWhiteSpace(dumpExe)) dumpExe = "mysqldump";
 
-        var args = BuildArguments(builder, filePath);
         var psi = new ProcessStartInfo
         {
             FileName = dumpExe,
-            Arguments = args,
             CreateNoWindow = true,
             RedirectStandardError = true,
-            RedirectStandardOutput = true,
+            RedirectStandardOutput = false,
             UseShellExecute = false
         };
+        BuildArguments(psi.ArgumentList, builder, filePath);
+        // 避免 -p<password> 出现在进程命令行。环境变量仅传给子进程，不写日志。
+        psi.Environment["MYSQL_PWD"] = builder.Password;
 
         try
         {
             using var process = Process.Start(psi)
                 ?? throw new BizException(500, "无法启动 mysqldump 备份进程");
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
+            var error = await errorTask;
             if (process.ExitCode != 0)
             {
-                var error = await process.StandardError.ReadToEndAsync(cancellationToken);
                 _logger.LogError("数据库备份失败: {Error}", error);
                 throw new BizException(500, "数据库备份失败，请检查 mysqldump 路径、账号权限和备份目录");
             }
         }
         catch (BizException)
         {
+            SafeDelete(filePath);
+            SafeDelete(packagePath);
             throw;
         }
         catch (Exception ex)
         {
+            SafeDelete(filePath);
+            SafeDelete(packagePath);
             _logger.LogError(ex, "数据库备份异常");
             throw new BizException(500, "数据库备份失败，请检查 mysqldump 是否可用");
         }
@@ -86,6 +98,11 @@ public class DatabaseBackupService : IDatabaseBackupService
             CreatedAt = DateTime.Now,
             SizeBytes = file.Exists ? file.Length : 0
         };
+        }
+        finally
+        {
+            BackupGate.Release();
+        }
     }
 
     public async Task<List<DatabaseBackupFileDto>> ListAsync(CancellationToken cancellationToken = default)
@@ -136,14 +153,20 @@ public class DatabaseBackupService : IDatabaseBackupService
         return new DatabaseBackupDownloadDto(stream, fileName, contentType);
     }
 
-    private string BuildArguments(MySqlConnectionStringBuilder builder, string filePath)
+    private static void BuildArguments(
+        Collection<string> arguments,
+        MySqlConnectionStringBuilder builder,
+        string filePath)
     {
-        var host = builder.Server;
-        var port = builder.Port;
-        var user = builder.UserID;
-        var password = builder.Password;
-        var database = builder.Database;
-        return $"-h {Quote(host)} -P {port} -u {Quote(user)} -p{Quote(password)} --default-character-set=utf8mb4 --single-transaction --routines --events {Quote(database)} --result-file={Quote(filePath)}";
+        arguments.Add($"--host={builder.Server}");
+        arguments.Add($"--port={builder.Port}");
+        arguments.Add($"--user={builder.UserID}");
+        arguments.Add("--default-character-set=utf8mb4");
+        arguments.Add("--single-transaction");
+        arguments.Add("--routines");
+        arguments.Add("--events");
+        arguments.Add($"--result-file={filePath}");
+        arguments.Add(builder.Database);
     }
 
     private async Task<Dictionary<string, string>> LoadSettingsAsync()
@@ -190,9 +213,6 @@ public class DatabaseBackupService : IDatabaseBackupService
         }
     }
 
-    private static string Quote(string value)
-        => $"\"{value.Replace("\"", "\\\"")}\"";
-
     private static bool IsBackupFileName(string fileName)
         => !string.IsNullOrWhiteSpace(fileName)
            && !fileName.Contains('/')
@@ -201,4 +221,16 @@ public class DatabaseBackupService : IDatabaseBackupService
            && fileName.StartsWith("assetmgmt_", StringComparison.OrdinalIgnoreCase)
            && (fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
                || fileName.EndsWith(".sql", StringComparison.OrdinalIgnoreCase));
+
+    private static void SafeDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+            // 清理失败不覆盖原始备份错误。
+        }
+    }
 }

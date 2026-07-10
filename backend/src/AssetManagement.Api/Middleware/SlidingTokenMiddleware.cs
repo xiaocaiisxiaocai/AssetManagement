@@ -5,7 +5,9 @@ namespace AssetManagement.Api.Middleware;
 
 /// <summary>
 /// Token 滑动续期:已认证请求若 token 剩余有效期不足配置时长的一半,
-/// 用当前 claims 重签发新 token 并经 accesstoken 响应头下发(前端拦截器自动接收)。
+/// 用 AccountSecurityMiddleware 刚从数据库刷新的 claims 重签发新 token，
+/// 并经 accesstoken 响应头下发(前端拦截器自动接收)。因此禁用账号、撤销权限和部门变更
+/// 不会被旧 token 继续复制到续期 token 中。
 /// 避免活跃用户在固定过期时间被强制登出。
 /// </summary>
 public class SlidingTokenMiddleware

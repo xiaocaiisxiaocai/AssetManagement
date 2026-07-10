@@ -6,23 +6,28 @@ public static class DatabaseBackupPackageBuilder
 {
     public static void Build(string sqlFilePath, string attachmentPath, string packageFilePath)
     {
-        if (File.Exists(packageFilePath))
+        var tempPackagePath = $"{packageFilePath}.{Guid.NewGuid():N}.tmp";
+        try
         {
-            File.Delete(packageFilePath);
+            using (var archive = ZipFile.Open(tempPackagePath, ZipArchiveMode.Create))
+            {
+                archive.CreateEntryFromFile(sqlFilePath, $"database/{Path.GetFileName(sqlFilePath)}", CompressionLevel.Optimal);
+
+                if (Directory.Exists(attachmentPath))
+                {
+                    foreach (var file in Directory.EnumerateFiles(attachmentPath, "*", SearchOption.AllDirectories))
+                    {
+                        var relativePath = Path.GetRelativePath(attachmentPath, file).Replace('\\', '/');
+                        archive.CreateEntryFromFile(file, $"attachments/{relativePath}", CompressionLevel.Optimal);
+                    }
+                }
+            }
+
+            File.Move(tempPackagePath, packageFilePath, true);
         }
-
-        using var archive = ZipFile.Open(packageFilePath, ZipArchiveMode.Create);
-        archive.CreateEntryFromFile(sqlFilePath, $"database/{Path.GetFileName(sqlFilePath)}", CompressionLevel.Optimal);
-
-        if (!Directory.Exists(attachmentPath))
+        finally
         {
-            return;
-        }
-
-        foreach (var file in Directory.EnumerateFiles(attachmentPath, "*", SearchOption.AllDirectories))
-        {
-            var relativePath = Path.GetRelativePath(attachmentPath, file).Replace('\\', '/');
-            archive.CreateEntryFromFile(file, $"attachments/{relativePath}", CompressionLevel.Optimal);
+            if (File.Exists(tempPackagePath)) File.Delete(tempPackagePath);
         }
     }
 }

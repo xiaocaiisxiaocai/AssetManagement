@@ -48,6 +48,14 @@ public class WorkflowService : IWorkflowService
     public async Task<WorkflowDto> SaveWorkflowAsync(int id, SaveWorkflowRequest request)
     {
         var workflow = await LoadWorkflow(id);
+        var definitionChanges = !string.Equals(workflow.BpmnXml, request.BpmnXml, StringComparison.Ordinal)
+                                || !string.Equals(workflow.BizType, request.BizType?.Trim(), StringComparison.Ordinal);
+        if (definitionChanges &&
+            (await _db.ApprovalFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending")
+             || await _db.MaterialFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending")))
+        {
+            throw new BizException(4093, "该流程仍有进行中的实例，不能修改业务类型或流程定义");
+        }
         await ApplyWorkflowDefinition(workflow, request);
         _db.Entry(workflow).State = EntityState.Modified;
         await _db.SaveChangesAsync();
@@ -104,21 +112,28 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4048, "资产不存在");
         }
 
-        // 发起前校验资产状态
-        if (workflow.BizType is "borrow" or "transfer" && asset.Status != AssetStatus.Available)
-        {
-            throw new BizException(4055, "资产当前不可用,无法发起该流程");
-        }
-
         var applicant = await _db.Users
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == applicantId)
             ?? throw new BizException(4041, "用户不存在");
+        await EnsureAssetInScopeAsync(asset, applicant);
+
+        if (workflow.BizType is "borrow" or "transfer" && asset.Status != AssetStatus.Available)
+            throw new BizException(4055, "资产当前不可用,无法发起该流程");
+        if (workflow.BizType == "return" &&
+            (asset.Status != AssetStatus.Borrowed || asset.CustodianId != applicantId))
+            throw new BizException(4055, "只有当前借用人可以发起归还流程");
+        if (workflow.BizType == "transfer" && !request.TransfereeId.HasValue)
+            throw new BizException(4001, "转让申请必须选择接收人");
+        if (workflow.BizType == "transfer" && request.TransfereeId == applicantId)
+            throw new BizException(4001, "接收人不能与申请人相同");
         var transferee = request.TransfereeId.HasValue
-            ? await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId.Value)
+            ? await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId.Value && x.IsActive)
             : null;
+        if (request.TransfereeId.HasValue && transferee is null)
+            throw new BizException(4041, "接收人不存在或已停用");
 
         // 解析 BPMN 流程定义
         var bpmnProcess = BpmnParser.Parse(workflow.BpmnXml);
@@ -153,9 +168,20 @@ public class WorkflowService : IWorkflowService
 
         // 启动 BPMN 流程引擎
         BpmnEngine.Start(flow, bpmnProcess);
-
+        await NormalizeSignStatesAsync(flow, bpmnProcess);
+        flow.ActiveScopeKey = flow.Status == "pending" ? $"asset:{asset.Id}" : null;
         _db.ApprovalFlows.Add(flow);
-        await _db.SaveChangesAsync();
+        if (flow.Status == "approved")
+            await _bizEffectApplier.ApplyAsync(flow, applicantId);
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogWarning(ex, "创建审批单发生唯一键冲突，资产 {AssetId}", asset.Id);
+            throw new BizException(4056, "该资产已有进行中的审批,请勿重复发起");
+        }
         await AddRecord(flow.Id, "start", applicant.Name, request.Reason);
         await tx.CommitAsync();
 
@@ -179,7 +205,9 @@ public class WorkflowService : IWorkflowService
 
         // dept_admin 只能看到自己管辖部门相关的流程；转让接收节点还要看接收人部门。
         int[]? allowedDeptIds = null;
-        if (!isAdmin && user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin") && user.DepartmentId.HasValue)
+        if (!isAdmin && IsDeptAdmin(user) && !user.DepartmentId.HasValue)
+            return new List<ApprovalFlowDto>();
+        if (!isAdmin && IsDeptAdmin(user) && user.DepartmentId.HasValue)
         {
             allowedDeptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
         }
@@ -235,18 +263,30 @@ public class WorkflowService : IWorkflowService
         return flows.Select(ToFlowDto).ToList();
     }
 
-    public async Task<List<ApprovalFlowDto>> PendingReturnsAsync()
+    public async Task<List<ApprovalFlowDto>> PendingReturnsAsync(int userId)
     {
-        var flows = await _db.ApprovalFlows
+        var user = await LoadUser(userId);
+        var query = _db.ApprovalFlows
             .Where(x => x.Status == "approved" && x.BizType == "borrow" && x.ConfirmedAt == null)
-            .OrderByDescending(x => x.Id)
-            .ToListAsync();
+            .AsQueryable();
+        if (!IsAdmin(user) && IsDeptAdmin(user))
+        {
+            if (!user.DepartmentId.HasValue) return new List<ApprovalFlowDto>();
+            var deptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
+            query = query.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && a.DepartmentId.HasValue && deptIds.Contains(a.DepartmentId.Value)));
+        }
+        var flows = await query.OrderByDescending(x => x.Id).ToListAsync();
 
         return flows.Select(ToFlowDto).ToList();
     }
 
-    public async Task<ApprovalFlowDto> GetFlowAsync(int id)
-        => ToFlowDto(await LoadFlow(id));
+    public async Task<ApprovalFlowDto> GetFlowAsync(int id, int userId)
+    {
+        var flow = await LoadFlow(id);
+        var user = await LoadUser(userId);
+        await EnsureCanViewFlowAsync(flow, user);
+        return ToFlowDto(flow);
+    }
 
     public async Task<ApprovalFlowDto> ApproveAsync(int id, ApprovalActionRequest request, int userId)
     {
@@ -279,11 +319,12 @@ public class WorkflowService : IWorkflowService
 
         // 执行审批
         await using var tx = await _db.Database.BeginTransactionAsync();
-        BpmnEngine.Approve(flow, bpmnProcess, nodeId, user.Name, request.Opinion);
+        BpmnEngine.Approve(flow, bpmnProcess, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion);
 
         // 检查流程是否完成
         if (flow.Status == "approved")
         {
+            flow.ActiveScopeKey = null;
             await _bizEffectApplier.ApplyAsync(flow, userId);
         }
 
@@ -367,6 +408,7 @@ public class WorkflowService : IWorkflowService
 
         await using var tx = await _db.Database.BeginTransactionAsync();
         BpmnEngine.Reject(flow, nodeId, user.Name, request.Reason);
+        flow.ActiveScopeKey = null;
 
         flow.RowVersion++;
         try
@@ -420,17 +462,25 @@ public class WorkflowService : IWorkflowService
         if (string.IsNullOrWhiteSpace(request.Who))
             throw new BizException(4057, "请选择加签人");
 
-        var signUser = await _db.Users.SingleOrDefaultAsync(x => x.Name == request.Who || x.EmployeeNo == request.Who)
-            ?? throw new BizException(4041, "加签人不存在");
+        var hasSignUserId = int.TryParse(request.Who, out var signUserId);
+        var signCandidates = await _db.Users
+            .Where(x => x.IsActive && ((hasSignUserId && x.Id == signUserId) || x.EmployeeNo == request.Who || x.Name == request.Who))
+            .OrderBy(x => x.Id)
+            .Take(2)
+            .ToListAsync();
+        if (signCandidates.Count == 0) throw new BizException(4041, "加签人不存在");
+        if (signCandidates.Count > 1 && signCandidates.All(x => x.Name == request.Who))
+            throw new BizException(4094, "存在同名用户，请使用用户 ID 或工号加签");
+        var signUser = signCandidates[0];
 
         var token = flow.BpmnTokens.GetValueOrDefault(nodeId)
             ?? throw new BizException(4014, "该节点当前不可审批");
 
         token.SignStates ??= new Dictionary<string, bool>
         {
-            [user.Name] = false
+            [user.Id.ToString()] = false
         };
-        token.SignStates.TryAdd(signUser.Name, false);
+        token.SignStates.TryAdd(signUser.Id.ToString(), false);
 
         await _db.SaveChangesAsync();
         await AddRecord(id, "add_sign", user.Name, $"节点 {nodeId}: 加签 {signUser.Name}");
@@ -457,6 +507,10 @@ public class WorkflowService : IWorkflowService
         }
 
         var user = await LoadUser(userId);
+        await EnsureAssetInScopeAsync(
+            await _db.Assets.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId)
+                ?? throw new BizException(4048, "资产不存在"),
+            user);
 
         await using var tx = await _db.Database.BeginTransactionAsync();
         flow.ConfirmedAt = DateTime.UtcNow;
@@ -464,11 +518,21 @@ public class WorkflowService : IWorkflowService
         var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId);
         if (asset != null)
         {
+            if (asset.IsDeleted || asset.Status != AssetStatus.Borrowed || asset.CustodianId != flow.ApplicantId)
+                throw new BizException(4090, "资产当前状态与该归还单不一致，请刷新后重试");
             asset.Status = AssetStatus.Available;
             asset.CustodianId = null;
+            asset.RowVersion++;
         }
-
-        await _db.SaveChangesAsync();
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该归还单已被处理，请刷新后重试");
+        }
         await AddRecord(id, "confirm_return", user.Name, "确认归还接收");
         await tx.CommitAsync();
 
@@ -500,8 +564,8 @@ public class WorkflowService : IWorkflowService
 
     private async Task ApplyWorkflowDefinition(WorkflowEntity workflow, SaveWorkflowRequest request)
     {
-        var name = request.Name.Trim();
-        var bizType = request.BizType.Trim();
+        var name = request.Name?.Trim() ?? "";
+        var bizType = request.BizType?.Trim() ?? "";
 
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -633,11 +697,10 @@ public class WorkflowService : IWorkflowService
 
     private async Task<bool> IsApproverForNode(BpmnNode node, User user, ApprovalFlow flow)
     {
-        if (flow.BpmnTokens.TryGetValue(node.Id, out var token) &&
-            token.SignStates is { Count: > 0 } &&
-            token.SignStates.TryGetValue(user.Name, out var signed))
+        if (flow.BpmnTokens.TryGetValue(node.Id, out var token) && token.SignStates is { Count: > 0 })
         {
-            return !signed;
+            var identity = TryApprovalIdentity(token, user);
+            return identity != null && !token.SignStates[identity];
         }
 
         // 从节点属性中获取审批人配置
@@ -708,6 +771,62 @@ public class WorkflowService : IWorkflowService
 
     private bool IsAdmin(User user)
         => user.UserRoles.Any(ur => ur.Role?.Code == "admin");
+
+    private static bool IsDeptAdmin(User user)
+        => user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin");
+
+    private async Task EnsureAssetInScopeAsync(Asset asset, User user)
+    {
+        if (IsAdmin(user) || !IsDeptAdmin(user)) return;
+        if (!user.DepartmentId.HasValue)
+            throw new BizException(4048, "资产不存在");
+        var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
+        if (!asset.DepartmentId.HasValue || !allowed.Contains(asset.DepartmentId.Value))
+            throw new BizException(4048, "资产不存在");
+    }
+
+    private async Task EnsureCanViewFlowAsync(ApprovalFlow flow, User user)
+    {
+        if (IsAdmin(user) || flow.ApplicantId == user.Id || flow.TransfereeId == user.Id)
+            return;
+        if (await CanApprove(flow, user)) return;
+        if (IsDeptAdmin(user) && user.DepartmentId.HasValue)
+        {
+            var asset = await _db.Assets.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId);
+            var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
+            if (asset?.DepartmentId is int departmentId && allowed.Contains(departmentId)) return;
+        }
+        throw new BizException(4030, "无权查看该审批单");
+    }
+
+    private async Task NormalizeSignStatesAsync(ApprovalFlow flow, BpmnProcess process)
+    {
+        foreach (var nodeId in flow.CurrentNodeIds)
+        {
+            var node = process.FindNode(nodeId);
+            if (node?.Type != BpmnNodeType.UserTask ||
+                !node.Properties.TryGetValue("approvalMode", out var mode) || mode != "all" ||
+                !flow.BpmnTokens.TryGetValue(nodeId, out var token)) continue;
+            var approverIds = await ResolveApproverUserIdsAsync(node, flow);
+            if (approverIds.Count == 0)
+                throw new BizException(4051, $"会签节点 {node.Name} 未解析到有效审批人");
+            token.SignStates = approverIds.Distinct().ToDictionary(x => x.ToString(), _ => false);
+        }
+    }
+
+    private static string ApprovalIdentity(ApprovalFlow flow, string nodeId, User user)
+    {
+        if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) || token.SignStates is not { Count: > 0 })
+            return user.Id.ToString();
+        return TryApprovalIdentity(token, user)
+               ?? throw new BizException(4016, "您不在该节点的会签人列表中");
+    }
+
+    private static string? TryApprovalIdentity(BpmnToken token, User user)
+    {
+        var candidates = new[] { user.Id.ToString(), user.EmployeeNo, user.Name };
+        return candidates.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x) && token.SignStates!.ContainsKey(x));
+    }
 
     /// <summary>
     /// 通知流程当前所有活跃 UserTask 节点对应的审批人

@@ -14,7 +14,7 @@ public class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         b.Property(x => x.TargetType).HasMaxLength(100);
         b.Property(x => x.TargetId).HasMaxLength(100);
         b.Property(x => x.Summary).HasMaxLength(500).IsRequired();
-        b.Property(x => x.Detail).HasColumnType("TEXT");
+        b.Property(x => x.Detail).HasColumnType("longtext");
         b.Property(x => x.Ip).HasMaxLength(100);
         b.Property(x => x.UserAgent).HasMaxLength(500);
         b.HasIndex(x => x.UserId);

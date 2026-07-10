@@ -265,13 +265,15 @@ public static class BpmnParser
 
         foreach (var gateway in process.Nodes.Where(n => n.Type is BpmnNodeType.ExclusiveGateway or BpmnNodeType.InclusiveGateway))
         {
+            var incomingFlows = process.GetIncomingFlows(gateway.Id);
             var outgoingFlows = process.GetOutgoingFlows(gateway.Id);
-            if (outgoingFlows.Count < 2)
+            var isMerge = incomingFlows.Count > 1 && outgoingFlows.Count == 1;
+            if (!isMerge && outgoingFlows.Count < 2)
             {
-                errors.Add($"网关 {gateway.Name}（{gateway.Id}）至少需要两个出边");
+                errors.Add($"分叉网关 {gateway.Name}（{gateway.Id}）至少需要两个出边；汇聚网关应有多个入边和一个出边");
             }
 
-            if (gateway.Type == BpmnNodeType.ExclusiveGateway &&
+            if (!isMerge && gateway.Type == BpmnNodeType.ExclusiveGateway &&
                 outgoingFlows.All(flow => !string.IsNullOrWhiteSpace(flow.ConditionExpression)))
             {
                 errors.Add($"排他网关 {gateway.Name}（{gateway.Id}）需要保留一个无条件默认分支");

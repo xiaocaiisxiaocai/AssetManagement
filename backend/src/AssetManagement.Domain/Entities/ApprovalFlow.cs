@@ -21,6 +21,9 @@ public class ApprovalFlow : IBpmnFlowInstance
     public string? ReturnDate { get; set; }
     public string Status { get; set; } = "pending";
 
+    /// <summary>进行中流程的数据库唯一锁；结束后置空，允许保留任意数量历史记录。</summary>
+    public string? ActiveScopeKey { get; set; }
+
     /// <summary>
     /// 当前活跃的节点 ID 列表（BPMN 模式支持多个并行节点）
     /// </summary>

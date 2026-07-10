@@ -6,7 +6,7 @@ public interface IMaterialFlowService
     Task<MaterialFlowDto> InitiateTransferAsync(InitiateTransferRequest request, int applicantId);
     Task<List<MaterialFlowDto>> PendingAsync(int userId, int? projectId = null);
     Task<List<MaterialFlowDto>> MineAsync(int userId, int? projectId = null);
-    Task<MaterialFlowDto> GetAsync(int id);
+    Task<MaterialFlowDto> GetAsync(int id, int userId);
     Task<MaterialFlowDto> ApproveAsync(int id, MaterialApprovalRequest request, int userId);
     Task<MaterialFlowDto> RejectAsync(int id, MaterialRejectRequest request, int userId);
 }

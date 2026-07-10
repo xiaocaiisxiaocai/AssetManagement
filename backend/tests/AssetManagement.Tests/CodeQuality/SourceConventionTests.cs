@@ -202,6 +202,9 @@ public class SourceConventionTests
             "NotificationController.cs:MarkRead",
             "NotificationController.cs:MarkAllRead",
             "SettingController.cs:Runtime",
+            // 仅返回活动用户/部门的最小下拉字段，不提供管理详情；内部仍会校验业务权限。
+            "DepartmentController.cs:Options",
+            "UserController.cs:Options",
             // 以下接口的最终授权依赖业务数据，必须在 Service 层结合项目负责人、项目进度等条件判断。
             "TestMaterialController.cs:Create",
             "TestMaterialController.cs:Update",

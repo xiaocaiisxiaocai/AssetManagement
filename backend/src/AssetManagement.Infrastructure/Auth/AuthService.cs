@@ -5,6 +5,7 @@ using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Http;
+using System.Text.RegularExpressions;
 
 namespace AssetManagement.Infrastructure.Auth;
 
@@ -80,9 +81,10 @@ public class AuthService : IAuthService
         {
             throw new BizException(4012, "账号角色已禁用，请联系系统管理员");
         }
-        if (user.DepartmentId.HasValue
+        if (!activeRoles.Any(x => x.Code == "admin")
             && activeRoles.Any(x => x.Code == "dept_admin")
-            && !await _db.Departments.AnyAsync(x => x.Id == user.DepartmentId.Value && x.IsActive))
+            && (!user.DepartmentId.HasValue
+                || !await _db.Departments.AnyAsync(x => x.Id == user.DepartmentId.Value && x.IsActive)))
         {
             throw new BizException(4013, "所属部门已停用，请联系系统管理员");
         }
@@ -134,14 +136,7 @@ public class AuthService : IAuthService
     {
         var context = _httpContextAccessor.HttpContext;
         if (context == null) return "unknown";
-        // 反向代理场景：优先读 X-Forwarded-For，取第一个非空 IP（最左侧为真实客户端 IP）
-        var forwarded = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(forwarded))
-        {
-            var ip = forwarded.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                              .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-            if (!string.IsNullOrWhiteSpace(ip)) return ip;
-        }
+        // ForwardedHeadersMiddleware 只会接受配置为可信代理的转发头；这里不能直接信任客户端伪造的 X-Forwarded-For。
         return context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     }
 
@@ -174,13 +169,18 @@ public class AuthService : IAuthService
             .ThenInclude(x => x.Role)
             .ThenInclude(x => x.RoleMenus)
             .ThenInclude(x => x.Menu)
+            .Include(x => x.UserRoles)
+            .ThenInclude(x => x.Role)
+            .ThenInclude(x => x.RolePermissions)
+            .ThenInclude(x => x.Permission)
             .FirstOrDefaultAsync(x => x.Id == userId && x.IsActive);
         if (user is null)
         {
             throw new BizException(4041, "用户不存在或已停用");
         }
 
-        var menus = GetActiveRoles(user)
+        var activeRoles = GetActiveRoles(user);
+        var menus = activeRoles
             .SelectMany(x => x.RoleMenus)
             .Select(x => x.Menu)
             .Where(x => x.Type == "menu")
@@ -188,8 +188,13 @@ public class AuthService : IAuthService
             .OrderBy(x => x.Sort)
             .ThenBy(x => x.Id)
             .ToList();
+        var ownedPermissionCodes = activeRoles
+            .SelectMany(x => x.RolePermissions)
+            .Select(x => x.Permission.Code)
+            .ToHashSet(StringComparer.Ordinal);
         var buttonPermissions = await _db.Menus
-            .Where(x => x.Type == "button" && x.PermissionCode != null)
+            .Where(x => x.Type == "button" && x.PermissionCode != null
+                && ownedPermissionCodes.Contains(x.PermissionCode))
             .ToListAsync();
 
         return BuildRoutes(null, menus, buttonPermissions);
@@ -207,6 +212,17 @@ public class AuthService : IAuthService
         if (request.NewPassword == AppConstants.DefaultUserPassword)
         {
             throw new BizException(1003, "新密码不能使用系统默认密码");
+        }
+        if (request.NewPassword.Length < 8
+            || request.NewPassword.Length > 128
+            || !Regex.IsMatch(request.NewPassword, "[A-Za-z]")
+            || !Regex.IsMatch(request.NewPassword, "[0-9]"))
+        {
+            throw new BizException(1004, "新密码须为 8-128 位，并同时包含字母和数字");
+        }
+        if (BCrypt.Net.BCrypt.Verify(request.NewPassword, user.PasswordHash))
+        {
+            throw new BizException(1005, "新密码不能与旧密码相同");
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);

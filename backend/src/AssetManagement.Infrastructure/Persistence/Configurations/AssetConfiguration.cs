@@ -20,5 +20,6 @@ public class AssetConfiguration : IEntityTypeConfiguration<Asset>
         b.HasIndex(x => x.DepartmentId);
         b.HasIndex(x => x.IsDeleted);
         b.HasIndex(x => x.Status);
+        b.Property(x => x.RowVersion).IsConcurrencyToken();
     }
 }

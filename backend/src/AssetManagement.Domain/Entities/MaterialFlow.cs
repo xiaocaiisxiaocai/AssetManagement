@@ -20,6 +20,9 @@ public class MaterialFlow : IBpmnFlowInstance
     public string? Reason { get; set; }
     public string Status { get; set; } = "pending";
 
+    /// <summary>进行中流转的数据库唯一锁；结束后置空。</summary>
+    public string? ActiveScopeKey { get; set; }
+
     /// <summary>标记为直接转移（跳过审批），区分审批转移</summary>
     public bool DirectTransfer { get; set; }
 

@@ -122,6 +122,48 @@ public class BpmnEngineTests
     }
 
     [Fact]
+    public void Exclusive_gateway_merge_with_single_outgoing_is_valid_and_completes()
+    {
+        var process = BpmnParser.Parse(ExclusiveMergeBpmn());
+        BpmnParser.Validate(process).Should().BeEmpty();
+        var flow = new TestFlow { Context = new() { ["approved"] = "true" } };
+
+        BpmnEngine.Start(flow, process);
+        flow.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_A");
+        BpmnEngine.Approve(flow, process, "Task_A", "1");
+
+        flow.Status.Should().Be("approved");
+    }
+
+    [Fact]
+    public void Inclusive_gateway_merge_waits_only_for_activated_branches()
+    {
+        var process = BpmnParser.Parse(InclusiveMergeBpmn());
+        BpmnParser.Validate(process).Should().BeEmpty();
+        var flow = new TestFlow
+        {
+            Context = new() { ["needA"] = "true", ["needB"] = "true" }
+        };
+
+        BpmnEngine.Start(flow, process);
+        flow.CurrentNodeIds.Should().BeEquivalentTo("Task_A", "Task_B");
+        BpmnEngine.Approve(flow, process, "Task_A", "1");
+        flow.Status.Should().Be("pending");
+        flow.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_B");
+        BpmnEngine.Approve(flow, process, "Task_B", "2");
+        flow.Status.Should().Be("approved");
+
+        var oneBranch = new TestFlow
+        {
+            Context = new() { ["needA"] = "true", ["needB"] = "false" }
+        };
+        BpmnEngine.Start(oneBranch, process);
+        oneBranch.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_A");
+        BpmnEngine.Approve(oneBranch, process, "Task_A", "1");
+        oneBranch.Status.Should().Be("approved");
+    }
+
+    [Fact]
     public void Exclusive_gateway_selects_one_branch_based_on_condition()
     {
         var bpmn = ExclusiveGatewayBpmn();
@@ -271,6 +313,36 @@ public class BpmnEngineTests
     <bpmn:sequenceFlow id=""F2"" sourceRef=""Task_Countersign"" targetRef=""End"" />
   </bpmn:process>
 </bpmn:definitions>";
+
+    private static string ExclusiveMergeBpmn() => """
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="exclusiveMerge">
+    <bpmn:startEvent id="Start"/><bpmn:exclusiveGateway id="Fork"/>
+    <bpmn:userTask id="Task_A" camunda:assignee="1"/><bpmn:userTask id="Task_B" camunda:assignee="2"/>
+    <bpmn:exclusiveGateway id="Merge"/><bpmn:endEvent id="End"/>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Fork"/>
+    <bpmn:sequenceFlow id="f2" sourceRef="Fork" targetRef="Task_A"><bpmn:conditionExpression>${approved} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f3" sourceRef="Fork" targetRef="Task_B"/>
+    <bpmn:sequenceFlow id="f4" sourceRef="Task_A" targetRef="Merge"/><bpmn:sequenceFlow id="f5" sourceRef="Task_B" targetRef="Merge"/>
+    <bpmn:sequenceFlow id="f6" sourceRef="Merge" targetRef="End"/>
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string InclusiveMergeBpmn() => """
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="inclusiveMerge">
+    <bpmn:startEvent id="Start"/><bpmn:inclusiveGateway id="Fork"/>
+    <bpmn:userTask id="Task_A" camunda:assignee="1"/><bpmn:userTask id="Task_B" camunda:assignee="2"/>
+    <bpmn:inclusiveGateway id="Merge"/><bpmn:endEvent id="End"/>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Fork"/>
+    <bpmn:sequenceFlow id="f2" sourceRef="Fork" targetRef="Task_A"><bpmn:conditionExpression>${needA} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f3" sourceRef="Fork" targetRef="Task_B"><bpmn:conditionExpression>${needB} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f4" sourceRef="Task_A" targetRef="Merge"/><bpmn:sequenceFlow id="f5" sourceRef="Task_B" targetRef="Merge"/>
+    <bpmn:sequenceFlow id="f6" sourceRef="Merge" targetRef="End"/>
+  </bpmn:process>
+</bpmn:definitions>
+""";
 
     private static string ProjectOwnerConditionBpmn() => """
 <?xml version="1.0" encoding="UTF-8"?>

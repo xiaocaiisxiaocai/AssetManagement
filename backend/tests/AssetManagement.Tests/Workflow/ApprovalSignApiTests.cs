@@ -25,7 +25,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         Auth(await LoginToken("1001", "123456"));
         var userA = await CreateApprover("会签甲");
         var userB = await CreateApprover("会签乙");
-        var workflow = await CreateWorkflow("countersign", MultiSignBpmn($"{userA.Name},{userB.Name}"));
+        var workflow = await CreateWorkflow("countersign", MultiSignBpmn($"{userA.Id},{userB.Id}"));
         var asset = await CreateAsset();
 
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
@@ -37,7 +37,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
 
         flow.Code.Should().Be(0, flow.Message);
         flow.Data!.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_CounterSign");
-        flow.Data.BpmnTokens["Task_CounterSign"].SignStates.Should().ContainKeys(userA.Name, userB.Name);
+        flow.Data.BpmnTokens["Task_CounterSign"].SignStates.Should().ContainKeys(userA.Id.ToString(), userB.Id.ToString());
 
         Auth(await LoginToken(userA.EmployeeNo, "123456"));
         var first = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
@@ -45,8 +45,8 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
 
         first.Data!.Status.Should().Be("pending");
         first.Data.CurrentNodeIds.Should().Contain("Task_CounterSign");
-        first.Data.BpmnTokens["Task_CounterSign"].SignStates![userA.Name].Should().BeTrue();
-        first.Data.BpmnTokens["Task_CounterSign"].SignStates![userB.Name].Should().BeFalse();
+        first.Data.BpmnTokens["Task_CounterSign"].SignStates![userA.Id.ToString()].Should().BeTrue();
+        first.Data.BpmnTokens["Task_CounterSign"].SignStates![userB.Id.ToString()].Should().BeFalse();
 
         Auth(await LoginToken(userB.EmployeeNo, "123456"));
         var second = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
@@ -62,7 +62,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         Auth(await LoginToken("1001", "123456"));
         var userA = await CreateApprover("主审人");
         var userB = await CreateApprover("加签人");
-        var workflow = await CreateWorkflow("addsign", SingleUserBpmn(userA.Name));
+        var workflow = await CreateWorkflow("addsign", SingleUserBpmn(userA.Id.ToString()));
         var asset = await CreateAsset();
 
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
@@ -75,9 +75,9 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         flow.Code.Should().Be(0, flow.Message);
         Auth(await LoginToken(userA.EmployeeNo, "123456"));
         var addSign = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/add-sign",
-            new AddSignRequest { Who = userB.Name });
+            new AddSignRequest { Who = userB.Id.ToString() });
 
-        addSign.Data!.BpmnTokens["Task_Approve"].SignStates.Should().ContainKeys(userA.Name, userB.Name);
+        addSign.Data!.BpmnTokens["Task_Approve"].SignStates.Should().ContainKeys(userA.Id.ToString(), userB.Id.ToString());
 
         var first = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "主审同意" });

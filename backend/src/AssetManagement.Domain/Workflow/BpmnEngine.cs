@@ -138,8 +138,11 @@ public static class BpmnEngine
                 break;
 
             case BpmnNodeType.ExclusiveGateway:
-                // 排他网关：选择第一个满足条件的分支
-                HandleExclusiveGateway(flow, process, outgoingFlows);
+                // 排他网关既可以分叉，也可以作为标准的简单汇聚点。
+                if (process.GetIncomingFlows(fromNodeId).Count > 1 && outgoingFlows.Count == 1)
+                    MoveToken(flow, process, outgoingFlows[0].TargetRef);
+                else
+                    HandleExclusiveGateway(flow, process, outgoingFlows);
                 break;
 
             case BpmnNodeType.ParallelGateway:
@@ -148,8 +151,11 @@ public static class BpmnEngine
                 break;
 
             case BpmnNodeType.InclusiveGateway:
-                // 包容网关：所有满足条件的分支都激活
-                HandleInclusiveGateway(flow, process, outgoingFlows);
+                // 包容网关汇聚只等待本次实际激活、且仍能到达该汇聚点的分支。
+                if (process.GetIncomingFlows(fromNodeId).Count > 1 && outgoingFlows.Count == 1)
+                    HandleInclusiveJoin(flow, process, fromNodeId, outgoingFlows[0]);
+                else
+                    HandleInclusiveGateway(flow, process, outgoingFlows);
                 break;
         }
     }
@@ -249,6 +255,58 @@ public static class BpmnEngine
             throw new InvalidOperationException("包容网关没有满足条件的分支");
     }
 
+    private static void HandleInclusiveJoin(
+        IBpmnFlowInstance flow,
+        BpmnProcess process,
+        string gatewayId,
+        BpmnFlow outgoingFlow)
+    {
+        // 第一个分支到达汇聚点时，其他已激活分支通常仍停在 UserTask。
+        // 只等待能够沿后续路径到达本汇聚点的活跃节点，未被条件选中的分支没有
+        // 活跃 Token，因此不会错误地阻塞包容汇聚。
+        var hasOtherActiveBranch = flow.CurrentNodeIds.Any(nodeId =>
+            !string.Equals(nodeId, gatewayId, StringComparison.Ordinal) &&
+            CanReach(process, nodeId, gatewayId));
+        if (hasOtherActiveBranch)
+        {
+            flow.BpmnTokens[gatewayId] = new BpmnToken
+            {
+                NodeId = gatewayId,
+                NodeName = process.FindNode(gatewayId)?.Name ?? "包容汇聚",
+                Status = BpmnTokenStatus.Waiting,
+                StartedAt = DateTime.UtcNow
+            };
+            return;
+        }
+
+        flow.BpmnTokens[gatewayId] = new BpmnToken
+        {
+            NodeId = gatewayId,
+            NodeName = process.FindNode(gatewayId)?.Name ?? "包容汇聚",
+            Status = BpmnTokenStatus.Completed,
+            CompletedAt = DateTime.UtcNow
+        };
+        MoveToken(flow, process, outgoingFlow.TargetRef);
+    }
+
+    private static bool CanReach(BpmnProcess process, string sourceId, string targetId)
+    {
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Stack<string>();
+        pending.Push(sourceId);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (!visited.Add(current)) continue;
+            foreach (var edge in process.GetOutgoingFlows(current))
+            {
+                if (edge.TargetRef == targetId) return true;
+                pending.Push(edge.TargetRef);
+            }
+        }
+        return false;
+    }
+
     /// <summary>
     /// 移动 Token 到目标节点
     /// </summary>
@@ -269,7 +327,8 @@ public static class BpmnEngine
                     StartedAt = DateTime.UtcNow,
                     SignStates = BuildSignStates(toNode)
                 };
-                flow.CurrentNodeIds.Add(toNodeId);
+                if (!flow.CurrentNodeIds.Contains(toNodeId))
+                    flow.CurrentNodeIds.Add(toNodeId);
                 break;
 
             case BpmnNodeType.ServiceTask:

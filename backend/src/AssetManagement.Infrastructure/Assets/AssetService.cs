@@ -162,9 +162,10 @@ public class AssetService : IAssetService
     {
         var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
+        if (asset.IsDeleted) throw new BizException(4048, "资产不存在");
         EnsureCanAccess(asset);
-        EnsureCanAssignDepartment(request.DepartmentId);
-        await EnsureActiveDepartment(request.DepartmentId);
+        if (request.Status != asset.Status || request.CustodianId != asset.CustodianId || request.DepartmentId != asset.DepartmentId)
+            throw new BizException(4095, "资产状态、保管人和归属部门只能通过审批流转变更");
         if (!await _db.AssetCategories.AnyAsync(x => x.Id == request.CategoryId && !x.IsDeleted))
         {
             throw new BizException(4046, "资产分类不存在");
@@ -172,13 +173,10 @@ public class AssetService : IAssetService
 
         asset.Name = request.Name.Trim();
         asset.CategoryId = request.CategoryId;
-        asset.DepartmentId = request.DepartmentId;
         asset.LocationId = request.LocationId;
-        asset.CustodianId = request.CustodianId;
         asset.Model = request.Model;
         asset.Brand = request.Brand;
         asset.Quantity = Math.Max(request.Quantity, 1);
-        asset.Status = request.Status;
         if (request.Images is not null)
         {
             asset.ImageUrls = JoinImages(request.Images);
@@ -203,6 +201,7 @@ public class AssetService : IAssetService
 
         asset.IsDeleted = true;
         asset.DeletedAt = DateTime.UtcNow;
+        asset.RowVersion++;
         await _db.SaveChangesAsync();
     }
 
@@ -221,7 +220,15 @@ public class AssetService : IAssetService
         }
 
         _db.Assets.Remove(asset);
-        await _db.SaveChangesAsync();
+        asset.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "资产已被其他操作更新，请刷新后重试");
+        }
     }
 
     public async Task RestoreAsync(int id)
@@ -233,9 +240,14 @@ public class AssetService : IAssetService
         {
             throw new BizException(4099, "资产未删除，无需恢复");
         }
+        if (!await _db.AssetCategories.AnyAsync(x => x.Id == asset.CategoryId && !x.IsDeleted))
+        {
+            throw new BizException(4094, "资产所属分类已删除，请先恢复分类");
+        }
 
         asset.IsDeleted = false;
         asset.DeletedAt = null;
+        asset.RowVersion++;
         await _db.SaveChangesAsync();
     }
 
@@ -427,6 +439,7 @@ public class AssetService : IAssetService
             {
                 return DescendantDepartmentIds(userDeptId);
             }
+            return Array.Empty<int>();
         }
         return null;
     }
@@ -473,8 +486,16 @@ public class AssetService : IAssetService
 
     private async Task<string> NextAssetNo(AssetCategory category)
     {
-        var count = await _db.Assets.CountAsync(x => x.CategoryId == category.Id);
-        return AssetNoGenerator.Next(category.Code, count);
+        var prefix = $"{category.Code}-";
+        var existing = await _db.Assets
+            .Where(x => x.CategoryId == category.Id && x.AssetNo.StartsWith(prefix))
+            .Select(x => x.AssetNo)
+            .ToListAsync();
+        var maxSequence = existing
+            .Select(x => int.TryParse(x[prefix.Length..], out var sequence) ? sequence : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+        return AssetNoGenerator.Next(category.Code, maxSequence);
     }
 
     private async Task<List<AssetDto>> ToDtos(IEnumerable<Asset> assets)

@@ -31,7 +31,7 @@ public class MaterialFlowController : ControllerBase
     [HttpGet("{id:int}")]
     [HasPermission("material-flow:view")]
     public async Task<ApiResult<MaterialFlowDto>> Get(int id)
-        => ApiResult<MaterialFlowDto>.Ok(await _service.GetAsync(id));
+        => ApiResult<MaterialFlowDto>.Ok(await _service.GetAsync(id, CurrentUserId()));
 
     [HttpPost("{id:int}/approve")]
     [HasPermission("material-flow:approve")]

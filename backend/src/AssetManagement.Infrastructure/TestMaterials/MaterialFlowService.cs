@@ -41,8 +41,10 @@ public class MaterialFlowService : IMaterialFlowService
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == applicantId)
             ?? throw new BizException(4041, "用户不存在");
-        var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId)
-            ?? throw new BizException(4041, "受让人不存在");
+        await EnsureMaterialInScopeAsync(material, applicant);
+        var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId && x.IsActive)
+            ?? throw new BizException(4041, "受让人不存在或已停用");
+        if (transferee.Id == applicant.Id) throw new BizException(4001, "接收人不能与申请人相同");
 
         var approvalEnabled = await IsApprovalEnabled();
 
@@ -77,15 +79,21 @@ public class MaterialFlowService : IMaterialFlowService
                 };
                 material.CustodianId = transferee.Id;
                 material.DepartmentId = transferee.DepartmentId;
+                material.RowVersion++;
                 _db.MaterialFlows.Add(directFlow);
                 try
                 {
                     await _db.SaveChangesAsync();
                 }
+                catch (DbUpdateConcurrencyException)
+                {
+                    throw new BizException(4090, "料件已被其他操作转移，请刷新后重试");
+                }
                 catch (DbUpdateException) when (attempt < 3)
                 {
                     await tx.RollbackAsync();
                     _db.Entry(directFlow).State = EntityState.Detached;
+                    await _db.Entry(material).ReloadAsync();
                     continue;
                 }
                 await AddRecord(directFlow.Id, "direct_transfer", applicant.Name,
@@ -152,7 +160,11 @@ public class MaterialFlowService : IMaterialFlowService
                 Context = await BuildWorkflowContext(applicant, material.ProjectId)
             };
             BpmnEngine.Start(flow, process);
+            await NormalizeSignStatesAsync(flow, process);
+            flow.ActiveScopeKey = flow.Status == "pending" ? $"material:{material.Id}" : null;
             _db.MaterialFlows.Add(flow);
+            if (flow.Status == "approved")
+                await ApplyMaterialTransferAsync(flow);
             try
             {
                 await _db.SaveChangesAsync();
@@ -161,6 +173,9 @@ public class MaterialFlowService : IMaterialFlowService
             {
                 await bpmnTx.RollbackAsync();
                 _db.Entry(flow).State = EntityState.Detached;
+                if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
+                    throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
+                await _db.Entry(material).ReloadAsync();
                 continue;
             }
             await AddRecord(flow.Id, "start", applicant.Name, request.Reason);
@@ -188,7 +203,9 @@ public class MaterialFlowService : IMaterialFlowService
 
         // dept_admin 只能看到申请人属于其管辖部门（含子部门）的流程
         int[]? allowedDeptIds = null;
-        if (!isAdmin && user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin") && user.DepartmentId.HasValue)
+        if (!isAdmin && IsDeptAdmin(user) && !user.DepartmentId.HasValue)
+            return new List<MaterialFlowDto>();
+        if (!isAdmin && IsDeptAdmin(user) && user.DepartmentId.HasValue)
         {
             allowedDeptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
         }
@@ -240,7 +257,13 @@ public class MaterialFlowService : IMaterialFlowService
         return flows.Select(ToDto).ToList();
     }
 
-    public async Task<MaterialFlowDto> GetAsync(int id) => ToDto(await LoadFlow(id));
+    public async Task<MaterialFlowDto> GetAsync(int id, int userId)
+    {
+        var flow = await LoadFlow(id);
+        var user = await LoadUser(userId);
+        await EnsureCanViewFlowAsync(flow, user);
+        return ToDto(flow);
+    }
 
     public async Task<MaterialFlowDto> ApproveAsync(int id, MaterialApprovalRequest request, int userId)
     {
@@ -254,23 +277,13 @@ public class MaterialFlowService : IMaterialFlowService
         var process = BpmnParser.Parse(workflow.BpmnXml!);
 
         await using var tx = await _db.Database.BeginTransactionAsync();
-        BpmnEngine.Approve(flow, process, nodeId, user.Name, request.Opinion);
+        BpmnEngine.Approve(flow, process, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion);
 
         // 流程完成 -> 落地业务副作用(改保管人 + 部门)
         if (flow.Status == "approved")
         {
-            var material = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == flow.MaterialId)
-                ?? throw new BizException(4048, "料件已不存在,无法完成转移");
-            if (material.IsDeleted) throw new BizException(4048, "料件已删除,无法完成转移");
-            if (material.Status != MaterialStatus.InUse)
-                throw new BizException(4098, "已退回厂商的料件不能转移");
-            if (flow.TransfereeId.HasValue)
-            {
-                material.CustodianId = flow.TransfereeId.Value;
-                var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.TransfereeId.Value);
-                if (transferee is not null)
-                    material.DepartmentId = transferee.DepartmentId;
-            }
+            flow.ActiveScopeKey = null;
+            await ApplyMaterialTransferAsync(flow);
         }
 
         flow.RowVersion++;
@@ -325,6 +338,7 @@ public class MaterialFlowService : IMaterialFlowService
 
         await using var tx = await _db.Database.BeginTransactionAsync();
         BpmnEngine.Reject(flow, nodeId, user.Name, request.Reason);
+        flow.ActiveScopeKey = null;
         flow.RowVersion++;
         try
         {
@@ -365,8 +379,15 @@ public class MaterialFlowService : IMaterialFlowService
     {
         var today = DateTime.UtcNow.Date;
         var prefix = $"MF-{today:yyyyMMdd}-";
-        var count = await _db.MaterialFlows.CountAsync(x => x.FlowNo.StartsWith(prefix));
-        return FlowNoGenerator.Next(today, count + offset);
+        var existing = await _db.MaterialFlows
+            .Where(x => x.FlowNo.StartsWith(prefix))
+            .Select(x => x.FlowNo)
+            .ToListAsync();
+        var maxSequence = existing
+            .Select(x => int.TryParse(x[prefix.Length..], out var sequence) ? sequence : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+        return FlowNoGenerator.Next(today, maxSequence + offset);
     }
 
     private async Task<bool> IsApprovalEnabled()
@@ -441,11 +462,10 @@ public class MaterialFlowService : IMaterialFlowService
     private async Task<bool> IsApproverForNode(BpmnNode node, User user, MaterialFlow flow)
     {
         // 加签场景：SignStates 记录本节点各审批人是否已签，未签=仍需审批
-        if (flow.BpmnTokens.TryGetValue(node.Id, out var token) &&
-            token.SignStates is { Count: > 0 } &&
-            token.SignStates.TryGetValue(user.Name, out var signed))
+        if (flow.BpmnTokens.TryGetValue(node.Id, out var token) && token.SignStates is { Count: > 0 })
         {
-            return !signed;
+            var identity = TryApprovalIdentity(token, user);
+            return identity != null && !token.SignStates[identity];
         }
 
         var assignee = node.Properties.GetValueOrDefault("assignee");
@@ -504,6 +524,81 @@ public class MaterialFlowService : IMaterialFlowService
         }
         Walk(rootId);
         return ids.ToArray();
+    }
+
+    private static bool IsAdmin(User user)
+        => user.UserRoles.Any(ur => ur.Role?.Code == "admin");
+
+    private static bool IsDeptAdmin(User user)
+        => user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin");
+
+    private async Task EnsureMaterialInScopeAsync(TestMaterial material, User user)
+    {
+        if (IsAdmin(user) || !IsDeptAdmin(user)) return;
+        if (!user.DepartmentId.HasValue)
+            throw new BizException(4048, "测试料件不存在");
+        var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
+        if (!material.DepartmentId.HasValue || !allowed.Contains(material.DepartmentId.Value))
+            throw new BizException(4048, "测试料件不存在");
+    }
+
+    private async Task EnsureCanViewFlowAsync(MaterialFlow flow, User user)
+    {
+        if (IsAdmin(user) || flow.ApplicantId == user.Id || flow.TransfereeId == user.Id)
+            return;
+        if (await CanApprove(flow, user)) return;
+        if (IsDeptAdmin(user) && user.DepartmentId.HasValue)
+        {
+            var material = await _db.TestMaterials.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.MaterialId);
+            var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
+            if (material?.DepartmentId is int departmentId && allowed.Contains(departmentId)) return;
+        }
+        throw new BizException(4030, "无权查看该流转单");
+    }
+
+    private async Task ApplyMaterialTransferAsync(MaterialFlow flow)
+    {
+        var material = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == flow.MaterialId)
+            ?? throw new BizException(4048, "料件已不存在,无法完成转移");
+        if (material.IsDeleted) throw new BizException(4048, "料件已删除,无法完成转移");
+        if (material.Status != MaterialStatus.InUse)
+            throw new BizException(4098, "已退回厂商的料件不能转移");
+        if (!flow.TransfereeId.HasValue)
+            throw new BizException(4001, "流转单缺少接收人");
+        material.CustodianId = flow.TransfereeId.Value;
+        var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.TransfereeId.Value)
+            ?? throw new BizException(4041, "接收人不存在");
+        material.DepartmentId = transferee.DepartmentId;
+        material.RowVersion++;
+    }
+
+    private async Task NormalizeSignStatesAsync(MaterialFlow flow, BpmnProcess process)
+    {
+        foreach (var nodeId in flow.CurrentNodeIds)
+        {
+            var node = process.FindNode(nodeId);
+            if (node?.Type != BpmnNodeType.UserTask ||
+                !node.Properties.TryGetValue("approvalMode", out var mode) || mode != "all" ||
+                !flow.BpmnTokens.TryGetValue(nodeId, out var token)) continue;
+            var approverIds = await ResolveApproverUserIdsAsync(node, flow);
+            if (approverIds.Count == 0)
+                throw new BizException(4051, $"会签节点 {node.Name} 未解析到有效审批人");
+            token.SignStates = approverIds.Distinct().ToDictionary(x => x.ToString(), _ => false);
+        }
+    }
+
+    private static string ApprovalIdentity(MaterialFlow flow, string nodeId, User user)
+    {
+        if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) || token.SignStates is not { Count: > 0 })
+            return user.Id.ToString();
+        return TryApprovalIdentity(token, user)
+               ?? throw new BizException(4016, "您不在该节点的会签人列表中");
+    }
+
+    private static string? TryApprovalIdentity(BpmnToken token, User user)
+    {
+        var candidates = new[] { user.Id.ToString(), user.EmployeeNo, user.Name };
+        return candidates.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x) && token.SignStates!.ContainsKey(x));
     }
 
     private async Task<List<int>> ResolveSupervisorApproverUserIdsAsync(MaterialFlow flow)

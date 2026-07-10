@@ -19,6 +19,14 @@ public record CreateDepartmentRequest
     public int? ManagerId { get; init; }
 }
 
+public record DepartmentOptionDto
+{
+    public int Id { get; init; }
+    public string Name { get; init; } = "";
+    public bool IsActive { get; init; }
+    public List<DepartmentOptionDto> Children { get; init; } = new();
+}
+
 public record UpdateDepartmentRequest
 {
     public int? ParentId { get; init; }

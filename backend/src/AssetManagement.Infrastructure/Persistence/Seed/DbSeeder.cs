@@ -230,7 +230,6 @@ public static class DbSeeder
 
         var admin = db.Roles.SingleOrDefault(x => x.Code == "admin");
         if (admin is not null
-            && !db.RolePermissions.Any(x => x.RoleId == admin.Id)
             && !db.RolePermissions.Any(x => x.RoleId == admin.Id && x.PermissionId == purgePermission.Id))
         {
             db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = purgePermission.Id });
@@ -254,7 +253,6 @@ public static class DbSeeder
         {
             var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
             if (role is not null
-                && !db.RolePermissions.Any(x => x.RoleId == role.Id)
                 && !db.RolePermissions.Any(x => x.RoleId == role.Id && x.PermissionId == restorePermission.Id))
             {
                 db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = restorePermission.Id });
@@ -288,7 +286,6 @@ public static class DbSeeder
 
         var reportAdminRole = db.Roles.SingleOrDefault(x => x.Code == "admin");
         if (reportAdminRole is not null
-            && !db.RoleMenus.Any(x => x.RoleId == reportAdminRole.Id)
             && !db.RoleMenus.Any(x => x.RoleId == reportAdminRole.Id && x.MenuId == reportMenu.Id))
         {
             db.RoleMenus.Add(new RoleMenu { RoleId = reportAdminRole.Id, MenuId = reportMenu.Id });
@@ -321,7 +318,6 @@ public static class DbSeeder
         }
 
         if (reportAdminRole is not null
-            && !db.RoleMenus.Any(x => x.RoleId == reportAdminRole.Id)
             && !db.RoleMenus.Any(x => x.RoleId == reportAdminRole.Id && x.MenuId == reportOverdueMenu.Id))
         {
             db.RoleMenus.Add(new RoleMenu { RoleId = reportAdminRole.Id, MenuId = reportOverdueMenu.Id });
@@ -352,8 +348,10 @@ public static class DbSeeder
             db.SaveChanges();
             foreach (var role in db.Roles.ToList())
             {
-                if (db.RoleMenus.Any(x => x.RoleId == role.Id)) continue;
-                db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHome.Id });
+                if (!db.RoleMenus.Any(x => x.RoleId == role.Id && x.MenuId == existingHome.Id))
+                {
+                    db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHome.Id });
+                }
             }
         }
         else
@@ -382,8 +380,10 @@ public static class DbSeeder
             db.SaveChanges();
             foreach (var role in db.Roles.ToList())
             {
-                if (db.RoleMenus.Any(x => x.RoleId == role.Id)) continue;
-                db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHomeWorkspace.Id });
+                if (!db.RoleMenus.Any(x => x.RoleId == role.Id && x.MenuId == existingHomeWorkspace.Id))
+                {
+                    db.RoleMenus.Add(new RoleMenu { RoleId = role.Id, MenuId = existingHomeWorkspace.Id });
+                }
             }
         }
         else
@@ -513,7 +513,6 @@ public static class DbSeeder
     {
         var admin = db.Roles.SingleOrDefault(x => x.Code == "admin");
         if (admin is not null
-            && !db.RoleMenus.Any(x => x.RoleId == admin.Id)
             && !db.RoleMenus.Any(x => x.RoleId == admin.Id && x.MenuId == menu.Id))
         {
             db.RoleMenus.Add(new RoleMenu { RoleId = admin.Id, MenuId = menu.Id });
@@ -786,15 +785,29 @@ public static class DbSeeder
         var admin = db.Roles.SingleOrDefault(x => x.Code == "admin");
         if (admin is null) return;
 
-        if (!db.RolePermissions.Any(x => x.RoleId == admin.Id))
+        var existingPermissionIds = db.RolePermissions
+            .Where(x => x.RoleId == admin.Id)
+            .Select(x => x.PermissionId)
+            .ToHashSet();
+        var missingPermissions = db.Permissions
+            .Where(x => !existingPermissionIds.Contains(x.Id))
+            .ToList();
+        if (missingPermissions.Count > 0)
         {
-            db.RolePermissions.AddRange(db.Permissions
+            db.RolePermissions.AddRange(missingPermissions
                 .Select(x => new RolePermission { RoleId = admin.Id, PermissionId = x.Id }));
         }
 
-        if (!db.RoleMenus.Any(x => x.RoleId == admin.Id))
+        var existingMenuIds = db.RoleMenus
+            .Where(x => x.RoleId == admin.Id)
+            .Select(x => x.MenuId)
+            .ToHashSet();
+        var missingMenus = db.Menus
+            .Where(x => !existingMenuIds.Contains(x.Id))
+            .ToList();
+        if (missingMenus.Count > 0)
         {
-            db.RoleMenus.AddRange(db.Menus
+            db.RoleMenus.AddRange(missingMenus
                 .Select(x => new RoleMenu { RoleId = admin.Id, MenuId = x.Id }));
         }
     }
@@ -856,8 +869,6 @@ public static class DbSeeder
 
     private static void EnsureRoleMenusForPermissions(AppDbContext db, Role role, string[] permissionCodes)
     {
-        if (db.RoleMenus.Any(x => x.RoleId == role.Id)) return;
-
         var allMenus = db.Menus.ToList();
         var menuIds = new HashSet<int>();
         foreach (var menu in allMenus.Where(x => x.PermissionCode != null && permissionCodes.Contains(x.PermissionCode)))
@@ -922,7 +933,6 @@ public static class DbSeeder
         {
             var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
             if (role is null) continue;
-            if (db.RolePermissions.Any(x => x.RoleId == role.Id)) continue;
             foreach (var code in codes)
             {
                 var perm = permByCode[code];
@@ -986,12 +996,11 @@ public static class DbSeeder
         EnsureChild("MaterialProjects", "测试项目", "/material/projects", "/material/projects/index", 17, "project:view");
         db.SaveChanges();
 
-        // 把根菜单 + 子菜单授予 dept_admin / employee(按其权限码可见性)
-        foreach (var roleCode in new[] { "dept_admin", "employee" })
+        // 按权限矩阵逐项补齐根菜单 + 子菜单；已有任意菜单不能阻止新模块增量授权。
+        foreach (var roleCode in roleGrants.Keys)
         {
             var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
             if (role is null) continue;
-            if (db.RoleMenus.Any(x => x.RoleId == role.Id)) continue;
             var grantedCodes = roleGrants.GetValueOrDefault(roleCode, Array.Empty<string>()).ToHashSet();
             var childMenus = db.Menus.Where(x => x.ParentId == rootMenu.Id && x.PermissionCode != null && grantedCodes.Contains(x.PermissionCode!)).ToList();
             if (childMenus.Count == 0) continue;

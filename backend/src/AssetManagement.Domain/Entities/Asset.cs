@@ -25,6 +25,9 @@ public class Asset
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
 
+    /// <summary>乐观并发令牌，防止审批副作用、归还和编辑互相覆盖。</summary>
+    public uint RowVersion { get; set; }
+
     /// <summary>资产照片附件 URL,逗号分隔(最多 5 张),由 /api/files 上传得到</summary>
     public string? ImageUrls { get; set; }
 }

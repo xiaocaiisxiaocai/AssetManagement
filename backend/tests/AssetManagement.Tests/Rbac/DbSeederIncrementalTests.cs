@@ -41,6 +41,7 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
             .Include(x => x.RolePermissions)
             .ThenInclude(x => x.Permission)
             .Include(x => x.RoleMenus)
+            .ThenInclude(x => x.Menu)
             .ToList();
         var permissions = _db.Permissions.OrderBy(x => x.Code).ToList();
         var admin = roles.Single(x => x.Code == "admin");
@@ -54,9 +55,13 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
 
         warehouse.Should().NotBeNull();
         admin.RolePermissions.Select(x => x.Permission.Code)
-            .Should().BeEquivalentTo(new[] { "asset:view" }, "角色管理中已存在的授权关系不能在启动种子时被覆盖");
+            .Should().Contain(new[] { "asset:view", "project:view", "material:view", "backup:manage" },
+                "增量种子必须保留已有授权并为管理员逐项补齐后来新增的权限");
         admin.RoleMenus.Select(x => x.MenuId).Distinct()
-            .Should().BeEquivalentTo(new[] { homeMenuId }, "角色管理中已存在的菜单授权不能在启动种子时被覆盖");
+            .Should().Contain(homeMenuId, "已有菜单授权不能丢失");
+        admin.RoleMenus.Select(x => x.Menu.Name)
+            .Should().Contain(new[] { "Material", "MaterialHome", "MaterialProjects", "AdminBackups" },
+                "管理员已有任意菜单时也必须补齐新增模块入口");
         warehouse!.RoleMenus.Select(x => x.MenuId).Distinct()
             .Should().NotBeEmpty("仓库管理员恢复后也应按权限矩阵补齐菜单入口");
         warehouse.RolePermissions.Select(x => x.Permission.Code)
@@ -67,6 +72,9 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         roles.Single(x => x.Code == "supervisor")
             .RolePermissions.Select(x => x.Permission.Code)
             .Should().NotContain(code => code.StartsWith("user:"), "部门主管不应具备用户管理权限");
+        roles.Single(x => x.Code == "employee").RoleMenus.Select(x => x.Menu.Name)
+            .Should().Contain(new[] { "Material", "MaterialHome", "MaterialProjects" },
+                "普通员工已有菜单时仍应增量补齐新产品模块入口");
         warehouseUser.UserRoles.Select(x => x.RoleId)
             .Should().Contain(warehouse!.Id, "现有仓库管理员测试用户不能保持无角色状态");
         normalUser.UserRoles.Select(x => x.RoleId)

@@ -62,6 +62,9 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         var body = await res.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
 
         body!.Code.Should().NotBe(0, "非当前节点审批人不应能处理他人工单");
+
+        var detail = await _client.GetFromJsonAsync<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}");
+        detail!.Code.Should().NotBe(0, "非申请人、接收人、审批人或管辖部门管理员不应读取他人工单详情");
     }
 
     // P0-5:已通过(终态)的流程不得再被驳回翻盘

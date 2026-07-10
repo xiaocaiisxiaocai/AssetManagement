@@ -51,6 +51,7 @@ public class BizEffectApplier : IBizEffectApplier
                 asset.CustodianId = null;
                 break;
         }
+        asset.RowVersion++;
 
         var after = Snapshot(asset);
         _db.AuditLogs.Add(new AuditLog

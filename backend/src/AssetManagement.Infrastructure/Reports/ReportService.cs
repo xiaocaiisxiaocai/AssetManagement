@@ -7,6 +7,8 @@ using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
 
 namespace AssetManagement.Infrastructure.Reports;
 
@@ -14,16 +16,18 @@ public class ReportService : IReportService
 {
     private readonly AppDbContext _db;
     private readonly INotificationService _notifications;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public ReportService(AppDbContext db, INotificationService notifications)
+    public ReportService(AppDbContext db, INotificationService notifications, IHttpContextAccessor httpContextAccessor)
     {
         _db = db;
         _notifications = notifications;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<AssetSummaryDto> GetSummaryAsync()
     {
-        var assets = _db.Assets.Where(x => !x.IsDeleted);
+        var assets = ApplyAssetScope(_db.Assets.Where(x => !x.IsDeleted));
 
         // 优化：使用数据库聚合而非全部加载到内存
         var total = await assets.CountAsync();
@@ -163,12 +167,12 @@ public class ReportService : IReportService
 
     public async Task<List<OverdueReportRow>> QueryOverdueAsync()
     {
-        var flows = await _db.ApprovalFlows.AsNoTracking()
+        var flows = await ApplyFlowScope(_db.ApprovalFlows.AsNoTracking())
             .Where(x => x.BizType == "borrow" && x.Status == "approved" && x.ReturnDate != null)
             .OrderByDescending(x => x.ApplyTime)
             .ToListAsync();
         var assetIds = flows.Select(x => x.AssetId).Distinct().ToArray();
-        var borrowedAssets = await _db.Assets.AsNoTracking()
+        var borrowedAssets = await ApplyAssetScope(_db.Assets.AsNoTracking())
             .Where(x => assetIds.Contains(x.Id) && !x.IsDeleted && x.Status == AssetStatus.Borrowed)
             .ToDictionaryAsync(x => x.Id);
         var today = DateTime.UtcNow.Date;
@@ -241,7 +245,7 @@ public class ReportService : IReportService
 
     private IQueryable<ApprovalFlow> ApplyBorrowQuery(IQueryable<ApprovalFlow> queryable, BorrowReportQuery query)
     {
-        queryable = queryable.Where(x =>
+        queryable = ApplyFlowScope(queryable).Where(x =>
             x.BizType == "borrow"
             && x.Status == "approved"
             && _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted));
@@ -252,7 +256,10 @@ public class ReportService : IReportService
 
         if (query.EndTime.HasValue)
         {
-            queryable = queryable.Where(x => x.ApplyTime <= query.EndTime.Value);
+            var end = query.EndTime.Value;
+            queryable = end.TimeOfDay == TimeSpan.Zero
+                ? queryable.Where(x => x.ApplyTime < end.Date.AddDays(1))
+                : queryable.Where(x => x.ApplyTime <= end);
         }
 
         if (query.BorrowerId.HasValue)
@@ -283,7 +290,9 @@ public class ReportService : IReportService
     {
         var list = flows.ToList();
         var assetIds = list.Select(x => x.AssetId).Distinct().ToArray();
-        var assets = await _db.Assets.AsNoTracking().Where(x => assetIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
+        var assets = await ApplyAssetScope(_db.Assets.AsNoTracking())
+            .Where(x => assetIds.Contains(x.Id) && !x.IsDeleted)
+            .ToDictionaryAsync(x => x.Id);
         var categoryIds = assets.Values.Select(x => x.CategoryId).Distinct().ToArray();
         var categories = await _db.AssetCategories.AsNoTracking().Where(x => categoryIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
 
@@ -312,7 +321,9 @@ public class ReportService : IReportService
     private async Task<List<OverdueReportRow>> ToOverdueRows(List<(ApprovalFlow Flow, DateTime Due, int Days)> overdue)
     {
         var assetIds = overdue.Select(x => x.Flow.AssetId).Distinct().ToArray();
-        var assets = await _db.Assets.AsNoTracking().Where(x => assetIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
+        var assets = await ApplyAssetScope(_db.Assets.AsNoTracking())
+            .Where(x => assetIds.Contains(x.Id) && !x.IsDeleted)
+            .ToDictionaryAsync(x => x.Id);
         var categoryIds = assets.Values.Select(x => x.CategoryId).Distinct().ToArray();
         var categories = await _db.AssetCategories.AsNoTracking().Where(x => categoryIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
 
@@ -387,4 +398,66 @@ public class ReportService : IReportService
 
     private static decimal Percent(int count, int total)
         => total == 0 ? 0 : decimal.Round(count * 100m / total, 2);
+
+    private IQueryable<Asset> ApplyAssetScope(IQueryable<Asset> queryable)
+    {
+        var allowedDepartmentIds = AllowedDepartmentIds();
+        return allowedDepartmentIds is null
+            ? queryable
+            : queryable.Where(x => x.DepartmentId.HasValue && allowedDepartmentIds.Contains(x.DepartmentId.Value));
+    }
+
+    private IQueryable<ApprovalFlow> ApplyFlowScope(IQueryable<ApprovalFlow> queryable)
+    {
+        var allowedDepartmentIds = AllowedDepartmentIds();
+        return allowedDepartmentIds is null
+            ? queryable
+            : queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId
+                && !a.IsDeleted
+                && a.DepartmentId.HasValue
+                && allowedDepartmentIds.Contains(a.DepartmentId.Value)));
+    }
+
+    // null 表示共享资产池不受限；空数组表示部门管理员配置不完整，必须 fail-closed。
+    private int[]? AllowedDepartmentIds()
+    {
+        var principal = _httpContextAccessor.HttpContext?.User;
+        if (principal?.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var roles = principal.FindAll(ClaimTypes.Role).Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
+        if (roles.Contains("admin") || !roles.Contains("dept_admin"))
+        {
+            return null;
+        }
+
+        if (!int.TryParse(principal.FindFirst("departmentId")?.Value, out var rootDepartmentId))
+        {
+            return Array.Empty<int>();
+        }
+
+        var departments = _db.Departments.AsNoTracking()
+            .Where(x => x.IsActive)
+            .Select(x => new { x.Id, x.ParentId })
+            .ToList();
+        if (!departments.Any(x => x.Id == rootDepartmentId))
+        {
+            return Array.Empty<int>();
+        }
+
+        var result = new HashSet<int> { rootDepartmentId };
+        var queue = new Queue<int>();
+        queue.Enqueue(rootDepartmentId);
+        while (queue.TryDequeue(out var parentId))
+        {
+            foreach (var childId in departments.Where(x => x.ParentId == parentId).Select(x => x.Id))
+            {
+                if (result.Add(childId)) queue.Enqueue(childId);
+            }
+        }
+
+        return result.ToArray();
+    }
 }

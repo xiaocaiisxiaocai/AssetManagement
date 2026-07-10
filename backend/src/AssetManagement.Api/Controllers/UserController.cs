@@ -1,6 +1,7 @@
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Infrastructure.Auth;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -26,6 +27,19 @@ public class UserController : ControllerBase
         int? departmentId = null,
         int? roleId = null)
         => ApiResult<PagedResult<UserDto>>.Ok(await _rbac.GetUsersAsync(keyword, page, pageSize, departmentId, roleId));
+
+    [HttpGet("options")]
+    [Authorize]
+    public async Task<ApiResult<List<UserOptionDto>>> Options(string? keyword = null)
+    {
+        var permissions = User.FindAll("perm").Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
+        if (!permissions.Contains("approval:create") && !permissions.Contains("material-flow:transfer"))
+        {
+            throw new BizException(4030, "无权读取用户选项");
+        }
+
+        return ApiResult<List<UserOptionDto>>.Ok(await _rbac.GetActiveUserOptionsAsync(keyword));
+    }
 
     [HttpPost]
     [HasPermission("user:create")]

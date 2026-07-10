@@ -10,9 +10,9 @@ public interface IWorkflowService
     Task DeleteWorkflowAsync(int id);
     Task<ApprovalFlowDto> StartAsync(StartApprovalRequest request, int applicantId);
     Task<List<ApprovalFlowDto>> PendingAsync(int userId);
-    Task<List<ApprovalFlowDto>> PendingReturnsAsync();
+    Task<List<ApprovalFlowDto>> PendingReturnsAsync(int userId);
     Task<List<ApprovalFlowDto>> MineAsync(int userId);
-    Task<ApprovalFlowDto> GetFlowAsync(int id);
+    Task<ApprovalFlowDto> GetFlowAsync(int id, int userId);
     Task<ApprovalFlowDto> ApproveAsync(int id, ApprovalActionRequest request, int userId);
     Task<ApprovalFlowDto> RejectAsync(int id, RejectRequest request, int userId);
     Task<ApprovalFlowDto> AddSignAsync(int id, AddSignRequest request, int userId);

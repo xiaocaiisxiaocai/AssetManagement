@@ -6,6 +6,8 @@ using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Reports;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
 
 namespace AssetManagement.Tests.Reports;
 
@@ -15,7 +17,7 @@ public class ReportServiceTests : MySqlFixtureBase
 
     public ReportServiceTests()
     {
-        _service = new ReportService(_db, new NotificationService(_db));
+        _service = new ReportService(_db, new NotificationService(_db), new HttpContextAccessor());
     }
 
     [Fact]
@@ -129,6 +131,44 @@ public class ReportServiceTests : MySqlFixtureBase
     }
 
     [Fact]
+    public async Task Department_admin_summary_is_limited_to_own_department_and_descendants()
+    {
+        var root = new Department { Name = "研发部", Code = "D1000", IsActive = true };
+        var other = new Department { Name = "财务部", Code = "D2000", IsActive = true };
+        _db.Departments.AddRange(root, other);
+        await _db.SaveChangesAsync();
+        var child = new Department { Name = "研发一组", Code = "D1001", ParentId = root.Id, IsActive = true };
+        var category = new AssetCategory { CodeSeg = "PC", Code = "PC", ParentId = null };
+        _db.AddRange(child, category);
+        await _db.SaveChangesAsync();
+        _db.Assets.AddRange(
+            new Asset { AssetNo = "PC-SCOPE-1", Name = "本部门", CategoryId = category.Id, DepartmentId = root.Id, Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow },
+            new Asset { AssetNo = "PC-SCOPE-2", Name = "子部门", CategoryId = category.Id, DepartmentId = child.Id, Status = AssetStatus.Borrowed, CreatedAt = DateTime.UtcNow },
+            new Asset { AssetNo = "PC-SCOPE-3", Name = "其他部门", CategoryId = category.Id, DepartmentId = other.Id, Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+
+        var service = CreateServiceFor(new Claim(ClaimTypes.Role, "dept_admin"), new Claim("departmentId", root.Id.ToString()));
+        var summary = await service.GetSummaryAsync();
+
+        summary.Total.Should().Be(2);
+        summary.ByDept.Select(x => x.DepartmentName).Should().BeEquivalentTo("研发部", "研发一组");
+    }
+
+    [Fact]
+    public async Task Department_admin_without_department_claim_sees_no_report_data()
+    {
+        var category = new AssetCategory { CodeSeg = "PC", Code = "PC", ParentId = null };
+        _db.AssetCategories.Add(category);
+        await _db.SaveChangesAsync();
+        _db.Assets.Add(new Asset { AssetNo = "PC-CLOSED-1", Name = "不可见资产", CategoryId = category.Id, Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+
+        var summary = await CreateServiceFor(new Claim(ClaimTypes.Role, "dept_admin")).GetSummaryAsync();
+
+        summary.Total.Should().Be(0);
+    }
+
+    [Fact]
     public async Task QueryOverdue_returns_only_overdue_assets()
     {
         // Arrange
@@ -169,6 +209,19 @@ public class ReportServiceTests : MySqlFixtureBase
         overdueList[0].AssetNo.Should().Be("PC-001");
         overdueList[0].Borrower.Should().Be("张三");
         overdueList[0].OverdueDays.Should().BeGreaterThan(0);
+    }
+
+    private ReportService CreateServiceFor(params Claim[] claims)
+    {
+        var identityClaims = new[] { new Claim(ClaimTypes.NameIdentifier, "999") }.Concat(claims);
+        var accessor = new HttpContextAccessor
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(identityClaims, "test"))
+            }
+        };
+        return new ReportService(_db, new NotificationService(_db), accessor);
     }
 
     [Fact]

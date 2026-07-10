@@ -15,6 +15,14 @@ public record UserDto
     public string[] RoleNames { get; init; } = Array.Empty<string>();
 }
 
+public record UserOptionDto
+{
+    public int Id { get; init; }
+    public string EmployeeNo { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string? DepartmentName { get; init; }
+}
+
 public record CreateUserRequest
 {
     public string EmployeeNo { get; init; } = "";

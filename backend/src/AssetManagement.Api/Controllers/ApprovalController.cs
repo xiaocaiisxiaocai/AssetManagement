@@ -35,12 +35,12 @@ public class ApprovalController : ControllerBase
     [HttpGet("pending-return")]
     [HasPermission("approval:confirm-return")]
     public async Task<ApiResult<List<ApprovalFlowDto>>> PendingReturn()
-        => ApiResult<List<ApprovalFlowDto>>.Ok(await _service.PendingReturnsAsync());
+        => ApiResult<List<ApprovalFlowDto>>.Ok(await _service.PendingReturnsAsync(CurrentUserId()));
 
     [HttpGet("{id:int}")]
     [HasPermission("approval:view")]
     public async Task<ApiResult<ApprovalFlowDto>> Get(int id)
-        => ApiResult<ApprovalFlowDto>.Ok(await _service.GetFlowAsync(id));
+        => ApiResult<ApprovalFlowDto>.Ok(await _service.GetFlowAsync(id, CurrentUserId()));
 
     [HttpPost("{id:int}/approve")]
     [HasPermission("approval:handle")]

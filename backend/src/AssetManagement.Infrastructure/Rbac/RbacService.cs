@@ -58,6 +58,31 @@ public class RbacService : IRbacService
         return new PagedResult<UserDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
 
+    public async Task<List<UserOptionDto>> GetActiveUserOptionsAsync(string? keyword = null)
+    {
+        var query = _db.Users.Where(x => x.IsActive);
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var value = keyword.Trim();
+            query = query.Where(x => x.EmployeeNo.Contains(value) || x.Name.Contains(value));
+        }
+
+        return await query
+            .OrderBy(x => x.EmployeeNo.Length)
+            .ThenBy(x => x.EmployeeNo)
+            .Take(200)
+            .Select(x => new UserOptionDto
+            {
+                Id = x.Id,
+                EmployeeNo = x.EmployeeNo,
+                Name = x.Name,
+                DepartmentName = x.DepartmentId.HasValue
+                    ? _db.Departments.Where(d => d.Id == x.DepartmentId.Value).Select(d => d.Name).FirstOrDefault()
+                    : null
+            })
+            .ToListAsync();
+    }
+
     public async Task<UserDto> CreateUserAsync(CreateUserRequest request, bool canAssignRole)
     {
         EnsureSingleRole(request.RoleIds);
@@ -68,6 +93,7 @@ public class RbacService : IRbacService
             ? request.Password
             : AppConstants.DefaultUserPassword;
 
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         var user = new User
         {
             EmployeeNo = employeeNo,
@@ -83,6 +109,7 @@ public class RbacService : IRbacService
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
         await RewriteUserRoles(user.Id, request.RoleIds);
+        await transaction.CommitAsync();
         return await LoadUserDto(user.Id);
     }
 
@@ -243,11 +270,13 @@ public class RbacService : IRbacService
         var name = request.Name.Trim();
         await EnsureRoleCodeAvailable(code);
         await EnsureRoleNameAvailable(name);
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         var role = new Role { Code = code, Name = name, IsActive = request.IsActive };
         _db.Roles.Add(role);
         await _db.SaveChangesAsync();
         await RewriteRolePermissions(role.Id, request.PermissionIds);
         await RewriteRoleMenus(role.Id, request.MenuIds);
+        await transaction.CommitAsync();
         return await LoadRoleDto(role.Id);
     }
 
@@ -397,8 +426,12 @@ public class RbacService : IRbacService
 
     private async Task RewriteUserRoles(int userId, IEnumerable<int> roleIds)
     {
-        _db.UserRoles.RemoveRange(_db.UserRoles.Where(x => x.UserId == userId));
         var distinctIds = roleIds.Distinct().ToArray();
+        if (await _db.Roles.CountAsync(x => distinctIds.Contains(x.Id)) != distinctIds.Length)
+        {
+            throw new BizException(4042, "角色不存在");
+        }
+        _db.UserRoles.RemoveRange(_db.UserRoles.Where(x => x.UserId == userId));
         _db.UserRoles.AddRange(distinctIds.Select(roleId => new UserRole { UserId = userId, RoleId = roleId }));
         await _db.SaveChangesAsync();
     }
@@ -582,8 +615,13 @@ public class RbacService : IRbacService
             throw new BizException(4042, "角色不存在");
         }
 
+        var distinctIds = permissionIds.Distinct().ToArray();
+        if (await _db.Permissions.CountAsync(x => distinctIds.Contains(x.Id)) != distinctIds.Length)
+        {
+            throw new BizException(4043, "权限不存在");
+        }
         _db.RolePermissions.RemoveRange(_db.RolePermissions.Where(x => x.RoleId == roleId));
-        _db.RolePermissions.AddRange(permissionIds.Distinct().Select(id => new RolePermission
+        _db.RolePermissions.AddRange(distinctIds.Select(id => new RolePermission
         {
             RoleId = roleId,
             PermissionId = id
@@ -598,8 +636,13 @@ public class RbacService : IRbacService
             throw new BizException(4042, "角色不存在");
         }
 
+        var distinctIds = menuIds.Distinct().ToArray();
+        if (await _db.Menus.CountAsync(x => distinctIds.Contains(x.Id)) != distinctIds.Length)
+        {
+            throw new BizException(4044, "菜单不存在");
+        }
         _db.RoleMenus.RemoveRange(_db.RoleMenus.Where(x => x.RoleId == roleId));
-        _db.RoleMenus.AddRange(menuIds.Distinct().Select(id => new RoleMenu
+        _db.RoleMenus.AddRange(distinctIds.Select(id => new RoleMenu
         {
             RoleId = roleId,
             MenuId = id

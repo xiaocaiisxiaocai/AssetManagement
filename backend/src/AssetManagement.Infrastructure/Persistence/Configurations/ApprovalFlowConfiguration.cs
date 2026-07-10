@@ -26,10 +26,12 @@ public class ApprovalFlowConfiguration : IEntityTypeConfiguration<ApprovalFlow>
         b.Property(x => x.Reason).HasMaxLength(500);
         b.Property(x => x.ReturnDate).HasMaxLength(50);
         b.Property(x => x.Status).HasMaxLength(50).IsRequired();
+        b.Property(x => x.ActiveScopeKey).HasMaxLength(100);
         b.HasIndex(x => x.FlowNo).IsUnique();
         b.HasIndex(x => x.AssetId);
         b.HasIndex(x => x.ApplicantId);
         b.HasIndex(x => x.Status);
+        b.HasIndex(x => x.ActiveScopeKey).IsUnique();
         b.Property(x => x.RowVersion).IsConcurrencyToken();
 
         // BPMN 当前活跃节点列表（JSON 序列化）
@@ -59,6 +61,10 @@ public class ApprovalFlowConfiguration : IEntityTypeConfiguration<ApprovalFlow>
             .HasConversion(
                 v => v == null ? null : JsonSerializer.Serialize(v, JsonOptions),
                 v => v == null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(v, JsonOptions))
-            .HasColumnType("TEXT");
+            .HasColumnType("TEXT")
+            .Metadata.SetValueComparer(new ValueComparer<Dictionary<string, string>?>(
+                (l, r) => JsonSerializer.Serialize(l, JsonOptions) == JsonSerializer.Serialize(r, JsonOptions),
+                v => JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
+                v => v == null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions)));
     }
 }

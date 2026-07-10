@@ -22,7 +22,7 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
     public async Task Upload_image_then_fetch_returns_same_bytes()
     {
         await Login();
-        var bytes = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4 };
 
         var url = await UploadImage(bytes, "photo.png", "image/png");
 
@@ -45,6 +45,22 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
         var body = await res.Content.ReadFromJsonAsync<ApiResult<JsonElement>>();
 
         body!.Code.Should().NotBe(0);
+    }
+
+    [Fact]
+    public async Task Upload_rejects_spoofed_image_extension()
+    {
+        await Login();
+        using var form = new MultipartFormDataContent();
+        var content = new ByteArrayContent("not a png"u8.ToArray());
+        content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        form.Add(content, "file", "spoofed.png");
+
+        var res = await _client.PostAsync("/api/files/upload", form);
+        var body = await res.Content.ReadFromJsonAsync<ApiResult<JsonElement>>();
+
+        body!.Code.Should().Be(4150);
+        body.Message.Should().Contain("内容");
     }
 
     [Fact]

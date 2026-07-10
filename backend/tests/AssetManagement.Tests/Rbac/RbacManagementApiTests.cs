@@ -41,6 +41,70 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task User_options_returns_only_minimal_fields_for_active_users()
+    {
+        await Login();
+        var employeeNo = Unique("option");
+        var roleId = await CreateRoleId();
+        var created = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "选项用户",
+            Email = "private@example.local",
+            Phone = "13800000000",
+            RoleIds = new[] { roleId }
+        });
+
+        var options = await _client.GetFromJsonAsync<ApiResult<List<UserOptionDto>>>($"/api/users/options?keyword={employeeNo}");
+
+        options!.Data.Should().ContainSingle(x => x.Id == created.Data!.Id && x.EmployeeNo == employeeNo && x.Name == "选项用户");
+        typeof(UserOptionDto).GetProperties().Select(x => x.Name)
+            .Should().BeEquivalentTo("Id", "EmployeeNo", "Name", "DepartmentName");
+
+        await Post<ApiResult<object?>>($"/api/users/{created.Data!.Id}/toggle-status", new SetUserStatusRequest { IsActive = false });
+        var afterDisable = await _client.GetFromJsonAsync<ApiResult<List<UserOptionDto>>>($"/api/users/options?keyword={employeeNo}");
+        afterDisable!.Data.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Create_user_with_invalid_role_rolls_back_user_row()
+    {
+        await Login();
+        var employeeNo = Unique("rollback");
+
+        var response = await _client.PostAsJsonAsync("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "事务回滚用户",
+            RoleIds = new[] { int.MaxValue }
+        });
+
+        var error = await response.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        error!.Code.Should().Be(4042);
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={employeeNo}");
+        list!.Data!.Items.Should().BeEmpty("角色关联失败时用户主记录也必须回滚");
+    }
+
+    [Fact]
+    public async Task Create_role_with_invalid_permission_rolls_back_role_row()
+    {
+        await Login();
+        var code = Unique("rollback-role");
+
+        var response = await _client.PostAsJsonAsync("/api/roles", new RoleDto
+        {
+            Code = code,
+            Name = Unique("事务回滚角色"),
+            PermissionIds = new[] { int.MaxValue }
+        });
+
+        var error = await response.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        error!.Code.Should().Be(4043);
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?page=1&pageSize=200");
+        roles!.Data!.Items.Should().NotContain(x => x.Code == code, "权限关联失败时角色主记录也必须回滚");
+    }
+
+    [Fact]
     public async Task User_list_returns_role_names()
     {
         await Login();

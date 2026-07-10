@@ -1,6 +1,7 @@
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Infrastructure.Auth;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AssetManagement.Api.Controllers;
@@ -21,6 +22,11 @@ public class DepartmentController : ControllerBase
     public async Task<ApiResult<List<DepartmentNodeDto>>> Tree()
         => ApiResult<List<DepartmentNodeDto>>.Ok(await _service.GetDepartmentTreeAsync());
 
+    [HttpGet("options")]
+    [Authorize]
+    public async Task<ApiResult<List<DepartmentOptionDto>>> Options()
+        => ApiResult<List<DepartmentOptionDto>>.Ok(ToOptions(await _service.GetDepartmentTreeAsync()));
+
     [HttpPost]
     [HasPermission("department:create")]
     public async Task<ApiResult<DepartmentNodeDto>> Create(CreateDepartmentRequest request)
@@ -38,4 +44,13 @@ public class DepartmentController : ControllerBase
         await _service.DeleteDepartmentAsync(id);
         return ApiResult.Ok();
     }
+
+    private static List<DepartmentOptionDto> ToOptions(IEnumerable<DepartmentNodeDto> departments)
+        => departments.Select(x => new DepartmentOptionDto
+        {
+            Id = x.Id,
+            Name = x.Name,
+            IsActive = x.IsActive,
+            Children = ToOptions(x.Children)
+        }).ToList();
 }
