@@ -14,7 +14,7 @@ import type {
   TestProjectItem,
   TestProjectOption,
 } from '#/api/test-project';
-import type { UserDto, UserOptionDto } from '#/api/user';
+import type { UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -137,7 +137,7 @@ const projectFilter = reactive<ProjectFilter>({
 });
 
 const options = ref<TestProjectOption[]>([]);
-const users = ref<(UserDto | UserOptionDto)[]>([]);
+const users = ref<UserOptionDto[]>([]);
 const departments = ref<DepartmentOptionNode[]>([]);
 const locations = ref<LocationNode[]>([]);
 
@@ -336,16 +336,17 @@ async function loadOptions() {
 }
 
 async function loadUsers() {
-  if (hasAccessByCodes(['user:view'])) {
-    const result = await getUserListApi('', 1, 500);
-    users.value = result.items.filter((user) => user.isActive);
-    return;
-  }
+  if (users.value.length > 0) return;
   if (
     hasAccessByCodes(['approval:create']) ||
     hasAccessByCodes(['material-flow:transfer'])
   ) {
     users.value = await getUserOptionsApi();
+    return;
+  }
+  if (hasAccessByCodes(['user:view'])) {
+    const result = await getUserListApi('', 1, 500);
+    users.value = result.items.filter((user) => user.isActive);
   }
 }
 

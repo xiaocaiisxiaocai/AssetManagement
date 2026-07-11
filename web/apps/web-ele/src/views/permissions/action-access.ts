@@ -86,3 +86,9 @@ export function buildReportActionAccess(hasAccess: HasAccess) {
     canRemind: hasAccess(['report:remind']),
   };
 }
+
+export function buildApprovalActionAccess(hasAccess: HasAccess) {
+  return {
+    canCreate: hasAccess(['approval:create']),
+  };
+}

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { DepartmentNode, DepartmentPayload } from '#/api/base-data';
-import type { UserDto } from '#/api/user';
+import type { UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
@@ -12,7 +12,7 @@ import {
   getDepartmentTreeApi,
   updateDepartmentApi,
 } from '#/api/base-data';
-import { getUserListApi } from '#/api/user';
+import { getUserListApi, getUserOptionsApi } from '#/api/user';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { buildDepartmentActionAccess } from '#/views/permissions/action-access';
 
@@ -42,7 +42,7 @@ const saving = ref(false);
 const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const departments = ref<DepartmentNode[]>([]);
-const userOptions = ref<UserDto[]>([]);
+const userOptions = ref<UserOptionDto[]>([]);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const page = ref(1);
 const pageSize = ref(20);
@@ -63,6 +63,13 @@ const pagedDepartments = computed(() => {
 });
 
 async function loadUsers() {
+  if (
+    hasAccessByCodes(['approval:create']) ||
+    hasAccessByCodes(['material-flow:transfer'])
+  ) {
+    userOptions.value = await getUserOptionsApi();
+    return;
+  }
   const result = await getUserListApi('', 1, 500);
   userOptions.value = result.items.filter((user) => user.isActive);
 }

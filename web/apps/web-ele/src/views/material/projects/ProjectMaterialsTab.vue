@@ -87,6 +87,7 @@ function rowClassName({ row }: { row: MaterialItem }) {
     <div class="material-filter">
       <ElInput
         v-model="query.materialNo"
+        aria-label="料件编号"
         clearable
         placeholder="料件编号"
         style="width: 150px"
@@ -94,6 +95,7 @@ function rowClassName({ row }: { row: MaterialItem }) {
       />
       <ElInput
         v-model="query.name"
+        aria-label="料件名称"
         clearable
         placeholder="料件名称"
         style="width: 160px"
@@ -101,6 +103,7 @@ function rowClassName({ row }: { row: MaterialItem }) {
       />
       <ElSelect
         v-model="query.status"
+        aria-label="料件状态"
         clearable
         placeholder="状态"
         style="width: 120px"
@@ -114,6 +117,7 @@ function rowClassName({ row }: { row: MaterialItem }) {
       </ElSelect>
       <ElSelect
         v-model="query.deleteStatus"
+        aria-label="料件删除状态"
         placeholder="删除状态"
         style="width: 120px"
         @change="emit('search')"
@@ -283,6 +287,7 @@ function rowClassName({ row }: { row: MaterialItem }) {
           ><span class="table-bottom-pager-divider">|</span><span>每页</span
           ><ElSelect
             v-model="query.pageSize"
+            aria-label="料件列表每页条数"
             style="width: 92px"
             @change="emit('pageSizeChange')"
             ><ElOption

@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { AssetDetail, AssetItem, AssetQuery, AssetStatus } from '#/api/asset';
 import type { CategoryNode, DepartmentNode, DepartmentOptionNode, LocationNode } from '#/api/base-data';
-import type { UserDto, UserOptionDto } from '#/api/user';
+import type { UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -90,7 +90,7 @@ const hierarchyKeyword = ref('');
 const categories = ref<CategoryNode[]>([]);
 const departments = ref<(DepartmentNode | DepartmentOptionNode)[]>([]);
 const locations = ref<LocationNode[]>([]);
-const users = ref<(UserDto | UserOptionDto)[]>([]);
+const users = ref<UserOptionDto[]>([]);
 const currentAssetForAction = ref<AssetItem | null>(null);
 const detailVisible = ref(false);
 const detailLoading = ref(false);
@@ -156,10 +156,10 @@ async function loadDictionaries() {
         ? getDepartmentOptionsApi()
         : Promise.resolve([]),
     hasAccessByCodes(['location:view']) ? getLocationTreeApi() : Promise.resolve([]),
-    hasAccessByCodes(['user:view'])
-      ? getUserListApi('', 1, 500).then((result) => result.items)
-      : hasAccessByCodes(['approval:create'])
-        ? getUserOptionsApi()
+    hasAccessByCodes(['approval:create'])
+      ? getUserOptionsApi()
+      : hasAccessByCodes(['user:view'])
+        ? getUserListApi('', 1, 500).then((result) => result.items)
         : Promise.resolve([]),
   ]);
   if (requests[0].status === 'fulfilled') categories.value = requests[0].value;
@@ -586,7 +586,7 @@ watch(
             </ElButton>
             <template v-if="showAssetTable">
               <ElButton v-if="assetRowActionAccess.canImport" @click="openImport">批量导入</ElButton>
-              <ElButton v-if="assetRowActionAccess.canExport" @click="exportAssets">导出Excel</ElButton>
+              <ElButton v-if="assetRowActionAccess.canExport" @click="exportAssets">导出 Excel</ElButton>
             </template>
             <ElButton
               v-if="showAssetTable && assetRowActionAccess.canCreate"

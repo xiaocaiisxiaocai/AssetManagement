@@ -319,12 +319,46 @@ async function handleZoomReset() {
   canvas.zoom('fit-viewport');
 }
 
+function createShape(type: string) {
+  const elementFactory = modeler.value.get('elementFactory');
+  return elementFactory.createShape({ type });
+}
+
+function addShapeToCanvas(type: string) {
+  if (!modeler.value) return;
+
+  const canvas = modeler.value.get('canvas');
+  const modeling = modeler.value.get('modeling');
+  const selection = modeler.value.get('selection');
+  const rootElement = canvas.getRootElement();
+  const viewbox = canvas.viewbox();
+  const childCount = rootElement.children?.length ?? 0;
+  const stagger = (childCount % 5) * 24;
+  const shape = createShape(type);
+  const createdShape = modeling.createShape(
+    shape,
+    {
+      x: viewbox.x + viewbox.width / 2 + stagger,
+      y: viewbox.y + viewbox.height / 2 + stagger,
+    },
+    rootElement,
+  );
+
+  selection.select(createdShape);
+  canvas.scrollToElement(createdShape);
+}
+
 function startCreateShape(event: DragEvent | MouseEvent, type: string) {
   if (!modeler.value) return;
-  const elementFactory = modeler.value.get('elementFactory');
   const create = modeler.value.get('create');
-  const shape = elementFactory.createShape({ type });
-  create.start(event, shape);
+  create.start(event, createShape(type));
+}
+
+function handleNodeCardKeydown(event: KeyboardEvent, type: string) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+
+  event.preventDefault();
+  addShapeToCanvas(type);
 }
 
 onMounted(() => {
@@ -375,7 +409,11 @@ onUnmounted(() => {
         <div
           class="node-card node-start"
           draggable="true"
+          role="button"
+          tabindex="0"
+          aria-label="添加发起节点到画布"
           @dragstart="startCreateShape($event, 'bpmn:StartEvent')"
+          @keydown="handleNodeCardKeydown($event, 'bpmn:StartEvent')"
         >
           <span class="node-icon bpmn-icon-start-event-none"></span>
           <div>
@@ -386,7 +424,11 @@ onUnmounted(() => {
         <div
           class="node-card node-approval"
           draggable="true"
+          role="button"
+          tabindex="0"
+          aria-label="添加审批节点到画布"
           @dragstart="startCreateShape($event, 'bpmn:UserTask')"
+          @keydown="handleNodeCardKeydown($event, 'bpmn:UserTask')"
         >
           <span class="node-icon bpmn-icon-user-task"></span>
           <div>
@@ -397,7 +439,11 @@ onUnmounted(() => {
         <div
           class="node-card node-gateway"
           draggable="true"
+          role="button"
+          tabindex="0"
+          aria-label="添加条件分支到画布"
           @dragstart="startCreateShape($event, 'bpmn:ExclusiveGateway')"
+          @keydown="handleNodeCardKeydown($event, 'bpmn:ExclusiveGateway')"
         >
           <span class="node-icon bpmn-icon-gateway-xor"></span>
           <div>
@@ -408,7 +454,11 @@ onUnmounted(() => {
         <div
           class="node-card node-parallel"
           draggable="true"
+          role="button"
+          tabindex="0"
+          aria-label="添加并行审批到画布"
           @dragstart="startCreateShape($event, 'bpmn:ParallelGateway')"
+          @keydown="handleNodeCardKeydown($event, 'bpmn:ParallelGateway')"
         >
           <span class="node-icon bpmn-icon-gateway-parallel"></span>
           <div>
@@ -419,7 +469,11 @@ onUnmounted(() => {
         <div
           class="node-card node-gateway"
           draggable="true"
+          role="button"
+          tabindex="0"
+          aria-label="添加包容分支到画布"
           @dragstart="startCreateShape($event, 'bpmn:InclusiveGateway')"
+          @keydown="handleNodeCardKeydown($event, 'bpmn:InclusiveGateway')"
         >
           <span class="node-icon bpmn-icon-gateway-or"></span>
           <div>
@@ -430,7 +484,11 @@ onUnmounted(() => {
         <div
           class="node-card node-approval"
           draggable="true"
+          role="button"
+          tabindex="0"
+          aria-label="添加自动任务到画布"
           @dragstart="startCreateShape($event, 'bpmn:ServiceTask')"
+          @keydown="handleNodeCardKeydown($event, 'bpmn:ServiceTask')"
         >
           <span class="node-icon bpmn-icon-service-task"></span>
           <div>
@@ -441,7 +499,11 @@ onUnmounted(() => {
         <div
           class="node-card node-end"
           draggable="true"
+          role="button"
+          tabindex="0"
+          aria-label="添加结束节点到画布"
           @dragstart="startCreateShape($event, 'bpmn:EndEvent')"
+          @keydown="handleNodeCardKeydown($event, 'bpmn:EndEvent')"
         >
           <span class="node-icon bpmn-icon-end-event-none"></span>
           <div>
@@ -451,7 +513,8 @@ onUnmounted(() => {
         </div>
 
         <div class="sidebar-note">
-          从这里拖拽组件到画布，也可以使用画布左上角的标准工具栏。
+          从这里拖拽组件到画布，或聚焦后按
+          Enter/空格直接添加，也可以使用画布左上角的标准工具栏。
         </div>
       </aside>
 
@@ -604,6 +667,24 @@ onUnmounted(() => {
   border: 1px solid var(--workflow-border-soft);
   border-left: 3px solid #2f72d0;
   border-radius: 4px;
+  cursor: grab;
+  user-select: none;
+}
+
+.bpmn-modeler-wrapper .node-card:hover,
+.bpmn-modeler-wrapper .node-card:focus-visible {
+  background: var(--workflow-card-icon-bg);
+  border-color: var(--workflow-primary);
+  outline: none;
+}
+
+.bpmn-modeler-wrapper .node-card:focus-visible {
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--workflow-primary) 24%, transparent);
+}
+
+.bpmn-modeler-wrapper .node-card:active {
+  cursor: grabbing;
 }
 
 .bpmn-modeler-wrapper .node-card strong {

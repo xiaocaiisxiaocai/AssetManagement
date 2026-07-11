@@ -1,12 +1,15 @@
 <script lang="ts" setup>
 import type { RoleDto } from '#/api/role';
-import type { UserDto } from '#/api/user';
+import type { UserOptionDto } from '#/api/user';
 import type { DepartmentNode } from '#/api/base-data';
 
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+
+import { useAccess } from '@vben/access';
+
 import { getDepartmentTreeApi } from '#/api/base-data';
 import { getRoleListApi } from '#/api/role';
-import { getUserListApi } from '#/api/user';
+import { getUserListApi, getUserOptionsApi } from '#/api/user';
 import {
   ElForm,
   ElFormItem,
@@ -25,6 +28,7 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const { hasAccessByCodes } = useAccess();
 
 const elementType = ref('');
 const elementName = ref('');
@@ -34,7 +38,7 @@ const elementId = ref('');
 const assigneeType = ref('');
 const assigneeValue = ref<string | string[]>('');
 const approvalMode = ref<'all' | 'any'>('any');
-const userOptions = ref<UserDto[]>([]);
+const userOptions = ref<UserOptionDto[]>([]);
 const roleOptions = ref<RoleDto[]>([]);
 const departmentOptions = ref<{ label: string; value: string }[]>([]);
 
@@ -74,17 +78,24 @@ const conditionFields = [
   { label: '是否项目负责人', value: 'isProjectOwner' },
 ];
 const conditionOperators = computed(() => [{ label: '等于', value: '==' }]);
-const conditionValueOptions = computed(() => getConditionValueOptions(conditionField.value));
+const conditionValueOptions = computed(() =>
+  getConditionValueOptions(conditionField.value),
+);
 
 // 判断元素类型
 const isUserTask = computed(() => elementType.value === 'bpmn:UserTask');
-const isSequenceFlow = computed(() => elementType.value === 'bpmn:SequenceFlow');
-const isGateway = computed(() =>
-  elementType.value === 'bpmn:ExclusiveGateway' ||
-  elementType.value === 'bpmn:ParallelGateway' ||
-  elementType.value === 'bpmn:InclusiveGateway'
+const isSequenceFlow = computed(
+  () => elementType.value === 'bpmn:SequenceFlow',
 );
-const isExclusiveGateway = computed(() => elementType.value === 'bpmn:ExclusiveGateway');
+const isGateway = computed(
+  () =>
+    elementType.value === 'bpmn:ExclusiveGateway' ||
+    elementType.value === 'bpmn:ParallelGateway' ||
+    elementType.value === 'bpmn:InclusiveGateway',
+);
+const isExclusiveGateway = computed(
+  () => elementType.value === 'bpmn:ExclusiveGateway',
+);
 const assigneeValueOptions = computed(() => {
   if (assigneeType.value === 'username') {
     return userOptions.value.map((user) => ({
@@ -110,21 +121,29 @@ const assigneeValueOptions = computed(() => {
   return [];
 });
 const assigneeValuePlaceholder = computed(() =>
-  assigneeType.value === 'roleName' ? '选择角色' : '选择审批人员'
+  assigneeType.value === 'roleName' ? '选择角色' : '选择审批人员',
 );
 
 async function loadAssigneeOptions() {
   const [users, roles, departments] = await Promise.all([
-    getUserListApi('', 1, 200),
+    hasAccessByCodes(['approval:create']) ||
+    hasAccessByCodes(['material-flow:transfer'])
+      ? getUserOptionsApi()
+      : getUserListApi('', 1, 200).then((result) =>
+          result.items.filter((user) => user.isActive),
+        ),
     getRoleListApi('', 1, 200),
     getDepartmentTreeApi(),
   ]);
-  userOptions.value = users.items.filter((user) => user.isActive);
+  userOptions.value = users;
   roleOptions.value = roles.items.filter((role) => role.isActive);
   departmentOptions.value = flattenDepartments(departments);
 }
 
-function flattenDepartments(nodes: DepartmentNode[], level = 0): { label: string; value: string }[] {
+function flattenDepartments(
+  nodes: DepartmentNode[],
+  level = 0,
+): { label: string; value: string }[] {
   return nodes
     .filter((node) => node.isActive)
     .flatMap((node) => [
@@ -165,7 +184,8 @@ function loadElement() {
     const assignee = businessObject.get('camunda:assignee');
     const candidateUsers = businessObject.get('camunda:candidateUsers');
     const candidateGroups = businessObject.get('camunda:candidateGroups');
-    approvalMode.value = businessObject.get('camunda:approvalMode') === 'all' ? 'all' : 'any';
+    approvalMode.value =
+      businessObject.get('camunda:approvalMode') === 'all' ? 'all' : 'any';
     if (assignee) {
       // 解析审批人类型
       if (assignee === 'supervisor') {
@@ -224,7 +244,9 @@ function loadElement() {
 }
 
 function parseCondition(expression: string): ParsedCondition {
-  const stringMatch = expression.match(/^\$\{(applicantDept|applicantRole|isProjectOwner)\}\s*(==|!=)\s*["'](.+)["']$/);
+  const stringMatch = expression.match(
+    /^\$\{(applicantDept|applicantRole|isProjectOwner)\}\s*(==|!=)\s*["'](.+)["']$/,
+  );
   if (stringMatch) {
     return {
       expression,
@@ -256,7 +278,11 @@ function buildExpression(value: string) {
   return `\${${conditionField.value}} ${conditionOperator.value} "${trimmed}"`;
 }
 
-function buildExpressionByField(field: string, operator: string, value: string) {
+function buildExpressionByField(
+  field: string,
+  operator: string,
+  value: string,
+) {
   if (!value.trim()) return '';
 
   const trimmed = value.trim();
@@ -273,7 +299,8 @@ function loadGatewayConditions(): GatewayCondition[] {
     const businessObject = flow.businessObject;
     const expression = businessObject.conditionExpression?.body || '';
     const parsed = parseCondition(expression);
-    const targetName = flow.target?.businessObject?.name || flow.target?.id || '未连接节点';
+    const targetName =
+      flow.target?.businessObject?.name || flow.target?.id || '未连接节点';
     return {
       ...parsed,
       flow,
@@ -287,7 +314,11 @@ function loadGatewayConditions(): GatewayCondition[] {
 function updateGatewayCondition(item: GatewayCondition) {
   if (isLoadingElement.value || !props.modeler) return;
 
-  item.expression = buildExpressionByField(item.field, item.operator, item.value);
+  item.expression = buildExpressionByField(
+    item.field,
+    item.operator,
+    item.value,
+  );
 
   const modeling = props.modeler.get('modeling');
   const moddle = props.modeler.get('moddle');
@@ -364,38 +395,53 @@ function updateElement() {
     let candidateUsersVal = '';
     let candidateGroupsVal = '';
 
-    if (assigneeType.value === 'supervisor' || assigneeType.value === 'deptManager') {
+    if (
+      assigneeType.value === 'supervisor' ||
+      assigneeType.value === 'deptManager'
+    ) {
       assigneeVal = assigneeType.value;
     } else if (assigneeType.value === 'username') {
-      assigneeVal = typeof assigneeValue.value === 'string' ? assigneeValue.value : '';
+      assigneeVal =
+        typeof assigneeValue.value === 'string' ? assigneeValue.value : '';
     } else if (assigneeType.value === 'usernames') {
       candidateUsersVal = Array.isArray(assigneeValue.value)
         ? assigneeValue.value.join(',')
         : assigneeValue.value;
     } else if (assigneeType.value === 'roleName') {
-      candidateGroupsVal = typeof assigneeValue.value === 'string' ? assigneeValue.value : '';
+      candidateGroupsVal =
+        typeof assigneeValue.value === 'string' ? assigneeValue.value : '';
     }
 
     if ((businessObject.get('camunda:assignee') || '') !== assigneeVal) {
       updates['camunda:assignee'] = assigneeVal || undefined;
     }
 
-    if ((businessObject.get('camunda:candidateUsers') || '') !== candidateUsersVal) {
+    if (
+      (businessObject.get('camunda:candidateUsers') || '') !== candidateUsersVal
+    ) {
       updates['camunda:candidateUsers'] = candidateUsersVal || undefined;
     }
 
-    if ((businessObject.get('camunda:candidateGroups') || '') !== candidateGroupsVal) {
+    if (
+      (businessObject.get('camunda:candidateGroups') || '') !==
+      candidateGroupsVal
+    ) {
       updates['camunda:candidateGroups'] = candidateGroupsVal || undefined;
     }
 
     const approvalModeVal = approvalMode.value === 'all' ? 'all' : '';
-    if ((businessObject.get('camunda:approvalMode') || '') !== approvalModeVal) {
+    if (
+      (businessObject.get('camunda:approvalMode') || '') !== approvalModeVal
+    ) {
       updates['camunda:approvalMode'] = approvalModeVal || undefined;
     }
   }
 
   // 更新条件表达式（SequenceFlow）
-  if (isSequenceFlow.value && businessObject.conditionExpression?.body !== conditionExpression.value) {
+  if (
+    isSequenceFlow.value &&
+    businessObject.conditionExpression?.body !== conditionExpression.value
+  ) {
     if (conditionExpression.value.trim()) {
       const moddle = props.modeler.get('moddle');
       const conditionExpr = moddle.create('bpmn:FormalExpression', {
@@ -417,7 +463,10 @@ function updateElement() {
 watch(() => props.element, loadElement, { immediate: true });
 
 // 监听属性变化，实时更新
-watch([elementName, assigneeType, assigneeValue, approvalMode, conditionExpression], updateElement);
+watch(
+  [elementName, assigneeType, assigneeValue, approvalMode, conditionExpression],
+  updateElement,
+);
 
 watch(assigneeType, (newType, oldType) => {
   if (isLoadingElement.value || newType === oldType) return;
@@ -455,7 +504,9 @@ onMounted(() => {
     <div v-if="!element" class="empty-state">
       <div class="empty-box">
         <div class="empty-title">未选择元素</div>
-        <div class="empty-desc">点击画布上的节点或连线后，在这里配置名称、审批人和分支条件。</div>
+        <div class="empty-desc">
+          点击画布上的节点或连线后，在这里配置名称、审批人和分支条件。
+        </div>
       </div>
     </div>
 
@@ -465,7 +516,9 @@ onMounted(() => {
           <div class="section-title">基础信息</div>
 
           <ElFormItem label="节点类型">
-            <div class="readonly-field">{{ elementTypeLabel(elementType) }}</div>
+            <div class="readonly-field">
+              {{ elementTypeLabel(elementType) }}
+            </div>
           </ElFormItem>
 
           <ElFormItem label="技术标识">
@@ -483,7 +536,11 @@ onMounted(() => {
             <div class="section-title">审批设置</div>
 
             <ElFormItem label="审批人来源">
-              <ElSelect v-model="assigneeType" placeholder="选择审批人来源" style="width: 100%">
+              <ElSelect
+                v-model="assigneeType"
+                placeholder="选择审批人来源"
+                style="width: 100%"
+              >
                 <ElOption
                   v-for="item in assigneeTypes"
                   :key="item.value"
@@ -494,12 +551,16 @@ onMounted(() => {
             </ElFormItem>
 
             <ElFormItem
-              v-if="assigneeType === 'username' || assigneeType === 'usernames' || assigneeType === 'roleName'"
+              v-if="
+                assigneeType === 'username' ||
+                assigneeType === 'usernames' ||
+                assigneeType === 'roleName'
+              "
               :label="assigneeType === 'roleName' ? '审批角色' : '审批人员'"
             >
               <ElSelect
                 v-model="assigneeValue"
-              clearable
+                clearable
                 filterable
                 :multiple="assigneeType === 'usernames'"
                 collapse-tags
@@ -519,18 +580,31 @@ onMounted(() => {
             <ElFormItem label="通过规则">
               <ElRadioGroup v-model="approvalMode" size="small">
                 <ElRadioButton value="any">任一人通过</ElRadioButton>
-                <ElRadioButton :disabled="assigneeType !== 'usernames'" value="all">
+                <ElRadioButton
+                  :disabled="assigneeType !== 'usernames'"
+                  value="all"
+                >
                   全部人通过
                 </ElRadioButton>
               </ElRadioGroup>
             </ElFormItem>
 
             <div class="tip-box">
-              <div v-if="assigneeType === 'supervisor'">自动解析申请人所属组织节点负责人，未配置时兼容历史直属上级。</div>
-              <div v-else-if="assigneeType === 'deptManager'">自动解析申请人所在部门的管理员。</div>
-              <div v-else-if="assigneeType === 'username'">指定一名固定审批人。</div>
-              <div v-else-if="assigneeType === 'usernames'">可选择多人；“全部人通过”表示会签。</div>
-              <div v-else-if="assigneeType === 'roleName'">按唯一角色编码匹配审批人。</div>
+              <div v-if="assigneeType === 'supervisor'">
+                自动解析申请人所属组织节点负责人，未配置时兼容历史直属上级。
+              </div>
+              <div v-else-if="assigneeType === 'deptManager'">
+                自动解析申请人所在部门的管理员。
+              </div>
+              <div v-else-if="assigneeType === 'username'">
+                指定一名固定审批人。
+              </div>
+              <div v-else-if="assigneeType === 'usernames'">
+                可选择多人；“全部人通过”表示会签。
+              </div>
+              <div v-else-if="assigneeType === 'roleName'">
+                按唯一角色编码匹配审批人。
+              </div>
               <div v-else>请选择审批人来源。</div>
             </div>
           </section>
@@ -782,7 +856,7 @@ onMounted(() => {
   width: 3px;
   height: 14px;
   margin-right: 6px;
-  content: "";
+  content: '';
   background: var(--workflow-primary, var(--el-color-primary));
   border-radius: 2px;
 }
@@ -798,7 +872,7 @@ onMounted(() => {
 }
 
 .code-field {
-  font-family: Consolas, "Microsoft YaHei", monospace;
+  font-family: Consolas, 'Microsoft YaHei', monospace;
   font-size: 12px;
 }
 

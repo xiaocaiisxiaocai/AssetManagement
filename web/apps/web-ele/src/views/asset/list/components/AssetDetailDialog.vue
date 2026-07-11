@@ -223,6 +223,7 @@ function summaryText(summary: null | string | undefined) {
             <ElImage
               v-for="(url, i) in imageUrls"
               :key="i"
+              :alt="`${detail.asset.name}资产照片 ${i + 1}`"
               :initial-index="i"
               :preview-src-list="imageUrls"
               :src="url"

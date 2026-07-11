@@ -11,6 +11,7 @@ import { getUserOptionsApi } from '#/api/user';
 import { listMyFlowsApi } from '#/api/material';
 import { getMineApprovalsApi, startApprovalApi } from '#/api/workflow';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { buildApprovalActionAccess } from '#/views/permissions/action-access';
 import { mergeApprovalWorkItems } from '../approval-work-items';
 
 import {
@@ -32,6 +33,7 @@ import {
 defineOptions({ name: 'ApprovalMine' });
 
 const { hasAccessByCodes } = useAccess();
+const approvalActionAccess = computed(() => buildApprovalActionAccess(hasAccessByCodes));
 const canViewMaterialFlow = computed(() => hasAccessByCodes(['material-flow:view']));
 const loading = ref(false);
 const saving = ref(false);
@@ -157,7 +159,7 @@ onMounted(async () => {
         <div>
           <h2 class="mine-title">我的申请</h2>
         </div>
-        <div class="mine-actions">
+        <div v-if="approvalActionAccess.canCreate" class="mine-actions">
           <ElButton type="success" @click="openStart('borrow')">发起借用</ElButton>
           <ElButton type="warning" @click="openStart('transfer')">发起转让</ElButton>
           <ElButton @click="openStart('return')">发起归还</ElButton>

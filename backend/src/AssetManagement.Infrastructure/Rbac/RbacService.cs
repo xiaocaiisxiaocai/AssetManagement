@@ -70,7 +70,8 @@ public class RbacService : IRbacService
         return await query
             .OrderBy(x => x.EmployeeNo.Length)
             .ThenBy(x => x.EmployeeNo)
-            .Take(200)
+            // 与现有人员选择器的容量保持一致，同时仍只投影轻量字段。
+            .Take(500)
             .Select(x => new UserOptionDto
             {
                 Id = x.Id,

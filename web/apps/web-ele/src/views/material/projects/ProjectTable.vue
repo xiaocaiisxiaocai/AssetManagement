@@ -85,6 +85,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
     <div class="project-toolbar-left">
       <ElInput
         v-model="filter.code"
+        aria-label="项目编号"
         clearable
         placeholder="项目编号"
         style="width: 150px"
@@ -92,6 +93,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       />
       <ElInput
         v-model="filter.name"
+        aria-label="项目名称"
         clearable
         placeholder="项目名称"
         style="width: 180px"
@@ -99,6 +101,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       />
       <ElSelect
         v-model="filter.projectTypeCode"
+        aria-label="项目类型"
         clearable
         placeholder="项目类型"
         style="width: 130px"
@@ -112,6 +115,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       </ElSelect>
       <ElSelect
         v-model="filter.ownerId"
+        aria-label="负责人"
         clearable
         filterable
         placeholder="负责人"
@@ -126,6 +130,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       </ElSelect>
       <ElSelect
         v-model="filter.progressCode"
+        aria-label="项目进度"
         clearable
         placeholder="进度"
         style="width: 130px"
@@ -139,6 +144,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       </ElSelect>
       <ElSelect
         v-model="deleteStatus"
+        aria-label="项目删除状态"
         placeholder="删除状态"
         style="width: 130px"
         @change="emit('statusChange')"
@@ -289,6 +295,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
         ><span class="table-bottom-pager-divider">|</span><span>每页</span>
         <ElSelect
           v-model="query.pageSize"
+          aria-label="项目列表每页条数"
           style="width: 92px"
           @change="emit('pageSizeChange')"
         >

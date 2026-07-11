@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildApprovalActionAccess,
   buildCategoryActionAccess,
   buildLocationActionAccess,
   buildMaterialActionAccess,
@@ -15,6 +16,11 @@ function has(codes: string[]) {
 }
 
 describe('页面操作权限映射', () => {
+  it('我的申请发起操作使用 approval:create', () => {
+    expect(buildApprovalActionAccess(has(['approval:create'])).canCreate).toBe(true);
+    expect(buildApprovalActionAccess(has(['approval:view'])).canCreate).toBe(false);
+  });
+
   it('资产分类使用 category 权限码而不是 asset 权限码', () => {
     const access = buildCategoryActionAccess(has(['category:delete', 'asset:purge']));
 

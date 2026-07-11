@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { MenuRecordRaw } from '@vben/types';
 
-import { nextTick, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { SearchX, X } from '@vben/icons';
@@ -33,6 +33,21 @@ const searchHistory = useLocalStorage<MenuRecordRaw[]>(
 const activeIndex = ref(-1);
 const searchItems = shallowRef<MenuRecordRaw[]>([]);
 const searchResults = ref<MenuRecordRaw[]>([]);
+
+const accessibleMenuPaths = computed(() => {
+  const paths = new Set<string>();
+  traverseTreeValues(props.menus, (item) => {
+    if (item.path) {
+      paths.add(item.path);
+    }
+  });
+  return paths;
+});
+const visibleSearchHistory = computed(() =>
+  searchHistory.value.filter((item) =>
+    accessibleMenuPaths.value.has(item.path),
+  ),
+);
 
 const handleSearch = useThrottleFn(search, 200);
 
@@ -148,7 +163,13 @@ function removeItem(index: number) {
   if (props.keyword) {
     searchResults.value.splice(index, 1);
   } else {
-    searchHistory.value.splice(index, 1);
+    const item = searchResults.value[index];
+    const historyIndex = searchHistory.value.findIndex(
+      (historyItem) => historyItem.path === item?.path,
+    );
+    if (historyIndex >= 0) {
+      searchHistory.value.splice(historyIndex, 1);
+    }
   }
   activeIndex.value = Math.max(activeIndex.value - 1, 0);
   scrollIntoView();
@@ -195,21 +216,29 @@ watch(
     if (val) {
       handleSearch(val);
     } else {
-      searchResults.value = [...searchHistory.value];
+      searchResults.value = [...visibleSearchHistory.value];
     }
   },
 );
 
-onMounted(() => {
-  searchItems.value = mapTree(props.menus, (item) => {
-    return {
+watch(
+  [() => props.menus, searchHistory],
+  () => {
+    searchItems.value = mapTree(props.menus, (item) => ({
       ...item,
       name: $t(item?.name),
-    };
-  });
-  if (searchHistory.value.length > 0) {
-    searchResults.value = searchHistory.value;
-  }
+    }));
+
+    if (props.keyword) {
+      search(props.keyword);
+    } else {
+      searchResults.value = [...visibleSearchHistory.value];
+    }
+  },
+  { deep: true, immediate: true },
+);
+
+onMounted(() => {
   // enter search
   onKeyStroke('Enter', handleEnter);
   // Monitor keyboard arrow keys
@@ -248,7 +277,7 @@ onMounted(() => {
 
       <ul v-show="searchResults.length > 0" class="w-full">
         <li
-          v-if="searchHistory.length > 0 && !keyword"
+          v-if="visibleSearchHistory.length > 0 && !keyword"
           class="text-muted-foreground mb-2 text-xs"
         >
           {{ $t('ui.widgets.search.recent') }}

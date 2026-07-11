@@ -1,18 +1,77 @@
 <script lang="ts" setup>
 import type { MaterialDetail, MaterialStatus } from '#/api/material';
 
+import { onBeforeUnmount, ref, watch } from 'vue';
+
 import {
+  ElAlert,
   ElDescriptions,
   ElDescriptionsItem,
   ElDialog,
   ElEmpty,
+  ElImage,
   ElTag,
   ElTimeline,
   ElTimelineItem,
 } from 'element-plus';
 
-defineProps<{ detail: MaterialDetail | null; loading: boolean }>();
+import { loadAssetImageObjectUrl } from '#/api/asset';
+
+const props = defineProps<{
+  detail: MaterialDetail | null;
+  loading: boolean;
+}>();
 const visible = defineModel<boolean>('visible', { default: false });
+const imageUrls = ref<string[]>([]);
+const imagesLoading = ref(false);
+const imageLoadError = ref('');
+let imageLoadGeneration = 0;
+
+function revokeImageObjectUrls() {
+  imageUrls.value.forEach((url) => URL.revokeObjectURL(url));
+  imageUrls.value = [];
+}
+
+function disposeImages() {
+  imageLoadGeneration++;
+  imagesLoading.value = false;
+  imageLoadError.value = '';
+  revokeImageObjectUrls();
+}
+
+onBeforeUnmount(disposeImages);
+
+watch(
+  [visible, () => props.detail?.material.images],
+  async ([opened, images]) => {
+    const generation = ++imageLoadGeneration;
+    imagesLoading.value = false;
+    imageLoadError.value = '';
+    revokeImageObjectUrls();
+    if (!opened || !images?.length) return;
+
+    imagesLoading.value = true;
+    const results = await Promise.allSettled(
+      images.map(loadAssetImageObjectUrl),
+    );
+    const urls = results.flatMap((result) =>
+      result.status === 'fulfilled' ? [result.value] : [],
+    );
+
+    if (generation !== imageLoadGeneration || !visible.value) {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      return;
+    }
+
+    imageUrls.value = urls;
+    const failedCount = results.length - urls.length;
+    if (failedCount > 0) {
+      imageLoadError.value = `有 ${failedCount} 张照片加载失败，请稍后重试`;
+    }
+    imagesLoading.value = false;
+  },
+  { deep: true },
+);
 
 const statusText: Record<MaterialStatus, string> = {
   0: '在用',
@@ -37,11 +96,7 @@ const actionText: Record<string, string> = {
   >
     <div v-loading="loading" class="material-detail-body">
       <template v-if="detail">
-        <ElDescriptions
-          :column="2"
-          border
-          class="material-detail-descriptions"
-        >
+        <ElDescriptions :column="2" border class="material-detail-descriptions">
           <ElDescriptionsItem label="料件编号">
             {{ detail.material.materialNo }}
           </ElDescriptionsItem>
@@ -64,10 +119,18 @@ const actionText: Record<string, string> = {
             {{ detail.material.quantity }}
           </ElDescriptionsItem>
           <ElDescriptionsItem label="状态">
-            <ElTag :type="detail.material.status === 0 ? 'success' : 'info'" size="small">
+            <ElTag
+              :type="detail.material.status === 0 ? 'success' : 'info'"
+              size="small"
+            >
               {{ statusText[detail.material.status] }}
             </ElTag>
-            <ElTag v-if="detail.material.isDeleted" class="ml-1" size="small" type="danger">
+            <ElTag
+              v-if="detail.material.isDeleted"
+              class="ml-1"
+              size="small"
+              type="danger"
+            >
               已删除
             </ElTag>
           </ElDescriptionsItem>
@@ -88,13 +151,52 @@ const actionText: Record<string, string> = {
           </ElDescriptionsItem>
         </ElDescriptions>
 
-        <div v-if="detail.material.images.length" class="material-photo-count">
-          <span class="text-sm text-gray-500">照片:{{ detail.material.images.length }} 张</span>
-        </div>
+        <section
+          v-if="detail.material.images.length"
+          v-loading="imagesLoading"
+          class="material-photo-section"
+        >
+          <div class="material-photo-title">
+            料件照片（{{ detail.material.images.length }} 张）
+          </div>
+          <ElAlert
+            v-if="imageLoadError"
+            :closable="false"
+            :title="imageLoadError"
+            class="material-photo-alert"
+            show-icon
+            type="warning"
+          />
+          <div v-if="imageUrls.length" class="material-photo-list">
+            <ElImage
+              v-for="(url, index) in imageUrls"
+              :key="url"
+              :alt="`${detail.material.name}料件照片 ${index + 1}`"
+              :initial-index="index"
+              :preview-src-list="imageUrls"
+              :src="url"
+              class="material-photo"
+              fit="cover"
+              preview-teleported
+            >
+              <template #error>
+                <div class="material-photo-error">加载失败</div>
+              </template>
+            </ElImage>
+          </div>
+          <ElEmpty
+            v-else-if="!imagesLoading"
+            :image-size="48"
+            description="照片加载失败"
+          />
+        </section>
 
         <section class="material-flow-section">
           <div class="material-flow-title">流转记录</div>
-          <ElTimeline v-if="detail.records.length" class="material-flow-timeline">
+          <ElTimeline
+            v-if="detail.records.length"
+            class="material-flow-timeline"
+          >
             <ElTimelineItem
               v-for="record in detail.records"
               :key="record.id"
@@ -146,11 +248,46 @@ const actionText: Record<string, string> = {
   overflow-wrap: anywhere;
 }
 
-.material-photo-count {
+.material-photo-section {
+  min-height: 112px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.material-photo-title {
+  margin-bottom: 12px;
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.material-photo-alert {
+  margin-bottom: 10px;
+}
+
+.material-photo-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 10px;
+}
+
+.material-photo {
+  width: 88px;
+  height: 88px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+}
+
+.material-photo-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
+  background: var(--el-fill-color-light);
 }
 
 .material-flow-section {

@@ -52,9 +52,9 @@ onMounted(loadData);
 <template>
   <re-page>
     <div class="page-container">
-      <div v-if="canExport" class="page-header">
+      <div class="page-header">
         <h2 class="page-title">资产汇总</h2>
-        <ElButton type="primary" @click="exportReport">导出 Excel</ElButton>
+        <ElButton v-if="canExport" type="primary" @click="exportReport">导出 Excel</ElButton>
       </div>
       <div class="stat-cards">
         <div class="stat-card">
