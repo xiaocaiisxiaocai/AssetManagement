@@ -184,6 +184,7 @@ async function loadData() {
 }
 
 async function loadPermissionsAndMenus() {
+  if (!roleActionAccess.value.canAssignPermission && !roleActionAccess.value.canAssignMenu) return;
   const [perms, menus_data] = await Promise.all([getPermissionsApi(), getMenusApi()]);
   permissions.value = perms;
   menus.value = sortBuiltInMenus(menus_data);

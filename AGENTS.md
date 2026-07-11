@@ -18,7 +18,7 @@
 
 ```powershell
 dotnet build .\backend\AssetManagement.sln
-dotnet run --project backend\src\AssetManagement.Api      # 启动 API,默认 http://localhost:5000
+dotnet run --project backend\src\AssetManagement.Api      # 启动 API,默认 http://localhost:5292
 dotnet test .\backend\tests\AssetManagement.Tests --no-build
 ```
 
@@ -31,7 +31,7 @@ pnpm -F @vben/web-ele run typecheck             # 类型检查
 pnpm check                                       # monorepo 全局检查
 ```
 
-本地开发须**先起后端再起前端**(前端 `/api` 代理到 `http://localhost:5000`)。健康检查 `GET http://localhost:5000/api/health`;默认账号 `1001 / 123456`。
+本地开发须**先起后端再起前端**(前端 `/api` 代理到 `http://localhost:5292`)。健康检查 `GET http://localhost:5292/api/health`;默认账号 `1001 / 123456`。
 
 ## 编码与提交约定
 

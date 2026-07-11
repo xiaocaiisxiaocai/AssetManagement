@@ -5,7 +5,7 @@ import type { MaterialItem, SaveMaterialPayload } from '#/api/material';
 import type { TestProjectItem } from '#/api/test-project';
 import type { UserDto, UserOptionDto } from '#/api/user';
 
-import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 
 import { useDebounceFn } from '@vueuse/core';
 
@@ -23,7 +23,7 @@ import {
   ElUpload,
 } from 'element-plus';
 
-import { assetImageUrl, stripImageToken, uploadAssetImageApi } from '#/api/asset';
+import { loadAssetImageObjectUrl, uploadAssetImageApi } from '#/api/asset';
 import { createMaterialApi, updateMaterialApi } from '#/api/material';
 import { getRuntimeSettings } from '#/utils/runtime-settings';
 import { getDefaultCustodianId, validateMaterialForm } from './material-form-rules';
@@ -46,7 +46,9 @@ const saving = ref(false);
 const attachmentMaxMb = ref(5);
 const pendingUploads = new Set<Promise<unknown>>();
 const uploading = ref(false);
-const imageFileList = ref<UploadUserFile[]>([]);
+type AuthenticatedUploadFile = UploadUserFile & { rawUrl?: string };
+const imageFileList = ref<AuthenticatedUploadFile[]>([]);
+let imageLoadGeneration = 0;
 const form = reactive({
   brand: '',
   custodianId: undefined as number | undefined,
@@ -74,8 +76,27 @@ const selectableDepartmentOptions = computed(() => {
   return options;
 });
 
-watch(visible, (opened) => {
+function revokeImageObjectUrls() {
+  imageFileList.value.forEach((file) => {
+    if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
+    const responseUrl = (file.response as { url?: string } | undefined)?.url;
+    if (responseUrl?.startsWith('blob:') && responseUrl !== file.url) URL.revokeObjectURL(responseUrl);
+  });
+}
+
+onBeforeUnmount(revokeImageObjectUrls);
+
+function onImageRemove(file: AuthenticatedUploadFile) {
+  if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
+  const responseUrl = (file.response as { url?: string } | undefined)?.url;
+  if (responseUrl?.startsWith('blob:') && responseUrl !== file.url) URL.revokeObjectURL(responseUrl);
+}
+
+watch(visible, async (opened) => {
+  const generation = ++imageLoadGeneration;
   if (!opened) {
+    revokeImageObjectUrls();
+    imageFileList.value = [];
     return;
   }
   void getRuntimeSettings().then((settings) => {
@@ -95,12 +116,18 @@ watch(visible, (opened) => {
       remark: props.material.remark ?? '',
       vendorName: props.material.vendorName ?? '',
     });
-    imageFileList.value = (props.material.images ?? []).map((url, index) => ({
-      name: url.split('/').pop() ?? url,
-      status: 'success',
+    const files = await Promise.all((props.material.images ?? []).map(async (rawUrl, index) => ({
+      name: rawUrl.split('/').pop() ?? rawUrl,
+      rawUrl,
+      status: 'success' as const,
       uid: -(index + 1),
-      url: assetImageUrl(url),
-    }));
+      url: await loadAssetImageObjectUrl(rawUrl),
+    })));
+    if (generation !== imageLoadGeneration || !visible.value) {
+      files.forEach((file) => URL.revokeObjectURL(file.url));
+      return;
+    }
+    imageFileList.value = files;
   } else {
     const projectId = props.defaultProjectId;
     Object.assign(form, {
@@ -126,9 +153,8 @@ function buildPayload(): SaveMaterialPayload {
     custodianId: form.custodianId,
     departmentId: form.departmentId,
     images: imageFileList.value
-      .map((f) => f.url ?? (f.response as { url?: string } | undefined)?.url)
-      .filter((u): u is string => !!u)
-      .map((u) => stripImageToken(u)),
+      .map((f) => f.rawUrl ?? (f.response as { rawUrl?: string } | undefined)?.rawUrl)
+      .filter((u): u is string => !!u),
     locationId: form.locationId,
     model: form.model,
     name: form.name,
@@ -154,7 +180,11 @@ function beforeImageUpload(file: File) {
 }
 
 function customImageUpload(options: UploadRequestOptions) {
-  const request = uploadAssetImageApi(options.file);
+  const request = uploadAssetImageApi(options.file).then(async (uploaded) => ({
+    ...uploaded,
+    rawUrl: uploaded.url,
+    url: await loadAssetImageObjectUrl(uploaded.url),
+  }));
   pendingUploads.add(request);
   uploading.value = true;
   void request.then(() => {
@@ -300,6 +330,7 @@ const debouncedSave = useDebounceFn(save, 300);
           :http-request="customImageUpload"
           :limit="5"
           :on-exceed="onImageExceed"
+          :on-remove="onImageRemove"
           accept="image/png,image/jpeg,image/gif,image/webp"
           list-type="picture-card"
         >

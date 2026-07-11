@@ -105,6 +105,31 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Role_list_filters_by_code_or_name_keyword()
+    {
+        await Login();
+        var marker = Guid.NewGuid().ToString("N");
+        var matching = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = $"role-{marker}",
+            Name = $"关键字角色-{marker}",
+            IsActive = true
+        });
+        await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("unmatched-role"),
+            Name = Unique("其他角色"),
+            IsActive = true
+        });
+
+        var byCode = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>($"/api/roles?keyword={marker}&pageSize=20");
+        var byName = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>($"/api/roles?keyword={Uri.EscapeDataString($"关键字角色-{marker}")}&pageSize=20");
+
+        byCode!.Data!.Items.Should().ContainSingle(x => x.Id == matching.Data!.Id);
+        byName!.Data!.Items.Should().ContainSingle(x => x.Id == matching.Data!.Id);
+    }
+
+    [Fact]
     public async Task User_list_returns_role_names()
     {
         await Login();

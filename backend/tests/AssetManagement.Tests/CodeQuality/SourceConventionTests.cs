@@ -188,6 +188,45 @@ public class SourceConventionTests
     }
 
     [Fact]
+    public void File_authentication_does_not_accept_jwt_from_query_string()
+    {
+        var root = FindRepositoryRoot();
+        var program = File.ReadAllText(Path.Combine(root, "backend", "src", "AssetManagement.Api", "Program.cs"));
+        var assetApi = File.ReadAllText(Path.Combine(root, "web", "apps", "web-ele", "src", "api", "asset.ts"));
+
+        program.Should().NotContain("OnMessageReceived");
+        program.Should().NotContain("Request.Query.TryGetValue(\"token\"");
+        assetApi.Should().NotContain("token=${");
+        assetApi.Should().Contain("responseType: 'blob'");
+        assetApi.Should().Contain("url.startsWith('/api/') ? url.slice(4) : url");
+        assetApi.Should().Contain("URL.createObjectURL");
+    }
+
+    [Fact]
+    public void Production_startup_rejects_unsafe_seed_and_path_placeholders()
+    {
+        var root = FindRepositoryRoot();
+        var program = File.ReadAllText(Path.Combine(root, "backend", "src", "AssetManagement.Api", "Program.cs"));
+
+        program.Should().Contain("ASSET_ADMIN_PASSWORD");
+        program.Should().Contain("!db.Users.Any()");
+        program.Should().Contain("Attachment:Path");
+        program.Should().Contain("DatabaseBackup:Path");
+        program.Should().Contain("database_backup_path");
+        program.Should().Contain("IsReplacementValue");
+    }
+
+    [Fact]
+    public void Frontend_does_not_keep_legacy_auth_functions_contract()
+    {
+        var root = FindRepositoryRoot();
+        var authApi = File.ReadAllText(Path.Combine(root, "web", "apps", "web-ele", "src", "api", "core", "auth.ts"));
+
+        authApi.Should().NotContain("/auth/functions");
+        authApi.Should().NotContain("getAccessCodesApi");
+    }
+
+    [Fact]
     public void Business_controller_actions_do_not_use_plain_authorize_without_permission_code()
     {
         var root = FindRepositoryRoot();

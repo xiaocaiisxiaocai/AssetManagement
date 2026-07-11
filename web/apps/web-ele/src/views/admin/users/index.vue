@@ -77,11 +77,13 @@ const form = reactive({
 const departmentOptions = computed(() => flattenActiveDepartments(departments.value));
 
 async function loadRoles() {
+  if (!userActionAccess.value.canCreate && !userActionAccess.value.canEdit) return;
   const result = await getRoleListApi();
   roles.value = result.items;
 }
 
 async function loadDepartments() {
+  if (!userActionAccess.value.canCreate && !userActionAccess.value.canEdit) return;
   departments.value = await getDepartmentTreeApi();
 }
 

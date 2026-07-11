@@ -36,7 +36,7 @@ mysql -h localhost -u root -p123456
 dotnet build .\backend\AssetManagement.sln
 
 # 运行 API 服务
-dotnet run --project backend\src\AssetManagement.Api      # 监听 http://localhost:5000
+dotnet run --project backend\src\AssetManagement.Api      # 监听 http://localhost:5292
 
 # 运行全部测试
 dotnet test .\backend\tests\AssetManagement.Tests --no-build
@@ -48,7 +48,7 @@ dotnet test .\backend\tests\AssetManagement.Tests --filter "FullyQualifiedName~A
 dotnet test .\backend\tests\AssetManagement.Tests --filter "Name=Health_returns_ok"
 
 # 健康检查
-curl http://localhost:5000/api/health
+curl http://localhost:5292/api/health
 ```
 
 ### EF Core 迁移
@@ -121,7 +121,7 @@ $env:ASSET_ADMIN_PASSWORD = '<首次初始化管理员的强密码>' # 可选；
 
 ## 前后端集成约定(关键)
 
-- **代理**:前端 `apps/web-ele/vite.config.mts` 将 `/api` 代理到 `http://localhost:5000`。本地开发须先起后端再起前端。
+- **代理**:前端 `apps/web-ele/vite.config.mts` 将 `/api` 代理到 `http://localhost:5292`。本地开发须先起后端再起前端。
 - **统一响应体**:后端所有接口返回 `ApiResult<T>`(`AssetManagement.Application/Common/ApiResult.cs`),形如 `{ code, message, data }`,`code == 0` 为成功。前端响应拦截器(`apps/web-ele/src/api/request.ts`)按 HTTP 状态码解构。
 - **鉴权**:登录返回 JWT,前端存入 access store,请求拦截器加 `Authorization: Bearer <token>` 头。401 触发登出。
 - **动态路由/菜单**:菜单与权限由后端下发,**不在前端硬编码**。登录后 `GET /api/auth/user-info` 取用户信息、`GET /api/menu/routes`(`MenuController`,对应前端 `api/core/menu.ts` 的 `getAllMenusApi`)取当前用户的动态路由树;菜单的 `Component` 字段(如 `/admin/users/index`)映射到 `apps/web-ele/src/views` 下的页面。**注意区分**:`GET /api/menus`(`RbacMenuController`)是后台菜单 CRUD 管理接口,**不是**动态路由来源。新增受权限控制的页面需同时在后端 `DbSeeder` 注册 Menu + Permission。
@@ -370,7 +370,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - 复用上游 `@vben/*`、`@core/*` 包的能力(布局、请求客户端、preferences、stores),不要重复造轮子;改动 `web/packages/` 下的核心包会影响所有 app,需谨慎。
 - 提交前跑 `pnpm -F @vben/web-ele run typecheck`;monorepo 根有 `pnpm check`(circular/dep/type/cspell)。
 - **前端单元测试**:纯函数(表单校验规则、图表 option 构造)用 Vitest,`*.spec.ts` 与被测源码**同目录 colocated**(如 `views/material/**/*.spec.ts`);在 `web/` 下跑 `pnpm test:unit`(`vitest run --dom`)。
-- **端到端测试**:`web/e2e-comprehensive-test.js`(Playwright,覆盖登录 + 资产/审批/报表/系统管理全部页面)。须先起后端(5000)再起前端(5777),设置临时环境变量 `E2E_PASSWORD`(可选 `E2E_EMPLOYEE_NO`,默认 `1001`),然后 `cd web && node e2e-comprehensive-test.js`。脚本不保存密码,截图产物(`e2e-final-state.png`、`debug-*.png`)已在 `.gitignore` 忽略,不入库。
+- **端到端测试**:`web/e2e-comprehensive-test.js`(Playwright,覆盖登录 + 资产/审批/报表/系统管理全部页面)。须先起后端(5292)再起前端(5777),设置临时环境变量 `E2E_PASSWORD`(可选 `E2E_EMPLOYEE_NO`,默认 `1001`),然后 `cd web && node e2e-comprehensive-test.js`。脚本不保存密码,截图产物(`e2e-final-state.png`、`debug-*.png`)已在 `.gitignore` 忽略,不入库。
 
 ## 常见开发场景速查
 
@@ -405,8 +405,8 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
    - 解决:确认迁移顺序与模型快照,修正最后一个未部署迁移后重新生成；已部署迁移不得直接删除或改写
 
 4. **前端请求 404**
-   - 检查: 后端是否启动在 5000 端口(`dotnet run` 输出确认)
-   - 检查: `apps/web-ele/vite.config.mts` 的代理配置 `/api -> http://localhost:5000`
+   - 检查: 后端是否启动在 5292 端口(`dotnet run` 输出确认)
+   - 检查: `apps/web-ele/vite.config.mts` 的代理配置 `/api -> http://localhost:5292`
    - 检查: 后端路由是否注册(`Program.cs` 的 `app.MapControllers()`)
 
 5. **BPMN 工作流执行异常**
@@ -443,7 +443,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通。2026-07-10 安全与一致性加固后，后端 **272 个**测试、前端 **309 个**单元测试及全页面 E2E 均通过。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通。2026-07-11 安全与一致性加固后，后端 **276 个**测试、前端 **309 个**单元测试及主要页面回归均通过。
 
 最新里程碑(2026-06-17 ~ 2026-06-30):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)

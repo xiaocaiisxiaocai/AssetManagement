@@ -251,12 +251,20 @@ public class RbacService : IRbacService
         };
     }
 
-    public async Task<PagedResult<RoleDto>> GetRolesAsync(int page, int pageSize)
+    public async Task<PagedResult<RoleDto>> GetRolesAsync(string? keyword, int page, int pageSize)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, AppConstants.MaxPageSize);
         var query = _db.Roles
             .Include(x => x.RolePermissions)
             .Include(x => x.RoleMenus)
-            .OrderBy(x => x.Id);
+            .AsQueryable();
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var normalizedKeyword = keyword.Trim();
+            query = query.Where(x => x.Code.Contains(normalizedKeyword) || x.Name.Contains(normalizedKeyword));
+        }
+        query = query.OrderBy(x => x.Id);
         var total = await query.CountAsync();
         var items = await query.Skip((page - 1) * pageSize).Take(pageSize).Select(x => ToRoleDto(x)).ToListAsync();
         return new PagedResult<RoleDto> { Items = items, Total = total, Page = page, PageSize = pageSize };

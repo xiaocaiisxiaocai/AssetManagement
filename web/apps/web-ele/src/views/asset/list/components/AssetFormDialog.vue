@@ -3,7 +3,7 @@ import type { AssetItem, AssetPayload, AssetStatus } from '#/api/asset';
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
 import type { UserDto, UserOptionDto } from '#/api/user';
 
-import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 
 import {
@@ -20,9 +20,8 @@ import {
 } from 'element-plus';
 
 import {
-  assetImageUrl,
   createAssetApi,
-  stripImageToken,
+  loadAssetImageObjectUrl,
   updateAssetApi,
   uploadAssetImageApi,
 } from '#/api/asset';
@@ -56,7 +55,9 @@ const saving = ref(false);
 const attachmentMaxMb = ref(5);
 const pendingUploads = new Set<Promise<unknown>>();
 const uploading = ref(false);
-const imageFileList = ref<UploadUserFile[]>([]);
+type AuthenticatedUploadFile = UploadUserFile & { rawUrl?: string };
+const imageFileList = ref<AuthenticatedUploadFile[]>([]);
+let imageLoadGeneration = 0;
 const form = reactive({
   brand: '',
   categoryId: 0,
@@ -87,8 +88,27 @@ const assetNoPreview = computed(() => {
   return cat?.code ? `${cat.code}-自动流水` : '选择分类后生成';
 });
 
-watch(visible, (opened) => {
+function revokeImageObjectUrls() {
+  imageFileList.value.forEach((file) => {
+    if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
+    const responseUrl = (file.response as { url?: string } | undefined)?.url;
+    if (responseUrl?.startsWith('blob:') && responseUrl !== file.url) URL.revokeObjectURL(responseUrl);
+  });
+}
+
+onBeforeUnmount(revokeImageObjectUrls);
+
+function onImageRemove(file: AuthenticatedUploadFile) {
+  if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
+  const responseUrl = (file.response as { url?: string } | undefined)?.url;
+  if (responseUrl?.startsWith('blob:') && responseUrl !== file.url) URL.revokeObjectURL(responseUrl);
+}
+
+watch(visible, async (opened) => {
+  const generation = ++imageLoadGeneration;
   if (!opened) {
+    revokeImageObjectUrls();
+    imageFileList.value = [];
     return;
   }
   void getRuntimeSettings().then((settings) => {
@@ -106,12 +126,18 @@ watch(visible, (opened) => {
       quantity: props.asset.quantity,
       status: props.asset.status,
     });
-    imageFileList.value = (props.asset.images ?? []).map((url, index) => ({
-      name: url.split('/').pop() ?? url,
-      status: 'success',
+    const files = await Promise.all((props.asset.images ?? []).map(async (rawUrl, index) => ({
+      name: rawUrl.split('/').pop() ?? rawUrl,
+      rawUrl,
+      status: 'success' as const,
       uid: -(index + 1),
-      url: assetImageUrl(url),
-    }));
+      url: await loadAssetImageObjectUrl(rawUrl),
+    })));
+    if (generation !== imageLoadGeneration || !visible.value) {
+      files.forEach((file) => URL.revokeObjectURL(file.url));
+      return;
+    }
+    imageFileList.value = files;
   } else {
     Object.assign(form, {
       brand: '',
@@ -135,9 +161,8 @@ function buildPayload(): AssetPayload {
     custodianId: form.custodianId,
     departmentId: form.departmentId,
     images: imageFileList.value
-      .map((f) => f.url ?? (f.response as { url?: string } | undefined)?.url)
-      .filter((u): u is string => !!u)
-      .map((u) => stripImageToken(u)),
+      .map((f) => f.rawUrl ?? (f.response as { rawUrl?: string } | undefined)?.rawUrl)
+      .filter((u): u is string => !!u),
     locationId: form.locationId,
     model: form.model,
     name: form.name,
@@ -160,7 +185,11 @@ function beforeImageUpload(file: File) {
 }
 
 function customImageUpload(options: UploadRequestOptions) {
-  const request = uploadAssetImageApi(options.file);
+  const request = uploadAssetImageApi(options.file).then(async (uploaded) => ({
+    ...uploaded,
+    rawUrl: uploaded.url,
+    url: await loadAssetImageObjectUrl(uploaded.url),
+  }));
   pendingUploads.add(request);
   uploading.value = true;
   void request.then(() => {
@@ -299,6 +328,7 @@ const debouncedSave = useDebounceFn(save, 300);
           :http-request="customImageUpload"
           :limit="5"
           :on-exceed="onImageExceed"
+          :on-remove="onImageRemove"
           accept="image/png,image/jpeg,image/gif,image/webp"
           list-type="picture-card"
         >

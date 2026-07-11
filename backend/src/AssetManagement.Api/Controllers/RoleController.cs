@@ -18,8 +18,8 @@ public class RoleController : ControllerBase
 
     [HttpGet]
     [HasPermission("role:view")]
-    public async Task<ApiResult<PagedResult<RoleDto>>> List(int page = 1, int pageSize = 20)
-        => ApiResult<PagedResult<RoleDto>>.Ok(await _rbac.GetRolesAsync(page, pageSize));
+    public async Task<ApiResult<PagedResult<RoleDto>>> List(string? keyword = null, int page = 1, int pageSize = 20)
+        => ApiResult<PagedResult<RoleDto>>.Ok(await _rbac.GetRolesAsync(keyword, page, pageSize));
 
     [HttpGet("{id:int}")]
     [HasPermission("role:view")]

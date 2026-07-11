@@ -15,7 +15,7 @@ public interface IRbacService
     Task<UserImportResultDto> ValidateUserImportAsync(Stream file);
     Task<UserImportResultDto> ImportUsersAsync(Stream file, bool canAssignRole);
 
-    Task<PagedResult<RoleDto>> GetRolesAsync(int page, int pageSize);
+    Task<PagedResult<RoleDto>> GetRolesAsync(string? keyword, int page, int pageSize);
     Task<RoleDto> GetRoleAsync(int id);
     Task<RoleDto> CreateRoleAsync(RoleDto request);
     Task<RoleDto> UpdateRoleAsync(int id, RoleDto request);

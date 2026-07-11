@@ -52,6 +52,22 @@ try
 
 var builder = WebApplication.CreateBuilder(args);
 
+static bool IsReplacementValue(string? value)
+    => !string.IsNullOrWhiteSpace(value)
+       && value.Contains("REPLACE_", StringComparison.OrdinalIgnoreCase);
+
+if (!builder.Environment.IsDevelopment())
+{
+    if (IsReplacementValue(builder.Configuration["Attachment:Path"]))
+    {
+        throw new InvalidOperationException("生产环境必须配置真实的 Attachment:Path，不能使用 REPLACE 占位值");
+    }
+    if (IsReplacementValue(builder.Configuration["DatabaseBackup:Path"]))
+    {
+        throw new InvalidOperationException("生产环境必须配置真实的 DatabaseBackup:Path，不能使用 REPLACE 占位值");
+    }
+}
+
 // 使用 Serilog 替换默认日志
 builder.Host.UseSerilog();
 
@@ -164,20 +180,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1)
         };
-        // 资产图片用 <img>/el-image 加载无法携带 Authorization 头,仅对 /api/files 路径允许从 query 读取 token
-        o.Events = new JwtBearerEvents
-        {
-            OnMessageReceived = ctx =>
-            {
-                if (string.IsNullOrEmpty(ctx.Token)
-                    && ctx.HttpContext.Request.Path.StartsWithSegments("/api/files")
-                    && ctx.Request.Query.TryGetValue("token", out var queryToken))
-                {
-                    ctx.Token = queryToken;
-                }
-                return Task.CompletedTask;
-            }
-        };
     });
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
@@ -232,7 +234,24 @@ using (var scope = app.Services.CreateScope())
     if (builder.Configuration.GetValue<bool>("Database:AutoSeed"))
     {
         // 种子会同步角色权限、菜单等基础数据；需要初始化/修复时显式开启 Database:AutoSeed。
+        if (!builder.Environment.IsDevelopment()
+            && !db.Users.Any()
+            && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASSET_ADMIN_PASSWORD")))
+        {
+            throw new InvalidOperationException("生产环境初始化空库时必须通过 ASSET_ADMIN_PASSWORD 配置初始管理员密码");
+        }
         DbSeeder.Seed(db);
+    }
+    if (!builder.Environment.IsDevelopment())
+    {
+        var backupPath = db.SystemSettings.AsNoTracking()
+            .Where(x => x.Key == "database_backup_path")
+            .Select(x => x.Value)
+            .SingleOrDefault();
+        if (IsReplacementValue(backupPath))
+        {
+            throw new InvalidOperationException("生产环境系统参数 database_backup_path 不能使用 REPLACE 占位值");
+        }
     }
 }
 

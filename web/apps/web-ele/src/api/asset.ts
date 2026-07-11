@@ -1,4 +1,3 @@
-import { useAccessStore } from '@vben/stores';
 
 import { requestClient } from '#/api/request';
 
@@ -190,20 +189,11 @@ export const uploadAssetImageApi = (file: File) => {
   );
 };
 
-// 资产图片受 asset:view 鉴权保护,<img>/el-image 无法携带 Authorization 头,
-// 经 /api/files 的 query token 通道附加当前 access token。提交前需用 stripImageToken 还原。
-export function assetImageUrl(url?: string): string {
-  if (!url) {
-    return '';
-  }
-  const token = useAccessStore().accessToken;
-  if (!token) {
-    return url;
-  }
-  return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
-}
-
-// 去除显示用的 token query,得到可持久化的原始 url
-export function stripImageToken(url?: string): string {
-  return url ? (url.split('?')[0] ?? url) : '';
+// 图片接口受鉴权保护，使用请求客户端携带 Authorization 获取 Blob，避免 JWT 暴露在 URL、日志和历史记录中。
+export async function loadAssetImageObjectUrl(url: string): Promise<string> {
+  // requestClient 已以 /api 为 baseURL；持久化地址同样以 /api 开头时需先去掉该前缀，
+  // 否则会请求到 /api/api/files/...。
+  const requestUrl = url.startsWith('/api/') ? url.slice(4) : url;
+  const response = await requestClient.get(requestUrl, { responseType: 'blob' });
+  return URL.createObjectURL(response.data);
 }

@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import type { AssetDetail, AssetStatus } from '#/api/asset';
 
+import { onBeforeUnmount, ref, watch } from 'vue';
+
 import {
   ElDescriptions,
   ElDescriptionsItem,
@@ -14,14 +16,39 @@ import {
   ElTimelineItem,
 } from 'element-plus';
 
-import { assetImageUrl } from '#/api/asset';
+import { loadAssetImageObjectUrl } from '#/api/asset';
 
-defineProps<{
+const props = defineProps<{
   detail: AssetDetail | null;
   loading: boolean;
 }>();
 
 const visible = defineModel<boolean>('visible', { default: false });
+const imageUrls = ref<string[]>([]);
+let imageLoadGeneration = 0;
+
+function revokeImageObjectUrls() {
+  imageUrls.value.forEach((url) => URL.revokeObjectURL(url));
+  imageUrls.value = [];
+}
+
+onBeforeUnmount(revokeImageObjectUrls);
+
+watch(
+  [visible, () => props.detail?.asset.images],
+  async ([opened, images]) => {
+    const generation = ++imageLoadGeneration;
+    revokeImageObjectUrls();
+    if (!opened || !images?.length) return;
+    const urls = await Promise.all(images.map(loadAssetImageObjectUrl));
+    if (generation !== imageLoadGeneration || !visible.value) {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      return;
+    }
+    imageUrls.value = urls;
+  },
+  { deep: true },
+);
 
 const statusOptions: Array<{
   label: string;
@@ -194,11 +221,11 @@ function summaryText(summary: null | string | undefined) {
           <div class="ad-section-title">资产照片</div>
           <div class="ad-photos">
             <ElImage
-              v-for="(url, i) in detail.asset.images"
+              v-for="(url, i) in imageUrls"
               :key="i"
               :initial-index="i"
-              :preview-src-list="(detail.asset.images || []).map(assetImageUrl)"
-              :src="assetImageUrl(url)"
+              :preview-src-list="imageUrls"
+              :src="url"
               class="ad-photo"
               fit="cover"
               preview-teleported
