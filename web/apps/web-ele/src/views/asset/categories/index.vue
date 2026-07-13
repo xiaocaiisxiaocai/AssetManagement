@@ -110,6 +110,8 @@ function openEdit(row: CategoryNode) {
 }
 
 async function save() {
+  if (saving.value) return;
+
   const validationMessage = validateCategoryCodeSeg(
     form.codeSeg,
     currentCategoryLevel.value,
@@ -301,7 +303,7 @@ onMounted(loadData);
         :title="editingId ? '编辑分类' : '新增分类'"
         width="500px"
       >
-        <ElForm label-width="100px">
+        <ElForm label-width="100px" @submit.prevent="save">
           <ElFormItem label="上级分类">
             <ElTag size="default">{{ parentDisplay }}</ElTag>
           </ElFormItem>
