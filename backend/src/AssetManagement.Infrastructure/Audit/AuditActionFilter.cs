@@ -25,6 +25,14 @@ public class AuditActionFilter : IAsyncActionFilter
         "DELETE"
     };
 
+    private static readonly HashSet<string> SoftDeleteControllers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Asset",
+        "AssetCategory",
+        "TestMaterial",
+        "TestProject"
+    };
+
     private static readonly Dictionary<string, string> ControllerEntityMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Approval"] = nameof(ApprovalFlow),
@@ -83,7 +91,7 @@ public class AuditActionFilter : IAsyncActionFilter
         _db.AuditLogs.Add(new AuditLog
         {
             UserId = userId,
-            ActionType = context.HttpContext.Request.Method,
+            ActionType = ResolveActionType(context, controllerName),
             TargetType = controllerName,
             TargetId = targetId ?? BuildBatchTargetId(controllerName, changes),
             Summary = BuildSummary(context, executed, controllerName, changes),
@@ -98,6 +106,27 @@ public class AuditActionFilter : IAsyncActionFilter
 
     private static bool ShouldLog(ActionExecutingContext context, ActionExecutedContext executed)
         => WriteMethods.Contains(context.HttpContext.Request.Method);
+
+    private static string ResolveActionType(ActionExecutingContext context, string? controllerName)
+    {
+        var method = context.HttpContext.Request.Method;
+        if (!string.Equals(method, "DELETE", StringComparison.OrdinalIgnoreCase))
+        {
+            return method;
+        }
+
+        var actionName = (context.ActionDescriptor as ControllerActionDescriptor)?.ActionName;
+        if (string.Equals(actionName, "Purge", StringComparison.OrdinalIgnoreCase))
+        {
+            return "purge";
+        }
+
+        return string.Equals(actionName, "Delete", StringComparison.OrdinalIgnoreCase)
+               && controllerName is not null
+               && SoftDeleteControllers.Contains(controllerName)
+            ? "soft_delete"
+            : method;
+    }
 
     private static bool IsSuccess(ActionExecutingContext context, ActionExecutedContext executed)
         => executed.Exception is null

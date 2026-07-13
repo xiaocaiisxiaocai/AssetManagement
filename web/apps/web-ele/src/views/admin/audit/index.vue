@@ -148,7 +148,16 @@ async function exportLogs() {
 }
 
 function actionTypeLabel(type: string): string {
-  const map: Record<string, string> = { POST: '新增', PUT: '修改', DELETE: '删除', business: '业务', cleanup: '清理', remind: '催办' };
+  const map: Record<string, string> = {
+    POST: '新增',
+    PUT: '修改',
+    DELETE: '删除',
+    business: '业务',
+    cleanup: '清理',
+    purge: '彻底删除',
+    remind: '催办',
+    soft_delete: '软删除',
+  };
   return map[type] ?? type;
 }
 
@@ -156,7 +165,8 @@ function actionType(type: string): TagType | undefined {
   if (type === 'remind') return 'warning';
   if (type === 'business') return 'info';
   if (type === 'cleanup') return 'info';
-  if (type === 'DELETE') return 'danger';
+  if (type === 'DELETE' || type === 'purge') return 'danger';
+  if (type === 'soft_delete') return 'warning';
   if (type === 'POST') return 'success';
   if (type === 'PUT') return 'info';
   return undefined;
@@ -287,7 +297,9 @@ onMounted(async () => {
             >
               <ElOption label="新增" value="POST" />
               <ElOption label="修改" value="PUT" />
-              <ElOption label="删除" value="DELETE" />
+              <ElOption label="软删除" value="soft_delete" />
+              <ElOption label="彻底删除" value="purge" />
+              <ElOption label="其他删除" value="DELETE" />
               <ElOption label="催办" value="remind" />
             </ElSelect>
           </ElFormItem>

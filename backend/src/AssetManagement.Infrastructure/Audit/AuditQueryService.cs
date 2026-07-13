@@ -84,7 +84,25 @@ public class AuditQueryService : IAuditQueryService
         if (!string.IsNullOrWhiteSpace(query.ActionType))
         {
             var actionType = query.ActionType.Trim();
-            queryable = queryable.Where(x => x.ActionType == actionType);
+            if (actionType == "soft_delete")
+            {
+                queryable = queryable.Where(x => x.ActionType == "soft_delete"
+                    || (x.ActionType == "DELETE"
+                        && (x.TargetType == "Asset"
+                            || x.TargetType == "AssetCategory"
+                            || x.TargetType == "TestMaterial"
+                            || x.TargetType == "TestProject")
+                        && !x.Summary.Contains("/purge")));
+            }
+            else if (actionType == "purge")
+            {
+                queryable = queryable.Where(x => x.ActionType == "purge"
+                    || (x.ActionType == "DELETE" && x.Summary.Contains("/purge")));
+            }
+            else
+            {
+                queryable = queryable.Where(x => x.ActionType == actionType);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(query.Module))
@@ -109,7 +127,7 @@ public class AuditQueryService : IAuditQueryService
             Id = x.Id,
             UserId = x.UserId,
             UserName = x.UserId.HasValue && users.TryGetValue(x.UserId.Value, out var name) ? name : null,
-            ActionType = x.ActionType,
+            ActionType = ResolveActionType(x),
             TargetType = x.TargetType,
             TargetId = x.TargetId,
             Summary = x.Summary,
@@ -119,5 +137,22 @@ public class AuditQueryService : IAuditQueryService
             DurationMs = x.DurationMs,
             OccurredAt = x.OccurredAt
         }).ToList();
+    }
+
+    private static string ResolveActionType(AuditLog log)
+    {
+        if (!string.Equals(log.ActionType, "DELETE", StringComparison.OrdinalIgnoreCase))
+        {
+            return log.ActionType;
+        }
+
+        if (log.Summary.Contains("/purge", StringComparison.OrdinalIgnoreCase))
+        {
+            return "purge";
+        }
+
+        return log.TargetType is "Asset" or "AssetCategory" or "TestMaterial" or "TestProject"
+            ? "soft_delete"
+            : log.ActionType;
     }
 }

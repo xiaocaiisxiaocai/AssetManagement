@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using AssetManagement.Application.Audit;
 using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
@@ -227,6 +228,68 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
         latest.Summary.Should().Contain("成功 3 条");
         latest.Summary.Should().Contain("失败 1 条");
         latest.Summary.Should().Contain("1001");
+    }
+
+    [Fact]
+    public async Task Category_soft_delete_and_purge_use_distinct_audit_action_types()
+    {
+        await Login();
+        var category = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            CodeSeg = UniqueCodeSeg()
+        });
+
+        var softDelete = await _client.DeleteAsync($"/api/categories/{category.Data!.Id}");
+        softDelete.EnsureSuccessStatusCode();
+        var purge = await _client.DeleteAsync($"/api/categories/{category.Data.Id}/purge");
+        purge.EnsureSuccessStatusCode();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var actions = db.AuditLogs
+            .Where(x => x.TargetType == "AssetCategory" && x.TargetId == category.Data.Id.ToString())
+            .OrderBy(x => x.Id)
+            .Select(x => x.ActionType)
+            .ToList();
+        actions.Should().ContainInOrder("POST", "soft_delete", "purge");
+    }
+
+    [Fact]
+    public async Task Historical_delete_logs_are_classified_and_filterable()
+    {
+        await Login();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.AuditLogs.AddRange(
+                new AuditLog
+                {
+                    ActionType = "DELETE",
+                    TargetType = "AssetCategory",
+                    TargetId = "901",
+                    Summary = "DELETE /api/categories/901",
+                    OccurredAt = DateTime.UtcNow
+                },
+                new AuditLog
+                {
+                    ActionType = "DELETE",
+                    TargetType = "AssetCategory",
+                    TargetId = "902",
+                    Summary = "DELETE /api/categories/902/purge",
+                    OccurredAt = DateTime.UtcNow
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var softDeletes = await _client.GetFromJsonAsync<ApiResult<PagedResult<AuditLogDto>>>(
+            "/api/audit-logs?actionType=soft_delete&pageSize=200");
+        var purges = await _client.GetFromJsonAsync<ApiResult<PagedResult<AuditLogDto>>>(
+            "/api/audit-logs?actionType=purge&pageSize=200");
+
+        softDeletes!.Data!.Items.Should().Contain(x => x.TargetId == "901" && x.ActionType == "soft_delete");
+        softDeletes.Data.Items.Should().NotContain(x => x.TargetId == "902");
+        purges!.Data!.Items.Should().Contain(x => x.TargetId == "902" && x.ActionType == "purge");
+        purges.Data.Items.Should().NotContain(x => x.TargetId == "901");
     }
 
     private async Task Login()
