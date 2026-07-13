@@ -35,10 +35,20 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             CategoryId = category.Id,
             Model = "TBS1102C",
             Brand = "Tektronix",
+            PurchaseDate = new DateTime(2026, 7, 1),
+            RegistrationTime = new DateTime(2026, 7, 13, 9, 30, 0),
+            CurrentCondition = "运行正常",
+            IsFirstRegistration = true,
+            Remark = "首次入库登记",
         });
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?categoryId={category.Id}");
 
         created.Data!.AssetNo.Should().Be($"{category.Code}-001");
+        created.Data.PurchaseDate.Should().Be(new DateTime(2026, 7, 1));
+        created.Data.RegistrationTime.Should().Be(new DateTime(2026, 7, 13, 9, 30, 0));
+        created.Data.CurrentCondition.Should().Be("运行正常");
+        created.Data.IsFirstRegistration.Should().BeTrue();
+        created.Data.Remark.Should().Be("首次入库登记");
         list!.Data!.Items.Should().Contain(x => x.Id == created.Data.Id && x.AssetNo == created.Data.AssetNo);
     }
 

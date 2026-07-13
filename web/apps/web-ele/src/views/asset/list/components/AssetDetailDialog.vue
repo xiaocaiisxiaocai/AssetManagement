@@ -184,7 +184,11 @@ function summaryText(summary: null | string | undefined) {
         </header>
 
         <div v-if="detail.asset.isDeleted" class="ad-deleted-banner">
-          该资产已于 {{ formatTime(detail.asset.deletedAt) }} 删除，可由有权限的人员在列表中「撤销删除」恢复或「彻底删除」。
+          该资产已于
+          {{
+            formatTime(detail.asset.deletedAt)
+          }}
+          删除，可由有权限的人员在列表中「撤销删除」恢复或「彻底删除」。
         </div>
 
         <ElDescriptions :column="2" border class="ad-desc" size="small">
@@ -206,7 +210,29 @@ function summaryText(summary: null | string | undefined) {
           <ElDescriptionsItem label="品牌">
             {{ detail.asset.brand || '—' }}
           </ElDescriptionsItem>
-          <ElDescriptionsItem :span="detail.asset.isDeleted ? 1 : 2" label="创建时间">
+          <ElDescriptionsItem label="购入日期">
+            {{ detail.asset.purchaseDate?.slice(0, 10) || '—' }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="资产登记时间">
+            {{
+              detail.asset.registrationTime
+                ? formatTime(detail.asset.registrationTime)
+                : '—'
+            }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="目前状况">
+            {{ detail.asset.currentCondition || '—' }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="首次登记">
+            {{ detail.asset.isFirstRegistration ? '是' : '否' }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem :span="2" label="备注">
+            {{ detail.asset.remark || '—' }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem
+            :span="detail.asset.isDeleted ? 1 : 2"
+            label="创建时间"
+          >
             {{ formatTime(detail.asset.createdAt) }}
           </ElDescriptionsItem>
           <ElDescriptionsItem v-if="detail.asset.isDeleted" label="删除时间">
@@ -247,7 +273,8 @@ function summaryText(summary: null | string | undefined) {
                 <span class="font-medium">{{ flowTitle(flow) }}</span>
                 <span class="text-gray-500"> · {{ flow.applicant }}</span>
                 <span v-if="flow.transferee" class="text-gray-500">
-                  → {{ flow.transferee }}</span>
+                  → {{ flow.transferee }}</span
+                >
               </div>
               <div v-if="flow.reason" class="text-xs text-gray-400">
                 事由：{{ flow.reason }}
@@ -275,14 +302,20 @@ function summaryText(summary: null | string | undefined) {
             <ElTableColumn label="操作人" prop="userName" width="110" />
             <ElTableColumn label="动作" width="90">
               <template #default="{ row }">
-                <ElTag :type="actionTag(row.actionType)" effect="light" size="small">
+                <ElTag
+                  :type="actionTag(row.actionType)"
+                  effect="light"
+                  size="small"
+                >
                   {{ actionText(row.actionType) }}
                 </ElTag>
               </template>
             </ElTableColumn>
             <ElTableColumn label="摘要" show-overflow-tooltip>
               <template #default="{ row }">
-                <span class="ad-log-summary">{{ summaryText(row.summary) }}</span>
+                <span class="ad-log-summary">{{
+                  summaryText(row.summary)
+                }}</span>
               </template>
             </ElTableColumn>
           </ElTable>

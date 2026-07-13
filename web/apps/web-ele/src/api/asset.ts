@@ -1,4 +1,3 @@
-
 import { requestClient } from '#/api/request';
 
 interface ApiResult<T> {
@@ -22,6 +21,7 @@ export interface AssetItem {
   categoryCode: string;
   categoryId: number;
   createdAt: string;
+  currentCondition?: null | string;
   deletedAt?: null | string;
   custodianId?: null | number;
   custodianName?: null | string;
@@ -29,12 +29,16 @@ export interface AssetItem {
   departmentName?: null | string;
   id: number;
   isDeleted: boolean;
+  isFirstRegistration: boolean;
   images?: null | string[];
   locationId?: null | number;
   locationName?: null | string;
   model?: null | string;
   name: string;
+  purchaseDate?: null | string;
   quantity: number;
+  registrationTime?: null | string;
+  remark?: null | string;
   status: AssetStatus;
 }
 
@@ -57,10 +61,15 @@ export interface AssetPayload {
   custodianId?: null | number;
   departmentId?: null | number;
   images?: string[];
+  isFirstRegistration?: boolean;
   locationId?: null | number;
   model?: null | string;
   name: string;
+  purchaseDate?: null | string;
   quantity?: number;
+  registrationTime?: null | string;
+  currentCondition?: null | string;
+  remark?: null | string;
   status?: AssetStatus;
 }
 
@@ -123,7 +132,9 @@ async function unwrap<T>(request: Promise<ApiResult<T>>) {
 }
 
 export const getAssetListApi = (params: AssetQuery) =>
-  unwrap(requestClient.get<ApiResult<PagedResult<AssetItem>>>('/assets', { params }));
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<AssetItem>>>('/assets', { params }),
+  );
 
 export async function getAllAssetsApi(
   params: Omit<AssetQuery, 'page' | 'pageSize'> = {},
@@ -162,7 +173,10 @@ export const validateAssetImportApi = (file: File) => {
   const form = new FormData();
   form.append('file', file);
   return unwrap(
-    requestClient.post<ApiResult<ImportPreviewRow[]>>('/assets/import/validate', form),
+    requestClient.post<ApiResult<ImportPreviewRow[]>>(
+      '/assets/import/validate',
+      form,
+    ),
   );
 };
 
@@ -170,7 +184,10 @@ export const confirmAssetImportApi = (file: File) => {
   const form = new FormData();
   form.append('file', file);
   return unwrap(
-    requestClient.post<ApiResult<ImportConfirmResult>>('/assets/import/confirm', form),
+    requestClient.post<ApiResult<ImportConfirmResult>>(
+      '/assets/import/confirm',
+      form,
+    ),
   );
 };
 
@@ -194,6 +211,8 @@ export async function loadAssetImageObjectUrl(url: string): Promise<string> {
   // requestClient 已以 /api 为 baseURL；持久化地址同样以 /api 开头时需先去掉该前缀，
   // 否则会请求到 /api/api/files/...。
   const requestUrl = url.startsWith('/api/') ? url.slice(4) : url;
-  const response = await requestClient.get(requestUrl, { responseType: 'blob' });
+  const response = await requestClient.get(requestUrl, {
+    responseType: 'blob',
+  });
   return URL.createObjectURL(response.data);
 }

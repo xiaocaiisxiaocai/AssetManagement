@@ -141,6 +141,11 @@ public class AssetService : IAssetService
                 Brand = request.Brand,
                 Quantity = Math.Max(request.Quantity, 1),
                 Status = AssetStatus.Available,
+                PurchaseDate = request.PurchaseDate,
+                RegistrationTime = request.RegistrationTime ?? DateTime.UtcNow,
+                CurrentCondition = request.CurrentCondition?.Trim(),
+                IsFirstRegistration = request.IsFirstRegistration,
+                Remark = request.Remark?.Trim(),
                 ImageUrls = JoinImages(request.Images),
                 CreatedAt = DateTime.UtcNow
             };
@@ -177,6 +182,11 @@ public class AssetService : IAssetService
         asset.Model = request.Model;
         asset.Brand = request.Brand;
         asset.Quantity = Math.Max(request.Quantity, 1);
+        asset.PurchaseDate = request.PurchaseDate;
+        asset.RegistrationTime = request.RegistrationTime;
+        asset.CurrentCondition = request.CurrentCondition?.Trim();
+        asset.IsFirstRegistration = request.IsFirstRegistration;
+        asset.Remark = request.Remark?.Trim();
         if (request.Images is not null)
         {
             asset.ImageUrls = JoinImages(request.Images);
@@ -255,7 +265,7 @@ public class AssetService : IAssetService
     {
         var rows = new List<string[]>
         {
-            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "型号", "品牌", "数量", "状态" }
+            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "型号", "品牌", "数量", "状态", "购入日期", "资产登记时间", "目前状况", "首次登记", "备注" }
         };
         var assets = await ApplyQuery(_db.Assets.AsQueryable(), query)
             .OrderBy(x => x.AssetNo)
@@ -271,7 +281,12 @@ public class AssetService : IAssetService
             x.Model ?? "",
             x.Brand ?? "",
             x.Quantity.ToString(),
-            x.Status.ToString()
+            x.Status.ToString(),
+            x.PurchaseDate?.ToString("yyyy-MM-dd") ?? "",
+            x.RegistrationTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "",
+            x.CurrentCondition ?? "",
+            x.IsFirstRegistration ? "是" : "否",
+            x.Remark ?? ""
         }));
         return XlsxTable.Write(rows);
     }
@@ -279,7 +294,7 @@ public class AssetService : IAssetService
     public byte[] BuildImportTemplate()
         => XlsxTable.Write(new[]
         {
-            new[] { "名称", "分类编码", "型号", "品牌" }
+            new[] { "名称", "分类编码", "型号", "品牌", "购入日期", "资产登记时间", "目前状况", "首次登记(是/否)", "备注" }
         });
 
     public async Task<List<ImportPreviewRow>> ValidateImportAsync(Stream file)
@@ -325,6 +340,11 @@ public class AssetService : IAssetService
                 DepartmentId = departmentId,
                 Model = row.Model,
                 Brand = row.Brand,
+                PurchaseDate = row.PurchaseDate,
+                RegistrationTime = row.RegistrationTime ?? DateTime.UtcNow,
+                CurrentCondition = row.CurrentCondition,
+                IsFirstRegistration = row.IsFirstRegistration,
+                Remark = row.Remark,
                 Quantity = 1,
                 Status = AssetStatus.Available,
                 CreatedAt = DateTime.UtcNow
@@ -530,6 +550,11 @@ public class AssetService : IAssetService
                 Brand = x.Brand,
                 Quantity = x.Quantity,
                 Status = x.Status,
+                PurchaseDate = x.PurchaseDate,
+                RegistrationTime = x.RegistrationTime,
+                CurrentCondition = x.CurrentCondition,
+                IsFirstRegistration = x.IsFirstRegistration,
+                Remark = x.Remark,
                 CreatedAt = x.CreatedAt,
                 IsDeleted = x.IsDeleted,
                 DeletedAt = x.DeletedAt,
@@ -548,9 +573,22 @@ public class AssetService : IAssetService
         var categoryCode = Cell(cells, 1);
         var model = Cell(cells, 2);
         var brand = Cell(cells, 3);
+        var purchaseDateText = Cell(cells, 4);
+        var registrationTimeText = Cell(cells, 5);
+        var currentCondition = Cell(cells, 6);
+        var firstRegistrationText = Cell(cells, 7);
+        var remark = Cell(cells, 8);
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(name)) errors.Add("名称必填");
         if (string.IsNullOrWhiteSpace(categoryCode) || !categories.ContainsKey(categoryCode)) errors.Add("分类编码不存在");
+        var purchaseDate = ParseOptionalDate(purchaseDateText, "购入日期", errors);
+        var registrationTime = ParseOptionalDate(registrationTimeText, "资产登记时间", errors);
+        var isFirstRegistration = string.IsNullOrWhiteSpace(firstRegistrationText)
+            || firstRegistrationText.Equals("是", StringComparison.OrdinalIgnoreCase)
+            || firstRegistrationText.Equals("true", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(firstRegistrationText)
+            && firstRegistrationText is not "是" and not "否"
+            && !bool.TryParse(firstRegistrationText, out _)) errors.Add("首次登记只能填是或否");
 
         return new ImportPreviewRow
         {
@@ -559,9 +597,22 @@ public class AssetService : IAssetService
             CategoryCode = categoryCode,
             Model = model,
             Brand = brand,
+            PurchaseDate = purchaseDate,
+            RegistrationTime = registrationTime,
+            CurrentCondition = currentCondition,
+            IsFirstRegistration = isFirstRegistration,
+            Remark = remark,
             IsValid = errors.Count == 0,
             Error = string.Join("；", errors)
         };
+    }
+
+    private static DateTime? ParseOptionalDate(string value, string field, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (DateTime.TryParse(value, out var parsed)) return parsed;
+        errors.Add($"{field}格式不正确");
+        return null;
     }
 
     private static string Cell(IReadOnlyList<string> cells, int index)

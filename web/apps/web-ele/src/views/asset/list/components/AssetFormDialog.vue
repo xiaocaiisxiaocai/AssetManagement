@@ -8,6 +8,7 @@ import { useDebounceFn } from '@vueuse/core';
 
 import {
   ElButton,
+  ElDatePicker,
   ElDialog,
   ElForm,
   ElFormItem,
@@ -15,6 +16,7 @@ import {
   ElMessage,
   ElOption,
   ElSelect,
+  ElSwitch,
   ElTag,
   ElUpload,
 } from 'element-plus';
@@ -66,7 +68,12 @@ const form = reactive({
   locationId: undefined as number | undefined,
   model: '',
   name: '',
+  purchaseDate: '',
   quantity: 1,
+  registrationTime: '',
+  currentCondition: '',
+  isFirstRegistration: true,
+  remark: '',
   status: 0 as AssetStatus,
 });
 
@@ -92,7 +99,8 @@ function revokeImageObjectUrls() {
   imageFileList.value.forEach((file) => {
     if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
     const responseUrl = (file.response as { url?: string } | undefined)?.url;
-    if (responseUrl?.startsWith('blob:') && responseUrl !== file.url) URL.revokeObjectURL(responseUrl);
+    if (responseUrl?.startsWith('blob:') && responseUrl !== file.url)
+      URL.revokeObjectURL(responseUrl);
   });
 }
 
@@ -101,7 +109,8 @@ onBeforeUnmount(revokeImageObjectUrls);
 function onImageRemove(file: AuthenticatedUploadFile) {
   if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
   const responseUrl = (file.response as { url?: string } | undefined)?.url;
-  if (responseUrl?.startsWith('blob:') && responseUrl !== file.url) URL.revokeObjectURL(responseUrl);
+  if (responseUrl?.startsWith('blob:') && responseUrl !== file.url)
+    URL.revokeObjectURL(responseUrl);
 }
 
 watch(visible, async (opened) => {
@@ -111,9 +120,11 @@ watch(visible, async (opened) => {
     imageFileList.value = [];
     return;
   }
-  void getRuntimeSettings().then((settings) => {
-    attachmentMaxMb.value = settings.attachmentMaxMb;
-  }).catch(() => {});
+  void getRuntimeSettings()
+    .then((settings) => {
+      attachmentMaxMb.value = settings.attachmentMaxMb;
+    })
+    .catch(() => {});
   if (props.asset) {
     Object.assign(form, {
       brand: props.asset.brand ?? '',
@@ -123,16 +134,23 @@ watch(visible, async (opened) => {
       locationId: props.asset.locationId ?? undefined,
       model: props.asset.model ?? '',
       name: props.asset.name,
+      purchaseDate: props.asset.purchaseDate?.slice(0, 10) ?? '',
       quantity: props.asset.quantity,
+      registrationTime: props.asset.registrationTime?.slice(0, 19) ?? '',
+      currentCondition: props.asset.currentCondition ?? '',
+      isFirstRegistration: props.asset.isFirstRegistration,
+      remark: props.asset.remark ?? '',
       status: props.asset.status,
     });
-    const files = await Promise.all((props.asset.images ?? []).map(async (rawUrl, index) => ({
-      name: rawUrl.split('/').pop() ?? rawUrl,
-      rawUrl,
-      status: 'success' as const,
-      uid: -(index + 1),
-      url: await loadAssetImageObjectUrl(rawUrl),
-    })));
+    const files = await Promise.all(
+      (props.asset.images ?? []).map(async (rawUrl, index) => ({
+        name: rawUrl.split('/').pop() ?? rawUrl,
+        rawUrl,
+        status: 'success' as const,
+        uid: -(index + 1),
+        url: await loadAssetImageObjectUrl(rawUrl),
+      })),
+    );
     if (generation !== imageLoadGeneration || !visible.value) {
       files.forEach((file) => URL.revokeObjectURL(file.url));
       return;
@@ -147,7 +165,12 @@ watch(visible, async (opened) => {
       locationId: undefined,
       model: '',
       name: '',
+      purchaseDate: '',
       quantity: 1,
+      registrationTime: nowLocalDateTime(),
+      currentCondition: '',
+      isFirstRegistration: true,
+      remark: '',
       status: 0,
     });
     imageFileList.value = [];
@@ -161,14 +184,28 @@ function buildPayload(): AssetPayload {
     custodianId: form.custodianId,
     departmentId: form.departmentId,
     images: imageFileList.value
-      .map((f) => f.rawUrl ?? (f.response as { rawUrl?: string } | undefined)?.rawUrl)
+      .map(
+        (f) =>
+          f.rawUrl ?? (f.response as { rawUrl?: string } | undefined)?.rawUrl,
+      )
       .filter((u): u is string => !!u),
     locationId: form.locationId,
     model: form.model,
     name: form.name,
+    purchaseDate: form.purchaseDate || null,
     quantity: form.quantity,
+    registrationTime: form.registrationTime || null,
+    currentCondition: form.currentCondition.trim() || null,
+    isFirstRegistration: form.isFirstRegistration,
+    remark: form.remark.trim() || null,
     status: form.status,
   };
+}
+
+function nowLocalDateTime() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 19);
 }
 
 function beforeImageUpload(file: File) {
@@ -192,13 +229,16 @@ function customImageUpload(options: UploadRequestOptions) {
   }));
   pendingUploads.add(request);
   uploading.value = true;
-  void request.then(() => {
-    pendingUploads.delete(request);
-    uploading.value = pendingUploads.size > 0;
-  }, () => {
-    pendingUploads.delete(request);
-    uploading.value = pendingUploads.size > 0;
-  });
+  void request.then(
+    () => {
+      pendingUploads.delete(request);
+      uploading.value = pendingUploads.size > 0;
+    },
+    () => {
+      pendingUploads.delete(request);
+      uploading.value = pendingUploads.size > 0;
+    },
+  );
   return request;
 }
 
@@ -321,6 +361,49 @@ const debouncedSave = useDebounceFn(save, 300);
       <ElFormItem label="数量" required>
         <ElInput v-model.number="form.quantity" />
       </ElFormItem>
+      <ElFormItem label="购入日期">
+        <ElDatePicker
+          v-model="form.purchaseDate"
+          placeholder="选择购入日期"
+          style="width: 100%"
+          type="date"
+          value-format="YYYY-MM-DD"
+        />
+      </ElFormItem>
+      <ElFormItem label="登记时间">
+        <ElDatePicker
+          v-model="form.registrationTime"
+          placeholder="选择资产登记时间"
+          style="width: 100%"
+          type="datetime"
+          value-format="YYYY-MM-DDTHH:mm:ss"
+        />
+      </ElFormItem>
+      <ElFormItem label="目前状况">
+        <ElInput
+          v-model="form.currentCondition"
+          maxlength="200"
+          placeholder="请输入资产目前状况"
+          show-word-limit
+        />
+      </ElFormItem>
+      <ElFormItem label="首次登记">
+        <ElSwitch
+          v-model="form.isFirstRegistration"
+          active-text="是"
+          inactive-text="否"
+        />
+      </ElFormItem>
+      <ElFormItem label="备注">
+        <ElInput
+          v-model="form.remark"
+          :rows="3"
+          maxlength="500"
+          placeholder="请输入备注"
+          show-word-limit
+          type="textarea"
+        />
+      </ElFormItem>
       <ElFormItem label="资产照片" required>
         <ElUpload
           v-model:file-list="imageFileList"
@@ -348,7 +431,12 @@ const debouncedSave = useDebounceFn(save, 300);
     </ElForm>
     <template #footer>
       <ElButton @click="visible = false">取消</ElButton>
-      <ElButton :loading="saving || uploading" type="primary" @click="debouncedSave">保存</ElButton>
+      <ElButton
+        :loading="saving || uploading"
+        type="primary"
+        @click="debouncedSave"
+        >保存</ElButton
+      >
     </template>
   </ElDialog>
 </template>

@@ -20,6 +20,11 @@ public record AssetDto
     public string? Brand { get; init; }
     public int Quantity { get; init; }
     public AssetStatus Status { get; init; }
+    public DateTime? PurchaseDate { get; init; }
+    public DateTime? RegistrationTime { get; init; }
+    public string? CurrentCondition { get; init; }
+    public bool IsFirstRegistration { get; init; }
+    public string? Remark { get; init; }
     public DateTime CreatedAt { get; init; }
     public bool IsDeleted { get; init; }
     public DateTime? DeletedAt { get; init; }
@@ -50,6 +55,11 @@ public record CreateAssetRequest
     public string? Model { get; init; }
     public string? Brand { get; init; }
     public int Quantity { get; init; } = 1;
+    public DateTime? PurchaseDate { get; init; }
+    public DateTime? RegistrationTime { get; init; }
+    public string? CurrentCondition { get; init; }
+    public bool IsFirstRegistration { get; init; } = true;
+    public string? Remark { get; init; }
     public List<string>? Images { get; init; }
 }
 
@@ -64,6 +74,11 @@ public record UpdateAssetRequest
     public string? Brand { get; init; }
     public int Quantity { get; init; } = 1;
     public AssetStatus Status { get; init; } = AssetStatus.Available;
+    public DateTime? PurchaseDate { get; init; }
+    public DateTime? RegistrationTime { get; init; }
+    public string? CurrentCondition { get; init; }
+    public bool IsFirstRegistration { get; init; } = true;
+    public string? Remark { get; init; }
     public List<string>? Images { get; init; }
 }
 
@@ -74,6 +89,11 @@ public record ImportPreviewRow
     public string CategoryCode { get; init; } = "";
     public string? Model { get; init; }
     public string? Brand { get; init; }
+    public DateTime? PurchaseDate { get; init; }
+    public DateTime? RegistrationTime { get; init; }
+    public string? CurrentCondition { get; init; }
+    public bool IsFirstRegistration { get; init; } = true;
+    public string? Remark { get; init; }
     public bool IsValid { get; init; }
     public string Error { get; init; } = "";
 }

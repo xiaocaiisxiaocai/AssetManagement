@@ -21,6 +21,11 @@ public class Asset
     public string? Brand { get; set; }
     public int Quantity { get; set; } = 1;
     public AssetStatus Status { get; set; } = AssetStatus.Available;
+    public DateTime? PurchaseDate { get; set; }
+    public DateTime? RegistrationTime { get; set; }
+    public string? CurrentCondition { get; set; }
+    public bool IsFirstRegistration { get; set; } = true;
+    public string? Remark { get; set; }
     public DateTime CreatedAt { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
