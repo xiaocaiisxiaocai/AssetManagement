@@ -306,7 +306,7 @@ onMounted(loadData);
             <ElTag size="default">{{ parentDisplay }}</ElTag>
           </ElFormItem>
           <ElFormItem label="编码段" required>
-            <ElInput v-model="form.codeSeg" :placeholder="codeRuleHint" />
+            <ElInput v-model="form.codeSeg" placeholder="请输入编码段" />
             <div class="form-tip">{{ codeRuleHint }}</div>
           </ElFormItem>
           <ElFormItem v-if="!isRootCategory" label="备注">
