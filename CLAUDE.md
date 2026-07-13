@@ -143,6 +143,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - 控制器 action 用 `[HasPermission("asset:view")]` 标注(继承 `AuthorizeAttribute`,Policy 名为 `perm:<code>`)。
 - 自定义 `PermissionPolicyProvider` + `PermissionAuthorizationHandler` 动态解析策略,无需预注册每个权限。
 - 权限码、角色、角色-权限/菜单映射的种子数据集中在 `DbSeeder`;权限矩阵参照需求文档。资产删除相关的 `asset:delete`/`asset:restore`/`asset:purge` 见下「资产/分类删除模型」。
+- 角色管理保留新增自定义角色能力。前端通过统一的「授权配置」同时维护菜单范围与功能权限；`PUT /api/roles/{id}/access` 在一个事务内更新两类授权，自动补齐所选子菜单的父级菜单，并拒绝“菜单已显示但缺少该菜单访问权限”的不一致配置。菜单范围只控制导航入口，未挂菜单的功能权限仍可独立授权。`supervisor`/`employee` 的默认矩阵只在首次初始化或升级时写入，之后补种会保留管理员自定义授权；`admin` 仍持续自动补齐全部权限与菜单。
 
 ### 多部门数据隔离(已实现)
 

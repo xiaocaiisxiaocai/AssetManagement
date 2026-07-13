@@ -355,6 +355,11 @@ public class AuditActionFilter : IAsyncActionFilter
 
     private static string? BuildRoleAssignmentSummary(string path, RoleDto role)
     {
+        if (ContainsPath(path, "/access"))
+        {
+            return $"配置角色授权：{role.Name}（{role.Code}），权限数 {role.PermissionIds.Length}，菜单数 {role.MenuIds.Length}";
+        }
+
         if (ContainsPath(path, "/permissions"))
         {
             return $"分配角色权限：{role.Name}（{role.Code}），权限数 {role.PermissionIds.Length}";

@@ -792,6 +792,94 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Set_role_access_saves_permissions_and_menus_together_and_adds_parent_menu()
+    {
+        await Login();
+        var permissionCode = Unique("access:view");
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("access_role"),
+            Name = "一体化授权角色",
+            IsActive = true
+        });
+        var permission = await Post<ApiResult<PermissionDto>>("/api/permissions", new PermissionDto
+        {
+            Code = permissionCode,
+            Name = "查看授权演示",
+            Module = "access"
+        });
+        var parent = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = Unique("AccessRoot"),
+            Title = "授权演示",
+            Path = "/access",
+            Component = "BasicLayout",
+            Sort = 102,
+            Type = "menu"
+        });
+        var child = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            ParentId = parent.Data!.Id,
+            Name = Unique("AccessChild"),
+            Title = "授权演示列表",
+            Path = "/access/list",
+            Component = "/access/index",
+            Sort = 103,
+            Type = "menu",
+            PermissionCode = permissionCode
+        });
+
+        var updated = await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data!.Id}/access", new
+        {
+            permissionIds = new[] { permission.Data!.Id },
+            menuIds = new[] { child.Data!.Id }
+        });
+
+        updated.Data!.PermissionIds.Should().ContainSingle().Which.Should().Be(permission.Data.Id);
+        updated.Data.MenuIds.Should().Contain(new[] { parent.Data.Id, child.Data.Id });
+    }
+
+    [Fact]
+    public async Task Set_role_access_rejects_visible_menu_without_required_permission_and_keeps_old_access()
+    {
+        await Login();
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("guarded_role"),
+            Name = "授权校验角色",
+            IsActive = true
+        });
+        var permission = await Post<ApiResult<PermissionDto>>("/api/permissions", new PermissionDto
+        {
+            Code = Unique("guarded:view"),
+            Name = "查看受保护菜单",
+            Module = "guarded"
+        });
+        var menu = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = Unique("GuardedMenu"),
+            Title = "受保护菜单",
+            Path = "/guarded",
+            Component = "/guarded/index",
+            Sort = 104,
+            Type = "menu",
+            PermissionCode = permission.Data!.Code
+        });
+
+        var rejected = await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data!.Id}/access", new
+        {
+            permissionIds = Array.Empty<int>(),
+            menuIds = new[] { menu.Data!.Id }
+        });
+        var unchanged = await _client.GetFromJsonAsync<ApiResult<RoleDto>>($"/api/roles/{role.Data.Id}");
+
+        rejected.Code.Should().Be(4001);
+        rejected.Message.Should().Contain("受保护菜单");
+        unchanged!.Data!.PermissionIds.Should().BeEmpty();
+        unchanged.Data.MenuIds.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Update_role_status_keeps_existing_permissions_and_menus()
     {
         await Login();

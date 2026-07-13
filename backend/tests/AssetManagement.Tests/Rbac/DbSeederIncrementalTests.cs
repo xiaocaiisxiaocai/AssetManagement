@@ -95,6 +95,43 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
     }
 
     [Fact]
+    public void Repeated_seed_preserves_custom_supervisor_permissions_and_menus_after_defaults_initialized()
+    {
+        SeedLegacyDatabaseState();
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        var supervisor = _db.Roles.Single(x => x.Code == "supervisor");
+        var assetCreate = _db.Permissions.Single(x => x.Code == "asset:create");
+        var userCreate = _db.Permissions.Single(x => x.Code == "user:create");
+        var materialHome = _db.Menus.Single(x => x.Name == "MaterialHome");
+        _db.RolePermissions.RemoveRange(_db.RolePermissions.Where(x =>
+            x.RoleId == supervisor.Id && x.PermissionId == assetCreate.Id));
+        _db.RolePermissions.Add(new RolePermission
+        {
+            RoleId = supervisor.Id,
+            PermissionId = userCreate.Id
+        });
+        _db.RoleMenus.RemoveRange(_db.RoleMenus.Where(x =>
+            x.RoleId == supervisor.Id && x.MenuId == materialHome.Id));
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        var reloaded = _db.Roles
+            .Include(x => x.RolePermissions)
+            .ThenInclude(x => x.Permission)
+            .Include(x => x.RoleMenus)
+            .ThenInclude(x => x.Menu)
+            .Single(x => x.Code == "supervisor");
+        reloaded.RolePermissions.Select(x => x.Permission.Code).Should().NotContain("asset:create");
+        reloaded.RolePermissions.Select(x => x.Permission.Code).Should().Contain("user:create");
+        reloaded.RoleMenus.Select(x => x.Menu.Name).Should().NotContain("MaterialHome");
+        _db.SystemSettings.Should().Contain(x => x.Key == "rbac_core_role_defaults_initialized_v1");
+    }
+
+    [Fact]
     public void Incremental_seed_repairs_admin_menu_order_for_existing_database()
     {
         SeedLegacyDatabaseState();

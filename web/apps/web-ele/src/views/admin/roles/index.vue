@@ -11,19 +11,26 @@ import {
   getMenusApi,
   getPermissionsApi,
   getRoleListApi,
-  setRoleMenusApi,
-  setRolePermissionsApi,
+  setRoleAccessApi,
   updateRoleApi,
 } from '#/api/role';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
 import { sortBuiltInMenus } from '#/utils/menu-order';
 import { buildRoleActionAccess } from '#/views/permissions/action-access';
 
-import { mergeMenuTreeSelection } from './menu-tree-selection';
+import {
+  collectRequiredPermissionIds,
+  filterPageMenuTree,
+  mergeMenuTreeSelection,
+} from './menu-tree-selection';
 import { buildPermissionGroups } from './permission-groups';
 
 import {
   ElButton,
+  ElAlert,
   ElCheckbox,
   ElCheckboxGroup,
   ElDialog,
@@ -46,12 +53,13 @@ import {
 defineOptions({ name: 'AdminRoles' });
 
 const { hasAccessByCodes } = useAccess();
-const roleActionAccess = computed(() => buildRoleActionAccess(hasAccessByCodes));
+const roleActionAccess = computed(() =>
+  buildRoleActionAccess(hasAccessByCodes),
+);
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
-const permDialogVisible = ref(false);
-const menuDialogVisible = ref(false);
+const accessDialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const roles = ref<RoleDto[]>([]);
 const permissions = ref<PermissionDto[]>([]);
@@ -75,13 +83,10 @@ const form = reactive({
   isActive: true,
 });
 
-const permissionForm = reactive({
+const accessForm = reactive({
   roleId: 0 as number,
+  roleName: '',
   selectedPermissions: [] as number[],
-});
-
-const menuForm = reactive({
-  roleId: 0 as number,
   selectedMenus: [] as number[],
 });
 
@@ -107,20 +112,43 @@ const actionLabelMap: Record<string, string> = {
   view: '查看',
 };
 
-const selectedPermissionSet = computed(() => new Set(permissionForm.selectedPermissions));
+const canConfigureAccess = computed(
+  () =>
+    roleActionAccess.value.canAssignPermission &&
+    roleActionAccess.value.canAssignMenu,
+);
+const pageMenuTree = computed(() => filterPageMenuTree(menus.value));
+const selectedPermissionSet = computed(
+  () => new Set(accessForm.selectedPermissions),
+);
+const requiredPermissionIdSet = computed(
+  () =>
+    new Set(
+      collectRequiredPermissionIds(
+        pageMenuTree.value,
+        permissions.value,
+        accessForm.selectedMenus,
+      ),
+    ),
+);
 
-const permissionGroups = computed(() => buildPermissionGroups({
-  menus: menus.value,
-  permissions: permissions.value,
-  selectedPermissionIds: permissionForm.selectedPermissions,
-}));
+const permissionGroups = computed(() =>
+  buildPermissionGroups({
+    menus: menus.value,
+    permissions: permissions.value,
+    selectedPermissionIds: accessForm.selectedPermissions,
+  }),
+);
 
 const activePermissionGroup = computed(() => {
   if (!activePermissionGroupKey.value && permissionGroups.value.length > 0) {
     return permissionGroups.value[0];
   }
-  return permissionGroups.value.find((item) => item.key === activePermissionGroupKey.value)
-    ?? permissionGroups.value[0];
+  return (
+    permissionGroups.value.find(
+      (item) => item.key === activePermissionGroupKey.value,
+    ) ?? permissionGroups.value[0]
+  );
 });
 
 const filteredPermissions = computed(() => {
@@ -129,17 +157,25 @@ const filteredPermissions = computed(() => {
 
   const keyword = permissionKeyword.value.trim().toLowerCase();
   return group.permissions.filter((perm) => {
-    const matchedKeyword = !keyword
-      || perm.name.toLowerCase().includes(keyword)
-      || perm.code.toLowerCase().includes(keyword);
-    const matchedSelected = !showSelectedOnly.value || selectedPermissionSet.value.has(perm.id);
+    const matchedKeyword =
+      !keyword ||
+      perm.name.toLowerCase().includes(keyword) ||
+      perm.code.toLowerCase().includes(keyword);
+    const matchedSelected =
+      !showSelectedOnly.value || selectedPermissionSet.value.has(perm.id);
     return matchedKeyword && matchedSelected;
   });
 });
 
-const selectedPermissionCount = computed(() => permissionForm.selectedPermissions.length);
-const activePermissionGroupKeyValue = computed(() => activePermissionGroup.value?.key ?? '');
-const activePermissionGroupLabel = computed(() => activePermissionGroup.value?.label ?? '权限');
+const selectedPermissionCount = computed(
+  () => accessForm.selectedPermissions.length,
+);
+const activePermissionGroupKeyValue = computed(
+  () => activePermissionGroup.value?.key ?? '',
+);
+const activePermissionGroupLabel = computed(
+  () => activePermissionGroup.value?.label ?? '权限',
+);
 
 function actionLabel(code: string) {
   const parts = code.split(':');
@@ -160,22 +196,28 @@ function selectPermissionGroup(key: string) {
 function selectCurrentModulePermissions() {
   const group = activePermissionGroup.value;
   if (!group) return;
-  const selected = new Set(permissionForm.selectedPermissions);
+  const selected = new Set(accessForm.selectedPermissions);
   group.permissions.forEach((perm) => selected.add(perm.id));
-  permissionForm.selectedPermissions = [...selected];
+  accessForm.selectedPermissions = [...selected];
 }
 
 function clearCurrentModulePermissions() {
   const group = activePermissionGroup.value;
   if (!group) return;
   const ids = new Set(group.permissions.map((perm) => perm.id));
-  permissionForm.selectedPermissions = permissionForm.selectedPermissions.filter((id) => !ids.has(id));
+  accessForm.selectedPermissions = accessForm.selectedPermissions.filter(
+    (id) => !ids.has(id) || requiredPermissionIdSet.value.has(id),
+  );
 }
 
 async function loadData() {
   loading.value = true;
   try {
-    const result = await getRoleListApi(query.keyword, query.page, query.pageSize);
+    const result = await getRoleListApi(
+      query.keyword,
+      query.page,
+      query.pageSize,
+    );
     roles.value = result.items;
     total.value = result.total;
   } finally {
@@ -184,8 +226,11 @@ async function loadData() {
 }
 
 async function loadPermissionsAndMenus() {
-  if (!roleActionAccess.value.canAssignPermission && !roleActionAccess.value.canAssignMenu) return;
-  const [perms, menus_data] = await Promise.all([getPermissionsApi(), getMenusApi()]);
+  if (!canConfigureAccess.value) return;
+  const [perms, menus_data] = await Promise.all([
+    getPermissionsApi(),
+    getMenusApi(),
+  ]);
   permissions.value = perms;
   menus.value = sortBuiltInMenus(menus_data);
 }
@@ -230,10 +275,18 @@ async function save() {
     if (editingId.value) {
       await updateRoleApi(editingId.value, payload);
     } else {
-      await createRoleApi({
+      const created = await createRoleApi({
         code: form.code,
         ...payload,
       });
+      ElMessage.success('角色已创建，请继续配置授权');
+      dialogVisible.value = false;
+      query.page = 1;
+      await loadData();
+      if (canConfigureAccess.value) {
+        await openAccessDialog(created);
+      }
+      return;
     }
     ElMessage.success('保存成功');
     dialogVisible.value = false;
@@ -244,44 +297,57 @@ async function save() {
   }
 }
 
-function openPermDialog(row: RoleDto) {
-  permissionForm.roleId = row.id;
-  permissionForm.selectedPermissions = [...(row.permissionIds ?? [])];
+async function openAccessDialog(row: RoleDto) {
+  accessForm.roleId = row.id;
+  accessForm.roleName = row.name;
+  accessForm.selectedPermissions = [...(row.permissionIds ?? [])];
+  accessForm.selectedMenus = [...(row.menuIds ?? [])];
   permissionKeyword.value = '';
   showSelectedOnly.value = false;
   activePermissionGroupKey.value = permissionGroups.value[0]?.key ?? '';
-  permDialogVisible.value = true;
-}
-
-async function savePermissions() {
-  saving.value = true;
-  try {
-    await setRolePermissionsApi(permissionForm.roleId, permissionForm.selectedPermissions);
-    ElMessage.success('权限分配成功');
-    permDialogVisible.value = false;
-    await loadData();
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function openMenuDialog(row: RoleDto) {
-  menuForm.roleId = row.id;
-  menuForm.selectedMenus = [...(row.menuIds ?? [])];
-  menuDialogVisible.value = true;
+  syncRequiredPermissions();
+  accessDialogVisible.value = true;
   await nextTick();
-  menuTreeRef.value?.setCheckedKeys(leafMenuIds(menuForm.selectedMenus), false);
+  menuTreeRef.value?.setCheckedKeys(
+    leafMenuIds(accessForm.selectedMenus),
+    false,
+  );
 }
 
-async function saveMenus() {
+function syncMenuSelection() {
+  const checkedKeys =
+    (menuTreeRef.value?.getCheckedKeys(false) as number[]) ?? [];
+  const halfCheckedKeys =
+    (menuTreeRef.value?.getHalfCheckedKeys() as number[]) ?? [];
+  accessForm.selectedMenus = mergeMenuTreeSelection(
+    checkedKeys,
+    halfCheckedKeys,
+  );
+  syncRequiredPermissions();
+}
+
+function syncRequiredPermissions() {
+  const requiredIds = collectRequiredPermissionIds(
+    pageMenuTree.value,
+    permissions.value,
+    accessForm.selectedMenus,
+  );
+  accessForm.selectedPermissions = [
+    ...new Set([...accessForm.selectedPermissions, ...requiredIds]),
+  ];
+}
+
+async function saveAccess() {
+  syncMenuSelection();
   saving.value = true;
   try {
-    const checkedKeys = menuTreeRef.value?.getCheckedKeys(false) as number[] ?? [];
-    const halfCheckedKeys = menuTreeRef.value?.getHalfCheckedKeys() as number[] ?? [];
-    menuForm.selectedMenus = mergeMenuTreeSelection(checkedKeys, halfCheckedKeys);
-    await setRoleMenusApi(menuForm.roleId, menuForm.selectedMenus);
-    ElMessage.success('菜单授权成功');
-    menuDialogVisible.value = false;
+    await setRoleAccessApi(
+      accessForm.roleId,
+      accessForm.selectedPermissions,
+      accessForm.selectedMenus,
+    );
+    ElMessage.success('角色授权已保存');
+    accessDialogVisible.value = false;
     await loadData();
   } finally {
     saving.value = false;
@@ -290,8 +356,8 @@ async function saveMenus() {
 
 function leafMenuIds(selectedIds: number[]) {
   const selected = new Set(selectedIds);
-  return flattenMenus(menus.value)
-    .filter((menu) => selected.has(menu.id) && !(menu.children?.length))
+  return flattenMenus(pageMenuTree.value)
+    .filter((menu) => selected.has(menu.id) && !menu.children?.length)
     .map((menu) => menu.id);
 }
 
@@ -338,7 +404,12 @@ onMounted(async () => {
         <div>
           <h2 class="role-title">角色管理</h2>
         </div>
-        <ElButton v-if="roleActionAccess.canCreate" type="primary" @click="openCreate">新增角色</ElButton>
+        <ElButton
+          v-if="roleActionAccess.canCreate"
+          type="primary"
+          @click="openCreate"
+          >新增角色</ElButton
+        >
       </div>
 
       <div class="role-filter-panel">
@@ -368,7 +439,12 @@ onMounted(async () => {
               {{ row.permissionIds?.length ?? 0 }}
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="菜单数" width="100" align="center">
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="菜单数"
+            width="100"
+            align="center"
+          >
             <template #default="{ row }">
               {{ row.menuIds?.length ?? 0 }}
             </template>
@@ -380,12 +456,32 @@ onMounted(async () => {
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn fixed="right" label="操作" width="320" align="center">
+          <ElTableColumn fixed="right" label="操作" width="250" align="center">
             <template #default="{ row }">
-              <ElButton v-if="roleActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-              <ElButton v-if="roleActionAccess.canAssignPermission" link type="primary" size="small" @click="openPermDialog(row)">权限分配</ElButton>
-              <ElButton v-if="roleActionAccess.canAssignMenu" link type="primary" size="small" @click="openMenuDialog(row)">菜单授权</ElButton>
-              <ElButton v-if="roleActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
+              <ElButton
+                v-if="roleActionAccess.canEdit"
+                link
+                type="primary"
+                size="small"
+                @click="openEdit(row)"
+                >编辑</ElButton
+              >
+              <ElButton
+                v-if="canConfigureAccess"
+                link
+                type="primary"
+                size="small"
+                @click="openAccessDialog(row)"
+                >授权配置</ElButton
+              >
+              <ElButton
+                v-if="roleActionAccess.canDelete"
+                link
+                type="danger"
+                size="small"
+                @click="remove(row)"
+                >删除</ElButton
+              >
             </template>
           </ElTableColumn>
         </ElTable>
@@ -443,85 +539,127 @@ onMounted(async () => {
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
+          <ElButton :loading="saving" type="primary" @click="save"
+            >保存</ElButton
+          >
         </template>
       </ElDialog>
 
-      <!-- 权限分配弹窗 -->
-      <ElDialog v-model="permDialogVisible" title="权限分配" width="920px">
-        <div class="role-permission-shell">
-          <aside class="role-permission-sidebar">
-            <button
-              v-for="item in permissionGroups"
-              :key="item.key"
-              :class="[
-                'role-module-item',
-                { 'is-active': activePermissionGroupKeyValue === item.key },
-              ]"
-              :style="{ paddingLeft: `${10 + item.level * 16}px` }"
-              type="button"
-              @click="selectPermissionGroup(item.key)"
-            >
-              <span class="role-module-name">{{ item.label }}</span>
-              <span class="role-module-count">{{ item.selected }}/{{ item.total }}</span>
-            </button>
-          </aside>
+      <!-- 一体化角色授权弹窗 -->
+      <ElDialog
+        v-model="accessDialogVisible"
+        :title="`授权配置 · ${accessForm.roleName}`"
+        width="1180px"
+      >
+        <ElAlert
+          class="role-access-alert"
+          :closable="false"
+          show-icon
+          title="菜单决定用户能看到哪些入口；功能权限决定进入后能执行哪些操作。勾选菜单时会自动补齐该页面的最低访问权限。"
+          type="info"
+        />
 
-          <section class="role-permission-main">
-            <div class="role-permission-tools">
-              <ElInput
-                v-model="permissionKeyword"
-                clearable
-                placeholder="搜索权限名称或编码"
+        <div class="role-access-shell">
+          <section class="role-menu-panel">
+            <div class="role-access-section-title">
+              <span>菜单范围</span>
+              <span>{{ accessForm.selectedMenus.length }} 项</span>
+            </div>
+            <div class="role-menu-tree">
+              <ElTree
+                ref="menuTreeRef"
+                :data="pageMenuTree"
+                :props="{ children: 'children', label: 'title' }"
+                default-expand-all
+                node-key="id"
+                show-checkbox
+                @check="syncMenuSelection"
               />
-              <div class="role-permission-tool-actions">
-                <ElCheckbox v-model="showSelectedOnly">只看已选</ElCheckbox>
-                <ElButton @click="selectCurrentModulePermissions">全选当前模块</ElButton>
-                <ElButton @click="clearCurrentModulePermissions">清空当前模块</ElButton>
-              </div>
             </div>
+          </section>
 
-            <div class="role-permission-summary">
-              <span>{{ activePermissionGroupLabel }}</span>
-              <span>已选 {{ selectedPermissionCount }} / {{ permissions.length }}</span>
-            </div>
-
-            <ElCheckboxGroup v-model="permissionForm.selectedPermissions">
-              <div v-if="filteredPermissions.length > 0" class="role-permission-list">
-                <ElCheckbox
-                  v-for="perm in filteredPermissions"
-                  :key="perm.id"
-                  :label="perm.id"
-                  class="role-permission-card"
-                  border
+          <section class="role-permission-panel">
+            <div class="role-permission-shell">
+              <aside class="role-permission-sidebar">
+                <button
+                  v-for="item in permissionGroups"
+                  :key="item.key"
+                  :class="[
+                    'role-module-item',
+                    { 'is-active': activePermissionGroupKeyValue === item.key },
+                  ]"
+                  :style="{ paddingLeft: `${10 + item.level * 16}px` }"
+                  type="button"
+                  @click="selectPermissionGroup(item.key)"
                 >
-                  <span class="role-permission-name">{{ perm.name }}</span>
-                  <span class="role-permission-action">{{ actionLabel(perm.code) }}</span>
-                  <span class="role-permission-code">{{ perm.code }}</span>
-                </ElCheckbox>
-              </div>
-              <ElEmpty v-else description="没有匹配的权限" />
-            </ElCheckboxGroup>
+                  <span class="role-module-name">{{ item.label }}</span>
+                  <span class="role-module-count"
+                    >{{ item.selected }}/{{ item.total }}</span
+                  >
+                </button>
+              </aside>
+
+              <section class="role-permission-main">
+                <div class="role-permission-tools">
+                  <ElInput
+                    v-model="permissionKeyword"
+                    clearable
+                    placeholder="搜索权限名称或编码"
+                  />
+                  <div class="role-permission-tool-actions">
+                    <ElCheckbox v-model="showSelectedOnly">只看已选</ElCheckbox>
+                    <ElButton @click="selectCurrentModulePermissions"
+                      >全选当前模块</ElButton
+                    >
+                    <ElButton @click="clearCurrentModulePermissions"
+                      >清空当前模块</ElButton
+                    >
+                  </div>
+                </div>
+
+                <div class="role-permission-summary">
+                  <span>{{ activePermissionGroupLabel }}</span>
+                  <span
+                    >已选 {{ selectedPermissionCount }} /
+                    {{ permissions.length }}</span
+                  >
+                </div>
+
+                <ElCheckboxGroup v-model="accessForm.selectedPermissions">
+                  <div
+                    v-if="filteredPermissions.length > 0"
+                    class="role-permission-list"
+                  >
+                    <ElCheckbox
+                      v-for="perm in filteredPermissions"
+                      :key="perm.id"
+                      :disabled="requiredPermissionIdSet.has(perm.id)"
+                      :label="perm.id"
+                      class="role-permission-card"
+                      border
+                    >
+                      <span class="role-permission-name">{{ perm.name }}</span>
+                      <span class="role-permission-action">
+                        {{
+                          requiredPermissionIdSet.has(perm.id)
+                            ? '菜单必需'
+                            : actionLabel(perm.code)
+                        }}
+                      </span>
+                      <span class="role-permission-code">{{ perm.code }}</span>
+                    </ElCheckbox>
+                  </div>
+                  <ElEmpty v-else description="没有匹配的权限" />
+                </ElCheckboxGroup>
+              </section>
+            </div>
           </section>
         </div>
         <template #footer>
-          <ElButton @click="permDialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="savePermissions">保存</ElButton>
-        </template>
-      </ElDialog>
-
-      <!-- 菜单授权弹窗 -->
-      <ElDialog v-model="menuDialogVisible" title="菜单授权" width="580px">
-        <ElTree
-          ref="menuTreeRef"
-          :data="menus"
-          :props="{ children: 'children', label: 'title' }"
-          show-checkbox
-          node-key="id"
-        />
-        <template #footer>
-          <ElButton @click="menuDialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="saveMenus">保存</ElButton>
+          <ElButton @click="accessDialogVisible = false">取消</ElButton>
+          <ElButton :loading="saving" type="primary" @click="saveAccess"
+            >保存授权</ElButton
+          >
         </template>
       </ElDialog>
     </div>
@@ -615,11 +753,60 @@ onMounted(async () => {
 }
 
 /* ========== 权限分配面板 ========== */
+.role-access-alert {
+  margin-bottom: 16px;
+}
+
+.role-access-shell {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 540px;
+}
+
+.role-menu-panel,
+.role-permission-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--asset-page-border);
+  border-radius: 10px;
+  background: var(--asset-page-surface);
+}
+
+.role-access-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--asset-page-border);
+  color: var(--asset-page-text);
+  background: var(--asset-page-surface-soft);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.role-access-section-title span:last-child {
+  color: var(--asset-page-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.role-menu-tree {
+  max-height: 520px;
+  overflow-y: auto;
+  padding: 12px 10px;
+}
+
+.role-permission-panel {
+  padding: 10px;
+}
+
 .role-permission-shell {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 16px;
-  min-height: 520px;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 518px;
 }
 
 .role-permission-sidebar {

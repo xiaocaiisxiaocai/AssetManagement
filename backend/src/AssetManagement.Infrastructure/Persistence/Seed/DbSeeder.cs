@@ -8,6 +8,8 @@ namespace AssetManagement.Infrastructure.Persistence.Seed;
 
 public static class DbSeeder
 {
+    private const string CoreRoleDefaultsInitializedKey = "rbac_core_role_defaults_initialized_v1";
+
     public static void Seed(AppDbContext db)
     {
         var originalTrackingBehavior = db.ChangeTracker.QueryTrackingBehavior;
@@ -20,6 +22,7 @@ public static class DbSeeder
             {
                 SeedIncremental(db);
                 SeedTestMaterialModule(db);
+                MarkCoreRoleDefaultsInitialized(db);
                 return;
             }
 
@@ -155,6 +158,7 @@ public static class DbSeeder
         tx.Commit();
 
             SeedTestMaterialModule(db);
+            MarkCoreRoleDefaultsInitialized(db);
         }
         finally
         {
@@ -655,15 +659,30 @@ public static class DbSeeder
 
         EnsureAdminDefaultPermissionsAndMenus(db);
 
-        foreach (var (roleCode, permissionCodes) in CoreRolePermissionMap())
+        if (!db.SystemSettings.Any(x => x.Key == CoreRoleDefaultsInitializedKey))
         {
-            var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
-            if (role is null) continue;
+            foreach (var (roleCode, permissionCodes) in CoreRolePermissionMap())
+            {
+                var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
+                if (role is null) continue;
 
-            EnsureRolePermissionsForMatrix(db, role, permissionCodes);
+                EnsureRolePermissionsForMatrix(db, role, permissionCodes);
 
-            EnsureRoleMenusForPermissions(db, role, permissionCodes);
+                EnsureRoleMenusForPermissions(db, role, permissionCodes);
+            }
         }
+        db.SaveChanges();
+    }
+
+    private static void MarkCoreRoleDefaultsInitialized(AppDbContext db)
+    {
+        if (db.SystemSettings.Any(x => x.Key == CoreRoleDefaultsInitializedKey)) return;
+        db.SystemSettings.Add(new SystemSetting
+        {
+            Key = CoreRoleDefaultsInitializedKey,
+            Value = "true",
+            Description = "基础角色默认权限与菜单已初始化，后续保留管理员自定义授权"
+        });
         db.SaveChanges();
     }
 
@@ -911,9 +930,16 @@ public static class DbSeeder
         var roleGrants = new Dictionary<string, string[]>
         {
             ["admin"] = materialPermissions.Select(p => p.Code).ToArray(),
-            ["supervisor"] = CoreRolePermissionMap()["supervisor"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
-            ["employee"] = CoreRolePermissionMap()["employee"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
         };
+        if (!db.SystemSettings.Any(x => x.Key == CoreRoleDefaultsInitializedKey))
+        {
+            roleGrants["supervisor"] = CoreRolePermissionMap()["supervisor"]
+                .Where(x => x.StartsWith("material") || x.StartsWith("project"))
+                .ToArray();
+            roleGrants["employee"] = CoreRolePermissionMap()["employee"]
+                .Where(x => x.StartsWith("material") || x.StartsWith("project"))
+                .ToArray();
+        }
         foreach (var (roleCode, codes) in roleGrants)
         {
             var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);

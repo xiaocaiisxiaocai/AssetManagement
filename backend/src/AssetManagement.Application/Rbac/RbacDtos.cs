@@ -89,6 +89,12 @@ public record SetRoleMenusRequest
     public int[] MenuIds { get; init; } = Array.Empty<int>();
 }
 
+public record SetRoleAccessRequest
+{
+    public int[] PermissionIds { get; init; } = Array.Empty<int>();
+    public int[] MenuIds { get; init; } = Array.Empty<int>();
+}
+
 public record PermissionDto
 {
     public int Id { get; init; }

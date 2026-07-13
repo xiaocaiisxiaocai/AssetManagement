@@ -63,8 +63,16 @@ async function unwrapPaged<T>(request: Promise<ApiResult<PagedResult<T>>>) {
   return result.data;
 }
 
-export const getRoleListApi = (keyword?: string, page: number = 1, pageSize: number = 20) =>
-  unwrapPaged(requestClient.get<ApiResult<PagedResult<RoleDto>>>('/roles', { params: { keyword, page, pageSize } }));
+export const getRoleListApi = (
+  keyword?: string,
+  page: number = 1,
+  pageSize: number = 20,
+) =>
+  unwrapPaged(
+    requestClient.get<ApiResult<PagedResult<RoleDto>>>('/roles', {
+      params: { keyword, page, pageSize },
+    }),
+  );
 
 export const createRoleApi = (data: RolePayload) =>
   unwrap(requestClient.post<ApiResult<RoleDto>>('/roles', data));
@@ -76,10 +84,26 @@ export const deleteRoleApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<null>>(`/roles/${id}`));
 
 export const setRolePermissionsApi = (id: number, permissionIds: number[]) =>
-  unwrap(requestClient.put<ApiResult<null>>(`/roles/${id}/permissions`, { permissionIds }));
+  unwrap(
+    requestClient.put<ApiResult<null>>(`/roles/${id}/permissions`, {
+      permissionIds,
+    }),
+  );
 
 export const setRoleMenusApi = (id: number, menuIds: number[]) =>
   unwrap(requestClient.put<ApiResult<null>>(`/roles/${id}/menus`, { menuIds }));
+
+export const setRoleAccessApi = (
+  id: number,
+  permissionIds: number[],
+  menuIds: number[],
+) =>
+  unwrap(
+    requestClient.put<ApiResult<RoleDto>>(`/roles/${id}/access`, {
+      menuIds,
+      permissionIds,
+    }),
+  );
 
 export const getPermissionsApi = () =>
   unwrap(requestClient.get<ApiResult<PermissionDto[]>>('/permissions'));

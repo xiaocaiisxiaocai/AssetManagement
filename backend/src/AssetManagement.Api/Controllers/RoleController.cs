@@ -53,5 +53,11 @@ public class RoleController : ControllerBase
     [HasPermission("role:assign-menu")]
     public async Task<ApiResult<RoleDto>> SetMenus(int id, SetRoleMenusRequest request)
         => ApiResult<RoleDto>.Ok(await _rbac.SetRoleMenusAsync(id, request.MenuIds));
+
+    [HttpPut("{id:int}/access")]
+    [HasPermission("role:assign-permission")]
+    [HasPermission("role:assign-menu")]
+    public async Task<ApiResult<RoleDto>> SetAccess(int id, SetRoleAccessRequest request)
+        => ApiResult<RoleDto>.Ok(await _rbac.SetRoleAccessAsync(id, request.PermissionIds, request.MenuIds));
 }
 

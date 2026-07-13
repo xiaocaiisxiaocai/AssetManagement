@@ -325,13 +325,74 @@ public class RbacService : IRbacService
 
     public async Task<RoleDto> SetRolePermissionsAsync(int id, int[] permissionIds)
     {
-        await RewriteRolePermissions(id, permissionIds);
-        return await LoadRoleDto(id);
+        var menuIds = await _db.RoleMenus
+            .Where(x => x.RoleId == id)
+            .Select(x => x.MenuId)
+            .ToArrayAsync();
+        return await SetRoleAccessAsync(id, permissionIds, menuIds);
     }
 
     public async Task<RoleDto> SetRoleMenusAsync(int id, int[] menuIds)
     {
-        await RewriteRoleMenus(id, menuIds);
+        var permissionIds = await _db.RolePermissions
+            .Where(x => x.RoleId == id)
+            .Select(x => x.PermissionId)
+            .ToArrayAsync();
+        return await SetRoleAccessAsync(id, permissionIds, menuIds);
+    }
+
+    public async Task<RoleDto> SetRoleAccessAsync(int id, int[] permissionIds, int[] menuIds)
+    {
+        if (!await _db.Roles.AnyAsync(x => x.Id == id))
+        {
+            throw new BizException(4042, "角色不存在");
+        }
+
+        var distinctPermissionIds = permissionIds.Distinct().ToArray();
+        if (await _db.Permissions.CountAsync(x => distinctPermissionIds.Contains(x.Id)) != distinctPermissionIds.Length)
+        {
+            throw new BizException(4043, "权限不存在");
+        }
+
+        var requestedMenuIds = menuIds.Distinct().ToArray();
+        var allMenus = await _db.Menus.ToListAsync();
+        if (allMenus.Count(x => requestedMenuIds.Contains(x.Id)) != requestedMenuIds.Length)
+        {
+            throw new BizException(4044, "菜单不存在");
+        }
+
+        var expandedMenuIds = ExpandMenuIdsWithAncestors(requestedMenuIds, allMenus);
+        var selectedPermissionCodes = (await _db.Permissions
+            .Where(x => distinctPermissionIds.Contains(x.Id))
+            .Select(x => x.Code)
+            .ToListAsync())
+            .ToHashSet(StringComparer.Ordinal);
+        var missingMenuPermissions = allMenus
+            .Where(x => expandedMenuIds.Contains(x.Id) && !string.IsNullOrWhiteSpace(x.PermissionCode))
+            .Where(x => !selectedPermissionCodes.Contains(x.PermissionCode!))
+            .Select(x => x.Title)
+            .Distinct()
+            .ToArray();
+        if (missingMenuPermissions.Length > 0)
+        {
+            throw new BizException(4001, $"以下菜单缺少访问权限：{string.Join("、", missingMenuPermissions)}");
+        }
+
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        _db.RolePermissions.RemoveRange(_db.RolePermissions.Where(x => x.RoleId == id));
+        _db.RoleMenus.RemoveRange(_db.RoleMenus.Where(x => x.RoleId == id));
+        _db.RolePermissions.AddRange(distinctPermissionIds.Select(permissionId => new RolePermission
+        {
+            RoleId = id,
+            PermissionId = permissionId
+        }));
+        _db.RoleMenus.AddRange(expandedMenuIds.Select(menuId => new RoleMenu
+        {
+            RoleId = id,
+            MenuId = menuId
+        }));
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
         return await LoadRoleDto(id);
     }
 
@@ -655,6 +716,22 @@ public class RbacService : IRbacService
             MenuId = id
         }));
         await _db.SaveChangesAsync();
+    }
+
+    private static HashSet<int> ExpandMenuIdsWithAncestors(IEnumerable<int> menuIds, IReadOnlyCollection<Menu> allMenus)
+    {
+        var menuMap = allMenus.ToDictionary(x => x.Id);
+        var expanded = menuIds.ToHashSet();
+        foreach (var menuId in expanded.ToArray())
+        {
+            var cursor = menuMap[menuId];
+            while (cursor.ParentId.HasValue)
+            {
+                expanded.Add(cursor.ParentId.Value);
+                cursor = menuMap[cursor.ParentId.Value];
+            }
+        }
+        return expanded;
     }
 
     private async Task<UserDto> LoadUserDto(int id)

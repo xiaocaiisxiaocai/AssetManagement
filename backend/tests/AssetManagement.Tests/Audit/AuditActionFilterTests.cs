@@ -151,6 +151,7 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
     }
 
     [Theory]
+    [InlineData("/api/test-audit/roles/7/access", "配置角色授权", "部门主管", "权限数 3，菜单数 2")]
     [InlineData("/api/test-audit/roles/7/permissions", "分配角色权限", "部门主管", "权限数 3")]
     [InlineData("/api/test-audit/roles/7/menus", "分配角色菜单", "部门主管", "菜单数 2")]
     public async Task Role_assignment_audit_log_uses_business_summary(string url, string action, string roleName, string countText)
@@ -345,6 +346,17 @@ public class AuditProbeController : ControllerBase
 
     [HttpPut("roles/{id:int}/menus")]
     public ApiResult<RoleDto> SetRoleMenus(int id)
+        => ApiResult<RoleDto>.Ok(new RoleDto
+        {
+            Id = id,
+            Code = "supervisor",
+            Name = "部门主管",
+            PermissionIds = new[] { 1, 2, 3 },
+            MenuIds = new[] { 10, 11 }
+        });
+
+    [HttpPut("roles/{id:int}/access")]
+    public ApiResult<RoleDto> SetRoleAccess(int id)
         => ApiResult<RoleDto>.Ok(new RoleDto
         {
             Id = id,
