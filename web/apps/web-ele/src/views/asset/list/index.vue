@@ -1,6 +1,16 @@
 <script lang="ts" setup>
-import type { AssetDetail, AssetItem, AssetQuery, AssetStatus } from '#/api/asset';
-import type { CategoryNode, DepartmentNode, DepartmentOptionNode, LocationNode } from '#/api/base-data';
+import type {
+  AssetDetail,
+  AssetItem,
+  AssetQuery,
+  AssetStatus,
+} from '#/api/asset';
+import type {
+  CategoryNode,
+  DepartmentNode,
+  DepartmentOptionNode,
+  LocationNode,
+} from '#/api/base-data';
 import type { UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
@@ -25,7 +35,10 @@ import {
   getLocationTreeApi,
 } from '#/api/base-data';
 import { flattenActiveDepartments } from '#/utils/department-options';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
 import { getUserListApi, getUserOptionsApi } from '#/api/user';
 
 import {
@@ -49,7 +62,10 @@ import AssetDetailDialog from './components/AssetDetailDialog.vue';
 import AssetFormDialog from './components/AssetFormDialog.vue';
 import AssetImportDialog from './components/AssetImportDialog.vue';
 import AssetTransferDialog from './components/AssetTransferDialog.vue';
-import { buildAssetRowActionAccess, canRunAvailableAssetAction } from './asset-row-actions';
+import {
+  buildAssetRowActionAccess,
+  canRunAvailableAssetAction,
+} from './asset-row-actions';
 
 defineOptions({ name: 'AssetList' });
 
@@ -63,7 +79,11 @@ type FlatOption = {
   label: string;
 };
 
-const statusOptions: Array<{ label: string; tag: 'danger' | 'info' | 'success' | 'warning'; value: AssetStatus }> = [
+const statusOptions: Array<{
+  label: string;
+  tag: 'danger' | 'info' | 'success' | 'warning';
+  value: AssetStatus;
+}> = [
   { label: '在库', tag: 'success', value: 0 },
   { label: '借出', tag: 'warning', value: 1 },
 ];
@@ -110,28 +130,40 @@ const query = reactive({
 });
 
 const categoryOptions = computed(() => flattenCategories(categories.value));
-const activeDepartmentOptions = computed(() => flattenActiveDepartments(departments.value));
+const activeDepartmentOptions = computed(() =>
+  flattenActiveDepartments(departments.value),
+);
 const locationOptions = computed(() => flattenLocations(locations.value));
 const hierarchyContext = computed(() => getHierarchyContext());
 const hierarchyNodes = computed(() => hierarchyContext.value.nodes);
 const hierarchyParent = computed(() => hierarchyContext.value.parent);
 const hierarchyTrail = computed(() => hierarchyContext.value.trail);
 const currentCategoryLevel = computed(() => categoryPath.value.length);
-const isAssetStage = computed(() =>
-  currentCategoryLevel.value === MAX_CATEGORY_LEVEL && !!hierarchyParent.value,
+const isAssetStage = computed(
+  () =>
+    currentCategoryLevel.value === MAX_CATEGORY_LEVEL &&
+    !!hierarchyParent.value,
 );
-const isCategoryStage = computed(() => currentCategoryLevel.value < MAX_CATEGORY_LEVEL);
+const isCategoryStage = computed(
+  () => currentCategoryLevel.value < MAX_CATEGORY_LEVEL,
+);
 const showAssetTable = computed(() => isAssetStage.value || flatMode.value);
 const currentLevelTitle = computed(() => {
   if (flatMode.value) return '全部资产清单';
   if (currentCategoryLevel.value === 0) return '一级分类';
-  if (currentCategoryLevel.value === 1) return `二级分类 - ${hierarchyParent.value?.code ?? ''}`;
-  if (currentCategoryLevel.value === 2) return `三级分类 - ${hierarchyParent.value?.code ?? ''}`;
+  if (currentCategoryLevel.value === 1)
+    return `二级分类 - ${hierarchyParent.value?.code ?? ''}`;
+  if (currentCategoryLevel.value === 2)
+    return `三级分类 - ${hierarchyParent.value?.code ?? ''}`;
   return `资产清单 - ${hierarchyParent.value?.code ?? ''}`;
 });
 const nextLevelName = computed(() => {
   const nextLevel = currentCategoryLevel.value + 1;
-  return nextLevel === 1 ? '一级分类' : nextLevel === 2 ? '二级分类' : '三级分类';
+  return nextLevel === 1
+    ? '一级分类'
+    : nextLevel === 2
+      ? '二级分类'
+      : '三级分类';
 });
 const filteredHierarchyNodes = computed(() => {
   const keyword = hierarchyKeyword.value.trim().toLowerCase();
@@ -142,20 +174,29 @@ const filteredHierarchyNodes = computed(() => {
 });
 const pagedHierarchyNodes = computed(() => {
   const start = (categoryPage.value - 1) * categoryPageSize.value;
-  return filteredHierarchyNodes.value.slice(start, start + categoryPageSize.value);
+  return filteredHierarchyNodes.value.slice(
+    start,
+    start + categoryPageSize.value,
+  );
 });
 const canPurgeAsset = computed(() => hasAccessByCodes(['asset:purge']));
 const canRestoreAsset = computed(() => hasAccessByCodes(['asset:restore']));
-const assetRowActionAccess = computed(() => buildAssetRowActionAccess(hasAccessByCodes));
+const assetRowActionAccess = computed(() =>
+  buildAssetRowActionAccess(hasAccessByCodes),
+);
 async function loadDictionaries() {
   const requests = await Promise.allSettled([
-    hasAccessByCodes(['category:view']) ? getCategoryTreeApi() : Promise.resolve([]),
+    hasAccessByCodes(['category:view'])
+      ? getCategoryTreeApi()
+      : Promise.resolve([]),
     hasAccessByCodes(['department:view'])
       ? getDepartmentTreeApi()
       : hasAccessByCodes(['asset:create']) || hasAccessByCodes(['asset:edit'])
         ? getDepartmentOptionsApi()
         : Promise.resolve([]),
-    hasAccessByCodes(['location:view']) ? getLocationTreeApi() : Promise.resolve([]),
+    hasAccessByCodes(['location:view'])
+      ? getLocationTreeApi()
+      : Promise.resolve([]),
     hasAccessByCodes(['approval:create'])
       ? getUserOptionsApi()
       : hasAccessByCodes(['user:view'])
@@ -226,7 +267,9 @@ function resetQuery() {
     page: 1,
     status: undefined,
   });
-  selectedCategoryId.value = isAssetStage.value ? hierarchyParent.value?.id ?? null : null;
+  selectedCategoryId.value = isAssetStage.value
+    ? (hierarchyParent.value?.id ?? null)
+    : null;
   void loadData();
 }
 
@@ -317,9 +360,13 @@ async function remove(row: AssetItem) {
     return;
   }
   try {
-    await ElMessageBox.confirm(`确认删除资产「${row.name}」？删除后仍显示在清单中，可由管理员彻底删除。`, '删除确认', {
-      type: 'warning',
-    });
+    await ElMessageBox.confirm(
+      `确认删除资产「${row.name}」？删除后仍显示在清单中，可由管理员彻底删除。`,
+      '删除确认',
+      {
+        type: 'warning',
+      },
+    );
   } catch {
     return;
   }
@@ -335,7 +382,9 @@ async function remove(row: AssetItem) {
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
-    deletingAssetIds.value = deletingAssetIds.value.filter((id) => id !== row.id);
+    deletingAssetIds.value = deletingAssetIds.value.filter(
+      (id) => id !== row.id,
+    );
   }
 }
 
@@ -365,9 +414,13 @@ const debouncedPurge = useDebounceFn(purge, 300);
 
 async function restoreAsset(row: AssetItem) {
   try {
-    await ElMessageBox.confirm(`确认撤销删除资产「${row.name}」？将恢复为正常资产。`, '撤销删除确认', {
-      type: 'warning',
-    });
+    await ElMessageBox.confirm(
+      `确认撤销删除资产「${row.name}」？将恢复为正常资产。`,
+      '撤销删除确认',
+      {
+        type: 'warning',
+      },
+    );
   } catch {
     return;
   }
@@ -415,12 +468,16 @@ function findCategoryPathByCode(
 }
 
 function collectCategoryIds(node: CategoryNode): number[] {
-  return [node.id, ...node.children.flatMap((child) => collectCategoryIds(child))];
+  return [
+    node.id,
+    ...node.children.flatMap((child) => collectCategoryIds(child)),
+  ];
 }
 
 function countCategoryAssets(node: CategoryNode) {
   const ids = collectCategoryIds(node);
-  return allAssets.value.filter((asset) => ids.includes(asset.categoryId)).length;
+  return allAssets.value.filter((asset) => ids.includes(asset.categoryId))
+    .length;
 }
 
 function drillIntoCategory(node: CategoryNode) {
@@ -430,7 +487,8 @@ function drillIntoCategory(node: CategoryNode) {
   const nextPath = [...categoryPath.value, node.id];
   categoryPath.value = nextPath;
   selectedCategoryId.value = node.id;
-  query.categoryId = nextPath.length === MAX_CATEGORY_LEVEL ? node.id : undefined;
+  query.categoryId =
+    nextPath.length === MAX_CATEGORY_LEVEL ? node.id : undefined;
   query.page = 1;
   hierarchyKeyword.value = '';
   categoryPage.value = 1;
@@ -443,7 +501,8 @@ function drillToCategoryPath(index: number) {
   categoryPath.value = index < 0 ? [] : categoryPath.value.slice(0, index + 1);
   const parent = getHierarchyContext().parent;
   selectedCategoryId.value = parent?.id ?? null;
-  query.categoryId = categoryPath.value.length === MAX_CATEGORY_LEVEL ? parent?.id : undefined;
+  query.categoryId =
+    categoryPath.value.length === MAX_CATEGORY_LEVEL ? parent?.id : undefined;
   query.page = 1;
   hierarchyKeyword.value = '';
   categoryPage.value = 1;
@@ -497,7 +556,11 @@ function tableRowClassName({ row }: { row: AssetItem }) {
 
 function flattenCategories(nodes: CategoryNode[], level = 0): FlatOption[] {
   return nodes.flatMap((node) => [
-    { code: node.code, id: node.id, label: `${'　'.repeat(level)}${node.code}` },
+    {
+      code: node.code,
+      id: node.id,
+      label: `${'　'.repeat(level)}${node.code}`,
+    },
     ...flattenCategories(node.children, level + 1),
   ]);
 }
@@ -540,7 +603,8 @@ onMounted(async () => {
 watch(
   () => route.query.categoryCode,
   async (categoryCode, oldCategoryCode) => {
-    if (categoryCode === oldCategoryCode || categories.value.length === 0) return;
+    if (categoryCode === oldCategoryCode || categories.value.length === 0)
+      return;
     await applyCategoryCodeFromRoute();
   },
 );
@@ -555,11 +619,18 @@ watch(
             <div class="asset-section-title">{{ currentLevelTitle }}</div>
             <div class="asset-path">
               <template v-if="flatMode">
-                <span class="text-muted-foreground">跨分类查看全部资产，可用下方条件筛选</span>
+                <span class="text-muted-foreground"
+                  >跨分类查看全部资产，可用下方条件筛选</span
+                >
               </template>
               <template v-else>
-                <a href="#" @click.prevent="drillToCategoryPath(-1)">全部分类</a>
-                <template v-for="(node, index) in hierarchyTrail" :key="node.id">
+                <a href="#" @click.prevent="drillToCategoryPath(-1)"
+                  >全部分类</a
+                >
+                <template
+                  v-for="(node, index) in hierarchyTrail"
+                  :key="node.id"
+                >
                   <span class="text-muted-foreground">›</span>
                   <a href="#" @click.prevent="drillToCategoryPath(index)">
                     {{ node.code }}
@@ -585,8 +656,16 @@ watch(
               返回上一层
             </ElButton>
             <template v-if="showAssetTable">
-              <ElButton v-if="assetRowActionAccess.canImport" @click="openImport">批量导入</ElButton>
-              <ElButton v-if="assetRowActionAccess.canExport" @click="exportAssets">导出 Excel</ElButton>
+              <ElButton
+                v-if="assetRowActionAccess.canImport"
+                @click="openImport"
+                >批量导入</ElButton
+              >
+              <ElButton
+                v-if="assetRowActionAccess.canExport"
+                @click="exportAssets"
+                >导出 Excel</ElButton
+              >
             </template>
             <ElButton
               v-if="showAssetTable && assetRowActionAccess.canCreate"
@@ -615,7 +694,12 @@ watch(
                 <div class="asset-row-warning">
                   有 {{ node.children.length }} 个二级分类
                 </div>
-                <ElButton class="asset-enter-button" link type="primary" @click.stop="drillIntoCategory(node)">
+                <ElButton
+                  class="asset-enter-button"
+                  link
+                  type="primary"
+                  @click.stop="drillIntoCategory(node)"
+                >
                   进入
                 </ElButton>
               </div>
@@ -652,7 +736,9 @@ watch(
                 <span>{{ node.codeSeg || node.code }}</span>
               </div>
               <div class="asset-class-main">
-                <div class="asset-class-name">{{ node.remark || '无备注' }}</div>
+                <div class="asset-class-name">
+                  {{ node.remark || '无备注' }}
+                </div>
               </div>
               <div class="asset-class-actions" @click.stop>
                 <span
@@ -664,7 +750,12 @@ watch(
                 <span v-else class="asset-row-warning">
                   有 {{ node.children.length }} 个{{ categoryChildLabel() }}
                 </span>
-                <ElButton class="asset-enter-button" link type="primary" @click.stop="drillIntoCategory(node)">
+                <ElButton
+                  class="asset-enter-button"
+                  link
+                  type="primary"
+                  @click.stop="drillIntoCategory(node)"
+                >
                   进入
                 </ElButton>
               </div>
@@ -679,7 +770,11 @@ watch(
               <span>共 {{ filteredHierarchyNodes.length }} 条记录</span>
               <span class="asset-pager-divider">|</span>
               <span>每页</span>
-              <ElSelect v-model="categoryPageSize" style="width: 92px" @change="categoryPage = 1">
+              <ElSelect
+                v-model="categoryPageSize"
+                style="width: 92px"
+                @change="categoryPage = 1"
+              >
                 <ElOption
                   v-for="size in pageSizeOptions"
                   :key="size"
@@ -714,7 +809,12 @@ watch(
               style="width: 220px"
               @keyup.enter="search"
             />
-            <ElSelect v-model="query.status" clearable placeholder="状态" style="width: 110px">
+            <ElSelect
+              v-model="query.status"
+              clearable
+              placeholder="状态"
+              style="width: 110px"
+            >
               <ElOption
                 v-for="item in statusOptions"
                 :key="item.value"
@@ -760,22 +860,121 @@ watch(
               scrollbar-always-on
               stripe
             >
-              <ElTableColumn label="资产编号" min-width="160" prop="assetNo" sortable />
-              <ElTableColumn label="资产名称" min-width="180" prop="name" sortable show-overflow-tooltip />
-              <ElTableColumn class-name="hide-on-mobile" label="归属部门" width="140" prop="departmentName" show-overflow-tooltip />
-              <ElTableColumn class-name="hide-on-mobile" label="存放位置" width="140" prop="locationName" show-overflow-tooltip />
-              <ElTableColumn class-name="hide-on-mobile" label="保管人" width="110" prop="custodianName" show-overflow-tooltip />
-              <ElTableColumn class-name="hide-on-mobile" label="型号品牌" min-width="180" show-overflow-tooltip>
+              <ElTableColumn
+                label="资产编号"
+                min-width="160"
+                prop="assetNo"
+                sortable
+              />
+              <ElTableColumn
+                label="资产名称"
+                min-width="180"
+                prop="name"
+                sortable
+                show-overflow-tooltip
+              />
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="归属部门"
+                width="140"
+                prop="departmentName"
+                show-overflow-tooltip
+              />
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="存放位置"
+                width="140"
+                prop="locationName"
+                show-overflow-tooltip
+              />
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="保管人"
+                width="110"
+                prop="custodianName"
+                show-overflow-tooltip
+              />
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="型号品牌"
+                min-width="180"
+                show-overflow-tooltip
+              >
                 <template #default="{ row }">
                   <span v-if="row.model || row.brand">
                     {{ row.model }} {{ row.brand }}
                   </span>
                 </template>
               </ElTableColumn>
-              <ElTableColumn label="数量" width="80" prop="quantity" align="center" />
-              <ElTableColumn class-name="hide-on-mobile" label="照片" width="80" align="center">
+              <ElTableColumn
+                label="数量"
+                width="80"
+                prop="quantity"
+                align="center"
+              />
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="购入日期"
+                width="120"
+                align="center"
+              >
                 <template #default="{ row }">
-                  <ElTag v-if="row.images && row.images.length > 0" size="small" type="success">
+                  {{ row.purchaseDate?.slice(0, 10) || '-' }}
+                </template>
+              </ElTableColumn>
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="资产登记时间"
+                width="170"
+                align="center"
+              >
+                <template #default="{ row }">
+                  {{
+                    row.registrationTime?.replace('T', ' ').slice(0, 16) || '-'
+                  }}
+                </template>
+              </ElTableColumn>
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="目前状况"
+                min-width="160"
+                prop="currentCondition"
+                show-overflow-tooltip
+              />
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="首次登记"
+                width="100"
+                align="center"
+              >
+                <template #default="{ row }">
+                  <ElTag
+                    :type="row.isFirstRegistration ? 'success' : 'info'"
+                    size="small"
+                  >
+                    {{ row.isFirstRegistration ? '是' : '否' }}
+                  </ElTag>
+                </template>
+              </ElTableColumn>
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="备注"
+                min-width="180"
+                prop="remark"
+                show-overflow-tooltip
+              />
+              <ElTableColumn
+                class-name="hide-on-mobile"
+                label="照片"
+                width="80"
+                align="center"
+              >
+                <template #default="{ row }">
+                  <ElTag
+                    v-if="row.images && row.images.length > 0"
+                    size="small"
+                    type="success"
+                  >
                     {{ row.images.length }}
                   </ElTag>
                   <span v-else class="text-gray-400">-</span>
@@ -786,54 +985,115 @@ watch(
                   <ElTag :type="statusMeta(row.status).tag" size="small">
                     {{ statusMeta(row.status).label }}
                   </ElTag>
-                  <ElTag v-if="row.isDeleted" class="ml-1" type="danger" size="small">
+                  <ElTag
+                    v-if="row.isDeleted"
+                    class="ml-1"
+                    type="danger"
+                    size="small"
+                  >
                     已删除
                   </ElTag>
                 </template>
               </ElTableColumn>
-              <ElTableColumn fixed="right" label="操作" width="160" align="center">
+              <ElTableColumn
+                fixed="right"
+                label="操作"
+                width="160"
+                align="center"
+              >
                 <template #default="{ row }">
                   <div class="asset-row-actions">
-                  <template v-if="!row.isDeleted">
-                    <ElButton v-if="assetRowActionAccess.canView" link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
-                    <ElButton v-if="assetRowActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-                    <ElDropdown
-                      v-if="canRunAvailableAssetAction(row) && (assetRowActionAccess.canBorrow || assetRowActionAccess.canTransfer || assetRowActionAccess.canDelete)"
-                      @command="(cmd) => onRowCommand(String(cmd), row)"
-                    >
-                      <ElButton link type="primary" size="small">更多</ElButton>
-                      <template #dropdown>
-                        <ElDropdownMenu>
-                          <ElDropdownItem v-if="assetRowActionAccess.canBorrow" command="borrow">借用</ElDropdownItem>
-                          <ElDropdownItem v-if="assetRowActionAccess.canTransfer" command="transfer">转让</ElDropdownItem>
-                          <ElDropdownItem
-                            v-if="assetRowActionAccess.canDelete"
-                            command="delete"
-                            divided
-                            :disabled="deletingAssetIds.includes(row.id)"
-                          >
-                            删除
-                          </ElDropdownItem>
-                        </ElDropdownMenu>
-                      </template>
-                    </ElDropdown>
-                  </template>
-                  <template v-else>
-                    <ElButton v-if="assetRowActionAccess.canView" link type="primary" size="small" @click="openDetail(row)">详情</ElButton>
-                    <ElDropdown
-                      v-if="canRestoreAsset || canPurgeAsset"
-                      @command="(cmd) => onRowCommand(String(cmd), row)"
-                    >
-                      <ElButton link type="primary" size="small">更多</ElButton>
-                      <template #dropdown>
-                        <ElDropdownMenu>
-                          <ElDropdownItem v-if="canRestoreAsset" command="restore">撤销删除</ElDropdownItem>
-                          <ElDropdownItem v-if="canPurgeAsset" command="purge" divided>彻底删除</ElDropdownItem>
-                        </ElDropdownMenu>
-                      </template>
-                    </ElDropdown>
-                    <span v-if="!canRestoreAsset && !canPurgeAsset" class="asset-no-permission">无操作权限</span>
-                  </template>
+                    <template v-if="!row.isDeleted">
+                      <ElButton
+                        v-if="assetRowActionAccess.canView"
+                        link
+                        type="primary"
+                        size="small"
+                        @click="openDetail(row)"
+                        >详情</ElButton
+                      >
+                      <ElButton
+                        v-if="assetRowActionAccess.canEdit"
+                        link
+                        type="primary"
+                        size="small"
+                        @click="openEdit(row)"
+                        >编辑</ElButton
+                      >
+                      <ElDropdown
+                        v-if="
+                          canRunAvailableAssetAction(row) &&
+                          (assetRowActionAccess.canBorrow ||
+                            assetRowActionAccess.canTransfer ||
+                            assetRowActionAccess.canDelete)
+                        "
+                        @command="(cmd) => onRowCommand(String(cmd), row)"
+                      >
+                        <ElButton link type="primary" size="small"
+                          >更多</ElButton
+                        >
+                        <template #dropdown>
+                          <ElDropdownMenu>
+                            <ElDropdownItem
+                              v-if="assetRowActionAccess.canBorrow"
+                              command="borrow"
+                              >借用</ElDropdownItem
+                            >
+                            <ElDropdownItem
+                              v-if="assetRowActionAccess.canTransfer"
+                              command="transfer"
+                              >转让</ElDropdownItem
+                            >
+                            <ElDropdownItem
+                              v-if="assetRowActionAccess.canDelete"
+                              command="delete"
+                              divided
+                              :disabled="deletingAssetIds.includes(row.id)"
+                            >
+                              删除
+                            </ElDropdownItem>
+                          </ElDropdownMenu>
+                        </template>
+                      </ElDropdown>
+                    </template>
+                    <template v-else>
+                      <ElButton
+                        v-if="assetRowActionAccess.canView"
+                        link
+                        type="primary"
+                        size="small"
+                        @click="openDetail(row)"
+                        >详情</ElButton
+                      >
+                      <ElDropdown
+                        v-if="canRestoreAsset || canPurgeAsset"
+                        @command="(cmd) => onRowCommand(String(cmd), row)"
+                      >
+                        <ElButton link type="primary" size="small"
+                          >更多</ElButton
+                        >
+                        <template #dropdown>
+                          <ElDropdownMenu>
+                            <ElDropdownItem
+                              v-if="canRestoreAsset"
+                              command="restore"
+                              >撤销删除</ElDropdownItem
+                            >
+                            <ElDropdownItem
+                              v-if="canPurgeAsset"
+                              command="purge"
+                              divided
+                              >彻底删除</ElDropdownItem
+                            >
+                          </ElDropdownMenu>
+                        </template>
+                      </ElDropdown>
+                      <span
+                        v-if="!canRestoreAsset && !canPurgeAsset"
+                        class="asset-no-permission"
+                        >无操作权限</span
+                      >
+                    </template>
                   </div>
                 </template>
               </ElTableColumn>
@@ -843,7 +1103,11 @@ watch(
                 <span>共 {{ total }} 条记录</span>
                 <span class="asset-pager-divider">|</span>
                 <span>每页</span>
-                <ElSelect v-model="query.pageSize" style="width: 92px" @change="search">
+                <ElSelect
+                  v-model="query.pageSize"
+                  style="width: 92px"
+                  @change="search"
+                >
                   <ElOption
                     v-for="size in pageSizeOptions"
                     :key="size"
@@ -882,7 +1146,10 @@ watch(
         :loading="detailLoading"
       />
 
-      <AssetImportDialog v-model:visible="importVisible" @imported="onImported" />
+      <AssetImportDialog
+        v-model:visible="importVisible"
+        @imported="onImported"
+      />
 
       <AssetBorrowDialog
         v-model:visible="borrowDialogVisible"
@@ -1061,7 +1328,7 @@ watch(
 
 .asset-row-warning::before {
   margin-right: 4px;
-  content: "●";
+  content: '●';
   color: var(--el-color-warning-light-3);
 }
 
@@ -1249,11 +1516,13 @@ watch(
   border-color: var(--asset-page-border);
 }
 
-.asset-table-panel :deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
+.asset-table-panel
+  :deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
   background: var(--asset-page-surface-soft);
 }
 
-.asset-table-panel :deep(.el-table--enable-row-hover .el-table__body tr:hover > td) {
+.asset-table-panel
+  :deep(.el-table--enable-row-hover .el-table__body tr:hover > td) {
   background-color: var(--asset-page-surface-hover) !important;
 }
 
@@ -1266,7 +1535,10 @@ watch(
   opacity: 0.72;
 }
 
-.asset-table-panel :deep(.el-table--enable-row-hover .el-table__body tr.asset-row-deleted:hover > td) {
+.asset-table-panel
+  :deep(
+    .el-table--enable-row-hover .el-table__body tr.asset-row-deleted:hover > td
+  ) {
   background-color: var(--el-fill-color) !important;
 }
 
