@@ -103,8 +103,7 @@ public class AuthService : IAuthService
 
         return new LoginResponse
         {
-            Token = _jwt.Create(user.Id, user.EmployeeNo, permissionCodes, roleCodes, user.DepartmentId),
-            MustChangePassword = user.MustChangePassword
+            Token = _jwt.Create(user.Id, user.EmployeeNo, permissionCodes, roleCodes, user.DepartmentId)
         };
     }
 
@@ -151,7 +150,6 @@ public class AuthService : IAuthService
             Id = user.Id,
             Name = user.Name,
             EmployeeNo = user.EmployeeNo,
-            MustChangePassword = user.MustChangePassword,
             Roles = roles.Select(x => x.Code).Distinct().OrderBy(x => x).ToArray(),
             Permissions = roles
                 .SelectMany(x => x.RolePermissions)
@@ -226,7 +224,6 @@ public class AuthService : IAuthService
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-        user.MustChangePassword = false;
         await _db.SaveChangesAsync();
     }
 

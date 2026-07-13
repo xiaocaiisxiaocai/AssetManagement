@@ -104,8 +104,7 @@ public class RbacService : IRbacService
             DepartmentId = request.DepartmentId,
             SupervisorId = request.SupervisorId,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-            IsActive = true,
-            MustChangePassword = true
+            IsActive = true
         };
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
@@ -164,7 +163,6 @@ public class RbacService : IRbacService
         var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(AppConstants.DefaultUserPassword);
-        user.MustChangePassword = true;
         await _db.SaveChangesAsync();
     }
 
@@ -223,8 +221,7 @@ public class RbacService : IRbacService
                 Email = string.IsNullOrWhiteSpace(row.Email) ? null : row.Email,
                 DepartmentId = string.IsNullOrWhiteSpace(row.DepartmentName) ? null : departmentMap[row.DepartmentName],
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(AppConstants.DefaultUserPassword),
-                IsActive = true,
-                MustChangePassword = true
+                IsActive = true
             };
             _db.Users.Add(user);
             await _db.SaveChangesAsync();

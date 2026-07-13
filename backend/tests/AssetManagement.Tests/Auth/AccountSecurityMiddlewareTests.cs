@@ -7,7 +7,6 @@ using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Auth;
@@ -18,34 +17,16 @@ public class AccountSecurityMiddlewareTests : IClassFixture<TestWebAppFactory>
 
     public AccountSecurityMiddlewareTests(TestWebAppFactory factory)
     {
-        _factory = factory.WithWebHostBuilder(builder =>
-            builder.ConfigureAppConfiguration((_, configuration) =>
-                configuration.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["Security:EnforcePasswordChange"] = "true"
-                })));
+        _factory = factory;
     }
 
     [Fact]
-    public async Task Default_password_is_restricted_and_revoked_authorization_takes_effect_immediately()
+    public async Task Default_password_can_access_business_and_revoked_authorization_takes_effect_immediately()
     {
         var client = _factory.CreateClient();
         var login = await Login(client, "123456");
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Token);
 
-        var restricted = await client.GetAsync("/api/reports/summary");
-        restricted.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await restricted.Content.ReadFromJsonAsync<ApiResult<object?>>())!.Code.Should().Be(4031);
-
-        var changed = await client.PutAsJsonAsync("/api/auth/change-password", new
-        {
-            oldPassword = "123456",
-            newPassword = "Secure2026"
-        });
-        changed.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var refreshedLogin = await Login(client, "Secure2026");
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", refreshedLogin.Token);
         (await client.GetAsync("/api/reports/summary")).StatusCode.Should().Be(HttpStatusCode.OK);
 
         await using (var scope = _factory.Services.CreateAsyncScope())

@@ -38,8 +38,6 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
                 ["Jwt:Key"] = "asset-management-test-only-secret-key-2026",
                 ["Database:AutoMigrate"] = "true",
                 ["Database:AutoSeed"] = "true",
-                // 绝大多数集成测试聚焦业务接口；强制改密边界由专门的安全测试单独开启验证。
-                ["Security:EnforcePasswordChange"] = "false",
                 // TestServer 的所有请求共享同一回环 IP；登录限流由独立测试显式开启验证。
                 ["Security:LoginRateLimitEnabled"] = "false"
             });

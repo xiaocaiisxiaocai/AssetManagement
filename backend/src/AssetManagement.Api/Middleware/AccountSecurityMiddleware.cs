@@ -7,17 +7,9 @@ namespace AssetManagement.Api.Middleware;
 
 /// <summary>
 /// 对每个已认证请求重新加载账号状态和 RBAC 授权，确保禁用账号、撤销角色/权限以及部门变更立即生效。
-/// 同时在默认密码尚未修改时，仅允许读取当前用户信息和修改密码。
 /// </summary>
 public sealed class AccountSecurityMiddleware
 {
-    private static readonly PathString[] PasswordChangeAllowedPaths =
-    {
-        new("/api/auth/user-info"),
-        new("/api/auth/change-password"),
-        new("/api/auth/logout")
-    };
-
     private readonly RequestDelegate _next;
 
     public AccountSecurityMiddleware(RequestDelegate next)
@@ -27,9 +19,7 @@ public sealed class AccountSecurityMiddleware
 
     public async Task InvokeAsync(
         HttpContext context,
-        AppDbContext db,
-        IConfiguration configuration,
-        IHostEnvironment environment)
+        AppDbContext db)
     {
         if (context.User.Identity?.IsAuthenticated != true)
         {
@@ -79,16 +69,6 @@ public sealed class AccountSecurityMiddleware
             activeRoles.SelectMany(x => x.RolePermissions)
                 .Select(x => x.Permission.Code)
                 .Distinct(StringComparer.Ordinal));
-
-        var enforcePasswordChange = !environment.IsDevelopment()
-            || configuration.GetValue("Security:EnforcePasswordChange", true);
-        if (enforcePasswordChange
-            && user.MustChangePassword
-            && !PasswordChangeAllowedPaths.Any(path => context.Request.Path.Equals(path)))
-        {
-            await RejectAsync(context, StatusCodes.Status403Forbidden, 4031, "请先修改初始密码");
-            return;
-        }
 
         await _next(context);
     }

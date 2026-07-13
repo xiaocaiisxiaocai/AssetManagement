@@ -54,14 +54,6 @@ const coreRoutes: RouteRecordRaw[] = [
           title: $t('page.auth.login'),
         },
       },
-      {
-        name: 'ForceChangePassword',
-        path: 'force-change-password',
-        component: () => import('#/views/_core/authentication/force-change-password.vue'),
-        meta: {
-          title: $t('page.auth.forceChangePassword'),
-        },
-      },
     ],
   },
 ];

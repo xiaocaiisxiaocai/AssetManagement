@@ -4,8 +4,7 @@
     "register": "Register",
     "codeLogin": "Verification Code Login",
     "qrcodeLogin": "QR Code Login",
-    "forgetPassword": "Forgot Password",
-    "forceChangePassword": "Change Initial Password"
+    "forgetPassword": "Forgot Password"
   },
   "dashboard": {
     "title": "Overview",
