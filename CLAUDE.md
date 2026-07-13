@@ -149,7 +149,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **JWT增强**:登录时将用户的 `DepartmentId` 写入 JWT token 的 `departmentId` claim。
 - **数据隔离逻辑**(`AssetService.ApplyQuery`):
   - 超级管理员(`admin` 角色):无限制,查看全部资产
-  - 部门管理员(`dept_admin` 角色且非 `admin`):自动过滤,只能查看本部门+子部门的资产
+  - 部门主管(`supervisor` 角色且非 `admin`):自动过滤,只能查看本部门+子部门的资产
   - 普通员工:无限制(共享资产池模式)
 - **实现方式**:通过 `IHttpContextAccessor` 获取当前用户的角色和部门信息,在 EF 查询条件中自动附加 `DepartmentId` 过滤。
 - 参考设计文档:`docs/多部门预留设计.md`。
@@ -159,14 +159,14 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 `Asset`/`AssetCategory` 含 `IsDeleted` + `DeletedAt`,删除采用软删除,**无独立"回收站"视图**——已删除项仍显示在主清单/分类树中(置灰 + "已删除"标签)。三个删除相关权限码:
 
 - **`asset:delete`** — 软删除("删除"):置 `IsDeleted=true`;借出中资产不可删;有资产的分类不可删。
-- **`asset:restore`** — 撤销删除(恢复):`AssetService.RestoreAsync`/`BaseDataService.RestoreCategoryAsync`(分类级联恢复子树,且要求上级未删除)。默认授予 `admin` + `dept_admin`。
+- **`asset:restore`** — 撤销删除(恢复):`AssetService.RestoreAsync`/`BaseDataService.RestoreCategoryAsync`(分类级联恢复子树,且要求上级未删除)。默认授予 `admin` + `supervisor`。
 - **`asset:purge`** — 彻底删除(物理删除):**必须先软删除**才能彻底删除。默认授予 `admin`。
 
 要点:
 
 - **查询三态**:资产 `AssetQuery.DeleteStatus`(`active`/`all`/`deleted`),主清单默认传 `all`;分类树 `GetCategoryTreeAsync(string? deleteStatus)` 同三态(旧 `deletedOnly` 布尔已废弃)。报表/可借用/工作流流转(`ReportService`/`BizEffectApplier`/`WorkflowService`)**自动排除**已删除资产。
 - **详情可见**:`AssetService.GetDetailAsync` **允许查看已删除资产**(不经会拦截已删除的 `GetAsync`),供主清单已删除行的「详情」按钮使用。
-- **种子**:`asset:restore`/`asset:purge` 通过 `DbSeeder` **增量种子**(幂等检查)确保已有库补上并授予对应角色,无需迁移(权限是数据非表结构)。
+- **角色**:系统仅保留 `admin`(系统管理员)/`supervisor`(部门主管)/`employee`(普通员工)三个角色。`warehouse`/`dept_admin` 为历史角色，增量种子会将其用户合并到 `supervisor` 并删除旧角色。
 - 前端:`asset/list`、`asset/categories` 已删除行按权限显示「撤销删除」「彻底删除」;详情对话框 `AssetDetailDialog.vue` 用 `ElDescriptions` 展示并高亮删除状态。
 
 ### 新产品新技术(测试料件)模块(独立模块,2026-06-25 新增,后续持续扩展)

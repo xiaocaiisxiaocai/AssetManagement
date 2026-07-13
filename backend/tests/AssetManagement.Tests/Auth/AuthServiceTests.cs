@@ -93,7 +93,7 @@ public class AuthServiceTests
     public async Task Login_department_admin_without_department_fails_closed()
     {
         await using var fixture = await AuthFixture.Create();
-        fixture.SetRoleCode("dept_admin");
+        fixture.SetRoleCode("supervisor");
 
         var act = () => fixture.CreateService().LoginAsync(
             new LoginRequest { EmployeeNo = "1001", Password = "123456" });

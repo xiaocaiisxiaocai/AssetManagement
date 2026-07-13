@@ -921,7 +921,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         await Login();
         var employeeNo = Unique("u");
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100");
-        var role = roles!.Data!.Items.Single(x => x.Code == "dept_admin");
+        var role = roles!.Data!.Items.Single(x => x.Code == "supervisor");
         var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
             ManagerId = 1,

@@ -373,7 +373,7 @@ public class AssetService : IAssetService
             _ => queryable.Where(x => !x.IsDeleted)
         };
 
-        // 部门数据权限隔离:部门管理员只能查看本部门及子部门资产(超级管理员/普通员工不受限)
+        // 部门数据权限隔离:部门主管只能查看本部门及子部门资产(系统管理员/普通员工不受限)
         var allowedDepartments = AllowedDepartmentIds();
         if (allowedDepartments != null)
         {
@@ -452,7 +452,7 @@ public class AssetService : IAssetService
         {
             return null;
         }
-        if (roles.Contains("dept_admin"))
+        if (roles.Contains("supervisor"))
         {
             var deptIdClaim = user.FindFirst("departmentId")?.Value;
             if (int.TryParse(deptIdClaim, out var userDeptId))
@@ -464,7 +464,7 @@ public class AssetService : IAssetService
         return null;
     }
 
-    // 校验当前用户是否有权访问指定资产(部门管理员越权访问其他部门资产时抛出)
+    // 校验当前用户是否有权访问指定资产(部门主管越权访问其他部门资产时抛出)
     private void EnsureCanAccess(Asset asset)
     {
         var allowed = AllowedDepartmentIds();
@@ -474,7 +474,7 @@ public class AssetService : IAssetService
         }
     }
 
-    // 校验当前用户是否有权将资产归属到目标部门(防止部门管理员把资产划入/划出无权部门)
+    // 校验当前用户是否有权将资产归属到目标部门(防止部门主管把资产划入/划出无权部门)
     private void EnsureCanAssignDepartment(int? departmentId)
     {
         var allowed = AllowedDepartmentIds();

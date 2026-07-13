@@ -95,7 +95,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
     private async Task<UserDto> CreateApprover(string name)
     {
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
-        var employeeRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
+        var employeeRole = roles!.Data!.Items.Single(r => r.Code == "admin");
         var employeeNo = $"SG{Guid.NewGuid():N}"[..10];
 
         var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest

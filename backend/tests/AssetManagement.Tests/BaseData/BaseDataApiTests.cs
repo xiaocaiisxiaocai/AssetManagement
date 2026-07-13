@@ -81,7 +81,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Department_options_allows_warehouse_without_department_view_and_exposes_only_selection_fields()
+    public async Task Department_options_allows_employee_without_department_view_and_exposes_only_selection_fields()
     {
         await Login();
         await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
@@ -89,20 +89,20 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             Name = Unique("选项部门")
         });
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?page=1&pageSize=100");
-        var warehouseRole = roles!.Data!.Items.Single(x => x.Code == "warehouse");
-        var employeeNo = $"wh{Guid.NewGuid():N}"[..16];
+        var employeeRole = roles!.Data!.Items.Single(x => x.Code == "employee");
+        var employeeNo = $"emp{Guid.NewGuid():N}"[..16];
         await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = employeeNo,
-            Name = "仓库选项测试",
-            RoleIds = new[] { warehouseRole.Id }
+            Name = "员工选项测试",
+            RoleIds = new[] { employeeRole.Id }
         });
-        var warehouseLogin = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        var employeeLogin = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
             employeeNo,
             password = "123456"
         });
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", warehouseLogin.Data!.Token);
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", employeeLogin.Data!.Token);
 
         var response = await _client.GetAsync("/api/departments/options");
 

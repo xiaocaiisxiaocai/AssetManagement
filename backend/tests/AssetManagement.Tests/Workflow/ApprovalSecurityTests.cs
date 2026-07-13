@@ -32,6 +32,10 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
 
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
         var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = $"独立主管部门{Guid.NewGuid():N}"[..20]
+        });
 
         var empNo = $"SUP{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 100000}";
         await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -39,6 +43,7 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
             EmployeeNo = empNo,
             Name = "独立主管",
             Password = "123456",
+            DepartmentId = department.Data!.Id,
             RoleIds = new[] { supervisorRole.Id }
         });
 

@@ -66,10 +66,8 @@ public static class DbSeeder
         var roles = new[]
         {
             new Role { Code = "admin", Name = "系统管理员" },
-            new Role { Code = "warehouse", Name = "仓库管理员" },
             new Role { Code = "supervisor", Name = "部门主管" },
-            new Role { Code = "employee", Name = "普通员工" },
-            new Role { Code = "dept_admin", Name = "部门管理员" }
+            new Role { Code = "employee", Name = "普通员工" }
         };
 
         db.Roles.AddRange(roles);
@@ -98,7 +96,9 @@ public static class DbSeeder
 
             // 赋予权限码匹配的菜单 + 其所有祖先菜单（否则 vben 无父路由无法渲染子菜单）
             var menuIds = new HashSet<int> { homeMenu.Id, homeWorkspaceMenu.Id };
-            foreach (var menu in allMenusForSeed.Where(m => m.PermissionCode != null && pair.Value.Contains(m.PermissionCode)))
+            foreach (var menu in allMenusForSeed.Where(m => m.PermissionCode != null
+                         && pair.Value.Contains(m.PermissionCode)
+                         && ShouldGrantMenu(pair.Key, m.Name)))
             {
                 menuIds.Add(menu.Id);
                 var cursor = menu;
@@ -165,6 +165,7 @@ public static class DbSeeder
     private static void SeedIncremental(AppDbContext db)
     {
         EnsureCoreRolePermissions(db);
+        MigrateLegacyWorkflowRoleReferences(db);
 
         var defaultWorkflows = DefaultWorkflows();
         if (!db.Workflows.Any())
@@ -232,7 +233,7 @@ public static class DbSeeder
             db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = purgePermission.Id });
         }
 
-        // 增量种子:恢复(撤销删除)权限,确保已有库补上并授予系统管理员 + 部门管理员
+        // 增量种子:恢复(撤销删除)权限,确保已有库补上并授予系统管理员 + 部门主管
         var restorePermission = db.Permissions.SingleOrDefault(x => x.Code == "asset:restore");
         if (restorePermission is null)
         {
@@ -246,7 +247,7 @@ public static class DbSeeder
             restorePermission.Module = "asset";
         }
 
-        foreach (var roleCode in new[] { "admin", "dept_admin" })
+        foreach (var roleCode in new[] { "admin", "supervisor" })
         {
             var role = db.Roles.SingleOrDefault(x => x.Code == roleCode);
             if (role is not null
@@ -612,45 +613,22 @@ public static class DbSeeder
 
     private static Dictionary<string, string[]> CoreRolePermissionMap() => new()
     {
-        ["warehouse"] = new[]
-        {
-            "asset:view", "asset:create", "asset:edit", "asset:delete", "asset:import", "asset:export",
-            "category:view", "category:create", "category:edit", "category:delete",
-            "location:view", "location:create", "location:edit", "location:delete",
-            "file:upload", "file:view",
-            "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
-            "report:view", "report:export", "report:remind",
-            "audit:view", "audit:export", "audit:cleanup", "backup:manage", "setting:view", "setting:edit",
-            "workflow:view", "workflow:create", "workflow:edit", "workflow:delete", "workflow:design",
-            "project:view",
-            "material:view", "material:create", "material:edit", "material-flow:view", "material-flow:transfer"
-        },
         ["supervisor"] = new[]
         {
-            "asset:view", "category:view", "location:view", "file:view",
-            "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign",
-            "report:view", "report:export",
-            "project:view",
-            "material:view", "material-flow:view", "material-flow:transfer", "material-flow:approve"
-        },
-        ["dept_admin"] = new[]
-        {
-            "asset:view", "asset:create", "asset:edit", "asset:restore", "asset:export",
-            "category:view", "category:create", "category:edit", "category:restore",
-            "location:view", "location:create", "location:edit",
-            "file:upload", "file:view",
+            "asset:view", "asset:create", "asset:edit", "asset:delete", "asset:restore", "asset:import", "asset:export",
+            "category:view", "location:view", "file:upload", "file:view",
             "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
             "report:view", "report:export",
             "department:view", "user:view",
-            "project:view", "project:create", "project:edit", "project:delete", "project:restore", "project:option", "project:followup", "project:manage",
-            "material:view", "material:create", "material:edit", "material:restore",
+            "project:view", "project:create", "project:edit", "project:delete", "project:restore", "project:followup", "project:manage",
+            "material:view", "material:create", "material:edit", "material:delete", "material:restore", "material:return",
             "material-flow:view", "material-flow:transfer", "material-flow:approve"
         },
         ["employee"] = new[]
         {
             "asset:view", "category:view", "location:view", "file:view",
             "approval:create", "approval:view",
-            "project:view", "material:view", "material-flow:view"
+            "project:view", "material:view", "material-flow:view", "material-flow:transfer"
         }
     };
 
@@ -686,7 +664,6 @@ public static class DbSeeder
 
             EnsureRoleMenusForPermissions(db, role, permissionCodes);
         }
-        EnsureWarehouseUsersHaveRole(db);
         db.SaveChanges();
     }
 
@@ -752,17 +729,10 @@ public static class DbSeeder
             }
         }
 
-        // 主管角色历史上误授过用户管理权限；增量种子需要主动收敛，避免旧库继续越权。
-        if (role.Code == "supervisor")
+        var desiredPermissionIds = desiredPermissions.Select(x => x.Id).ToHashSet();
+        foreach (var staleGrant in existing.Where(x => !desiredPermissionIds.Contains(x.PermissionId)))
         {
-            var userPermissionIds = db.Permissions
-                .Where(x => x.Code.StartsWith("user:"))
-                .Select(x => x.Id)
-                .ToHashSet();
-            foreach (var grant in existing.Where(x => userPermissionIds.Contains(x.PermissionId)))
-            {
-                db.RolePermissions.Remove(grant);
-            }
+            db.RolePermissions.Remove(staleGrant);
         }
     }
 
@@ -814,10 +784,8 @@ public static class DbSeeder
         var requiredRoles = new[]
         {
             ("admin", "系统管理员"),
-            ("warehouse", "仓库管理员"),
             ("supervisor", "部门主管"),
-            ("employee", "普通员工"),
-            ("dept_admin", "部门管理员")
+            ("employee", "普通员工")
         };
 
         foreach (var (code, name) in requiredRoles)
@@ -834,30 +802,57 @@ public static class DbSeeder
             }
         }
         db.SaveChanges();
+        MigrateLegacyRoles(db);
     }
 
-    private static void EnsureWarehouseUsersHaveRole(AppDbContext db)
+    private static void MigrateLegacyRoles(AppDbContext db)
     {
-        var warehouseRole = db.Roles.SingleOrDefault(x => x.Code == "warehouse");
-        if (warehouseRole is null) return;
-
-        var warehouseUsers = db.Users
-            .Where(x => x.Name.Contains("Warehouse"))
+        var supervisor = db.Roles.Single(x => x.Code == "supervisor");
+        var admin = db.Roles.Single(x => x.Code == "admin");
+        var legacyRoles = db.Roles.Where(x => x.Code == "warehouse" || x.Code == "dept_admin").ToList();
+        var legacyRoleIds = legacyRoles.Select(x => x.Id).ToArray();
+        var affectedUserIds = db.UserRoles
+            .Where(x => legacyRoleIds.Contains(x.RoleId))
+            .Select(x => x.UserId)
+            .Distinct()
             .ToList();
-        foreach (var user in warehouseUsers)
+        foreach (var userId in affectedUserIds)
         {
-            if (!db.UserRoles.Any(x => x.UserId == user.Id && x.RoleId == warehouseRole.Id))
-            {
-                db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = warehouseRole.Id });
-            }
+            if (db.UserRoles.Any(x => x.UserId == userId && x.RoleId == admin.Id)) continue;
+            db.UserRoles.RemoveRange(db.UserRoles.Where(x => x.UserId == userId && x.RoleId != supervisor.Id));
+            if (!db.UserRoles.Any(x => x.UserId == userId && x.RoleId == supervisor.Id))
+                db.UserRoles.Add(new UserRole { UserId = userId, RoleId = supervisor.Id });
         }
+        foreach (var legacyRole in legacyRoles)
+        {
+            db.UserRoles.RemoveRange(db.UserRoles.Where(x => x.RoleId == legacyRole.Id));
+            db.RolePermissions.RemoveRange(db.RolePermissions.Where(x => x.RoleId == legacyRole.Id));
+            db.RoleMenus.RemoveRange(db.RoleMenus.Where(x => x.RoleId == legacyRole.Id));
+            db.Roles.Remove(legacyRole);
+        }
+        db.SaveChanges();
+    }
+
+    private static void MigrateLegacyWorkflowRoleReferences(AppDbContext db)
+    {
+        foreach (var workflow in db.Workflows.AsTracking().ToList())
+        {
+            if (string.IsNullOrEmpty(workflow.BpmnXml)) continue;
+            workflow.BpmnXml = workflow.BpmnXml
+                .Replace("warehouse", "supervisor", StringComparison.OrdinalIgnoreCase)
+                .Replace("仓库管理员", "部门主管", StringComparison.Ordinal)
+                .Replace("资产管理员", "部门主管", StringComparison.Ordinal);
+        }
+        db.SaveChanges();
     }
 
     private static void EnsureRoleMenusForPermissions(AppDbContext db, Role role, string[] permissionCodes)
     {
         var allMenus = db.Menus.ToList();
         var menuIds = new HashSet<int>();
-        foreach (var menu in allMenus.Where(x => x.PermissionCode != null && permissionCodes.Contains(x.PermissionCode)))
+        foreach (var menu in allMenus.Where(x => x.PermissionCode != null
+                     && permissionCodes.Contains(x.PermissionCode)
+                     && ShouldGrantMenu(role.Code, x.Name)))
         {
             menuIds.Add(menu.Id);
             var cursor = menu;
@@ -873,6 +868,9 @@ public static class DbSeeder
         var homeWorkspace = allMenus.SingleOrDefault(x => x.Name == "HomeWorkspace");
         if (homeWorkspace is not null) menuIds.Add(homeWorkspace.Id);
 
+        var staleMenus = db.RoleMenus.Where(x => x.RoleId == role.Id && !menuIds.Contains(x.MenuId)).ToList();
+        db.RoleMenus.RemoveRange(staleMenus);
+
         foreach (var menuId in menuIds)
         {
             if (!db.RoleMenus.Any(x => x.RoleId == role.Id && x.MenuId == menuId))
@@ -881,6 +879,9 @@ public static class DbSeeder
             }
         }
     }
+
+    private static bool ShouldGrantMenu(string roleCode, string menuName)
+        => roleCode != "employee" || menuName is not "AssetCategories" and not "AssetLocations";
 
     public static void SeedTestMaterialModule(AppDbContext db)
     {
@@ -910,9 +911,7 @@ public static class DbSeeder
         var roleGrants = new Dictionary<string, string[]>
         {
             ["admin"] = materialPermissions.Select(p => p.Code).ToArray(),
-            ["dept_admin"] = CoreRolePermissionMap()["dept_admin"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
             ["supervisor"] = CoreRolePermissionMap()["supervisor"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
-            ["warehouse"] = CoreRolePermissionMap()["warehouse"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
             ["employee"] = CoreRolePermissionMap()["employee"].Where(x => x.StartsWith("material") || x.StartsWith("project")).ToArray(),
         };
         foreach (var (roleCode, codes) in roleGrants)
@@ -1217,7 +1216,7 @@ public static class DbSeeder
       <bpmn:outgoing>Flow_supervisorRole</bpmn:outgoing>
       <bpmn:outgoing>Flow_employeeDefault</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:userTask id=""Task_adminRole"" name=""仓库管理员审批"" camunda:candidateGroups=""warehouse"">
+    <bpmn:userTask id=""Task_adminRole"" name=""部门主管审批"" camunda:candidateGroups=""supervisor"">
       <bpmn:incoming>Flow_admin</bpmn:incoming>
       <bpmn:outgoing>Flow_admin_to_receiver</bpmn:outgoing>
     </bpmn:userTask>
@@ -1296,22 +1295,22 @@ public static class DbSeeder
     <bpmn:startEvent id=""StartEvent_1"" name=""发起归还申请"">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:userTask id=""Task_warehouse"" name=""资产管理员确认"" camunda:candidateGroups=""warehouse"">
+    <bpmn:userTask id=""Task_supervisor"" name=""部门主管确认"" camunda:candidateGroups=""supervisor"">
       <bpmn:incoming>Flow_1</bpmn:incoming>
       <bpmn:outgoing>Flow_2</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:endEvent id=""EndEvent_1"" name=""流程结束"">
       <bpmn:incoming>Flow_2</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Task_warehouse"" />
-    <bpmn:sequenceFlow id=""Flow_2"" sourceRef=""Task_warehouse"" targetRef=""EndEvent_1"" />
+    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Task_supervisor"" />
+    <bpmn:sequenceFlow id=""Flow_2"" sourceRef=""Task_supervisor"" targetRef=""EndEvent_1"" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
     <bpmndi:BPMNPlane id=""BPMNPlane_1"" bpmnElement=""Process_return"">
       <bpmndi:BPMNShape id=""StartEvent_1_di"" bpmnElement=""StartEvent_1"">
         <dc:Bounds x=""152"" y=""102"" width=""36"" height=""36"" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id=""Task_warehouse_di"" bpmnElement=""Task_warehouse"">
+      <bpmndi:BPMNShape id=""Task_supervisor_di"" bpmnElement=""Task_supervisor"">
         <dc:Bounds x=""240"" y=""80"" width=""100"" height=""80"" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id=""EndEvent_1_di"" bpmnElement=""EndEvent_1"">

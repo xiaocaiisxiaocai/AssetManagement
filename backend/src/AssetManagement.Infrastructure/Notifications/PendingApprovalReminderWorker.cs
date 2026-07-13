@@ -233,7 +233,7 @@ public class PendingApprovalReminderWorker : BackgroundService
                     var deptAdmins = await db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
                         .Where(u => u.DepartmentId == applicant.DepartmentId &&
-                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "dept_admin"))
+                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id).ToListAsync();
                     foreach (var uid in deptAdmins)
                         if (!result.Contains(uid)) result.Add(uid);

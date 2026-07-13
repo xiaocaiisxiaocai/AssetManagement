@@ -337,7 +337,7 @@ public class AuditProbeController : ControllerBase
         => ApiResult<RoleDto>.Ok(new RoleDto
         {
             Id = id,
-            Code = "dept_admin",
+            Code = "supervisor",
             Name = "部门主管",
             PermissionIds = new[] { 1, 2, 3 },
             MenuIds = new[] { 10, 11 }
@@ -348,7 +348,7 @@ public class AuditProbeController : ControllerBase
         => ApiResult<RoleDto>.Ok(new RoleDto
         {
             Id = id,
-            Code = "dept_admin",
+            Code = "supervisor",
             Name = "部门主管",
             PermissionIds = new[] { 1, 2, 3 },
             MenuIds = new[] { 10, 11 }

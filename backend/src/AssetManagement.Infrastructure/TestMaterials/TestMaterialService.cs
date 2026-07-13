@@ -312,7 +312,7 @@ public class TestMaterialService : ITestMaterialService
         if (user is null) return null;
         var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
         if (roles.Contains("admin")) return null;
-        if (roles.Contains("dept_admin"))
+        if (roles.Contains("supervisor"))
         {
             var deptIdClaim = user.FindFirst("departmentId")?.Value;
             if (int.TryParse(deptIdClaim, out var deptId))

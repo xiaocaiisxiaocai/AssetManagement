@@ -418,7 +418,7 @@ public class ReportService : IReportService
                 && allowedDepartmentIds.Contains(a.DepartmentId.Value)));
     }
 
-    // null 表示共享资产池不受限；空数组表示部门管理员配置不完整，必须 fail-closed。
+    // null 表示共享资产池不受限；空数组表示部门主管配置不完整，必须 fail-closed。
     private int[]? AllowedDepartmentIds()
     {
         var principal = _httpContextAccessor.HttpContext?.User;
@@ -428,7 +428,7 @@ public class ReportService : IReportService
         }
 
         var roles = principal.FindAll(ClaimTypes.Role).Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
-        if (roles.Contains("admin") || !roles.Contains("dept_admin"))
+        if (roles.Contains("admin") || !roles.Contains("supervisor"))
         {
             return null;
         }

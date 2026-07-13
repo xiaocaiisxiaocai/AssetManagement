@@ -29,7 +29,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
         // 获取所有角色，并找到部门管理员角色
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
-        var deptAdminRole = roles!.Data!.Items.Single(r => r.Code == "dept_admin");
+        var deptAdminRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
 
         var dept1 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
@@ -112,7 +112,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
 
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
-        var deptAdminRole = roles!.Data!.Items.Single(r => r.Code == "dept_admin");
+        var deptAdminRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
 
         var dept1 = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
@@ -158,9 +158,10 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         var updateBody = await updateRes.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
         updateBody!.Code.Should().NotBe(0, "部门管理员不应能修改其他部门资产");
 
-        // 删除:dept_admin 角色无 asset:delete 权限,应在权限层即被拦截(403)
+        // 部门主管有删除权限，但仍必须被部门数据范围拦截。
         var deleteRes = await _client.DeleteAsync($"/api/assets/{asset2.Data.Id}");
-        deleteRes.StatusCode.Should().Be(System.Net.HttpStatusCode.Forbidden, "部门管理员无删除权限");
+        var deleteBody = await deleteRes.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        deleteBody!.Code.Should().NotBe(0, "部门主管不应删除其他部门资产");
     }
 
     private async Task<CategoryNodeDto> CreateCategory()

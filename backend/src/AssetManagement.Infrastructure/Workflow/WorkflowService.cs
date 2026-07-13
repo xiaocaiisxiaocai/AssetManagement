@@ -203,11 +203,11 @@ public class WorkflowService : IWorkflowService
         var user = await LoadUser(userId);
         var isAdmin = IsAdmin(user);
 
-        // dept_admin 只能看到自己管辖部门相关的流程；转让接收节点还要看接收人部门。
+        // supervisor 只能看到自己管辖部门相关的流程；转让接收节点还要看接收人部门。
         int[]? allowedDeptIds = null;
-        if (!isAdmin && IsDeptAdmin(user) && !user.DepartmentId.HasValue)
+        if (!isAdmin && IsSupervisor(user) && !user.DepartmentId.HasValue)
             return new List<ApprovalFlowDto>();
-        if (!isAdmin && IsDeptAdmin(user) && user.DepartmentId.HasValue)
+        if (!isAdmin && IsSupervisor(user) && user.DepartmentId.HasValue)
         {
             allowedDeptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
         }
@@ -269,7 +269,7 @@ public class WorkflowService : IWorkflowService
         var query = _db.ApprovalFlows
             .Where(x => x.Status == "approved" && x.BizType == "borrow" && x.ConfirmedAt == null)
             .AsQueryable();
-        if (!IsAdmin(user) && IsDeptAdmin(user))
+        if (!IsAdmin(user) && IsSupervisor(user))
         {
             if (!user.DepartmentId.HasValue) return new List<ApprovalFlowDto>();
             var deptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
@@ -721,7 +721,7 @@ public class WorkflowService : IWorkflowService
 
                 var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetDeptId.Value);
                 var isSameDeptAdmin = user.DepartmentId == targetDeptId &&
-                                      user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin");
+                                      user.UserRoles.Any(ur => ur.Role?.Code == "supervisor");
                 var isDepartmentManager = department?.ManagerId == user.Id;
                 return isSameDeptAdmin || isDepartmentManager;
             }
@@ -772,12 +772,12 @@ public class WorkflowService : IWorkflowService
     private bool IsAdmin(User user)
         => user.UserRoles.Any(ur => ur.Role?.Code == "admin");
 
-    private static bool IsDeptAdmin(User user)
-        => user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin");
+    private static bool IsSupervisor(User user)
+        => user.UserRoles.Any(ur => ur.Role?.Code == "supervisor");
 
     private async Task EnsureAssetInScopeAsync(Asset asset, User user)
     {
-        if (IsAdmin(user) || !IsDeptAdmin(user)) return;
+        if (IsAdmin(user) || !IsSupervisor(user)) return;
         if (!user.DepartmentId.HasValue)
             throw new BizException(4048, "资产不存在");
         var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
@@ -790,7 +790,7 @@ public class WorkflowService : IWorkflowService
         if (IsAdmin(user) || flow.ApplicantId == user.Id || flow.TransfereeId == user.Id)
             return;
         if (await CanApprove(flow, user)) return;
-        if (IsDeptAdmin(user) && user.DepartmentId.HasValue)
+        if (IsSupervisor(user) && user.DepartmentId.HasValue)
         {
             var asset = await _db.Assets.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId);
             var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
@@ -883,7 +883,7 @@ public class WorkflowService : IWorkflowService
                     var deptAdmins = await _db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
                         .Where(u => u.DepartmentId == targetDeptId &&
-                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "dept_admin"))
+                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id)
                         .ToListAsync();
                     foreach (var uid in deptAdmins)

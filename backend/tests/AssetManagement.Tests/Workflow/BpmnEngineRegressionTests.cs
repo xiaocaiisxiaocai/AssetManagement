@@ -73,13 +73,19 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     public async Task Applicant_role_condition_routes_supervisor_to_dept_manager()
     {
         await Login();
-        var deptAdminRole = await Role("dept_admin");
+        var deptAdminRole = await Role("supervisor");
         var supervisorRole = await Role("supervisor");
         var dept = await CreateDepartment("主管转借部门");
         var deptAdmin = await CreateUser("部门管理员", deptAdminRole.Id, dept.Data!.Id);
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{dept.Data.Id}", new UpdateDepartmentRequest
+        {
+            Name = dept.Data.Name,
+            ManagerId = deptAdmin.Data!.Id,
+            IsActive = true
+        });
         var applicant = await CreateUser("主管申请人", supervisorRole.Id, dept.Data.Id);
-        var workflow = await CreateWorkflow("role_branch", ApplicantRoleWorkflowBpmn("supervisor", "deptManager", "warehouse"));
-        var asset = await CreateAsset();
+        var workflow = await CreateWorkflow("role_branch", ApplicantRoleWorkflowBpmn("supervisor", "deptManager", "supervisor"));
+        var asset = await CreateAsset(dept.Data.Id);
 
         Auth(await LoginToken(applicant.Data!.EmployeeNo, "123456"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
@@ -95,6 +101,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "同意" });
 
+        approved.Code.Should().Be(0, approved.Message);
         approved.Data!.Status.Should().Be("approved");
     }
 
@@ -102,12 +109,13 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     public async Task Applicant_role_condition_routes_admin_to_configured_role()
     {
         await Login();
-        var warehouseRole = await Role("warehouse");
+        var warehouseRole = await Role("supervisor");
         var adminRole = await Role("admin");
-        var warehouse = await CreateUser("仓库审批人", warehouseRole.Id);
+        var dept = await CreateDepartment("管理员转借部门");
+        var warehouse = await CreateUser("部门主管审批人", warehouseRole.Id, dept.Data!.Id);
         var applicant = await CreateUser("管理员申请人", adminRole.Id);
-        var workflow = await CreateWorkflow("admin_branch", ApplicantRoleToRoleWorkflowBpmn("admin", "warehouse", "supervisor"));
-        var asset = await CreateAsset();
+        var workflow = await CreateWorkflow("admin_branch", ApplicantRoleToRoleWorkflowBpmn("admin", "supervisor", "supervisor"));
+        var asset = await CreateAsset(dept.Data.Id);
 
         Auth(await LoginToken(applicant.Data!.EmployeeNo, "123456"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
@@ -155,7 +163,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         });
         var applicant = await CreateUser("有上级员工", employeeRole.Id, dept.Data!.Id, supervisor.Data!.Id);
         var workflow = await CreateWorkflow("supervisor", SupervisorBpmn());
-        var asset = await CreateAsset();
+        var asset = await CreateAsset(dept.Data.Id);
 
         Auth(await LoginToken(applicant.Data!.EmployeeNo, "123456"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
@@ -241,7 +249,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
             BpmnXml = bpmnXml
         });
 
-    private async Task<ApiResult<AssetDto>> CreateAsset()
+    private async Task<ApiResult<AssetDto>> CreateAsset(int? departmentId = null)
     {
         var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
@@ -256,6 +264,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         {
             Name = "BPMN测试资产",
             CategoryId = child.Data!.Id,
+            DepartmentId = departmentId,
         });
     }
 

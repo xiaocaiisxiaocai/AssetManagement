@@ -177,7 +177,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         await SetApprovalSwitch(true);
-        var owner = await CreateUser("0910", "项目负责人甲", "supervisor");
+        var owner = await CreateUser("0910", "项目负责人甲", "employee");
         var transferee = await CreateUser("0911", "受让人甲");
         var project = await CreateProject("负责人流转项目", owner.Id);
         var material = await CreateMaterial(project.Id, "负责人审批样品");
@@ -195,8 +195,8 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var denied = await _client.PostAsJsonAsync(
             $"/api/material-flows/{flow.Data.Id}/approve",
             new MaterialApprovalRequest { Opinion = "非指定人员不应可审批" });
-        var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
-        deniedBody!.Code.Should().Be(4016);
+        denied.StatusCode.Should().Be(System.Net.HttpStatusCode.Forbidden,
+            "普通员工即使是项目负责人也不具备审批权限");
 
         await Login();
         var pending = await _client.GetFromJsonAsync<ApiResult<List<MaterialFlowDto>>>("/api/material-flows/pending");
@@ -209,11 +209,32 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Employee_cannot_transfer_unrelated_material()
+    {
+        await Login();
+        var employee = await CreateUser("0931", "无关员工");
+        var transferee = await CreateUser("0932", "无关流转接收人");
+        var project = await CreateProject("无关流转项目");
+        var material = await CreateMaterial(project.Id, "非本人料件");
+
+        Auth(await LoginToken(employee.EmployeeNo, "123456"));
+        var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "无关员工不应发起流转"
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        body!.Code.Should().Be(4047);
+    }
+
+    [Fact]
     public async Task Project_owner_transfer_notifies_configured_employee_no_assignee()
     {
         await Login();
         await SetApprovalSwitch(true);
-        var owner = await CreateUser("0921", "项目负责人通知", "supervisor");
+        var owner = await CreateUser("0921", "项目负责人通知", "employee");
         var transferee = await CreateUser("0922", "通知接收人");
         var project = await CreateProject("负责人通知项目", owner.Id);
         var material = await CreateMaterial(project.Id, "负责人通知样品");

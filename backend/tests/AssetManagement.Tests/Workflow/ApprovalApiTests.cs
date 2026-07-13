@@ -215,7 +215,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
         var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
         var employeeRole = roles.Data.Items.Single(r => r.Code == "employee");
-        var deptAdminRole = roles.Data.Items.Single(r => r.Code == "dept_admin");
+        var deptAdminRole = roles.Data.Items.Single(r => r.Code == "supervisor");
 
         var sourceDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { Name = Unique("SRC") });
         var targetDept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest { Name = Unique("DST") });

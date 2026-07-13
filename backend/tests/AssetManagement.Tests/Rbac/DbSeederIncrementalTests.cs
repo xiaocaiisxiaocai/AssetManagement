@@ -31,7 +31,7 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
     }
 
     [Fact]
-    public void Incremental_seed_repairs_roles_menus_and_warehouse_user_without_overwriting_existing_grants()
+    public void Incremental_seed_keeps_three_roles_and_migrates_legacy_role_users_to_supervisor()
     {
         SeedLegacyDatabaseState();
 
@@ -45,15 +45,15 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
             .ToList();
         var permissions = _db.Permissions.OrderBy(x => x.Code).ToList();
         var admin = roles.Single(x => x.Code == "admin");
-        var warehouse = roles.SingleOrDefault(x => x.Code == "warehouse");
-        var warehouseUser = _db.Users
+        var supervisor = roles.Single(x => x.Code == "supervisor");
+        var legacyUser = _db.Users
             .Include(x => x.UserRoles)
             .Single(x => x.EmployeeNo == "9104");
         var normalUser = _db.Users
             .Include(x => x.UserRoles)
             .Single(x => x.EmployeeNo == "9105");
 
-        warehouse.Should().NotBeNull();
+        roles.Select(x => x.Code).Should().BeEquivalentTo("admin", "supervisor", "employee");
         admin.RolePermissions.Select(x => x.Permission.Code)
             .Should().Contain(new[] { "asset:view", "project:view", "material:view", "backup:manage" },
                 "增量种子必须保留已有授权并为管理员逐项补齐后来新增的权限");
@@ -62,23 +62,18 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         admin.RoleMenus.Select(x => x.Menu.Name)
             .Should().Contain(new[] { "Material", "MaterialHome", "MaterialProjects", "AdminBackups" },
                 "管理员已有任意菜单时也必须补齐新增模块入口");
-        warehouse!.RoleMenus.Select(x => x.MenuId).Distinct()
-            .Should().NotBeEmpty("仓库管理员恢复后也应按权限矩阵补齐菜单入口");
-        warehouse.RolePermissions.Select(x => x.Permission.Code)
-            .Should().Contain("project:view", "仓库管理员已有测试项目菜单时必须能访问测试项目接口");
-        roles.Single(x => x.Code == "supervisor")
-            .RolePermissions.Select(x => x.Permission.Code)
+        supervisor.RoleMenus.Select(x => x.MenuId).Distinct().Should().NotBeEmpty();
+        supervisor.RolePermissions.Select(x => x.Permission.Code)
             .Should().Contain("project:view", "部门主管已有测试项目菜单时必须能访问测试项目接口");
-        roles.Single(x => x.Code == "supervisor")
-            .RolePermissions.Select(x => x.Permission.Code)
-            .Should().NotContain(code => code.StartsWith("user:"), "部门主管不应具备用户管理权限");
+        supervisor.RolePermissions.Select(x => x.Permission.Code)
+            .Should().NotContain("user:create", "部门主管只能查看部门人员，不能新建用户");
         roles.Single(x => x.Code == "employee").RoleMenus.Select(x => x.Menu.Name)
             .Should().Contain(new[] { "Material", "MaterialHome", "MaterialProjects" },
                 "普通员工已有菜单时仍应增量补齐新产品模块入口");
-        warehouseUser.UserRoles.Select(x => x.RoleId)
-            .Should().Contain(warehouse!.Id, "现有仓库管理员测试用户不能保持无角色状态");
+        legacyUser.UserRoles.Should()
+            .ContainSingle(x => x.RoleId == supervisor.Id, "旧仓库/部门管理员应合并为部门主管");
         normalUser.UserRoles.Select(x => x.RoleId)
-            .Should().NotContain(warehouse.Id, "不能只按历史工号误把普通用户绑定为仓库管理员");
+            .Should().NotContain(supervisor.Id, "普通员工不应被误升级为部门主管");
 
         permissions.Select(x => x.Code).Should().Contain(new[]
         {
@@ -175,8 +170,9 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         var admin = new Role { Code = "admin", Name = "系统管理员" };
         var supervisor = new Role { Code = "supervisor", Name = "部门主管" };
         var employee = new Role { Code = "employee", Name = "普通员工" };
+        var warehouse = new Role { Code = "warehouse", Name = "仓库管理员" };
         var deptAdmin = new Role { Code = "dept_admin", Name = "部门管理员" };
-        _db.Roles.AddRange(admin, supervisor, employee, deptAdmin);
+        _db.Roles.AddRange(admin, supervisor, employee, warehouse, deptAdmin);
 
         var permissions = new[]
         {
@@ -224,6 +220,8 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         });
         _db.RoleMenus.Add(new RoleMenu { RoleId = admin.Id, MenuId = home.Id });
         _db.UserRoles.Add(new UserRole { UserId = systemAdmin.Id, RoleId = admin.Id });
+        _db.UserRoles.Add(new UserRole { UserId = warehouseUser.Id, RoleId = warehouse.Id });
+        _db.UserRoles.Add(new UserRole { UserId = normalUser.Id, RoleId = employee.Id });
         _db.SaveChanges();
     }
 

@@ -42,6 +42,10 @@ public class MaterialFlowService : IMaterialFlowService
             .SingleOrDefaultAsync(x => x.Id == applicantId)
             ?? throw new BizException(4041, "用户不存在");
         await EnsureMaterialInScopeAsync(material, applicant);
+        var isPrivileged = applicant.UserRoles.Any(x => x.Role?.Code is "admin" or "supervisor");
+        var isProjectOwner = await _db.TestProjects.AnyAsync(x => x.Id == material.ProjectId && x.OwnerId == applicantId);
+        if (!isPrivileged && material.CustodianId != applicantId && !isProjectOwner)
+            throw new BizException(4047, "只能流转本人保管或本人负责项目的料件");
         var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId && x.IsActive)
             ?? throw new BizException(4041, "受让人不存在或已停用");
         if (transferee.Id == applicant.Id) throw new BizException(4001, "接收人不能与申请人相同");
@@ -201,11 +205,11 @@ public class MaterialFlowService : IMaterialFlowService
         var user = await LoadUser(userId);
         var isAdmin = user.UserRoles.Any(ur => ur.Role?.Code == "admin");
 
-        // dept_admin 只能看到申请人属于其管辖部门（含子部门）的流程
+        // supervisor 只能看到申请人属于其管辖部门（含子部门）的流程
         int[]? allowedDeptIds = null;
-        if (!isAdmin && IsDeptAdmin(user) && !user.DepartmentId.HasValue)
+        if (!isAdmin && IsSupervisor(user) && !user.DepartmentId.HasValue)
             return new List<MaterialFlowDto>();
-        if (!isAdmin && IsDeptAdmin(user) && user.DepartmentId.HasValue)
+        if (!isAdmin && IsSupervisor(user) && user.DepartmentId.HasValue)
         {
             allowedDeptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
         }
@@ -480,7 +484,7 @@ public class MaterialFlowService : IMaterialFlowService
                 if (applicant?.DepartmentId is null) return false;
                 var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
                 var isSameDeptAdmin = user.DepartmentId == applicant.DepartmentId &&
-                                      user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin");
+                                      user.UserRoles.Any(ur => ur.Role?.Code == "supervisor");
                 var isDepartmentManager = department?.ManagerId == user.Id;
                 return isSameDeptAdmin || isDepartmentManager;
             }
@@ -529,12 +533,12 @@ public class MaterialFlowService : IMaterialFlowService
     private static bool IsAdmin(User user)
         => user.UserRoles.Any(ur => ur.Role?.Code == "admin");
 
-    private static bool IsDeptAdmin(User user)
-        => user.UserRoles.Any(ur => ur.Role?.Code == "dept_admin");
+    private static bool IsSupervisor(User user)
+        => user.UserRoles.Any(ur => ur.Role?.Code == "supervisor");
 
     private async Task EnsureMaterialInScopeAsync(TestMaterial material, User user)
     {
-        if (IsAdmin(user) || !IsDeptAdmin(user)) return;
+        if (IsAdmin(user) || !IsSupervisor(user)) return;
         if (!user.DepartmentId.HasValue)
             throw new BizException(4048, "测试料件不存在");
         var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
@@ -547,7 +551,7 @@ public class MaterialFlowService : IMaterialFlowService
         if (IsAdmin(user) || flow.ApplicantId == user.Id || flow.TransfereeId == user.Id)
             return;
         if (await CanApprove(flow, user)) return;
-        if (IsDeptAdmin(user) && user.DepartmentId.HasValue)
+        if (IsSupervisor(user) && user.DepartmentId.HasValue)
         {
             var material = await _db.TestMaterials.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.MaterialId);
             var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
@@ -713,7 +717,7 @@ public class MaterialFlowService : IMaterialFlowService
                     var deptAdmins = await _db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
                         .Where(u => u.DepartmentId == applicant.DepartmentId &&
-                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "dept_admin"))
+                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id).ToListAsync();
                     foreach (var uid in deptAdmins)
                         if (!result.Contains(uid)) result.Add(uid);

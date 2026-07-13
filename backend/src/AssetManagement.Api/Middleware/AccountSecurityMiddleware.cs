@@ -57,11 +57,11 @@ public sealed class AccountSecurityMiddleware
 
         var roleCodes = activeRoles.Select(x => x.Code).Distinct(StringComparer.Ordinal).ToArray();
         if (!roleCodes.Contains("admin", StringComparer.Ordinal)
-            && roleCodes.Contains("dept_admin", StringComparer.Ordinal)
+            && roleCodes.Contains("supervisor", StringComparer.Ordinal)
             && (!user.DepartmentId.HasValue
                 || !await db.Departments.AnyAsync(x => x.Id == user.DepartmentId.Value && x.IsActive)))
         {
-            await RejectAsync(context, StatusCodes.Status403Forbidden, 4013, "部门管理员必须关联启用状态的部门");
+            await RejectAsync(context, StatusCodes.Status403Forbidden, 4013, "部门主管必须关联启用状态的部门");
             return;
         }
 

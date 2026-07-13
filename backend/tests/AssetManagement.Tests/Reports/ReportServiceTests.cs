@@ -147,7 +147,7 @@ public class ReportServiceTests : MySqlFixtureBase
             new Asset { AssetNo = "PC-SCOPE-3", Name = "其他部门", CategoryId = category.Id, DepartmentId = other.Id, Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow });
         await _db.SaveChangesAsync();
 
-        var service = CreateServiceFor(new Claim(ClaimTypes.Role, "dept_admin"), new Claim("departmentId", root.Id.ToString()));
+        var service = CreateServiceFor(new Claim(ClaimTypes.Role, "supervisor"), new Claim("departmentId", root.Id.ToString()));
         var summary = await service.GetSummaryAsync();
 
         summary.Total.Should().Be(2);
@@ -163,7 +163,7 @@ public class ReportServiceTests : MySqlFixtureBase
         _db.Assets.Add(new Asset { AssetNo = "PC-CLOSED-1", Name = "不可见资产", CategoryId = category.Id, Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow });
         await _db.SaveChangesAsync();
 
-        var summary = await CreateServiceFor(new Claim(ClaimTypes.Role, "dept_admin")).GetSummaryAsync();
+        var summary = await CreateServiceFor(new Claim(ClaimTypes.Role, "supervisor")).GetSummaryAsync();
 
         summary.Total.Should().Be(0);
     }

@@ -696,7 +696,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var managerRole = db.Roles.Single(x => x.Code == "dept_admin");
+        var managerRole = db.Roles.Single(x => x.Code == "supervisor");
         var department = db.Departments.FirstOrDefault(x => x.IsActive);
         if (department is null)
         {
