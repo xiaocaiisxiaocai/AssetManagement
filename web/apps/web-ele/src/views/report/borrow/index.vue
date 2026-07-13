@@ -131,7 +131,7 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="page-container">
-      <div class="filter-panel">
+      <div class="filter-panel borrow-filter-panel">
         <ElForm class="filter-form" inline>
           <ElFormItem label="申请时间">
             <ElDatePicker
@@ -196,12 +196,12 @@ onMounted(async () => {
             <ElButton @click="resetQuery">重置</ElButton>
           </ElFormItem>
         </ElForm>
+        <div v-if="canExport" class="borrow-filter-actions">
+          <ElButton type="primary" @click="exportReport">导出 Excel</ElButton>
+        </div>
       </div>
 
       <div class="table-panel-with-toolbar">
-        <div v-if="canExport" class="table-toolbar">
-          <ElButton type="primary" @click="exportReport">导出 Excel</ElButton>
-        </div>
         <ElTable v-loading="loading" :data="rows" border height="100%">
           <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
           <ElTableColumn label="资产" min-width="220">
@@ -268,3 +268,38 @@ onMounted(async () => {
     </div>
   </re-page>
 </template>
+
+<style scoped>
+.borrow-filter-panel {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.borrow-filter-panel .filter-form {
+  flex: 1;
+  min-width: 0;
+}
+
+.borrow-filter-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  margin-left: auto;
+}
+
+@media (max-width: 768px) {
+  .borrow-filter-panel {
+    flex-wrap: wrap;
+  }
+
+  .borrow-filter-panel .filter-form {
+    flex-basis: 100%;
+  }
+
+  .borrow-filter-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+</style>
