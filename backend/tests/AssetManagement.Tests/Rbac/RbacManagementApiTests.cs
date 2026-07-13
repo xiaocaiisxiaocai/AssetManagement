@@ -7,17 +7,23 @@ using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
+using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Rbac;
 
 public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
+    private readonly TestWebAppFactory _factory;
 
     public RbacManagementApiTests(TestWebAppFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -992,6 +998,48 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
         deleted.Code.Should().Be(0);
         list!.Data!.Items.Should().NotContain(x => x.Id == user.Data.Id);
+    }
+
+    [Fact]
+    public async Task Delete_user_keeps_audit_logs_and_clears_user_reference()
+    {
+        await Login();
+        var employeeNo = Unique("u");
+        var roleId = await CreateRoleId();
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "已产生审计日志的用户",
+            RoleIds = new[] { roleId }
+        });
+
+        int auditLogId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var log = new AuditLog
+            {
+                UserId = user.Data!.Id,
+                ActionType = "test",
+                TargetType = "User",
+                TargetId = user.Data.Id.ToString(),
+                Summary = "删除用户前的历史日志",
+                OccurredAt = DateTime.Now
+            };
+            db.AuditLogs.Add(log);
+            await db.SaveChangesAsync();
+            auditLogId = log.Id;
+        }
+
+        var deleted = await Delete<ApiResult<object?>>($"/api/users/{user.Data!.Id}");
+
+        deleted.Code.Should().Be(0);
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        (await verifyDb.Users.AnyAsync(x => x.Id == user.Data.Id)).Should().BeFalse();
+        var retainedLog = await verifyDb.AuditLogs.SingleAsync(x => x.Id == auditLogId);
+        retainedLog.UserId.Should().BeNull();
+        retainedLog.Summary.Should().Be("删除用户前的历史日志");
     }
 
     [Fact]

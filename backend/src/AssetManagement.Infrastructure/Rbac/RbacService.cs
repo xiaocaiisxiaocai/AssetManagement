@@ -150,8 +150,13 @@ public class RbacService : IRbacService
         }
         await EnsureUserNotReferencedAsync(id);
 
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        await _db.AuditLogs
+            .Where(x => x.UserId == id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.UserId, (int?)null));
         _db.Users.Remove(user);
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
     }
 
     public async Task ResetPasswordAsync(int id)
@@ -506,10 +511,6 @@ public class RbacService : IRbacService
         if (await _db.Notifications.AnyAsync(x => x.UserId == id))
         {
             throw new BizException(4094, "用户已被通知记录使用，不能删除");
-        }
-        if (await _db.AuditLogs.AnyAsync(x => x.UserId == id))
-        {
-            throw new BizException(4094, "用户已被审计日志使用，不能删除");
         }
     }
 
