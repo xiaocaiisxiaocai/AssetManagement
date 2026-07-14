@@ -3,7 +3,6 @@ export type AssetFormLike = {
   categoryId: number;
   custodianId?: number;
   departmentId?: number;
-  imageCount: number;
   locationId?: number;
   model: string;
   name: string;
@@ -20,6 +19,5 @@ export function validateAssetForm(form: AssetFormLike) {
   if (!form.model.trim()) return '请填写型号';
   if (!form.brand.trim()) return '请填写品牌';
   if (!form.quantity || form.quantity < 1) return '请填写数量';
-  if (form.imageCount < 1) return '请上传资产照片';
   return null;
 }

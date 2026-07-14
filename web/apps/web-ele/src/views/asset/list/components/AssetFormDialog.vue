@@ -136,7 +136,7 @@ watch(visible, async (opened) => {
       name: props.asset.name,
       purchaseDate: props.asset.purchaseDate?.slice(0, 10) ?? '',
       quantity: props.asset.quantity,
-      registrationTime: props.asset.registrationTime?.slice(0, 19) ?? '',
+      registrationTime: props.asset.registrationTime?.slice(0, 10) ?? '',
       currentCondition: props.asset.currentCondition ?? '',
       isFirstRegistration: props.asset.isFirstRegistration,
       remark: props.asset.remark ?? '',
@@ -167,7 +167,7 @@ watch(visible, async (opened) => {
       name: '',
       purchaseDate: '',
       quantity: 1,
-      registrationTime: nowLocalDateTime(),
+      registrationTime: nowLocalDate(),
       currentCondition: '',
       isFirstRegistration: true,
       remark: '',
@@ -202,10 +202,10 @@ function buildPayload(): AssetPayload {
   };
 }
 
-function nowLocalDateTime() {
+function nowLocalDate() {
   const now = new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 19);
+  return local.toISOString().slice(0, 10);
 }
 
 function beforeImageUpload(file: File) {
@@ -247,10 +247,7 @@ function onImageExceed() {
 }
 
 async function save() {
-  const error = validateAssetForm({
-    ...form,
-    imageCount: imageFileList.value.length,
-  });
+  const error = validateAssetForm(form);
   if (error) {
     ElMessage.warning(error);
     return;
@@ -370,13 +367,13 @@ const debouncedSave = useDebounceFn(save, 300);
           value-format="YYYY-MM-DD"
         />
       </ElFormItem>
-      <ElFormItem label="登记时间">
+      <ElFormItem label="登记日期">
         <ElDatePicker
           v-model="form.registrationTime"
-          placeholder="选择资产登记时间"
+          placeholder="选择资产登记日期"
           style="width: 100%"
-          type="datetime"
-          value-format="YYYY-MM-DDTHH:mm:ss"
+          type="date"
+          value-format="YYYY-MM-DD"
         />
       </ElFormItem>
       <ElFormItem label="目前状况">
@@ -404,7 +401,7 @@ const debouncedSave = useDebounceFn(save, 300);
           type="textarea"
         />
       </ElFormItem>
-      <ElFormItem label="资产照片" required>
+      <ElFormItem label="资产照片">
         <ElUpload
           v-model:file-list="imageFileList"
           :before-upload="beforeImageUpload"

@@ -213,12 +213,8 @@ function summaryText(summary: null | string | undefined) {
           <ElDescriptionsItem label="购入日期">
             {{ detail.asset.purchaseDate?.slice(0, 10) || '—' }}
           </ElDescriptionsItem>
-          <ElDescriptionsItem label="资产登记时间">
-            {{
-              detail.asset.registrationTime
-                ? formatTime(detail.asset.registrationTime)
-                : '—'
-            }}
+          <ElDescriptionsItem label="资产登记日期">
+            {{ detail.asset.registrationTime?.slice(0, 10) || '—' }}
           </ElDescriptionsItem>
           <ElDescriptionsItem label="目前状况">
             {{ detail.asset.currentCondition || '—' }}

@@ -10,7 +10,6 @@ const baseForm = {
   categoryId: 1,
   custodianId: 4,
   departmentId: 2,
-  imageCount: 1,
   locationId: 3,
   model: 'API-TST',
   name: '测试资产',
@@ -19,7 +18,7 @@ const baseForm = {
 };
 
 describe('固定资产表单规则', () => {
-  it('新增资产除状态外均为必填', () => {
+  it('新增资产仅校验业务必填项', () => {
     expect(validateAssetForm({ ...baseForm, name: '' })).toBe('请填写资产名称');
     expect(validateAssetForm({ ...baseForm, categoryId: 0 })).toBe('请选择资产分类');
     expect(validateAssetForm({ ...baseForm, departmentId: undefined })).toBe('请选择归属部门');
@@ -28,10 +27,9 @@ describe('固定资产表单规则', () => {
     expect(validateAssetForm({ ...baseForm, model: '' })).toBe('请填写型号');
     expect(validateAssetForm({ ...baseForm, brand: '' })).toBe('请填写品牌');
     expect(validateAssetForm({ ...baseForm, quantity: 0 })).toBe('请填写数量');
-    expect(validateAssetForm({ ...baseForm, imageCount: 0 })).toBe('请上传资产照片');
   });
 
-  it('状态不是必填校验项', () => {
+  it('状态和资产图片不是必填校验项', () => {
     expect(validateAssetForm({ ...baseForm, status: undefined })).toBeNull();
   });
 
@@ -50,12 +48,25 @@ describe('固定资产表单规则', () => {
       '保管人',
       '型号品牌',
       '数量',
-      '资产照片',
     ];
 
     for (const label of requiredLabels) {
       expect(source).toContain(`<ElFormItem label="${label}" required>`);
     }
     expect(source).not.toContain('<ElFormItem v-if="isEdit" label="状态" required>');
+    expect(source).toContain('<ElFormItem label="资产照片">');
+  });
+
+  it('资产登记字段仅选择日期', () => {
+    const componentPath = join(
+      process.cwd(),
+      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
+    );
+    const source = readFileSync(componentPath, 'utf8');
+
+    expect(source).toContain('<ElFormItem label="登记日期">');
+    expect(source).toContain('placeholder="选择资产登记日期"');
+    expect(source).toContain('value-format="YYYY-MM-DD"');
+    expect(source).not.toContain('type="datetime"');
   });
 });

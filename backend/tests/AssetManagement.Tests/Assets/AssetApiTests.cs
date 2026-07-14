@@ -45,7 +45,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
         created.Data!.AssetNo.Should().Be($"{category.Code}-001");
         created.Data.PurchaseDate.Should().Be(new DateTime(2026, 7, 1));
-        created.Data.RegistrationTime.Should().Be(new DateTime(2026, 7, 13, 9, 30, 0));
+        created.Data.RegistrationTime.Should().Be(new DateTime(2026, 7, 13));
         created.Data.CurrentCondition.Should().Be("运行正常");
         created.Data.IsFirstRegistration.Should().BeTrue();
         created.Data.Remark.Should().Be("首次入库登记");

@@ -142,7 +142,7 @@ public class AssetService : IAssetService
                 Quantity = Math.Max(request.Quantity, 1),
                 Status = AssetStatus.Available,
                 PurchaseDate = request.PurchaseDate,
-                RegistrationTime = request.RegistrationTime ?? DateTime.UtcNow,
+                RegistrationTime = request.RegistrationTime?.Date ?? DateTime.UtcNow.Date,
                 CurrentCondition = request.CurrentCondition?.Trim(),
                 IsFirstRegistration = request.IsFirstRegistration,
                 Remark = request.Remark?.Trim(),
@@ -183,7 +183,7 @@ public class AssetService : IAssetService
         asset.Brand = request.Brand;
         asset.Quantity = Math.Max(request.Quantity, 1);
         asset.PurchaseDate = request.PurchaseDate;
-        asset.RegistrationTime = request.RegistrationTime;
+        asset.RegistrationTime = request.RegistrationTime?.Date;
         asset.CurrentCondition = request.CurrentCondition?.Trim();
         asset.IsFirstRegistration = request.IsFirstRegistration;
         asset.Remark = request.Remark?.Trim();
@@ -265,7 +265,7 @@ public class AssetService : IAssetService
     {
         var rows = new List<string[]>
         {
-            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "型号", "品牌", "数量", "状态", "购入日期", "资产登记时间", "目前状况", "首次登记", "备注" }
+            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "型号", "品牌", "数量", "状态", "购入日期", "资产登记日期", "目前状况", "首次登记", "备注" }
         };
         var assets = await ApplyQuery(_db.Assets.AsQueryable(), query)
             .OrderBy(x => x.AssetNo)
@@ -283,7 +283,7 @@ public class AssetService : IAssetService
             x.Quantity.ToString(),
             x.Status.ToString(),
             x.PurchaseDate?.ToString("yyyy-MM-dd") ?? "",
-            x.RegistrationTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "",
+            x.RegistrationTime?.ToString("yyyy-MM-dd") ?? "",
             x.CurrentCondition ?? "",
             x.IsFirstRegistration ? "是" : "否",
             x.Remark ?? ""
@@ -294,7 +294,7 @@ public class AssetService : IAssetService
     public byte[] BuildImportTemplate()
         => XlsxTable.Write(new[]
         {
-            new[] { "名称", "分类编码", "型号", "品牌", "购入日期", "资产登记时间", "目前状况", "首次登记(是/否)", "备注" }
+            new[] { "名称", "分类编码", "型号", "品牌", "购入日期", "资产登记日期", "目前状况", "首次登记(是/否)", "备注" }
         });
 
     public async Task<List<ImportPreviewRow>> ValidateImportAsync(Stream file)
@@ -341,7 +341,7 @@ public class AssetService : IAssetService
                 Model = row.Model,
                 Brand = row.Brand,
                 PurchaseDate = row.PurchaseDate,
-                RegistrationTime = row.RegistrationTime ?? DateTime.UtcNow,
+                RegistrationTime = row.RegistrationTime?.Date ?? DateTime.UtcNow.Date,
                 CurrentCondition = row.CurrentCondition,
                 IsFirstRegistration = row.IsFirstRegistration,
                 Remark = row.Remark,
@@ -551,7 +551,7 @@ public class AssetService : IAssetService
                 Quantity = x.Quantity,
                 Status = x.Status,
                 PurchaseDate = x.PurchaseDate,
-                RegistrationTime = x.RegistrationTime,
+                RegistrationTime = x.RegistrationTime?.Date,
                 CurrentCondition = x.CurrentCondition,
                 IsFirstRegistration = x.IsFirstRegistration,
                 Remark = x.Remark,
@@ -582,7 +582,7 @@ public class AssetService : IAssetService
         if (string.IsNullOrWhiteSpace(name)) errors.Add("名称必填");
         if (string.IsNullOrWhiteSpace(categoryCode) || !categories.ContainsKey(categoryCode)) errors.Add("分类编码不存在");
         var purchaseDate = ParseOptionalDate(purchaseDateText, "购入日期", errors);
-        var registrationTime = ParseOptionalDate(registrationTimeText, "资产登记时间", errors);
+        var registrationTime = ParseOptionalDate(registrationTimeText, "资产登记日期", errors);
         var isFirstRegistration = string.IsNullOrWhiteSpace(firstRegistrationText)
             || firstRegistrationText.Equals("是", StringComparison.OrdinalIgnoreCase)
             || firstRegistrationText.Equals("true", StringComparison.OrdinalIgnoreCase);
@@ -610,7 +610,7 @@ public class AssetService : IAssetService
     private static DateTime? ParseOptionalDate(string value, string field, List<string> errors)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
-        if (DateTime.TryParse(value, out var parsed)) return parsed;
+        if (DateTime.TryParse(value, out var parsed)) return parsed.Date;
         errors.Add($"{field}格式不正确");
         return null;
     }

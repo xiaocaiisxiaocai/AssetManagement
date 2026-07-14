@@ -924,14 +924,12 @@ watch(
               </ElTableColumn>
               <ElTableColumn
                 class-name="hide-on-mobile"
-                label="资产登记时间"
-                width="170"
+                label="资产登记日期"
+                width="120"
                 align="center"
               >
                 <template #default="{ row }">
-                  {{
-                    row.registrationTime?.replace('T', ' ').slice(0, 16) || '-'
-                  }}
+                  {{ row.registrationTime?.slice(0, 10) || '-' }}
                 </template>
               </ElTableColumn>
               <ElTableColumn
