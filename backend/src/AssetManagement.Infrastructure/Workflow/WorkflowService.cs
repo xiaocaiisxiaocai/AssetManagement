@@ -504,6 +504,8 @@ public class WorkflowService : IWorkflowService
 
         var hasSignUserId = int.TryParse(request.Who, out var signUserId);
         var signCandidates = await _db.Users
+            .Include(x => x.UserRoles)
+            .ThenInclude(x => x.Role)
             .Where(x => x.IsActive && ((hasSignUserId && x.Id == signUserId) || x.EmployeeNo == request.Who || x.Name == request.Who))
             .OrderBy(x => x.Id)
             .Take(2)
@@ -512,6 +514,13 @@ public class WorkflowService : IWorkflowService
         if (signCandidates.Count > 1 && signCandidates.All(x => x.Name == request.Who))
             throw new BizException(4094, "存在同名用户，请使用用户 ID 或工号加签");
         var signUser = signCandidates[0];
+        var isActiveSupervisor = signUser.UserRoles.Any(ur =>
+            ur.Role is { Code: "supervisor", IsActive: true });
+        var hasActiveDepartment = signUser.DepartmentId.HasValue &&
+            await _db.Departments.AsNoTracking().AnyAsync(x =>
+                x.Id == signUser.DepartmentId.Value && x.IsActive);
+        if (!isActiveSupervisor || !hasActiveDepartment)
+            throw new BizException(4057, "加签人必须是有效部门的部门主管");
 
         var token = flow.BpmnTokens.GetValueOrDefault(nodeId)
             ?? throw new BizException(4014, "该节点当前不可审批");

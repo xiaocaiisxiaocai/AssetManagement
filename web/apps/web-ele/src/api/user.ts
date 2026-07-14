@@ -89,6 +89,14 @@ export const getUserOptionsApi = (keyword?: string) =>
     }),
   );
 
+/** 加签人员选择器；仅返回有效部门中的启用部门主管。 */
+export const getApproverOptionsApi = (keyword?: string) =>
+  unwrap(
+    requestClient.get<ApiResult<UserOptionDto[]>>('/users/approver-options', {
+      params: { keyword },
+    }),
+  );
+
 export const createUserApi = (data: UserPayload) =>
   unwrap(requestClient.post<ApiResult<UserDto>>('/users', data));
 

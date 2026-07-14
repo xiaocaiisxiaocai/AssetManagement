@@ -20,7 +20,7 @@ import {
   getPendingApprovalsApi,
   rejectFlowApi,
 } from '#/api/workflow';
-import { getUserOptionsApi } from '#/api/user';
+import { getApproverOptionsApi } from '#/api/user';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { mergeApprovalWorkItems, normalizeAssetApproval } from '../approval-work-items';
 import {
@@ -104,7 +104,7 @@ async function loadData() {
     const materialPendingPromise = canHandleMaterialFlow.value
       ? listPendingFlowsApi()
       : Promise.resolve([]);
-    const usersPromise = canAddSign.value ? getUserOptionsApi() : Promise.resolve([]);
+    const usersPromise = canAddSign.value ? getApproverOptionsApi() : Promise.resolve([]);
     const [pending, materialPending, userOptions] = await Promise.all([
       getPendingApprovalsApi(),
       materialPendingPromise,
@@ -622,7 +622,7 @@ onMounted(async () => {
         <ElSelect
           v-model="addSignUser"
           filterable
-          placeholder="选择加签人"
+          placeholder="选择部门主管"
           style="width: 100%"
         >
           <ElOption

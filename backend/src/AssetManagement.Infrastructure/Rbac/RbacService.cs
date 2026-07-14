@@ -84,6 +84,36 @@ public class RbacService : IRbacService
             .ToListAsync();
     }
 
+    public async Task<List<UserOptionDto>> GetActiveSupervisorOptionsAsync(string? keyword = null)
+    {
+        var query = _db.Users.Where(x =>
+            x.IsActive &&
+            x.DepartmentId.HasValue &&
+            _db.Departments.Any(d => d.Id == x.DepartmentId.Value && d.IsActive) &&
+            x.UserRoles.Any(ur => ur.Role.Code == "supervisor" && ur.Role.IsActive));
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var value = keyword.Trim();
+            query = query.Where(x => x.EmployeeNo.Contains(value) || x.Name.Contains(value));
+        }
+
+        return await query
+            .OrderBy(x => x.EmployeeNo.Length)
+            .ThenBy(x => x.EmployeeNo)
+            .Take(500)
+            .Select(x => new UserOptionDto
+            {
+                Id = x.Id,
+                EmployeeNo = x.EmployeeNo,
+                Name = x.Name,
+                DepartmentName = _db.Departments
+                    .Where(d => d.Id == x.DepartmentId!.Value)
+                    .Select(d => d.Name)
+                    .FirstOrDefault()
+            })
+            .ToListAsync();
+    }
+
     public async Task<UserDto> CreateUserAsync(CreateUserRequest request, bool canAssignRole)
     {
         EnsureSingleRole(request.RoleIds);

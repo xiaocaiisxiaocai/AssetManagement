@@ -41,6 +41,11 @@ public class UserController : ControllerBase
         return ApiResult<List<UserOptionDto>>.Ok(await _rbac.GetActiveUserOptionsAsync(keyword));
     }
 
+    [HttpGet("approver-options")]
+    [HasPermission("approval:add-sign")]
+    public async Task<ApiResult<List<UserOptionDto>>> ApproverOptions(string? keyword = null)
+        => ApiResult<List<UserOptionDto>>.Ok(await _rbac.GetActiveSupervisorOptionsAsync(keyword));
+
     [HttpPost]
     [HasPermission("user:create")]
     public async Task<ApiResult<UserDto>> Create(CreateUserRequest request)

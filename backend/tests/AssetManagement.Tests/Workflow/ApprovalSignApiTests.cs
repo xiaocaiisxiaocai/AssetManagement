@@ -123,11 +123,11 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Admin_added_signer_cannot_cancel_sign_added_by_another_user()
+    public async Task Added_supervisor_cannot_cancel_sign_added_by_another_user()
     {
         Auth(await LoginToken("1001", "123456"));
         var userA = await CreateApprover("加签发起人");
-        var userB = await CreateApprover("被加签管理员");
+        var userB = await CreateApprover("被加签主管");
         var workflow = await CreateWorkflow("cancelothersign", SingleUserBpmn(userA.Id.ToString()));
         var asset = await CreateAsset();
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
@@ -153,10 +153,41 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         cancelled.Data!.BpmnTokens["Task_Approve"].SignStates.Should().NotContainKey(userB.Id.ToString());
     }
 
+    [Fact]
+    public async Task Add_sign_rejects_ordinary_employee_and_options_only_return_supervisors()
+    {
+        Auth(await LoginToken("1001", "123456"));
+        var approver = await CreateApprover("合法主审主管");
+        var employee = await CreateOrdinaryEmployee("普通加签候选人");
+        var workflow = await CreateWorkflow("rejectemployeesign", SingleUserBpmn(approver.Id.ToString()));
+        var asset = await CreateAsset();
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = workflow.BizType,
+            AssetId = asset.Id,
+            Reason = "普通员工不能被加签"
+        });
+
+        Auth(await LoginToken(approver.EmployeeNo, "123456"));
+        var options = await _client.GetFromJsonAsync<ApiResult<List<UserOptionDto>>>("/api/users/approver-options");
+        options!.Data.Should().Contain(x => x.Id == approver.Id);
+        options.Data.Should().NotContain(x => x.Id == employee.Id);
+
+        var denied = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/add-sign",
+            new AddSignRequest { Who = employee.Id.ToString() });
+        var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        deniedBody!.Code.Should().Be(4057);
+        deniedBody.Message.Should().Contain("部门主管");
+    }
+
     private async Task<UserDto> CreateApprover(string name)
     {
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
-        var employeeRole = roles!.Data!.Items.Single(r => r.Code == "admin");
+        var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("加签部门")
+        });
         var employeeNo = $"SG{Guid.NewGuid():N}"[..10];
 
         var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -164,10 +195,25 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
             EmployeeNo = employeeNo,
             Name = $"{name}{employeeNo}",
             Password = "123456",
-            RoleIds = new[] { employeeRole.Id }
+            DepartmentId = department.Data!.Id,
+            RoleIds = new[] { supervisorRole.Id }
         });
 
         return user.Data!;
+    }
+
+    private async Task<UserDto> CreateOrdinaryEmployee(string name)
+    {
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var employeeRole = roles!.Data!.Items.Single(r => r.Code == "employee");
+        var employeeNo = $"EM{Guid.NewGuid():N}"[..10];
+        return (await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = $"{name}{employeeNo}",
+            Password = "123456",
+            RoleIds = new[] { employeeRole.Id }
+        })).Data!;
     }
 
     private async Task<WorkflowDto> CreateWorkflow(string prefix, string bpmnXml)
