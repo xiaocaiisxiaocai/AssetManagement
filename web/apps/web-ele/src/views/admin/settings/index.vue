@@ -42,6 +42,7 @@ const settings = ref<SystemSetting[]>([]);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const page = ref(1);
 const pageSize = ref(20);
+const assetConditionOptions = ref<string[]>([]);
 
 const form = ref({
   key: '',
@@ -101,6 +102,8 @@ function openEdit(row: SystemSetting) {
     value: toFormValue(row.key, row.value),
     description: row.description ?? '',
   };
+  assetConditionOptions.value =
+    row.key === 'asset_condition_options' ? parseStringList(row.value) : [];
   dialogVisible.value = true;
 }
 
@@ -141,6 +144,7 @@ function getValueType(key: string) {
   if (booleanSettingKeys.has(key)) return 'boolean';
   if (timeSettingKeys.has(key)) return 'time';
   if (key === 'audit_retention_days') return 'audit-retention-days';
+  if (key === 'asset_condition_options') return 'asset-condition-options';
   if (integerSettingRules[key]) return 'integer';
   return 'text';
 }
@@ -159,6 +163,18 @@ function toFormValue(key: string, value: string) {
 
 function toPayloadValue(key: string, value: number | string | undefined): string {
   const valueType = getValueType(key);
+  if (valueType === 'asset-condition-options') {
+    const options = assetConditionOptions.value.map((item) => item.trim());
+    if (
+      options.length < 1 ||
+      options.length > 20 ||
+      options.some((item) => !item || item.length > 50) ||
+      new Set(options.map((item) => item.toLowerCase())).size !== options.length
+    ) {
+      throw new Error('请配置 1-20 个不重复的状况选项，每项不超过 50 个字符');
+    }
+    return JSON.stringify(options);
+  }
   if (valueType === 'boolean') {
     if (value !== 'true' && value !== 'false') {
       throw new Error('请选择参数值');
@@ -215,6 +231,23 @@ function toPayloadValue(key: string, value: number | string | undefined): string
   return text;
 }
 
+function parseStringList(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function displaySettingValue(row: SystemSetting) {
+  return row.key === 'asset_condition_options'
+    ? parseStringList(row.value).join('、')
+    : row.value;
+}
+
 function normalizeLengthRule(value: string) {
   const text = value.trim();
   if (/^\d+$/.test(text)) {
@@ -256,7 +289,11 @@ onMounted(async () => {
       <div class="table-panel">
         <ElTable v-loading="loading" :data="pagedSettings" border height="100%">
           <ElTableColumn label="参数键" min-width="200" prop="key" />
-          <ElTableColumn label="参数值" min-width="180" prop="value" />
+          <ElTableColumn label="参数值" min-width="180">
+            <template #default="{ row }">
+              {{ displaySettingValue(row) }}
+            </template>
+          </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="说明" min-width="260" prop="description" />
           <ElTableColumn v-if="canEditSettings" fixed="right" label="操作" width="160" align="center">
             <template #default="{ row }">
@@ -326,6 +363,16 @@ onMounted(async () => {
                 :value="days"
               />
             </ElSelect>
+            <ElSelect
+              v-else-if="formValueType === 'asset-condition-options'"
+              v-model="assetConditionOptions"
+              allow-create
+              default-first-option
+              filterable
+              multiple
+              placeholder="输入选项后按回车添加"
+              style="width: 100%"
+            />
             <ElInputNumber
               v-else-if="formValueType === 'integer'"
               v-model="formNumberValue"

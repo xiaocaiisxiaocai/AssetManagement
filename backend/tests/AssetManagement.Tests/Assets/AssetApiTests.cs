@@ -35,7 +35,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             CategoryId = category.Id,
             PurchaseDate = new DateTime(2026, 7, 1),
             RegistrationTime = new DateTime(2026, 7, 13, 9, 30, 0),
-            CurrentCondition = "运行正常",
+            CurrentCondition = "正常使用",
             IsFirstRegistration = true,
             Remark = "首次入库登记",
         });
@@ -44,10 +44,28 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         created.Data!.AssetNo.Should().Be($"{category.Code}-001");
         created.Data.PurchaseDate.Should().Be(new DateTime(2026, 7, 1));
         created.Data.RegistrationTime.Should().Be(new DateTime(2026, 7, 13));
-        created.Data.CurrentCondition.Should().Be("运行正常");
+        created.Data.CurrentCondition.Should().Be("正常使用");
         created.Data.IsFirstRegistration.Should().BeTrue();
         created.Data.Remark.Should().Be("首次入库登记");
         list!.Data!.Items.Should().Contain(x => x.Id == created.Data.Id && x.AssetNo == created.Data.AssetNo);
+    }
+
+    [Fact]
+    public async Task Create_asset_rejects_condition_outside_dictionary()
+    {
+        await Login();
+        var category = await CreateCategory();
+
+        var response = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
+        {
+            Name = "状况非法资产",
+            CategoryId = category.Id,
+            CurrentCondition = "随意填写的状况"
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
+
+        body!.Code.Should().Be(4001);
+        body.Message.Should().Contain("不在数据字典中");
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Infrastructure.Common;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -381,6 +382,7 @@ public class BaseDataService : IBaseDataService
             .Where(x =>
                 x.Key == "page_size"
                 || x.Key == "attachment_max_mb"
+                || x.Key == AssetConditionDictionary.SettingKey
                 || x.Key.StartsWith("category_code_level"))
             .ToDictionaryAsync(x => x.Key, x => x.Value);
 
@@ -388,6 +390,8 @@ public class BaseDataService : IBaseDataService
         {
             PageSize = ReadIntSetting(settings, "page_size", 20, 1, AppConstants.MaxPageSize),
             AttachmentMaxMb = ReadIntSetting(settings, "attachment_max_mb", 5, 1, 100),
+            AssetConditionOptions = AssetConditionDictionary.ParseOrDefault(
+                settings.GetValueOrDefault(AssetConditionDictionary.SettingKey)).ToList(),
             CategoryCodeRules = BuildCategoryCodeRules(settings)
         };
     }
@@ -444,6 +448,7 @@ public class BaseDataService : IBaseDataService
         return key switch
         {
             "attachment_max_mb" => NormalizeIntSetting(key, raw, 1, 100),
+            AssetConditionDictionary.SettingKey => AssetConditionDictionary.NormalizeSettingValue(raw),
             "audit_retention_months" => NormalizeIntSetting(key, raw, 1, MaxRetentionMonths),
             "database_backup_retention_days" => NormalizeIntSetting(key, raw, 1, MaxRetentionDays),
             "page_size" => NormalizeIntSetting(key, raw, 1, AppConstants.MaxPageSize),

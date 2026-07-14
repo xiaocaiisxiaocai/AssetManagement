@@ -55,6 +55,13 @@ const statusOptions: Array<{
 
 const saving = ref(false);
 const attachmentMaxMb = ref(5);
+const conditionOptions = ref([
+  '正常使用',
+  '轻微损坏',
+  '待维修',
+  '维修中',
+  '停用',
+]);
 const pendingUploads = new Set<Promise<unknown>>();
 const uploading = ref(false);
 type AuthenticatedUploadFile = UploadUserFile & { rawUrl?: string };
@@ -76,6 +83,12 @@ const form = reactive({
 });
 
 const isEdit = computed(() => props.asset !== null);
+const selectableConditionOptions = computed(() => {
+  const current = form.currentCondition.trim();
+  return current && !conditionOptions.value.includes(current)
+    ? [current, ...conditionOptions.value]
+    : conditionOptions.value;
+});
 const selectableDepartmentOptions = computed(() => {
   const options = [...props.departmentOptions];
   const currentId = props.asset?.departmentId;
@@ -121,6 +134,7 @@ watch(visible, async (opened) => {
   void getRuntimeSettings()
     .then((settings) => {
       attachmentMaxMb.value = settings.attachmentMaxMb;
+      conditionOptions.value = settings.assetConditionOptions;
     })
     .catch(() => {});
   if (props.asset) {
@@ -363,12 +377,20 @@ const debouncedSave = useDebounceFn(save, 300);
         />
       </ElFormItem>
       <ElFormItem label="目前状况">
-        <ElInput
+        <ElSelect
           v-model="form.currentCondition"
-          maxlength="200"
-          placeholder="请输入资产目前状况"
-          show-word-limit
-        />
+          clearable
+          filterable
+          placeholder="请选择资产目前状况"
+          style="width: 100%"
+        >
+          <ElOption
+            v-for="option in selectableConditionOptions"
+            :key="option"
+            :label="option"
+            :value="option"
+          />
+        </ElSelect>
       </ElFormItem>
       <ElFormItem label="首次登记">
         <ElSwitch

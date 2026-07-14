@@ -53,6 +53,7 @@ export interface SystemSetting {
 
 export interface RuntimeSettings {
   attachmentMaxMb: number;
+  assetConditionOptions: string[];
   categoryCodeRules: {
     level1: {
       length: string;

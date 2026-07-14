@@ -693,6 +693,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     [InlineData("audit_cleanup_enabled", "yes", "布尔值")]
     [InlineData("database_backup_time", "25:61", "时间")]
     [InlineData("attachment_max_mb", "101", "1-100")]
+    [InlineData("asset_condition_options", "[\"正常\",\"正常\"]", "不重复")]
     [InlineData("page_size", "201", "1-200")]
     [InlineData("category_code_level1_length", "21", "1-20")]
     [InlineData("category_code_level1_length", "8-2", "长度范围")]
@@ -760,6 +761,40 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         var runtime = await _client.GetFromJsonAsync<ApiResult<RuntimeSettingsDto>>("/api/settings/runtime");
 
         runtime!.Data!.PageSize.Should().Be(50);
+    }
+
+    [Fact]
+    public async Task Asset_condition_dictionary_can_be_configured_and_exposed_to_business_forms()
+    {
+        await Login();
+        const string defaults = "[\"正常使用\",\"轻微损坏\",\"待维修\",\"维修中\",\"停用\"]";
+
+        try
+        {
+            await Put<ApiResult<List<SystemSettingDto>>>("/api/settings", new[]
+            {
+                new SaveSystemSettingRequest
+                {
+                    Key = "asset_condition_options",
+                    Value = "[\"完好\",\"待检修\"]"
+                }
+            });
+
+            var runtime = await _client.GetFromJsonAsync<ApiResult<RuntimeSettingsDto>>("/api/settings/runtime");
+
+            runtime!.Data!.AssetConditionOptions.Should().Equal("完好", "待检修");
+        }
+        finally
+        {
+            await Put<ApiResult<List<SystemSettingDto>>>("/api/settings", new[]
+            {
+                new SaveSystemSettingRequest
+                {
+                    Key = "asset_condition_options",
+                    Value = defaults
+                }
+            });
+        }
     }
 
     private async Task Login()

@@ -124,6 +124,9 @@ public class AssetService : IAssetService
     {
         EnsureCanAssignDepartment(request.DepartmentId);
         await EnsureActiveDepartment(request.DepartmentId);
+        var currentCondition = AssetConditionDictionary.NormalizeSelection(
+            request.CurrentCondition,
+            await LoadConditionOptionsAsync());
         var category = await _db.AssetCategories.SingleOrDefaultAsync(x => x.Id == request.CategoryId && !x.IsDeleted)
             ?? throw new BizException(4046, "资产分类不存在");
 
@@ -141,7 +144,7 @@ public class AssetService : IAssetService
                 Status = AssetStatus.Available,
                 PurchaseDate = request.PurchaseDate,
                 RegistrationTime = request.RegistrationTime?.Date ?? DateTime.UtcNow.Date,
-                CurrentCondition = request.CurrentCondition?.Trim(),
+                CurrentCondition = currentCondition,
                 IsFirstRegistration = request.IsFirstRegistration,
                 Remark = request.Remark?.Trim(),
                 ImageUrls = JoinImages(request.Images),
@@ -180,7 +183,10 @@ public class AssetService : IAssetService
         asset.Quantity = Math.Max(request.Quantity, 1);
         asset.PurchaseDate = request.PurchaseDate;
         asset.RegistrationTime = request.RegistrationTime?.Date;
-        asset.CurrentCondition = request.CurrentCondition?.Trim();
+        asset.CurrentCondition = AssetConditionDictionary.NormalizeSelection(
+            request.CurrentCondition,
+            await LoadConditionOptionsAsync(),
+            asset.CurrentCondition);
         asset.IsFirstRegistration = request.IsFirstRegistration;
         asset.Remark = request.Remark?.Trim();
         if (request.Images is not null)
@@ -299,7 +305,8 @@ public class AssetService : IAssetService
             throw new BizException(4153, $"单次导入不能超过 {AppConstants.MaxImportRows} 行");
         }
         var categories = await _db.AssetCategories.Where(x => !x.IsDeleted).ToDictionaryAsync(x => x.Code, x => x);
-        return rows.Select((cells, index) => ValidateRow(index + 2, cells, categories)).ToList();
+        var conditionOptions = await LoadConditionOptionsAsync();
+        return rows.Select((cells, index) => ValidateRow(index + 2, cells, categories, conditionOptions)).ToList();
     }
 
     public async Task<ImportConfirmResult> ConfirmImportAsync(Stream file)
@@ -557,13 +564,17 @@ public class AssetService : IAssetService
 
     private static List<string> SplitImages(string? imageUrls) => ImageHelpers.Split(imageUrls);
 
-    private static ImportPreviewRow ValidateRow(int rowNumber, IReadOnlyList<string> cells, Dictionary<string, AssetCategory> categories)
+    private static ImportPreviewRow ValidateRow(
+        int rowNumber,
+        IReadOnlyList<string> cells,
+        Dictionary<string, AssetCategory> categories,
+        IReadOnlyList<string> conditionOptions)
     {
         var name = Cell(cells, 0);
         var categoryCode = Cell(cells, 1);
         var purchaseDateText = Cell(cells, 2);
         var registrationTimeText = Cell(cells, 3);
-        var currentCondition = Cell(cells, 4);
+        var currentConditionText = Cell(cells, 4);
         var firstRegistrationText = Cell(cells, 5);
         var remark = Cell(cells, 6);
         var errors = new List<string>();
@@ -571,6 +582,13 @@ public class AssetService : IAssetService
         if (string.IsNullOrWhiteSpace(categoryCode) || !categories.ContainsKey(categoryCode)) errors.Add("分类编码不存在");
         var purchaseDate = ParseOptionalDate(purchaseDateText, "购入日期", errors);
         var registrationTime = ParseOptionalDate(registrationTimeText, "资产登记日期", errors);
+        var currentCondition = string.IsNullOrWhiteSpace(currentConditionText)
+            ? null
+            : conditionOptions.FirstOrDefault(x => x.Equals(currentConditionText.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(currentConditionText) && currentCondition is null)
+        {
+            errors.Add($"目前状况「{currentConditionText.Trim()}」不在数据字典中");
+        }
         var isFirstRegistration = string.IsNullOrWhiteSpace(firstRegistrationText)
             || firstRegistrationText.Equals("是", StringComparison.OrdinalIgnoreCase)
             || firstRegistrationText.Equals("true", StringComparison.OrdinalIgnoreCase);
@@ -599,6 +617,16 @@ public class AssetService : IAssetService
         if (DateTime.TryParse(value, out var parsed)) return parsed.Date;
         errors.Add($"{field}格式不正确");
         return null;
+    }
+
+    private async Task<IReadOnlyList<string>> LoadConditionOptionsAsync()
+    {
+        var raw = await _db.SystemSettings
+            .AsNoTracking()
+            .Where(x => x.Key == AssetConditionDictionary.SettingKey)
+            .Select(x => x.Value)
+            .SingleOrDefaultAsync();
+        return AssetConditionDictionary.ParseOrDefault(raw);
     }
 
     private static string Cell(IReadOnlyList<string> cells, int index)

@@ -65,4 +65,16 @@ describe('固定资产表单规则', () => {
     expect(source).toContain('value-format="YYYY-MM-DD"');
     expect(source).not.toContain('type="datetime"');
   });
+
+  it('目前状况使用数据字典下拉选择', () => {
+    const componentPath = join(
+      process.cwd(),
+      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
+    );
+    const source = readFileSync(componentPath, 'utf8');
+
+    expect(source).toContain('placeholder="请选择资产目前状况"');
+    expect(source).toContain('v-for="option in selectableConditionOptions"');
+    expect(source).not.toContain('placeholder="请输入资产目前状况"');
+  });
 });

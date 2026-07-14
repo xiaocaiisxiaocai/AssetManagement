@@ -89,6 +89,7 @@ public record RuntimeSettingsDto
 {
     public int PageSize { get; init; }
     public int AttachmentMaxMb { get; init; }
+    public List<string> AssetConditionOptions { get; init; } = new();
     public CategoryCodeRulesDto CategoryCodeRules { get; init; } = new();
 }
 
