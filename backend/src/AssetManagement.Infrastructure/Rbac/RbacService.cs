@@ -289,6 +289,7 @@ public class RbacService : IRbacService
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, AppConstants.MaxPageSize);
         var query = _db.Roles
+            .AsSplitQuery()
             .Include(x => x.RolePermissions)
             .Include(x => x.RoleMenus)
             .AsQueryable();
@@ -790,6 +791,7 @@ public class RbacService : IRbacService
     private async Task<RoleDto> LoadRoleDto(int id)
     {
         var role = await _db.Roles
+            .AsSplitQuery()
             .Include(x => x.RolePermissions)
             .Include(x => x.RoleMenus)
             .SingleOrDefaultAsync(x => x.Id == id)
