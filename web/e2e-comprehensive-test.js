@@ -159,12 +159,21 @@ async function runComprehensiveTest() {
     if (await safeGoto('/asset/list', '资产列表')) {
       await checkContentWithRetry(['资产编号', '资产名称', '新增', '添加', '导入'], '资产列表', 'asset-list-fail');
 
-      // 检查列表/层级视图切换
-      const viewToggle = await page.locator('.el-tabs__nav button:has-text("列表"), .el-tabs__nav button:has-text("层级")').count();
-      if (viewToggle > 0) {
-        log('✓ 视图切换按钮存在', 'pass');
-      } else {
-        log('⚠ 视图切换按钮未找到', 'warn');
+      // 检查分类浏览/全部资产清单切换，并进入清单以验证后续操作。
+      const showAllAssets = page.getByRole('button', {
+        name: '查看全部资产',
+        exact: true,
+      });
+      const backToCategories = page.getByRole('button', {
+        name: '返回分类浏览',
+        exact: true,
+      });
+      try {
+        if (await showAllAssets.count()) await showAllAssets.click();
+        await backToCategories.waitFor({ state: 'visible', timeout: 10000 });
+        log('✓ 分类浏览与全部资产清单切换正常', 'pass');
+      } catch {
+        log('✗ 分类浏览与全部资产清单切换失败', 'fail');
       }
 
       // 检查操作按钮与详情弹窗
@@ -192,7 +201,14 @@ async function runComprehensiveTest() {
           log(`⚠ 点击详情按钮超时或失败: ${clickErr.message}`, 'warn');
         }
       } else {
-        log('⚠ 可见详情操作按钮不可见(可能列表数据为空)', 'warn');
+        try {
+          await page
+            .getByText('暂无数据', { exact: true })
+            .waitFor({ state: 'visible', timeout: 5000 });
+          log('✓ 空资产清单状态展示正确', 'pass');
+        } catch {
+          log('✗ 资产清单既无详情操作也无空状态', 'fail');
+        }
       }
     }
 
