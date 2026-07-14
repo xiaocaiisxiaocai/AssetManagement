@@ -51,6 +51,7 @@ describe('固定资产表单规则', () => {
     expect(source).not.toContain('<ElFormItem v-if="isEdit" label="状态" required>');
     expect(source).toContain('<ElFormItem label="资产照片">');
     expect(source).not.toContain('label="型号品牌"');
+    expect(source).not.toContain('label="首次登记"');
   });
 
   it('资产登记字段仅选择日期', () => {

@@ -36,7 +36,6 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             PurchaseDate = new DateTime(2026, 7, 1),
             RegistrationTime = new DateTime(2026, 7, 13, 9, 30, 0),
             CurrentCondition = "正常使用",
-            IsFirstRegistration = true,
             Remark = "首次入库登记",
         });
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?categoryId={category.Id}");
@@ -45,7 +44,6 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         created.Data.PurchaseDate.Should().Be(new DateTime(2026, 7, 1));
         created.Data.RegistrationTime.Should().Be(new DateTime(2026, 7, 13));
         created.Data.CurrentCondition.Should().Be("正常使用");
-        created.Data.IsFirstRegistration.Should().BeTrue();
         created.Data.Remark.Should().Be("首次入库登记");
         list!.Data!.Items.Should().Contain(x => x.Id == created.Data.Id && x.AssetNo == created.Data.AssetNo);
     }

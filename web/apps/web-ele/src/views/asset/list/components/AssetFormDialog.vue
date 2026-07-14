@@ -16,7 +16,6 @@ import {
   ElMessage,
   ElOption,
   ElSelect,
-  ElSwitch,
   ElTag,
   ElUpload,
 } from 'element-plus';
@@ -77,7 +76,6 @@ const form = reactive({
   quantity: 1,
   registrationTime: '',
   currentCondition: '',
-  isFirstRegistration: true,
   remark: '',
   status: 0 as AssetStatus,
 });
@@ -148,7 +146,6 @@ watch(visible, async (opened) => {
       quantity: props.asset.quantity,
       registrationTime: props.asset.registrationTime?.slice(0, 10) ?? '',
       currentCondition: props.asset.currentCondition ?? '',
-      isFirstRegistration: props.asset.isFirstRegistration,
       remark: props.asset.remark ?? '',
       status: props.asset.status,
     });
@@ -177,7 +174,6 @@ watch(visible, async (opened) => {
       quantity: 1,
       registrationTime: nowLocalDate(),
       currentCondition: '',
-      isFirstRegistration: true,
       remark: '',
       status: 0,
     });
@@ -202,7 +198,6 @@ function buildPayload(): AssetPayload {
     quantity: form.quantity,
     registrationTime: form.registrationTime || null,
     currentCondition: form.currentCondition.trim() || null,
-    isFirstRegistration: form.isFirstRegistration,
     remark: form.remark.trim() || null,
     status: form.status,
   };
@@ -391,13 +386,6 @@ const debouncedSave = useDebounceFn(save, 300);
             :value="option"
           />
         </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="首次登记">
-        <ElSwitch
-          v-model="form.isFirstRegistration"
-          active-text="是"
-          inactive-text="否"
-        />
       </ElFormItem>
       <ElFormItem label="备注">
         <ElInput

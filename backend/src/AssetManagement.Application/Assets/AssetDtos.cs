@@ -21,7 +21,6 @@ public record AssetDto
     public DateTime? PurchaseDate { get; init; }
     public DateTime? RegistrationTime { get; init; }
     public string? CurrentCondition { get; init; }
-    public bool IsFirstRegistration { get; init; }
     public string? Remark { get; init; }
     public DateTime CreatedAt { get; init; }
     public bool IsDeleted { get; init; }
@@ -54,7 +53,6 @@ public record CreateAssetRequest
     public DateTime? PurchaseDate { get; init; }
     public DateTime? RegistrationTime { get; init; }
     public string? CurrentCondition { get; init; }
-    public bool IsFirstRegistration { get; init; } = true;
     public string? Remark { get; init; }
     public List<string>? Images { get; init; }
 }
@@ -71,7 +69,6 @@ public record UpdateAssetRequest
     public DateTime? PurchaseDate { get; init; }
     public DateTime? RegistrationTime { get; init; }
     public string? CurrentCondition { get; init; }
-    public bool IsFirstRegistration { get; init; } = true;
     public string? Remark { get; init; }
     public List<string>? Images { get; init; }
 }
@@ -84,7 +81,6 @@ public record ImportPreviewRow
     public DateTime? PurchaseDate { get; init; }
     public DateTime? RegistrationTime { get; init; }
     public string? CurrentCondition { get; init; }
-    public bool IsFirstRegistration { get; init; } = true;
     public string? Remark { get; init; }
     public bool IsValid { get; init; }
     public string Error { get; init; } = "";

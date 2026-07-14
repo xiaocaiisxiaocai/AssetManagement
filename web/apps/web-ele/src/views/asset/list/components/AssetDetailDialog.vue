@@ -213,9 +213,6 @@ function summaryText(summary: null | string | undefined) {
           <ElDescriptionsItem label="目前状况">
             {{ detail.asset.currentCondition || '—' }}
           </ElDescriptionsItem>
-          <ElDescriptionsItem label="首次登记">
-            {{ detail.asset.isFirstRegistration ? '是' : '否' }}
-          </ElDescriptionsItem>
           <ElDescriptionsItem :span="2" label="备注">
             {{ detail.asset.remark || '—' }}
           </ElDescriptionsItem>

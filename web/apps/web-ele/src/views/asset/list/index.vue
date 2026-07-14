@@ -929,21 +929,6 @@ watch(
               />
               <ElTableColumn
                 class-name="hide-on-mobile"
-                label="首次登记"
-                width="100"
-                align="center"
-              >
-                <template #default="{ row }">
-                  <ElTag
-                    :type="row.isFirstRegistration ? 'success' : 'info'"
-                    size="small"
-                  >
-                    {{ row.isFirstRegistration ? '是' : '否' }}
-                  </ElTag>
-                </template>
-              </ElTableColumn>
-              <ElTableColumn
-                class-name="hide-on-mobile"
                 label="备注"
                 min-width="180"
                 prop="remark"

@@ -28,7 +28,6 @@ export interface AssetItem {
   departmentName?: null | string;
   id: number;
   isDeleted: boolean;
-  isFirstRegistration: boolean;
   images?: null | string[];
   locationId?: null | number;
   locationName?: null | string;
@@ -58,7 +57,6 @@ export interface AssetPayload {
   custodianId?: null | number;
   departmentId?: null | number;
   images?: string[];
-  isFirstRegistration?: boolean;
   locationId?: null | number;
   name: string;
   purchaseDate?: null | string;
