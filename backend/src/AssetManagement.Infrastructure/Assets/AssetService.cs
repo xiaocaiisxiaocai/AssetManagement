@@ -84,7 +84,12 @@ public class AssetService : IAssetService
                 Reason = x.Reason,
                 ReturnDate = x.ReturnDate,
                 ApplyTime = x.ApplyTime,
-                ConfirmedAt = x.ConfirmedAt
+                ConfirmedAt = x.ConfirmedAt,
+                WithdrawnAt = _db.FlowRecords
+                    .Where(record => record.FlowId == x.Id && record.Action == "withdraw")
+                    .OrderByDescending(record => record.OperatedAt)
+                    .Select(record => (DateTime?)record.OperatedAt)
+                    .FirstOrDefault()
             })
             .ToListAsync();
 

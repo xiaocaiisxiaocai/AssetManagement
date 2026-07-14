@@ -15,6 +15,7 @@ export interface ApprovalWorkItem {
   key: string;
   objectName: string;
   objectNo: string;
+  participant?: null | string;
   raw: ApprovalFlow | MaterialFlowItem;
   reason?: null | string;
   source: ApprovalWorkItemSource;
@@ -44,6 +45,7 @@ export function normalizeAssetApproval(flow: ApprovalFlow): ApprovalWorkItem {
     key: `asset-${flow.id}`,
     objectName: flow.assetName,
     objectNo: flow.assetNo,
+    participant: flow.bizType === 'transfer' ? flow.transferee : flow.applicant,
     raw: flow,
     reason: flow.reason,
     source: 'asset',
@@ -70,6 +72,7 @@ export function normalizeMaterialFlow(
     key: `material-${flow.id}`,
     objectName: flow.materialName,
     objectNo: flow.materialNo,
+    participant: flow.transferee,
     raw: flow,
     reason: flow.reason,
     source: 'material',

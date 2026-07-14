@@ -260,9 +260,9 @@ onMounted(async () => {
           <ElTableColumn label="对象" min-width="180" prop="objectName" />
           <ElTableColumn
             class-name="hide-on-mobile"
-            label="接收人"
-            min-width="120"
-            prop="transferee"
+            label="借用人/接收人"
+            min-width="140"
+            prop="participant"
           />
           <ElTableColumn label="当前节点" min-width="150">
             <template #default="{ row }">

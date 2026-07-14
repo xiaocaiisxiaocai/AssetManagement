@@ -72,6 +72,7 @@ const flowStatusMeta: Record<
   approved: { tag: 'success', text: '已通过' },
   pending: { tag: 'warning', text: '审批中' },
   rejected: { tag: 'danger', text: '已驳回' },
+  withdrawn: { tag: 'info', text: '已撤回' },
 };
 
 function flowTitle(flow: AssetDetail['flows'][number]) {
@@ -185,9 +186,7 @@ function summaryText(summary: null | string | undefined) {
 
         <div v-if="detail.asset.isDeleted" class="ad-deleted-banner">
           该资产已于
-          {{
-            formatTime(detail.asset.deletedAt)
-          }}
+          {{ formatTime(detail.asset.deletedAt) }}
           删除，可由有权限的人员在列表中「撤销删除」恢复或「彻底删除」。
         </div>
 
@@ -253,7 +252,13 @@ function summaryText(summary: null | string | undefined) {
             <ElTimelineItem
               v-for="flow in detail.flows"
               :key="flow.id"
-              :timestamp="formatTime(flow.applyTime)"
+              :timestamp="
+                formatTime(
+                  flow.status === 'withdrawn'
+                    ? flow.withdrawnAt
+                    : flow.applyTime,
+                )
+              "
               :type="flowStatusMeta[flow.status]?.tag ?? 'primary'"
             >
               <div class="text-sm">

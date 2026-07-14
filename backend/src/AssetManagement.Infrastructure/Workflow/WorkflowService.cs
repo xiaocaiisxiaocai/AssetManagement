@@ -171,6 +171,7 @@ public class WorkflowService : IWorkflowService
         // 启动 BPMN 流程引擎
         BpmnEngine.Start(flow, bpmnProcess);
         await NormalizeSignStatesAsync(flow, bpmnProcess);
+        await EnsureCurrentApproversResolvableAsync(flow, bpmnProcess);
         flow.ActiveScopeKey = flow.Status == "pending" ? $"asset:{asset.Id}" : null;
         _db.ApprovalFlows.Add(flow);
         if (flow.Status == "approved")
@@ -322,6 +323,9 @@ public class WorkflowService : IWorkflowService
         // 执行审批
         await using var tx = await _db.Database.BeginTransactionAsync();
         BpmnEngine.Approve(flow, bpmnProcess, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion);
+
+        if (flow.Status == "pending")
+            await EnsureCurrentApproversResolvableAsync(flow, bpmnProcess);
 
         // 检查流程是否完成
         if (flow.Status == "approved")
@@ -842,6 +846,22 @@ public class WorkflowService : IWorkflowService
         }
     }
 
+    private async Task EnsureCurrentApproversResolvableAsync(ApprovalFlow flow, BpmnProcess process)
+    {
+        foreach (var nodeId in flow.CurrentNodeIds)
+        {
+            var node = process.FindNode(nodeId);
+            if (node?.Type != BpmnNodeType.UserTask) continue;
+            var assignee = node.Properties.GetValueOrDefault("assignee");
+            if (assignee is not ("supervisor" or "deptManager")) continue;
+            if ((await ResolveApproverUserIdsAsync(node, flow)).Count > 0) continue;
+
+            if (assignee == "supervisor")
+                throw new BizException(4051, "申请人未配置直属主管，无法发起审批");
+            throw new BizException(4051, $"审批节点“{node.Name}”未配置有效部门负责人");
+        }
+    }
+
     private static string ApprovalIdentity(ApprovalFlow flow, string nodeId, User user)
     {
         if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) || token.SignStates is not { Count: > 0 })
@@ -979,16 +999,18 @@ public class WorkflowService : IWorkflowService
         if (applicant?.DepartmentId is not null)
         {
             var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-            if (department?.ManagerId is not null)
+            if (department?.ManagerId is int managerId &&
+                await _db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
             {
-                result.Add(department.ManagerId.Value);
+                result.Add(managerId);
             }
         }
 
         // 兼容旧数据：组织节点未配置负责人时，仍可使用历史维护的直属上级。
-        if (result.Count == 0 && applicant?.SupervisorId is not null)
+        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId &&
+            await _db.Users.AsNoTracking().AnyAsync(x => x.Id == supervisorId && x.IsActive))
         {
-            result.Add(applicant.SupervisorId.Value);
+            result.Add(supervisorId);
         }
 
         return result;

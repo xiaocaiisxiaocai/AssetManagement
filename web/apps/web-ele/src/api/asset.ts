@@ -97,6 +97,7 @@ export interface AssetFlow {
   returnDate?: null | string;
   status: string;
   transferee?: null | string;
+  withdrawnAt?: null | string;
 }
 
 export interface AssetAuditLog {

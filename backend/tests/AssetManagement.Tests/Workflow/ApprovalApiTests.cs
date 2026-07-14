@@ -108,6 +108,36 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Borrow_flow_rejects_applicant_without_supervisor()
+    {
+        await Login();
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var employeeRole = roles!.Data!.Items.Single(r => r.Code == "employee");
+        var employeeNo = Unique("NOSUP");
+        var applicant = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = Unique("无主管员工"),
+            Password = "123456",
+            RoleIds = new[] { employeeRole.Id }
+        });
+        var asset = await CreateAsset(null, applicant.Data!.Id);
+
+        Auth(await LoginToken(employeeNo, "123456"));
+        var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "无主管不应发起"
+        });
+
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        result!.Code.Should().Be(4051);
+        result.Message.Should().Contain("未配置直属主管");
+    }
+
+    [Fact]
     public async Task Disabled_workflow_cannot_start_approval()
     {
         await Login();
@@ -381,6 +411,10 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var withdrawn = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/withdraw", new { });
         withdrawn.Data!.Status.Should().Be("withdrawn");
         withdrawn.Data.CurrentNodeIds.Should().BeEmpty();
+
+        var detail = await _client.GetFromJsonAsync<ApiResult<AssetDetailDto>>($"/api/assets/{asset.Id}/detail");
+        detail!.Data!.Flows.Should().ContainSingle(x =>
+            x.Id == flow.Data.Id && x.Status == "withdrawn" && x.WithdrawnAt.HasValue);
 
         var replacement = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {

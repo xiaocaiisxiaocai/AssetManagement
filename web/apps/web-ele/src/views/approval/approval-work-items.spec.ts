@@ -59,6 +59,7 @@ describe('审批工作项适配', () => {
       typeLabel: '借用',
       objectNo: 'A-001',
       objectName: '示波器',
+      participant: '张三',
       currentNodeLabel: '部门经理审批',
     });
   });
@@ -71,6 +72,7 @@ describe('审批工作项适配', () => {
       typeLabel: '测试料件流转',
       objectNo: 'M-001',
       objectName: '测试料件',
+      participant: '王五',
       currentNodeLabel: '1 个待审批节点',
     });
   });

@@ -114,4 +114,5 @@ public record AssetFlowDto
     public string? ReturnDate { get; init; }
     public DateTime ApplyTime { get; init; }
     public DateTime? ConfirmedAt { get; init; }
+    public DateTime? WithdrawnAt { get; init; }
 }

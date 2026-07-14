@@ -103,6 +103,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             EmployeeNo = borrowerNo,
             Name = "逾期借用人",
             Password = "123456",
+            SupervisorId = 1,
             RoleIds = new[] { employeeRole.Id }
         });
         var category = await CreateCategory();

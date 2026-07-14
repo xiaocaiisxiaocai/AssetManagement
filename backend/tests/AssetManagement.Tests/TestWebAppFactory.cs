@@ -1,10 +1,12 @@
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Persistence.Seed;
+using AssetManagement.Domain.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using MySqlConnector;
 
 /// <summary>
@@ -57,6 +59,29 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
                 o.UseMySql(connStr, ServerVersion.AutoDetect(connStr))
                     .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking));
         });
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var admin = db.Users.AsTracking().Single(x => x.EmployeeNo == "1001");
+        if (!admin.SupervisorId.HasValue)
+        {
+            var supervisor = new User
+            {
+                EmployeeNo = "TEST-SUPERVISOR",
+                Name = "测试直属主管",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
+                IsActive = true
+            };
+            db.Users.Add(supervisor);
+            db.SaveChanges();
+            admin.SupervisorId = supervisor.Id;
+            db.SaveChanges();
+        }
+        return host;
     }
 
     protected override void Dispose(bool disposing)
