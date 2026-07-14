@@ -125,6 +125,8 @@ public class WorkflowService : IWorkflowService
         if (workflow.BizType == "return" &&
             (asset.Status != AssetStatus.Borrowed || asset.CustodianId != applicantId))
             throw new BizException(4055, "只有当前借用人可以发起归还流程");
+        if (workflow.BizType == "transfer" && asset.CustodianId != applicantId)
+            throw new BizException(4055, "只有当前保管人可以发起转让流程");
         if (workflow.BizType == "transfer" && !request.TransfereeId.HasValue)
             throw new BizException(4001, "转让申请必须选择接收人");
         if (workflow.BizType == "transfer" && request.TransfereeId == applicantId)

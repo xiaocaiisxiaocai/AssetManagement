@@ -29,3 +29,14 @@ export function buildAssetRowActionAccess(hasAccess: (codes: string[]) => boolea
 export function canRunAvailableAssetAction(asset: { isDeleted: boolean; status: number }) {
   return !asset.isDeleted && asset.status === 0;
 }
+
+export function canTransferAvailableAsset(
+  asset: {
+    custodianId?: null | number;
+    isDeleted: boolean;
+    status: number;
+  },
+  currentUserId: number,
+) {
+  return canRunAvailableAssetAction(asset) && asset.custodianId === currentUserId;
+}

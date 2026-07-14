@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAssetRowActionAccess, canRunAvailableAssetAction } from './asset-row-actions';
+import {
+  buildAssetRowActionAccess,
+  canRunAvailableAssetAction,
+  canTransferAvailableAsset,
+} from './asset-row-actions';
 
 describe('资产清单行操作权限', () => {
   it('未授予 asset:delete 时不允许显示删除操作', () => {
@@ -35,5 +39,32 @@ describe('资产状态操作', () => {
     expect(canRunAvailableAssetAction({ isDeleted: false, status: 0 })).toBe(true);
     expect(canRunAvailableAssetAction({ isDeleted: false, status: 1 })).toBe(false);
     expect(canRunAvailableAssetAction({ isDeleted: true, status: 0 })).toBe(false);
+  });
+
+  it('只有当前保管人可以转让未删除的在库资产', () => {
+    expect(
+      canTransferAvailableAsset(
+        { custodianId: 10, isDeleted: false, status: 0 },
+        10,
+      ),
+    ).toBe(true);
+    expect(
+      canTransferAvailableAsset(
+        { custodianId: 10, isDeleted: false, status: 0 },
+        11,
+      ),
+    ).toBe(false);
+    expect(
+      canTransferAvailableAsset(
+        { custodianId: null, isDeleted: false, status: 0 },
+        10,
+      ),
+    ).toBe(false);
+    expect(
+      canTransferAvailableAsset(
+        { custodianId: 10, isDeleted: false, status: 1 },
+        10,
+      ),
+    ).toBe(false);
   });
 });

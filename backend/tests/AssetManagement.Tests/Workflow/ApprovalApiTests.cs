@@ -310,6 +310,44 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Transfer_flow_rejects_non_custodian_applicant()
+    {
+        await Login();
+
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var employeeRole = roles!.Data!.Items.Single(r => r.Code == "employee");
+        var custodian = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("CST"),
+            Name = Unique("保管人"),
+            Password = "123456",
+            RoleIds = new[] { employeeRole.Id }
+        });
+        var receiver = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("RCV"),
+            Name = Unique("接收人"),
+            Password = "123456",
+            RoleIds = new[] { employeeRole.Id }
+        });
+        var asset = await CreateAsset(null, custodian.Data!.Id);
+
+        var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "transfer",
+            AssetId = asset.Id,
+            TransfereeId = receiver.Data!.Id,
+            Reason = "非保管人尝试转让"
+        });
+
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        result.Should().NotBeNull();
+        result!.Code.Should().Be(4055);
+        result.Message.Should().Contain("只有当前保管人");
+    }
+
+    [Fact]
     public async Task Supervisor_node_resolves_department_manager_without_user_supervisor()
     {
         await Login();

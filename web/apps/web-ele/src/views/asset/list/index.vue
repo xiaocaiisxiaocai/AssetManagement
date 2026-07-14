@@ -18,6 +18,7 @@ import { useRoute } from 'vue-router';
 import { useDebounceFn } from '@vueuse/core';
 
 import { useAccess } from '@vben/access';
+import { useUserStore } from '@vben/stores';
 
 import {
   deleteAssetApi,
@@ -65,12 +66,15 @@ import AssetTransferDialog from './components/AssetTransferDialog.vue';
 import {
   buildAssetRowActionAccess,
   canRunAvailableAssetAction,
+  canTransferAvailableAsset,
 } from './asset-row-actions';
 
 defineOptions({ name: 'AssetList' });
 
 const { hasAccessByCodes } = useAccess();
 const route = useRoute();
+const userStore = useUserStore();
+const currentUserId = computed(() => Number(userStore.userInfo?.userId || 0));
 
 type FlatOption = {
   code?: string;
@@ -995,7 +999,8 @@ watch(
                         v-if="
                           canRunAvailableAssetAction(row) &&
                           (assetRowActionAccess.canBorrow ||
-                            assetRowActionAccess.canTransfer ||
+                            (assetRowActionAccess.canTransfer &&
+                              canTransferAvailableAsset(row, currentUserId)) ||
                             assetRowActionAccess.canDelete)
                         "
                         @command="(cmd) => onRowCommand(String(cmd), row)"
@@ -1011,7 +1016,10 @@ watch(
                               >借用</ElDropdownItem
                             >
                             <ElDropdownItem
-                              v-if="assetRowActionAccess.canTransfer"
+                              v-if="
+                                assetRowActionAccess.canTransfer &&
+                                canTransferAvailableAsset(row, currentUserId)
+                              "
                               command="transfer"
                               >转让</ElDropdownItem
                             >
