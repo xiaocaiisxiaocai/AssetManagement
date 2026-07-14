@@ -3,8 +3,10 @@ import type { ApprovalWorkItem } from '../approval-work-items';
 import type { ApprovalFlow } from '#/api/workflow';
 import type { UserOptionDto } from '#/api/user';
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { useDebounceFn } from '@vueuse/core';
 import { useAccess } from '@vben/access';
+import { useUserStore } from '@vben/stores';
 import {
   approveFlowApi as approveMaterialFlowApi,
   listPendingFlowsApi,
@@ -14,6 +16,7 @@ import {
   addSignFlowApi,
   approveFlowApi,
   BpmnTokenStatus,
+  cancelAddSignFlowApi,
   getPendingApprovalsApi,
   rejectFlowApi,
 } from '#/api/workflow';
@@ -41,11 +44,15 @@ import {
 defineOptions({ name: 'ApprovalPending' });
 
 const { hasAccessByCodes } = useAccess();
+const route = useRoute();
+const userStore = useUserStore();
+const currentUserId = computed(() => Number(userStore.userInfo?.userId || 0));
 const canAddSign = computed(() => hasAccessByCodes(['approval:add-sign']));
 const canHandleMaterialFlow = computed(() => hasAccessByCodes(['material-flow:approve']));
 const loading = ref(false);
 const actionLoading = ref(false);
 const addSignLoading = ref(false);
+const cancelAddSignLoadingKey = ref('');
 const detailVisible = ref(false);
 const addSignVisible = ref(false);
 const selected = ref<ApprovalFlow | null>(null);
@@ -56,6 +63,7 @@ const pageSizeOptions = ref(createPageSizeOptions(20));
 const opinion = ref('同意');
 const addSignUser = ref('');
 const selectedNodeId = ref('');
+const openedNotificationFlowId = ref(0);
 const query = reactive({
   keyword: '',
   bizType: '',
@@ -107,6 +115,16 @@ async function loadData() {
       query.page = 1;
     }
     users.value = userOptions;
+    const notificationFlowId = Number(route.query.flowId || 0);
+    if (notificationFlowId && notificationFlowId !== openedNotificationFlowId.value) {
+      const target = flows.value.find(
+        (item) => item.source === 'asset' && item.id === notificationFlowId,
+      );
+      if (target) {
+        openedNotificationFlowId.value = notificationFlowId;
+        openDetail(target);
+      }
+    }
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
@@ -164,10 +182,14 @@ const currentSignStates = computed(() => {
     if (!token?.signStates) return [];
 
     return Object.entries(token.signStates).map(([name, signed]) => ({
+      displayName: users.value.find((user) => String(user.id) === name)?.name || name,
       name,
       nodeId,
       nodeName: token.nodeName,
       signed,
+      canCancel:
+        !signed
+        && token.addedSigners?.[name] === currentUserId.value,
     }));
   });
 });
@@ -179,6 +201,34 @@ function resolveNodeId() {
   }
 
   return selectedNodeId.value || undefined;
+}
+
+async function cancelAddSign(item: { displayName: string; name: string; nodeId: string }) {
+  if (!selected.value) return;
+  try {
+    await ElMessageBox.confirm(
+      `确认取消对“${item.displayName}”的加签吗？`,
+      '取消加签',
+      { type: 'warning', confirmButtonText: '确认取消', cancelButtonText: '返回' },
+    );
+  } catch {
+    return;
+  }
+  cancelAddSignLoadingKey.value = `${item.nodeId}-${item.name}`;
+  try {
+    const updated = await cancelAddSignFlowApi(selected.value.id, {
+      nodeId: item.nodeId,
+      who: item.name,
+    });
+    selected.value = updated;
+    const index = flows.value.findIndex((flow) => flow.id === updated.id && flow.source === 'asset');
+    if (index >= 0) flows.value[index] = normalizeAssetApproval(updated);
+    ElMessage.success('已取消加签');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    cancelAddSignLoadingKey.value = '';
+  }
 }
 
 function ensureNodeSelected() {
@@ -410,7 +460,7 @@ onMounted(async () => {
           </ElTableColumn>
           <ElTableColumn prop="objectName" label="对象名称" min-width="160" />
           <ElTableColumn class-name="hide-on-mobile" prop="applicant" label="申请人" width="120" />
-          <ElTableColumn class-name="hide-on-mobile" prop="transferee" label="接收人" width="120" />
+          <ElTableColumn class-name="hide-on-mobile" prop="participant" label="借用人/接收人" width="140" />
           <ElTableColumn class-name="hide-on-mobile" prop="applyTime" label="申请时间" width="170" />
           <ElTableColumn label="当前节点" width="160">
             <template #default="{ row }">
@@ -516,14 +566,25 @@ onMounted(async () => {
           </ElDescriptionsItem>
           <ElDescriptionsItem v-if="currentSignStates.length > 0" label="签核状态" :span="2">
             <div class="pending-sign-list">
-              <ElTag
+              <span
                 v-for="item in currentSignStates"
                 :key="`${item.nodeId}-${item.name}`"
-                :type="item.signed ? 'success' : 'warning'"
-                size="small"
+                class="pending-sign-item"
               >
-                {{ item.name }} {{ item.signed ? '已签' : '待签' }}
-              </ElTag>
+                <ElTag :type="item.signed ? 'success' : 'warning'" size="small">
+                  {{ item.displayName }} {{ item.signed ? '已签' : '待签' }}
+                </ElTag>
+                <ElButton
+                  v-if="item.canCancel"
+                  link
+                  size="small"
+                  type="danger"
+                  :loading="cancelAddSignLoadingKey === `${item.nodeId}-${item.name}`"
+                  @click="cancelAddSign(item)"
+                >
+                  取消加签
+                </ElButton>
+              </span>
             </div>
           </ElDescriptionsItem>
         </ElDescriptions>
@@ -645,6 +706,12 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.pending-sign-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .pending-opinion-panel {

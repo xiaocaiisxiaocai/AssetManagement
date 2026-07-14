@@ -219,9 +219,11 @@ public class WorkflowService : IWorkflowService
         }
 
         var flows = await _db.ApprovalFlows
+            .AsNoTracking()
             .Where(x => x.Status == "pending")
             .OrderByDescending(x => x.Id)
             .ToListAsync();
+        await HydrateParticipantNamesAsync(flows);
 
         if (allowedDeptIds != null)
         {
@@ -262,9 +264,11 @@ public class WorkflowService : IWorkflowService
     public async Task<List<ApprovalFlowDto>> MineAsync(int userId)
     {
         var flows = await _db.ApprovalFlows
+            .AsNoTracking()
             .Where(x => x.ApplicantId == userId)
             .OrderByDescending(x => x.Id)
             .ToListAsync();
+        await HydrateParticipantNamesAsync(flows);
 
         return flows.Select(ToFlowDto).ToList();
     }
@@ -281,7 +285,8 @@ public class WorkflowService : IWorkflowService
             var deptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
             query = query.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && a.DepartmentId.HasValue && deptIds.Contains(a.DepartmentId.Value)));
         }
-        var flows = await query.OrderByDescending(x => x.Id).ToListAsync();
+        var flows = await query.AsNoTracking().OrderByDescending(x => x.Id).ToListAsync();
+        await HydrateParticipantNamesAsync(flows);
 
         return flows.Select(ToFlowDto).ToList();
     }
@@ -515,10 +520,48 @@ public class WorkflowService : IWorkflowService
         {
             [user.Id.ToString()] = false
         };
-        token.SignStates.TryAdd(signUser.Id.ToString(), false);
+        if (!token.SignStates.TryAdd(signUser.Id.ToString(), false))
+            throw new BizException(4094, "该用户已在当前签核名单中");
+        token.AddedSigners ??= new Dictionary<string, int>();
+        token.AddedSigners[signUser.Id.ToString()] = user.Id;
 
         await _db.SaveChangesAsync();
         await AddRecord(id, "add_sign", user.Name, $"节点 {nodeId}: 加签 {signUser.Name}");
+        return ToFlowDto(flow);
+    }
+
+    public async Task<ApprovalFlowDto> CancelAddSignAsync(int id, CancelAddSignRequest request, int userId)
+    {
+        var flow = await LoadFlow(id);
+        EnsureActive(flow);
+        var user = await LoadUser(userId);
+        var nodeId = request.NodeId;
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            if (flow.CurrentNodeIds.Count != 1)
+                throw new BizException(4052, "存在多个待审批节点，请明确指定节点 ID");
+            nodeId = flow.CurrentNodeIds[0];
+        }
+
+        await EnsureCanApproveNode(flow, nodeId, user);
+        if (!int.TryParse(request.Who, out var signUserId))
+            throw new BizException(4001, "请选择要取消的加签人");
+
+        var token = flow.BpmnTokens.GetValueOrDefault(nodeId)
+            ?? throw new BizException(4014, "该节点当前不可审批");
+        var signKey = signUserId.ToString();
+        if (token.AddedSigners is null || !token.AddedSigners.TryGetValue(signKey, out var addedByUserId))
+            throw new BizException(4057, "该用户不是动态加签人员，无法取消");
+        if (!IsAdmin(user) && addedByUserId != user.Id)
+            throw new BizException(4031, "只有执行加签的人可以取消该加签");
+        if (token.SignStates?.GetValueOrDefault(signKey) != false)
+            throw new BizException(4057, "该加签人已完成审批，无法取消");
+
+        var signUser = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == signUserId);
+        token.SignStates.Remove(signKey);
+        token.AddedSigners.Remove(signKey);
+        await _db.SaveChangesAsync();
+        await AddRecord(id, "cancel_add_sign", user.Name, $"节点 {nodeId}: 取消加签 {signUser?.Name ?? signKey}");
         return ToFlowDto(flow);
     }
 
@@ -1037,6 +1080,28 @@ public class WorkflowService : IWorkflowService
         if (!deptId.HasValue) return null;
         var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == deptId.Value);
         return dept?.Name;
+    }
+
+    private async Task HydrateParticipantNamesAsync(IEnumerable<ApprovalFlow> flows)
+    {
+        var flowList = flows.ToList();
+        var userIds = flowList
+            .SelectMany(flow => new[] { flow.ApplicantId, flow.TransfereeId ?? 0 })
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+        if (userIds.Length == 0) return;
+
+        var userNames = await _db.Users.AsNoTracking()
+            .Where(user => userIds.Contains(user.Id))
+            .ToDictionaryAsync(user => user.Id, user => user.Name);
+        foreach (var flow in flowList)
+        {
+            if (userNames.TryGetValue(flow.ApplicantId, out var applicantName))
+                flow.Applicant = applicantName;
+            if (flow.TransfereeId is int transfereeId && userNames.TryGetValue(transfereeId, out var transfereeName))
+                flow.Transferee = transfereeName;
+        }
     }
 
     private static Dictionary<string, string> BuildWorkflowContext(User applicant)

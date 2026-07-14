@@ -22,6 +22,7 @@ export interface BpmnToken {
   createdAt?: string;
   completedAt?: string;
   signStates?: Record<string, boolean> | null;
+  addedSigners?: Record<string, number> | null;
 }
 
 // 工作流定义（BPMN 模式）
@@ -160,6 +161,14 @@ export const addSignFlowApi = (id: number, data: AddSignPayload) =>
   unwrap(
     requestClient.post<ApiResult<ApprovalFlow>>(
       `/approvals/${id}/add-sign`,
+      data,
+    ),
+  );
+
+export const cancelAddSignFlowApi = (id: number, data: AddSignPayload) =>
+  unwrap(
+    requestClient.post<ApiResult<ApprovalFlow>>(
+      `/approvals/${id}/cancel-add-sign`,
       data,
     ),
   );

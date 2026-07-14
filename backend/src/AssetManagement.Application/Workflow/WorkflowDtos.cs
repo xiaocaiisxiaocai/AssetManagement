@@ -76,6 +76,12 @@ public record AddSignRequest
     public string Who { get; init; } = "";
 }
 
+public record CancelAddSignRequest
+{
+    public string? NodeId { get; init; }
+    public string Who { get; init; } = "";
+}
+
 public record TransferSignRequest
 {
     public string Who { get; init; } = "";

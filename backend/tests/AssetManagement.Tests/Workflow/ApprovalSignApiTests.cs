@@ -92,6 +92,36 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         second.Data!.Status.Should().Be("approved");
     }
 
+    [Fact]
+    public async Task Add_sign_can_be_cancelled_by_its_creator_before_added_user_approves()
+    {
+        Auth(await LoginToken("1001", "123456"));
+        var userA = await CreateApprover("主审人");
+        var userB = await CreateApprover("误加签人");
+        var workflow = await CreateWorkflow("canceladdsign", SingleUserBpmn(userA.Id.ToString()));
+        var asset = await CreateAsset();
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = workflow.BizType,
+            AssetId = asset.Id,
+            Reason = "测试取消加签"
+        });
+
+        Auth(await LoginToken(userA.EmployeeNo, "123456"));
+        var added = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/add-sign",
+            new AddSignRequest { Who = userB.Id.ToString() });
+        added.Data!.BpmnTokens["Task_Approve"].AddedSigners![userB.Id.ToString()].Should().Be(userA.Id);
+
+        var cancelled = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/cancel-add-sign",
+            new CancelAddSignRequest { Who = userB.Id.ToString() });
+        cancelled.Data!.BpmnTokens["Task_Approve"].SignStates.Should().NotContainKey(userB.Id.ToString());
+        cancelled.Data.BpmnTokens["Task_Approve"].AddedSigners.Should().NotContainKey(userB.Id.ToString());
+
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
+            new ApprovalActionRequest { Opinion = "取消误加签后通过" });
+        approved.Data!.Status.Should().Be("approved");
+    }
+
     private async Task<UserDto> CreateApprover(string name)
     {
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");

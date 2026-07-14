@@ -124,4 +124,9 @@ public class BpmnToken
     /// 会签成员状态（UserTask 的会签场景）
     /// </summary>
     public Dictionary<string, bool>? SignStates { get; set; }
+
+    /// <summary>
+    /// 动态加签关系（加签人用户 ID -> 执行加签的用户 ID），用于安全撤销误加签。
+    /// </summary>
+    public Dictionary<string, int>? AddedSigners { get; set; }
 }

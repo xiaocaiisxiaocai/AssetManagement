@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type { NotificationItem } from '@vben/layouts';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
 import { useWatermark } from '@vben/hooks';
@@ -22,9 +23,11 @@ import {
 } from '#/api/notification';
 import LoginForm from '#/views/_core/authentication/login.vue';
 import Password from './password.vue';
+import { resolveNotificationRoute } from './notification-route';
 
 const passwordRef = ref<InstanceType<typeof Password>>();
 const passkeyIcon = createIconifyIcon('material-symbols:passkey-rounded');
+const router = useRouter();
 
 // 通知数据（从后端获取）
 const rawNotifications = ref<NotificationDto[]>([]);
@@ -36,6 +39,8 @@ const notifications = computed<NotificationItem[]>(() =>
     message: n.body,
     title: n.title,
     id: n.id,
+    flowId: n.flowId,
+    type: n.type,
   })),
 );
 
@@ -121,14 +126,20 @@ async function handleMakeAll() {
 }
 
 async function handleNoticeRead(item: NotificationItem) {
-  if (!item.id || item.isRead) return;
-  try {
-    await markReadApi(item.id as number);
-    const target = rawNotifications.value.find((n) => n.id === item.id);
-    if (target) target.isRead = true;
-  } catch {
-    // 静默失败
+  if (item.id && !item.isRead) {
+    try {
+      await markReadApi(item.id as number);
+      const target = rawNotifications.value.find((n) => n.id === item.id);
+      if (target) target.isRead = true;
+    } catch {
+      // 已读状态失败不阻止用户进入业务页面
+    }
   }
+  await router.push(resolveNotificationRoute(item.type || '', item.flowId));
+}
+
+function handleNoticeViewAll() {
+  router.push('/approval/pending');
 }
 watch(
   () => preferences.app.watermark,
@@ -165,6 +176,7 @@ watch(
         @clear="handleNoticeClear"
         @make-all="handleMakeAll"
         @read="handleNoticeRead"
+        @view-all="handleNoticeViewAll"
       />
     </template>
     <template #extra>

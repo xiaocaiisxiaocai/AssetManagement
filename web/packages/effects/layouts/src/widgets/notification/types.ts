@@ -5,6 +5,8 @@ interface NotificationItem {
   isRead?: boolean;
   message: string;
   title: string;
+  flowId?: number;
+  type?: string;
 }
 
 export type { NotificationItem };

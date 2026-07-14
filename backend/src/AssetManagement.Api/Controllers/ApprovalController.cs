@@ -62,6 +62,11 @@ public class ApprovalController : ControllerBase
     public async Task<ApiResult<ApprovalFlowDto>> AddSign(int id, AddSignRequest request)
         => ApiResult<ApprovalFlowDto>.Ok(await _service.AddSignAsync(id, request, CurrentUserId()));
 
+    [HttpPost("{id:int}/cancel-add-sign")]
+    [HasPermission("approval:add-sign")]
+    public async Task<ApiResult<ApprovalFlowDto>> CancelAddSign(int id, CancelAddSignRequest request)
+        => ApiResult<ApprovalFlowDto>.Ok(await _service.CancelAddSignAsync(id, request, CurrentUserId()));
+
     [HttpPost("{id:int}/transfer-sign")]
     [HasPermission("approval:transfer-sign")]
     public async Task<ApiResult<ApprovalFlowDto>> TransferSign(int id, TransferSignRequest request)

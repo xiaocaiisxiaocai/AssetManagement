@@ -221,8 +221,12 @@ async function runComprehensiveTest() {
       if (await transferButton.count()) {
         await transferButton.click();
         const recipient = page.getByText('接收人', { exact: true });
-        if (await recipient.count()) log('✓ 转让申请强制提供接收人选择', 'pass');
-        else log('✗ 转让申请缺少接收人选择', 'fail');
+        try {
+          await recipient.waitFor({ state: 'visible', timeout: 10000 });
+          log('✓ 转让申请强制提供接收人选择', 'pass');
+        } catch {
+          log('✗ 转让申请缺少接收人选择', 'fail');
+        }
         await page.keyboard.press('Escape');
       }
     }
