@@ -80,6 +80,70 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
         notification.UserId.Should().Be(manager.Id);
     }
 
+    [Fact]
+    public async Task ScanAndRemindAsync_sign_state_only_reminds_active_unsigned_users()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<AppDbContext>(options =>
+            options.UseMySql(ConnectionString, ServerVersion.AutoDetect(ConnectionString)));
+        services.AddScoped<AssetManagement.Application.Notifications.INotificationService, NotificationService>();
+        var provider = services.BuildServiceProvider();
+        var worker = new PendingApprovalReminderWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<PendingApprovalReminderWorker>.Instance);
+
+        var signed = new User { EmployeeNo = "S001", Name = "已签人员", PasswordHash = "x" };
+        var unsigned = new User { EmployeeNo = "S002", Name = "待签人员", PasswordHash = "x" };
+        _db.Users.AddRange(signed, unsigned);
+        var workflow = new Domain.Entities.Workflow
+        {
+            Name = "加签催办测试",
+            BizType = "borrow",
+            BpmnXml = SupervisorBpmn(),
+            IsActive = true
+        };
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        _db.ApprovalFlows.Add(new ApprovalFlow
+        {
+            FlowNo = "APV-SIGN-001",
+            BizType = "borrow",
+            WorkflowId = workflow.Id,
+            AssetId = 2,
+            AssetNo = "A002",
+            AssetName = "加签测试资产",
+            ApplicantId = signed.Id,
+            Applicant = signed.Name,
+            Status = "pending",
+            CurrentNodeIds = new List<string> { "Task_Supervisor" },
+            BpmnTokens = new Dictionary<string, BpmnToken>
+            {
+                ["Task_Supervisor"] = new()
+                {
+                    NodeId = "Task_Supervisor",
+                    NodeName = "加签审批",
+                    Status = BpmnTokenStatus.Active,
+                    StartedAt = DateTime.UtcNow.AddDays(-2),
+                    SignStates = new Dictionary<string, bool>
+                    {
+                        [signed.Id.ToString()] = true,
+                        [unsigned.Id.ToString()] = false
+                    }
+                }
+            },
+            ApplyTime = DateTime.UtcNow.AddDays(-2),
+            Deadline = DateTime.UtcNow.AddDays(1)
+        });
+        await _db.SaveChangesAsync();
+
+        await InvokeScanAndRemindAsync(worker);
+
+        var notifications = await _db.Notifications.ToListAsync();
+        notifications.Should().ContainSingle();
+        notifications[0].UserId.Should().Be(unsigned.Id);
+    }
+
     private static string SupervisorBpmn() => """
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"

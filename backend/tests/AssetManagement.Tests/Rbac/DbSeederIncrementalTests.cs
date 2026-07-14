@@ -202,6 +202,24 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
             .Should().Contain(new[] { "material-flow:transfer", "material-flow:approve" });
     }
 
+    [Fact]
+    public void Incremental_seed_uses_stable_user_and_role_references_in_default_workflows()
+    {
+        SeedLegacyDatabaseState();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        var adminId = _db.Users.Single(x => x.EmployeeNo == "1001").Id;
+        _db.Workflows.Single(x => x.BizType == "transfer").BpmnXml
+            .Should().Contain("camunda:candidateGroups=\"role:supervisor\"");
+        _db.Workflows.Single(x => x.BizType == "return").BpmnXml
+            .Should().Contain("camunda:candidateGroups=\"role:supervisor\"");
+        var materialXml = _db.Workflows.Single(x => x.BizType == "material_transfer").BpmnXml;
+        materialXml.Should().Contain($"camunda:assignee=\"user:{adminId}\"");
+        materialXml.Should().NotContain("camunda:assignee=\"1001\"");
+    }
+
     private void SeedLegacyDatabaseState()
     {
         var admin = new Role { Code = "admin", Name = "系统管理员" };

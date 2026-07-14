@@ -43,6 +43,8 @@ public record ApprovalFlowDto
     public string? ReturnDate { get; init; }
     public string Status { get; init; } = "";
     public List<string> CurrentNodeIds { get; init; } = new();
+    /// <summary>当前调用人可处理的活跃节点；CurrentNodeIds 仍表示流程的全部活跃节点。</summary>
+    public List<string> ActionableNodeIds { get; init; } = new();
     public Dictionary<string, BpmnToken> BpmnTokens { get; init; } = new();
     public DateTime ApplyTime { get; init; }
     public DateTime Deadline { get; init; }

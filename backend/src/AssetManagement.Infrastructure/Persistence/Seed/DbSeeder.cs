@@ -864,7 +864,11 @@ public static class DbSeeder
             workflow.BpmnXml = workflow.BpmnXml
                 .Replace("warehouse", "supervisor", StringComparison.OrdinalIgnoreCase)
                 .Replace("仓库管理员", "部门主管", StringComparison.Ordinal)
-                .Replace("资产管理员", "部门主管", StringComparison.Ordinal);
+                .Replace("资产管理员", "部门主管", StringComparison.Ordinal)
+                .Replace(
+                    "camunda:candidateGroups=\"supervisor\"",
+                    "camunda:candidateGroups=\"role:supervisor\"",
+                    StringComparison.Ordinal);
         }
         db.SaveChanges();
     }
@@ -1048,6 +1052,17 @@ public static class DbSeeder
         EnsureProjectOption(db, "project_progress", "closed", "已结案", 4);
 
         // ---- 5. 默认 BPMN 工作流模板(material_transfer)----
+        var defaultApproverId = db.Users
+            .Where(x => x.IsActive && x.UserRoles.Any(ur => ur.Role.IsActive && ur.Role.Code == "admin"))
+            .OrderBy(x => x.Id)
+            .Select(x => x.Id)
+            .FirstOrDefault();
+        if (defaultApproverId <= 0)
+            throw new InvalidOperationException("测试料件默认审批流程缺少启用状态的系统管理员");
+        var materialTransferBpmnXml = MaterialTransferBpmnXmlTemplate.Replace(
+            "__DEFAULT_APPROVER__",
+            $"user:{defaultApproverId}",
+            StringComparison.Ordinal);
         var materialWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "material_transfer");
         if (materialWorkflow is null)
         {
@@ -1055,13 +1070,20 @@ public static class DbSeeder
             {
                 Name = "测试料件流转流程",
                 BizType = "material_transfer",
-                BpmnXml = MaterialTransferBpmnXml
+                BpmnXml = materialTransferBpmnXml
             });
         }
         else if (IsLegacyMaterialTransferWorkflow(materialWorkflow.BpmnXml))
         {
             materialWorkflow.Name = "测试料件流转流程";
-            materialWorkflow.BpmnXml = MaterialTransferBpmnXml;
+            materialWorkflow.BpmnXml = materialTransferBpmnXml;
+        }
+        else if (materialWorkflow.BpmnXml?.Contains("id=\"Task_projectOwnerSpecified\"", StringComparison.Ordinal) == true)
+        {
+            materialWorkflow.BpmnXml = materialWorkflow.BpmnXml.Replace(
+                "camunda:assignee=\"1001\"",
+                $"camunda:assignee=\"user:{defaultApproverId}\"",
+                StringComparison.Ordinal);
         }
         db.SaveChanges();
     }
@@ -1092,7 +1114,7 @@ public static class DbSeeder
         option.Sort = sort;
     }
 
-    private const string MaterialTransferBpmnXml = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+    private const string MaterialTransferBpmnXmlTemplate = @"<?xml version=""1.0"" encoding=""UTF-8""?>
 <bpmn:definitions xmlns:bpmn=""http://www.omg.org/spec/BPMN/20100524/MODEL""
                   xmlns:bpmndi=""http://www.omg.org/spec/BPMN/20100524/DI""
                   xmlns:dc=""http://www.omg.org/spec/DD/20100524/DC""
@@ -1108,7 +1130,7 @@ public static class DbSeeder
       <bpmn:outgoing>Flow_projectOwner</bpmn:outgoing>
       <bpmn:outgoing>Flow_nonOwner</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:userTask id=""Task_projectOwnerSpecified"" name=""指定人员审批"" camunda:assignee=""1001"">
+    <bpmn:userTask id=""Task_projectOwnerSpecified"" name=""指定人员审批"" camunda:assignee=""__DEFAULT_APPROVER__"">
       <bpmn:incoming>Flow_projectOwner</bpmn:incoming>
       <bpmn:outgoing>Flow_specified_to_end</bpmn:outgoing>
     </bpmn:userTask>
@@ -1246,7 +1268,7 @@ public static class DbSeeder
       <bpmn:outgoing>Flow_supervisorRole</bpmn:outgoing>
       <bpmn:outgoing>Flow_employeeDefault</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:userTask id=""Task_adminRole"" name=""部门主管审批"" camunda:candidateGroups=""supervisor"">
+    <bpmn:userTask id=""Task_adminRole"" name=""部门主管审批"" camunda:candidateGroups=""role:supervisor"">
       <bpmn:incoming>Flow_admin</bpmn:incoming>
       <bpmn:outgoing>Flow_admin_to_receiver</bpmn:outgoing>
     </bpmn:userTask>
@@ -1325,7 +1347,7 @@ public static class DbSeeder
     <bpmn:startEvent id=""StartEvent_1"" name=""发起归还申请"">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:userTask id=""Task_supervisor"" name=""部门主管确认"" camunda:candidateGroups=""supervisor"">
+    <bpmn:userTask id=""Task_supervisor"" name=""部门主管确认"" camunda:candidateGroups=""role:supervisor"">
       <bpmn:incoming>Flow_1</bpmn:incoming>
       <bpmn:outgoing>Flow_2</bpmn:outgoing>
     </bpmn:userTask>

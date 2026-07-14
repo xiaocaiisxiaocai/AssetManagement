@@ -11,6 +11,7 @@ import {
 } from './approval-work-items';
 
 const assetFlow: ApprovalFlow = {
+  actionableNodeIds: ['Task_manager'],
   applicant: '张三',
   applicantDept: '研发一部',
   applyTime: '2026-07-08T09:00:00Z',
@@ -34,10 +35,18 @@ const assetFlow: ApprovalFlow = {
 };
 
 const materialFlow: MaterialFlowItem = {
+  actionableNodeIds: ['Task_owner'],
   applicant: '李四',
   applicantDept: '测试部',
   applyTime: '2026-07-08T10:00:00Z',
   currentNodeIds: ['Task_owner'],
+  bpmnTokens: {
+    Task_owner: {
+      nodeId: 'Task_owner',
+      nodeName: '项目负责人审批',
+      status: 0,
+    },
+  },
   directTransfer: false,
   flowNo: 'MF-001',
   id: 2,
@@ -73,7 +82,49 @@ describe('审批工作项适配', () => {
       objectNo: 'M-001',
       objectName: '测试料件',
       participant: '王五',
-      currentNodeLabel: '1 个待审批节点',
+      currentNodeLabel: '项目负责人审批',
+    });
+  });
+
+  it('并行流程只展示当前用户可操作的节点', () => {
+    const flow: ApprovalFlow = {
+      ...assetFlow,
+      actionableNodeIds: ['Task_manager'],
+      currentNodeIds: ['Task_manager', 'Task_admin'],
+      bpmnTokens: {
+        ...assetFlow.bpmnTokens,
+        Task_admin: {
+          nodeId: 'Task_admin',
+          nodeName: '系统管理员审批',
+          status: 0,
+        },
+      },
+    };
+
+    expect(normalizeAssetApproval(flow)).toMatchObject({
+      actionableNodeIds: ['Task_manager'],
+      currentNodeLabel: '部门经理审批',
+    });
+  });
+
+  it('测试料件并行流转不展示其他人的活跃节点', () => {
+    const flow: MaterialFlowItem = {
+      ...materialFlow,
+      actionableNodeIds: ['Task_owner'],
+      currentNodeIds: ['Task_owner', 'Task_admin'],
+      bpmnTokens: {
+        ...materialFlow.bpmnTokens,
+        Task_admin: {
+          nodeId: 'Task_admin',
+          nodeName: '系统管理员审批',
+          status: 0,
+        },
+      },
+    };
+
+    expect(normalizeMaterialFlow(flow)).toMatchObject({
+      actionableNodeIds: ['Task_owner'],
+      currentNodeLabel: '项目负责人审批',
     });
   });
 

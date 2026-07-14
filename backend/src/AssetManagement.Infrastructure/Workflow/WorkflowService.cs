@@ -116,8 +116,8 @@ public class WorkflowService : IWorkflowService
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == applicantId)
-            ?? throw new BizException(4041, "用户不存在");
+            .SingleOrDefaultAsync(x => x.Id == applicantId && x.IsActive)
+            ?? throw new BizException(4041, "用户不存在或已停用");
         await EnsureAssetInScopeAsync(asset, applicant);
 
         if (workflow.BizType is "borrow" or "transfer" && asset.Status != AssetStatus.Available)
@@ -252,9 +252,10 @@ public class WorkflowService : IWorkflowService
         var result = new List<ApprovalFlowDto>();
         foreach (var flow in flows)
         {
-            if (await CanApprove(flow, user, workflowMap))
+            var actionableNodeIds = await GetActionableNodeIdsAsync(flow, user, workflowMap);
+            if (actionableNodeIds.Count > 0)
             {
-                result.Add(ToFlowDto(flow));
+                result.Add(ToFlowDto(flow, actionableNodeIds));
             }
         }
 
@@ -270,7 +271,7 @@ public class WorkflowService : IWorkflowService
             .ToListAsync();
         await HydrateParticipantNamesAsync(flows);
 
-        return flows.Select(ToFlowDto).ToList();
+        return flows.Select(flow => ToFlowDto(flow)).ToList();
     }
 
     public async Task<List<ApprovalFlowDto>> PendingReturnsAsync(int userId)
@@ -288,7 +289,7 @@ public class WorkflowService : IWorkflowService
         var flows = await query.AsNoTracking().OrderByDescending(x => x.Id).ToListAsync();
         await HydrateParticipantNamesAsync(flows);
 
-        return flows.Select(ToFlowDto).ToList();
+        return flows.Select(flow => ToFlowDto(flow)).ToList();
     }
 
     public async Task<ApprovalFlowDto> GetFlowAsync(int id, int userId)
@@ -296,7 +297,7 @@ public class WorkflowService : IWorkflowService
         var flow = await LoadFlow(id);
         var user = await LoadUser(userId);
         await EnsureCanViewFlowAsync(flow, user);
-        return ToFlowDto(flow);
+        return ToFlowDto(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
     public async Task<ApprovalFlowDto> ApproveAsync(int id, ApprovalActionRequest request, int userId)
@@ -502,18 +503,13 @@ public class WorkflowService : IWorkflowService
         if (string.IsNullOrWhiteSpace(request.Who))
             throw new BizException(4057, "请选择加签人");
 
-        var hasSignUserId = int.TryParse(request.Who, out var signUserId);
-        var signCandidates = await _db.Users
+        if (!int.TryParse(request.Who, out var signUserId))
+            throw new BizException(4001, "加签人标识无效，请重新选择");
+        var signUser = await _db.Users
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
-            .Where(x => x.IsActive && ((hasSignUserId && x.Id == signUserId) || x.EmployeeNo == request.Who || x.Name == request.Who))
-            .OrderBy(x => x.Id)
-            .Take(2)
-            .ToListAsync();
-        if (signCandidates.Count == 0) throw new BizException(4041, "加签人不存在");
-        if (signCandidates.Count > 1 && signCandidates.All(x => x.Name == request.Who))
-            throw new BizException(4094, "存在同名用户，请使用用户 ID 或工号加签");
-        var signUser = signCandidates[0];
+            .SingleOrDefaultAsync(x => x.Id == signUserId && x.IsActive)
+            ?? throw new BizException(4041, "加签人不存在或已停用");
         var isActiveSupervisor = signUser.UserRoles.Any(ur =>
             ur.Role is { Code: "supervisor", IsActive: true });
         var hasActiveDepartment = signUser.DepartmentId.HasValue &&
@@ -533,10 +529,32 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4094, "该用户已在当前签核名单中");
         token.AddedSigners ??= new Dictionary<string, int>();
         token.AddedSigners[signUser.Id.ToString()] = user.Id;
+        var addSignNotificationVersion = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
         await AddRecord(id, "add_sign", user.Name, $"节点 {nodeId}: 加签 {signUser.Name}");
-        return ToFlowDto(flow);
+        try
+        {
+            await _notifications.CreateAsync(new CreateNotificationRequest
+            {
+                Type = "approval_pending",
+                Title = $"待审批加签：{flow.AssetName}",
+                Body = $"{user.Name} 已将您加签到资产 {flow.AssetNo}（{flow.AssetName}）的审批节点，请及时处理。",
+                FlowId = flow.Id,
+                UserId = signUser.Id,
+                IdempotencyKey = NotificationIdempotencyKeys.PendingApproval(
+                    "approval_pending",
+                    flow.Id,
+                    nodeId,
+                    signUser.Id,
+                    addSignNotificationVersion),
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "加签通知发送失败，不影响加签结果");
+        }
+        return ToFlowDto(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
     public async Task<ApprovalFlowDto> CancelAddSignAsync(int id, CancelAddSignRequest request, int userId)
@@ -571,7 +589,7 @@ public class WorkflowService : IWorkflowService
         token.AddedSigners.Remove(signKey);
         await _db.SaveChangesAsync();
         await AddRecord(id, "cancel_add_sign", user.Name, $"节点 {nodeId}: 取消加签 {signUser?.Name ?? signKey}");
-        return ToFlowDto(flow);
+        return ToFlowDto(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
     public async Task<ApprovalFlowDto> TransferSignAsync(int id, TransferSignRequest request, int userId)
@@ -715,8 +733,16 @@ public class WorkflowService : IWorkflowService
            ?? throw new BizException(4010, "审批工单不存在");
 
     private async Task<User> LoadUser(int id)
-        => await _db.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role).SingleOrDefaultAsync(u => u.Id == id)
-            ?? throw new BizException(4041, "用户不存在");
+    {
+        var user = await _db.Users
+            .Include(u => u.UserRoles)
+            .ThenInclude(ur => ur.Role)
+            .SingleOrDefaultAsync(u => u.Id == id && u.IsActive)
+            ?? throw new BizException(4041, "用户不存在或已停用");
+        if (!user.UserRoles.Any(ur => ur.Role is { IsActive: true }))
+            throw new BizException(4012, "账号角色已禁用，请重新登录");
+        return user;
+    }
 
     private void EnsureActive(ApprovalFlow flow)
     {
@@ -726,34 +752,33 @@ public class WorkflowService : IWorkflowService
         }
     }
 
-    private async Task<bool> CanApprove(ApprovalFlow flow, User user, Dictionary<int, WorkflowEntity>? workflowMap = null)
+    private async Task<List<string>> GetActionableNodeIdsAsync(
+        ApprovalFlow flow,
+        User user,
+        Dictionary<int, WorkflowEntity>? workflowMap = null)
     {
-        // 检查用户是否可以审批流程中的任一活跃节点
+        WorkflowEntity? workflow;
+        if (workflowMap != null)
+            workflowMap.TryGetValue(flow.WorkflowId, out workflow);
+        else
+            workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
+        if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return new List<string>();
+
+        var process = BpmnParser.Parse(workflow.BpmnXml);
+        var result = new List<string>();
         foreach (var nodeId in flow.CurrentNodeIds)
         {
-            if (flow.BpmnTokens.TryGetValue(nodeId, out var token) && token.Status == BpmnTokenStatus.Active)
-            {
-                WorkflowEntity? workflow;
-                if (workflowMap != null)
-                    workflowMap.TryGetValue(flow.WorkflowId, out workflow);
-                else
-                    workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
-                if (workflow?.BpmnXml == null) continue;
-
-                var bpmnProcess = BpmnParser.Parse(workflow.BpmnXml);
-                var node = bpmnProcess.FindNode(nodeId);
-                if (node?.Type == BpmnNodeType.UserTask)
-                {
-                    if (await IsApproverForNode(node, user, flow))
-                    {
-                        return true;
-                    }
-                }
-            }
+            if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) || token.Status != BpmnTokenStatus.Active)
+                continue;
+            var node = process.FindNode(nodeId);
+            if (node?.Type == BpmnNodeType.UserTask && await IsApproverForNode(node, user, flow))
+                result.Add(nodeId);
         }
-
-        return false;
+        return result;
     }
+
+    private async Task<bool> CanApprove(ApprovalFlow flow, User user)
+        => (await GetActionableNodeIdsAsync(flow, user)).Count > 0;
 
     private async Task EnsureCanApproveNode(ApprovalFlow flow, string nodeId, User user)
     {
@@ -803,7 +828,7 @@ public class WorkflowService : IWorkflowService
 
                 var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetDeptId.Value);
                 var isSameDeptAdmin = user.DepartmentId == targetDeptId &&
-                                      user.UserRoles.Any(ur => ur.Role?.Code == "supervisor");
+                                      user.UserRoles.Any(ur => ur.Role is { Code: "supervisor", IsActive: true });
                 var isDepartmentManager = department?.ManagerId == user.Id;
                 return isSameDeptAdmin || isDepartmentManager;
             }
@@ -812,39 +837,30 @@ public class WorkflowService : IWorkflowService
                 var approverIds = await ResolveSupervisorApproverUserIdsAsync(flow);
                 return approverIds.Contains(user.Id);
             }
-            else if (int.TryParse(assignee, out var userId))
-            {
-                return user.Id == userId || user.EmployeeNo == assignee;
-            }
             else
             {
-                return user.Name == assignee || user.EmployeeNo == assignee;
+                var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, assignee);
+                return resolution.IsResolved && resolution.UserIds.Contains(user.Id);
             }
         }
 
         // 候选用户列表
         if (!string.IsNullOrEmpty(candidateUsers))
         {
-            var users = candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            if (users.Any(u =>
+            foreach (var candidateUser in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
-                var value = u.Trim();
-                return value == user.Id.ToString() || value == user.EmployeeNo || value == user.Name;
-            }))
-            {
-                return true;
+                var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, candidateUser);
+                if (resolution.IsResolved && resolution.UserIds.Contains(user.Id)) return true;
             }
         }
 
         // 候选角色
         if (!string.IsNullOrEmpty(candidateGroups))
         {
-            var groups = candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            if (user.UserRoles.Any(ur =>
-                    ur.Role != null &&
-                    groups.Any(group => group.Trim() == ur.Role.Code || group.Trim() == ur.Role.Name)))
+            foreach (var candidateGroup in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
-                return true;
+                var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(_db, candidateGroup);
+                if (resolution.IsResolved && resolution.UserIds.Contains(user.Id)) return true;
             }
         }
 
@@ -852,10 +868,10 @@ public class WorkflowService : IWorkflowService
     }
 
     private bool IsAdmin(User user)
-        => user.UserRoles.Any(ur => ur.Role?.Code == "admin");
+        => user.UserRoles.Any(ur => ur.Role is { Code: "admin", IsActive: true });
 
     private static bool IsSupervisor(User user)
-        => user.UserRoles.Any(ur => ur.Role?.Code == "supervisor");
+        => user.UserRoles.Any(ur => ur.Role is { Code: "supervisor", IsActive: true });
 
     private async Task EnsureAssetInScopeAsync(Asset asset, User user)
     {
@@ -902,13 +918,14 @@ public class WorkflowService : IWorkflowService
         {
             var node = process.FindNode(nodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
-            var assignee = node.Properties.GetValueOrDefault("assignee");
-            if (assignee is not ("supervisor" or "deptManager")) continue;
             if ((await ResolveApproverUserIdsAsync(node, flow)).Count > 0) continue;
 
+            var assignee = node.Properties.GetValueOrDefault("assignee");
             if (assignee == "supervisor")
                 throw new BizException(4051, "申请人未配置直属主管，无法发起审批");
-            throw new BizException(4051, $"审批节点“{node.Name}”未配置有效部门负责人");
+            if (assignee == "deptManager")
+                throw new BizException(4051, $"审批节点“{node.Name}”未配置有效部门负责人");
+            throw new BizException(4051, $"审批节点“{node.Name}”未配置唯一且有效的审批人，请在流程设计器重新选择");
         }
     }
 
@@ -922,8 +939,8 @@ public class WorkflowService : IWorkflowService
 
     private static string? TryApprovalIdentity(BpmnToken token, User user)
     {
-        var candidates = new[] { user.Id.ToString(), user.EmployeeNo, user.Name };
-        return candidates.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x) && token.SignStates!.ContainsKey(x));
+        var userId = user.Id.ToString();
+        return token.SignStates!.ContainsKey(userId) ? userId : null;
     }
 
     /// <summary>
@@ -977,11 +994,13 @@ public class WorkflowService : IWorkflowService
                 if (targetDeptId is not null)
                 {
                     var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetDeptId.Value);
-                    if (dept?.ManagerId is not null) result.Add(dept.ManagerId.Value);
+                    if (dept?.ManagerId is int managerId &&
+                        await _db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
+                        result.Add(managerId);
                     var deptAdmins = await _db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.DepartmentId == targetDeptId &&
-                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "supervisor"))
+                        .Where(u => u.IsActive && u.DepartmentId == targetDeptId &&
+                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.IsActive && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id)
                         .ToListAsync();
                     foreach (var uid in deptAdmins)
@@ -1011,16 +1030,13 @@ public class WorkflowService : IWorkflowService
 
         if (!string.IsNullOrEmpty(candidateGroups))
         {
-            var groups = candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(g => g.Trim()).ToArray();
-            var groupUsers = await _db.Users
-                .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                .Where(u => u.UserRoles.Any(ur => ur.Role != null &&
-                    groups.Any(g => g == ur.Role.Code || g == ur.Role.Name)))
-                .Select(u => u.Id)
-                .ToListAsync();
-            foreach (var uid in groupUsers)
-                if (!result.Contains(uid)) result.Add(uid);
+            foreach (var group in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(_db, group);
+                EnsureUnambiguousResolution(resolution);
+                foreach (var uid in resolution.UserIds)
+                    if (!result.Contains(uid)) result.Add(uid);
+            }
         }
 
         return result;
@@ -1068,15 +1084,16 @@ public class WorkflowService : IWorkflowService
 
     private async Task AddExplicitApproverUserIdsAsync(List<int> result, string value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return;
-        var hasUserId = int.TryParse(value, out var parsedUserId);
-        var users = await _db.Users
-            .AsNoTracking()
-            .Where(x => x.Name == value || x.EmployeeNo == value || (hasUserId && x.Id == parsedUserId))
-            .Select(x => x.Id)
-            .ToListAsync();
-        foreach (var userId in users)
+        var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, value);
+        EnsureUnambiguousResolution(resolution);
+        foreach (var userId in resolution.UserIds)
             if (!result.Contains(userId)) result.Add(userId);
+    }
+
+    private static void EnsureUnambiguousResolution(ApproverIdentityResolution resolution)
+    {
+        if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
+            throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{resolution.Diagnostic}");
     }
 
     private async Task<string?> DepartmentName(int? deptId)
@@ -1221,7 +1238,7 @@ public class WorkflowService : IWorkflowService
                + $"（流程号：{flow.FlowNo}{currentNodeText}），请等待流程结束后再试";
     }
 
-    private static ApprovalFlowDto ToFlowDto(ApprovalFlow f) => new()
+    private static ApprovalFlowDto ToFlowDto(ApprovalFlow f, IEnumerable<string>? actionableNodeIds = null) => new()
     {
         Id = f.Id,
         FlowNo = f.FlowNo,
@@ -1237,6 +1254,7 @@ public class WorkflowService : IWorkflowService
         ReturnDate = f.ReturnDate,
         Status = f.Status,
         CurrentNodeIds = f.CurrentNodeIds,
+        ActionableNodeIds = actionableNodeIds?.ToList() ?? new List<string>(),
         BpmnTokens = f.BpmnTokens,
         ApplyTime = f.ApplyTime,
         Deadline = f.Deadline,

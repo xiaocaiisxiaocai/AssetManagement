@@ -154,6 +154,8 @@ public class MaterialFlowDto
     public string? Reason { get; set; }
     public string Status { get; set; } = "";
     public List<string> CurrentNodeIds { get; set; } = new();
+    /// <summary>当前调用人可处理的活跃节点；CurrentNodeIds 仍表示流程的全部活跃节点。</summary>
+    public List<string> ActionableNodeIds { get; set; } = new();
     public Dictionary<string, BpmnToken> BpmnTokens { get; set; } = new();
     public DateTime ApplyTime { get; set; }
     public DateTime Deadline { get; set; }

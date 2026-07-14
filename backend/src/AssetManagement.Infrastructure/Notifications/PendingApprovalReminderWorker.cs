@@ -2,6 +2,7 @@ using AssetManagement.Application.Notifications;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Infrastructure.Workflow;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -76,7 +77,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         }
     }
 
-    private static async Task RemindApprovalFlowsAsync(
+    private async Task RemindApprovalFlowsAsync(
         AppDbContext db, DateTime threshold, string todayStr,
         List<CreateNotificationRequest> requests)
     {
@@ -116,7 +117,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         }
     }
 
-    private static async Task RemindMaterialFlowsAsync(
+    private async Task RemindMaterialFlowsAsync(
         AppDbContext db, DateTime threshold, string todayStr,
         List<CreateNotificationRequest> requests)
     {
@@ -157,7 +158,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         }
     }
 
-    private static async Task<List<int>> ResolveApproversForFlowAsync(
+    private async Task<List<int>> ResolveApproversForFlowAsync(
         AppDbContext db, ApprovalFlow flow, BpmnProcess process)
     {
         var result = new List<int>();
@@ -169,7 +170,9 @@ public class PendingApprovalReminderWorker : BackgroundService
             var node = process.FindNode(nodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
 
-            var ids = await ResolveAssigneeAsync(db, node, flow.ApplicantId);
+            var ids = token.SignStates is { Count: > 0 }
+                ? await ResolvePendingSignStateUserIdsAsync(db, token)
+                : await ResolveAssigneeAsync(db, node, flow.ApplicantId);
             foreach (var id in ids)
                 if (!result.Contains(id)) result.Add(id);
         }
@@ -195,7 +198,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         return false;
     }
 
-    private static async Task<List<int>> ResolveApproversForMaterialFlowAsync(
+    private async Task<List<int>> ResolveApproversForMaterialFlowAsync(
         AppDbContext db, MaterialFlow flow, BpmnProcess process)
     {
         var result = new List<int>();
@@ -207,14 +210,16 @@ public class PendingApprovalReminderWorker : BackgroundService
             var node = process.FindNode(nodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
 
-            var ids = await ResolveAssigneeAsync(db, node, flow.ApplicantId);
+            var ids = token.SignStates is { Count: > 0 }
+                ? await ResolvePendingSignStateUserIdsAsync(db, token)
+                : await ResolveAssigneeAsync(db, node, flow.ApplicantId);
             foreach (var id in ids)
                 if (!result.Contains(id)) result.Add(id);
         }
         return result;
     }
 
-    private static async Task<List<int>> ResolveAssigneeAsync(AppDbContext db, BpmnNode node, int applicantId)
+    private async Task<List<int>> ResolveAssigneeAsync(AppDbContext db, BpmnNode node, int applicantId)
     {
         var result = new List<int>();
         var assignee = node.Properties.GetValueOrDefault("assignee");
@@ -229,11 +234,13 @@ public class PendingApprovalReminderWorker : BackgroundService
                 if (applicant?.DepartmentId is not null)
                 {
                     var dept = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-                    if (dept?.ManagerId is not null) result.Add(dept.ManagerId.Value);
+                    if (dept?.ManagerId is int managerId &&
+                        await db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
+                        result.Add(managerId);
                     var deptAdmins = await db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.DepartmentId == applicant.DepartmentId &&
-                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "supervisor"))
+                        .Where(u => u.IsActive && u.DepartmentId == applicant.DepartmentId &&
+                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.IsActive && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id).ToListAsync();
                     foreach (var uid in deptAdmins)
                         if (!result.Contains(uid)) result.Add(uid);
@@ -246,11 +253,9 @@ public class PendingApprovalReminderWorker : BackgroundService
                     if (!result.Contains(supervisorId)) result.Add(supervisorId);
                 }
             }
-            else if (int.TryParse(assignee, out var uid)) result.Add(uid);
             else
             {
-                var u = await db.Users.FirstOrDefaultAsync(x => x.Name == assignee || x.EmployeeNo == assignee);
-                if (u is not null) result.Add(u.Id);
+                await AddResolvedUsersAsync(db, assignee, result, node.Id);
             }
         }
 
@@ -258,30 +263,57 @@ public class PendingApprovalReminderWorker : BackgroundService
         {
             foreach (var part in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
-                var p = part.Trim();
-                if (int.TryParse(p, out var uid)) { if (!result.Contains(uid)) result.Add(uid); }
-                else
-                {
-                    var u = await db.Users.FirstOrDefaultAsync(x => x.Name == p);
-                    if (u is not null && !result.Contains(u.Id)) result.Add(u.Id);
-                }
+                await AddResolvedUsersAsync(db, part, result, node.Id);
             }
         }
 
         if (!string.IsNullOrEmpty(candidateGroups))
         {
-            var groups = candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(g => g.Trim()).ToArray();
-            var groupUsers = await db.Users
-                .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                .Where(u => u.UserRoles.Any(ur => ur.Role != null &&
-                    groups.Any(g => g == ur.Role.Code || g == ur.Role.Name)))
-                .Select(u => u.Id).ToListAsync();
-            foreach (var uid in groupUsers)
-                if (!result.Contains(uid)) result.Add(uid);
+            foreach (var group in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(db, group);
+                if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
+                {
+                    _logger.LogWarning("跳过审批节点 {NodeId} 的歧义角色配置：{Diagnostic}", node.Id, resolution.Diagnostic);
+                    continue;
+                }
+                foreach (var uid in resolution.UserIds)
+                    if (!result.Contains(uid)) result.Add(uid);
+            }
         }
 
         return result;
+    }
+
+    private async Task AddResolvedUsersAsync(
+        AppDbContext db,
+        string identity,
+        List<int> result,
+        string nodeId)
+    {
+        var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(db, identity);
+        if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
+        {
+            _logger.LogWarning("跳过审批节点 {NodeId} 的歧义人员配置：{Diagnostic}", nodeId, resolution.Diagnostic);
+            return;
+        }
+        foreach (var uid in resolution.UserIds)
+            if (!result.Contains(uid)) result.Add(uid);
+    }
+
+    private static async Task<List<int>> ResolvePendingSignStateUserIdsAsync(
+        AppDbContext db,
+        BpmnToken token)
+    {
+        var pendingUserIds = token.SignStates!
+            .Where(x => !x.Value && int.TryParse(x.Key, out _))
+            .Select(x => int.Parse(x.Key))
+            .Distinct()
+            .ToArray();
+        return await db.Users.AsNoTracking()
+            .Where(x => x.IsActive && pendingUserIds.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToListAsync();
     }
 
     private static async Task<List<int>> ResolveSupervisorApproverUserIdsAsync(AppDbContext db, int applicantId)
@@ -291,16 +323,18 @@ public class PendingApprovalReminderWorker : BackgroundService
         if (applicant?.DepartmentId is not null)
         {
             var department = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-            if (department?.ManagerId is not null)
+            if (department?.ManagerId is int managerId &&
+                await db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
             {
-                result.Add(department.ManagerId.Value);
+                result.Add(managerId);
             }
         }
 
         // 与正式审批权限解析保持一致：组织负责人优先，旧库未配置负责人时再兼容直属上级字段。
-        if (result.Count == 0 && applicant?.SupervisorId is not null)
+        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId &&
+            await db.Users.AsNoTracking().AnyAsync(x => x.Id == supervisorId && x.IsActive))
         {
-            result.Add(applicant.SupervisorId.Value);
+            result.Add(supervisorId);
         }
 
         return result;

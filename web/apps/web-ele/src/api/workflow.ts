@@ -45,6 +45,7 @@ export interface SaveWorkflowPayload {
 
 // 审批流程实例
 export interface ApprovalFlow {
+  actionableNodeIds: string[]; // 当前用户可操作的活跃节点
   applicant: string;
   applicantDept?: null | string;
   applyTime: string;
@@ -74,7 +75,7 @@ export interface StartApprovalPayload {
 }
 
 export interface ApprovalActionPayload {
-  nodeId?: string; // BPMN: 指定要审批的节点 ID（可选，单节点时自动推断）
+  nodeId?: string; // BPMN: 待办审批应始终显式指定可操作节点 ID
   opinion: string;
 }
 

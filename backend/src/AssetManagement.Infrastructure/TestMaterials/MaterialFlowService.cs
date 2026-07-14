@@ -6,6 +6,7 @@ using AssetManagement.Domain.Services;
 using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Infrastructure.Workflow;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
@@ -39,10 +40,10 @@ public class MaterialFlowService : IMaterialFlowService
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == applicantId)
-            ?? throw new BizException(4041, "用户不存在");
+            .SingleOrDefaultAsync(x => x.Id == applicantId && x.IsActive)
+            ?? throw new BizException(4041, "用户不存在或已停用");
         await EnsureMaterialInScopeAsync(material, applicant);
-        var isSupervisor = applicant.UserRoles.Any(x => x.Role?.Code == "supervisor");
+        var isSupervisor = applicant.UserRoles.Any(x => x.Role is { Code: "supervisor", IsActive: true });
         var isProjectOwner = await _db.TestProjects.AnyAsync(x => x.Id == material.ProjectId && x.OwnerId == applicantId);
         if (!isSupervisor && material.CustodianId != applicantId && !isProjectOwner)
             throw new BizException(4047, "只能流转本人保管或本人负责项目的料件");
@@ -204,7 +205,7 @@ public class MaterialFlowService : IMaterialFlowService
     public async Task<List<MaterialFlowDto>> PendingAsync(int userId, int? projectId = null)
     {
         var user = await LoadUser(userId);
-        var isAdmin = user.UserRoles.Any(ur => ur.Role?.Code == "admin");
+        var isAdmin = IsAdmin(user);
 
         // supervisor 只能看到申请人属于其管辖部门（含子部门）的流程
         int[]? allowedDeptIds = null;
@@ -245,7 +246,8 @@ public class MaterialFlowService : IMaterialFlowService
         var result = new List<MaterialFlowDto>();
         foreach (var flow in flows)
         {
-            if (await CanApprove(flow, user, workflowMap)) result.Add(ToDto(flow));
+            var actionableNodeIds = await GetActionableNodeIdsAsync(flow, user, workflowMap);
+            if (actionableNodeIds.Count > 0) result.Add(ToDto(flow, actionableNodeIds));
         }
         return result;
     }
@@ -259,7 +261,7 @@ public class MaterialFlowService : IMaterialFlowService
                 .Select(m => m.Id)
                 .Contains(x.MaterialId));
         var flows = await query.OrderByDescending(x => x.Id).ToListAsync();
-        return flows.Select(ToDto).ToList();
+        return flows.Select(flow => ToDto(flow)).ToList();
     }
 
     public async Task<MaterialFlowDto> GetAsync(int id, int userId)
@@ -267,7 +269,7 @@ public class MaterialFlowService : IMaterialFlowService
         var flow = await LoadFlow(id);
         var user = await LoadUser(userId);
         await EnsureCanViewFlowAsync(flow, user);
-        return ToDto(flow);
+        return ToDto(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
     public async Task<MaterialFlowDto> ApproveAsync(int id, MaterialApprovalRequest request, int userId)
@@ -439,8 +441,16 @@ public class MaterialFlowService : IMaterialFlowService
            ?? throw new BizException(4049, "流程不存在");
 
     private async Task<User> LoadUser(int id)
-        => await _db.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role).SingleOrDefaultAsync(u => u.Id == id)
-            ?? throw new BizException(4041, "用户不存在");
+    {
+        var user = await _db.Users
+            .Include(u => u.UserRoles)
+            .ThenInclude(ur => ur.Role)
+            .SingleOrDefaultAsync(u => u.Id == id && u.IsActive)
+            ?? throw new BizException(4041, "用户不存在或已停用");
+        if (!user.UserRoles.Any(ur => ur.Role is { IsActive: true }))
+            throw new BizException(4012, "账号角色已禁用，请重新登录");
+        return user;
+    }
 
     private static void EnsureActive(MaterialFlow flow)
     {
@@ -454,30 +464,33 @@ public class MaterialFlowService : IMaterialFlowService
         throw new BizException(4052, "存在多个待审批节点,请明确指定节点 ID");
     }
 
-    private async Task<bool> CanApprove(MaterialFlow flow, User user, Dictionary<int, WorkflowEntity>? workflowMap = null)
+    private async Task<List<string>> GetActionableNodeIdsAsync(
+        MaterialFlow flow,
+        User user,
+        Dictionary<int, WorkflowEntity>? workflowMap = null)
     {
-        WorkflowEntity? workflow = null;
-        BpmnProcess? process = null;
+        WorkflowEntity? workflow;
+        if (workflowMap != null)
+            workflowMap.TryGetValue(flow.WorkflowId, out workflow);
+        else
+            workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
+        if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return new List<string>();
 
+        var process = BpmnParser.Parse(workflow.BpmnXml);
+        var result = new List<string>();
         foreach (var nodeId in flow.CurrentNodeIds)
         {
-            if (flow.BpmnTokens.TryGetValue(nodeId, out var token) && token.Status == BpmnTokenStatus.Active)
-            {
-                if (process == null)
-                {
-                    if (workflowMap != null)
-                        workflowMap.TryGetValue(flow.WorkflowId, out workflow);
-                    else
-                        workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
-                    if (workflow?.BpmnXml == null) continue;
-                    process = BpmnParser.Parse(workflow.BpmnXml);
-                }
-                var node = process.FindNode(nodeId);
-                if (node?.Type == BpmnNodeType.UserTask && await IsApproverForNode(node, user, flow)) return true;
-            }
+            if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) || token.Status != BpmnTokenStatus.Active)
+                continue;
+            var node = process.FindNode(nodeId);
+            if (node?.Type == BpmnNodeType.UserTask && await IsApproverForNode(node, user, flow))
+                result.Add(nodeId);
         }
-        return false;
+        return result;
     }
+
+    private async Task<bool> CanApprove(MaterialFlow flow, User user)
+        => (await GetActionableNodeIdsAsync(flow, user)).Count > 0;
 
     private async Task EnsureCanApproveNode(MaterialFlow flow, string nodeId, User user)
     {
@@ -513,7 +526,7 @@ public class MaterialFlowService : IMaterialFlowService
                 if (applicant?.DepartmentId is null) return false;
                 var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
                 var isSameDeptAdmin = user.DepartmentId == applicant.DepartmentId &&
-                                      user.UserRoles.Any(ur => ur.Role?.Code == "supervisor");
+                                      user.UserRoles.Any(ur => ur.Role is { Code: "supervisor", IsActive: true });
                 var isDepartmentManager = department?.ManagerId == user.Id;
                 return isSameDeptAdmin || isDepartmentManager;
             }
@@ -522,23 +535,24 @@ public class MaterialFlowService : IMaterialFlowService
                 var approverIds = await ResolveSupervisorApproverUserIdsAsync(flow);
                 return approverIds.Contains(user.Id);
             }
-            if (int.TryParse(assignee, out var uid)) return user.Id == uid || user.EmployeeNo == assignee;
-            return user.Name == assignee || user.EmployeeNo == assignee;
+            var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, assignee);
+            return resolution.IsResolved && resolution.UserIds.Contains(user.Id);
         }
         if (!string.IsNullOrEmpty(candidateUsers))
         {
-            var users = candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            if (users.Any(u =>
+            foreach (var candidateUser in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
-                var value = u.Trim();
-                return value == user.Id.ToString() || value == user.EmployeeNo || value == user.Name;
-            })) return true;
+                var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, candidateUser);
+                if (resolution.IsResolved && resolution.UserIds.Contains(user.Id)) return true;
+            }
         }
         if (!string.IsNullOrEmpty(candidateGroups))
         {
-            var groups = candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries);
-            if (user.UserRoles.Any(ur => ur.Role != null &&
-                groups.Any(g => g.Trim() == ur.Role.Code || g.Trim() == ur.Role.Name))) return true;
+            foreach (var candidateGroup in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(_db, candidateGroup);
+                if (resolution.IsResolved && resolution.UserIds.Contains(user.Id)) return true;
+            }
         }
         return false;
     }
@@ -560,10 +574,10 @@ public class MaterialFlowService : IMaterialFlowService
     }
 
     private static bool IsAdmin(User user)
-        => user.UserRoles.Any(ur => ur.Role?.Code == "admin");
+        => user.UserRoles.Any(ur => ur.Role is { Code: "admin", IsActive: true });
 
     private static bool IsSupervisor(User user)
-        => user.UserRoles.Any(ur => ur.Role?.Code == "supervisor");
+        => user.UserRoles.Any(ur => ur.Role is { Code: "supervisor", IsActive: true });
 
     private async Task EnsureMaterialInScopeAsync(TestMaterial material, User user)
     {
@@ -626,13 +640,14 @@ public class MaterialFlowService : IMaterialFlowService
         {
             var node = process.FindNode(nodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
-            var assignee = node.Properties.GetValueOrDefault("assignee");
-            if (assignee is not ("supervisor" or "deptManager")) continue;
             if ((await ResolveApproverUserIdsAsync(node, flow)).Count > 0) continue;
 
+            var assignee = node.Properties.GetValueOrDefault("assignee");
             if (assignee == "supervisor")
                 throw new BizException(4051, "申请人未配置直属主管，无法发起审批");
-            throw new BizException(4051, $"审批节点“{node.Name}”未配置有效部门负责人");
+            if (assignee == "deptManager")
+                throw new BizException(4051, $"审批节点“{node.Name}”未配置有效部门负责人");
+            throw new BizException(4051, $"审批节点“{node.Name}”未配置唯一且有效的审批人，请在流程设计器重新选择");
         }
     }
 
@@ -646,8 +661,8 @@ public class MaterialFlowService : IMaterialFlowService
 
     private static string? TryApprovalIdentity(BpmnToken token, User user)
     {
-        var candidates = new[] { user.Id.ToString(), user.EmployeeNo, user.Name };
-        return candidates.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x) && token.SignStates!.ContainsKey(x));
+        var userId = user.Id.ToString();
+        return token.SignStates!.ContainsKey(userId) ? userId : null;
     }
 
     private async Task<List<int>> ResolveSupervisorApproverUserIdsAsync(MaterialFlow flow)
@@ -760,11 +775,13 @@ public class MaterialFlowService : IMaterialFlowService
                 if (applicant?.DepartmentId is not null)
                 {
                     var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-                    if (dept?.ManagerId is not null) result.Add(dept.ManagerId.Value);
+                    if (dept?.ManagerId is int managerId &&
+                        await _db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
+                        result.Add(managerId);
                     var deptAdmins = await _db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.DepartmentId == applicant.DepartmentId &&
-                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "supervisor"))
+                        .Where(u => u.IsActive && u.DepartmentId == applicant.DepartmentId &&
+                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.IsActive && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id).ToListAsync();
                     foreach (var uid in deptAdmins)
                         if (!result.Contains(uid)) result.Add(uid);
@@ -793,15 +810,13 @@ public class MaterialFlowService : IMaterialFlowService
 
         if (!string.IsNullOrEmpty(candidateGroups))
         {
-            var groups = candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(g => g.Trim()).ToArray();
-            var groupUsers = await _db.Users
-                .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                .Where(u => u.UserRoles.Any(ur => ur.Role != null &&
-                    groups.Any(g => g == ur.Role.Code || g == ur.Role.Name)))
-                .Select(u => u.Id).ToListAsync();
-            foreach (var uid in groupUsers)
-                if (!result.Contains(uid)) result.Add(uid);
+            foreach (var group in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(_db, group);
+                EnsureUnambiguousResolution(resolution);
+                foreach (var uid in resolution.UserIds)
+                    if (!result.Contains(uid)) result.Add(uid);
+            }
         }
 
         return result;
@@ -809,18 +824,19 @@ public class MaterialFlowService : IMaterialFlowService
 
     private async Task AddExplicitApproverUserIds(List<int> result, string value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return;
-        var hasUserId = int.TryParse(value, out var parsedUserId);
-        var users = await _db.Users
-            .AsNoTracking()
-            .Where(x => x.Name == value || x.EmployeeNo == value || (hasUserId && x.Id == parsedUserId))
-            .Select(x => x.Id)
-            .ToListAsync();
-        foreach (var userId in users)
+        var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, value);
+        EnsureUnambiguousResolution(resolution);
+        foreach (var userId in resolution.UserIds)
             if (!result.Contains(userId)) result.Add(userId);
     }
 
-    private static MaterialFlowDto ToDto(MaterialFlow f) => new()
+    private static void EnsureUnambiguousResolution(ApproverIdentityResolution resolution)
+    {
+        if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
+            throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{resolution.Diagnostic}");
+    }
+
+    private static MaterialFlowDto ToDto(MaterialFlow f, IEnumerable<string>? actionableNodeIds = null) => new()
     {
         Id = f.Id,
         FlowNo = f.FlowNo,
@@ -836,6 +852,7 @@ public class MaterialFlowService : IMaterialFlowService
         Status = f.Status,
         DirectTransfer = f.DirectTransfer,
         CurrentNodeIds = f.CurrentNodeIds,
+        ActionableNodeIds = actionableNodeIds?.ToList() ?? new List<string>(),
         BpmnTokens = f.BpmnTokens,
         ApplyTime = f.ApplyTime,
         Deadline = f.Deadline

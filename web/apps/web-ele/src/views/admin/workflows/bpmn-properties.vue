@@ -2,6 +2,7 @@
 import type { RoleDto } from '#/api/role';
 import type { UserOptionDto } from '#/api/user';
 import type { DepartmentNode } from '#/api/base-data';
+import type { AssigneeType } from './assignee-identities';
 
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 
@@ -10,6 +11,12 @@ import { useAccess } from '@vben/access';
 import { getDepartmentTreeApi } from '#/api/base-data';
 import { getRoleListApi } from '#/api/role';
 import { getUserListApi, getUserOptionsApi } from '#/api/user';
+import {
+  loadAssigneeSelection,
+  roleAssigneeIdentity,
+  serializeAssigneeSelection,
+  userAssigneeIdentity,
+} from './assignee-identities';
 import {
   ElForm,
   ElFormItem,
@@ -35,7 +42,7 @@ const elementName = ref('');
 const elementId = ref('');
 
 // 审批人类型
-const assigneeType = ref('');
+const assigneeType = ref<AssigneeType>('');
 const assigneeValue = ref<string | string[]>('');
 const approvalMode = ref<'all' | 'any'>('any');
 const userOptions = ref<UserOptionDto[]>([]);
@@ -100,21 +107,21 @@ const assigneeValueOptions = computed(() => {
   if (assigneeType.value === 'username') {
     return userOptions.value.map((user) => ({
       label: `${user.name}（${user.employeeNo}）`,
-      value: String(user.id),
+      value: userAssigneeIdentity(user.id),
     }));
   }
 
   if (assigneeType.value === 'usernames') {
     return userOptions.value.map((user) => ({
       label: `${user.name}（${user.employeeNo}）`,
-      value: String(user.id),
+      value: userAssigneeIdentity(user.id),
     }));
   }
 
   if (assigneeType.value === 'roleName') {
     return roleOptions.value.map((role) => ({
       label: `${role.name}（${role.code}）`,
-      value: role.code,
+      value: roleAssigneeIdentity(role.code),
     }));
   }
 
@@ -186,29 +193,13 @@ function loadElement() {
     const candidateGroups = businessObject.get('camunda:candidateGroups');
     approvalMode.value =
       businessObject.get('camunda:approvalMode') === 'all' ? 'all' : 'any';
-    if (assignee) {
-      // 解析审批人类型
-      if (assignee === 'supervisor') {
-        assigneeType.value = 'supervisor';
-      } else if (assignee === 'deptManager') {
-        assigneeType.value = 'deptManager';
-      } else {
-        assigneeType.value = 'username';
-        assigneeValue.value = assignee;
-      }
-    } else if (candidateUsers) {
-      assigneeType.value = 'usernames';
-      assigneeValue.value = candidateUsers
-        .split(',')
-        .map((item: string) => item.trim())
-        .filter(Boolean);
-    } else if (candidateGroups) {
-      assigneeType.value = 'roleName';
-      assigneeValue.value = candidateGroups;
-    } else {
-      assigneeType.value = '';
-      assigneeValue.value = '';
-    }
+    const selection = loadAssigneeSelection(
+      assignee,
+      candidateUsers,
+      candidateGroups,
+    );
+    assigneeType.value = selection.type;
+    assigneeValue.value = selection.value;
   } else {
     assigneeType.value = '';
     assigneeValue.value = '';
@@ -391,26 +382,11 @@ function updateElement() {
 
   // 更新审批人（UserTask）
   if (isUserTask.value) {
-    let assigneeVal = '';
-    let candidateUsersVal = '';
-    let candidateGroupsVal = '';
-
-    if (
-      assigneeType.value === 'supervisor' ||
-      assigneeType.value === 'deptManager'
-    ) {
-      assigneeVal = assigneeType.value;
-    } else if (assigneeType.value === 'username') {
-      assigneeVal =
-        typeof assigneeValue.value === 'string' ? assigneeValue.value : '';
-    } else if (assigneeType.value === 'usernames') {
-      candidateUsersVal = Array.isArray(assigneeValue.value)
-        ? assigneeValue.value.join(',')
-        : assigneeValue.value;
-    } else if (assigneeType.value === 'roleName') {
-      candidateGroupsVal =
-        typeof assigneeValue.value === 'string' ? assigneeValue.value : '';
-    }
+    const {
+      assignee: assigneeVal,
+      candidateGroups: candidateGroupsVal,
+      candidateUsers: candidateUsersVal,
+    } = serializeAssigneeSelection(assigneeType.value, assigneeValue.value);
 
     if ((businessObject.get('camunda:assignee') || '') !== assigneeVal) {
       updates['camunda:assignee'] = assigneeVal || undefined;

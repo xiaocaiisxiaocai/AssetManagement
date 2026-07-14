@@ -29,6 +29,8 @@ import {
   createPageSizeOptions,
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
+import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
+import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
 import {
   approveFlowApi,
   deleteMaterialApi,
@@ -190,6 +192,9 @@ const materialDetailVisible = ref(false);
 const materialDetailLoading = ref(false);
 const materialDetail = ref<MaterialDetail | null>(null);
 const transferVisible = ref(false);
+const workflowNodeSelector = ref<InstanceType<
+  typeof WorkflowNodeSelectDialog
+> | null>(null);
 const transferMaterial = ref<MaterialItem | null>(null);
 const materialQuery = reactive({
   deleteStatus: 'all' as DeleteStatus,
@@ -918,9 +923,11 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
 }
 
 async function approveFlow(row: MaterialFlowItem) {
+  const node = await workflowNodeSelector.value?.selectNode(row, '通过');
+  if (!node) return;
   try {
     await ElMessageBox.confirm(
-      `确认通过料件「${row.materialName}」的流转申请？`,
+      `确认通过料件「${row.materialName}」的流转申请？处理节点：${formatWorkflowNode(node)}`,
       '审批通过',
       { type: 'warning' },
     );
@@ -928,7 +935,7 @@ async function approveFlow(row: MaterialFlowItem) {
     return;
   }
   try {
-    await approveFlowApi(row.id, '同意');
+    await approveFlowApi(row.id, '同意', node.id);
     ElMessage.success('已通过');
     await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
   } catch {
@@ -937,17 +944,21 @@ async function approveFlow(row: MaterialFlowItem) {
 }
 
 async function rejectFlow(row: MaterialFlowItem) {
+  const node = await workflowNodeSelector.value?.selectNode(row, '驳回');
+  if (!node) return;
   let reason = '不同意';
   try {
-    const result = await ElMessageBox.prompt('请输入驳回原因', '驳回', {
-      inputPlaceholder: '驳回原因',
-    });
+    const result = await ElMessageBox.prompt(
+      `请输入驳回原因。处理节点：${formatWorkflowNode(node)}`,
+      '驳回',
+      { inputPlaceholder: '驳回原因' },
+    );
     reason = result.value || reason;
   } catch {
     return;
   }
   try {
-    await rejectFlowApi(row.id, reason);
+    await rejectFlowApi(row.id, reason, node.id);
     ElMessage.success('已驳回');
     await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
   } catch {
@@ -1177,6 +1188,8 @@ onMounted(async () => {
         :users="users"
         @done="afterMaterialChanged"
       />
+
+      <WorkflowNodeSelectDialog ref="workflowNodeSelector" />
     </div>
   </re-page>
 </template>

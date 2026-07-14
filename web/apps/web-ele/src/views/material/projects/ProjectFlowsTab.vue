@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import type { MaterialFlowItem } from '#/api/material';
 
+import { formatActionableWorkflowNode } from '#/utils/workflow-action-nodes';
+
 import {
   ElButton,
   ElOption,
@@ -86,9 +88,15 @@ function flowMetaOf(status: string) {
               prop="reason"
               show-overflow-tooltip
             />
+            <ElTableColumn label="处理节点" min-width="220">
+              <template #default="{ row }">
+                {{ formatActionableWorkflowNode(row) }}
+              </template>
+            </ElTableColumn>
             <ElTableColumn align="center" label="操作" width="140">
               <template #default="{ row }">
                 <ElButton
+                  :disabled="row.actionableNodeIds.length === 0"
                   link
                   size="small"
                   type="success"
@@ -96,6 +104,7 @@ function flowMetaOf(status: string) {
                   >通过</ElButton
                 >
                 <ElButton
+                  :disabled="row.actionableNodeIds.length === 0"
                   link
                   size="small"
                   type="danger"

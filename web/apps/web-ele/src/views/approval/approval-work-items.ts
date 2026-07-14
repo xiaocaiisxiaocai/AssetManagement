@@ -4,11 +4,11 @@ import type { ApprovalFlow } from '#/api/workflow';
 export type ApprovalWorkItemSource = 'asset' | 'material';
 
 export interface ApprovalWorkItem {
+  actionableNodeIds: string[];
   applicant: string;
   applicantDept?: null | string;
   applyTime: string;
   bizType: string;
-  currentNodeIds: string[];
   currentNodeLabel: string;
   flowNo: string;
   id: number;
@@ -34,11 +34,11 @@ const assetBizTypeLabels: Record<string, string> = {
 
 export function normalizeAssetApproval(flow: ApprovalFlow): ApprovalWorkItem {
   return {
+    actionableNodeIds: flow.actionableNodeIds,
     applicant: flow.applicant,
     applicantDept: flow.applicantDept,
     applyTime: flow.applyTime,
     bizType: flow.bizType,
-    currentNodeIds: flow.currentNodeIds,
     currentNodeLabel: currentAssetNodeLabel(flow),
     flowNo: flow.flowNo,
     id: flow.id,
@@ -61,11 +61,11 @@ export function normalizeMaterialFlow(
   flow: MaterialFlowItem,
 ): ApprovalWorkItem {
   return {
+    actionableNodeIds: flow.actionableNodeIds,
     applicant: flow.applicant,
     applicantDept: flow.applicantDept,
     applyTime: flow.applyTime,
     bizType: 'material_transfer',
-    currentNodeIds: flow.currentNodeIds,
     currentNodeLabel: currentMaterialNodeLabel(flow),
     flowNo: flow.flowNo,
     id: flow.id,
@@ -104,18 +104,21 @@ export function canWithdrawApproval(item: Pick<ApprovalWorkItem, 'status'>) {
 }
 
 function currentAssetNodeLabel(flow: ApprovalFlow) {
-  if (flow.currentNodeIds.length === 0) return '-';
-  if (flow.currentNodeIds.length > 1)
-    return `${flow.currentNodeIds.length} 个并行节点`;
+  if (flow.actionableNodeIds.length === 0) return '-';
+  if (flow.actionableNodeIds.length > 1)
+    return `${flow.actionableNodeIds.length} 个可操作并行节点`;
 
-  const nodeId = flow.currentNodeIds[0];
+  const nodeId = flow.actionableNodeIds[0];
   if (!nodeId) return '-';
   return flow.bpmnTokens[nodeId]?.nodeName || nodeId || '-';
 }
 
 function currentMaterialNodeLabel(flow: MaterialFlowItem) {
-  if (flow.currentNodeIds.length === 0) return '-';
-  if (flow.currentNodeIds.length > 1)
-    return `${flow.currentNodeIds.length} 个待审批节点`;
-  return '1 个待审批节点';
+  if (flow.actionableNodeIds.length === 0) return '-';
+  const nodeId = flow.actionableNodeIds[0];
+  if (!nodeId) return '-';
+  const nodeName = flow.bpmnTokens[nodeId]?.nodeName || nodeId;
+  if (flow.actionableNodeIds.length > 1)
+    return `${nodeName}等 ${flow.actionableNodeIds.length} 个可操作节点`;
+  return nodeName;
 }

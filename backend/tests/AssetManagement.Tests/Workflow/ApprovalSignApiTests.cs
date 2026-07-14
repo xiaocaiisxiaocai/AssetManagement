@@ -4,6 +4,7 @@ using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Notifications;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Workflow;
 using FluentAssertions;
@@ -86,6 +87,9 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         first.Data.CurrentNodeIds.Should().Contain("Task_Approve");
 
         Auth(await LoginToken(userB.EmployeeNo, "123456"));
+        var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
+        notifications!.Data.Should().Contain(x =>
+            x.Type == "approval_pending" && x.FlowId == flow.Data.Id && x.Title.Contains("加签"));
         var second = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "加签同意" });
 
