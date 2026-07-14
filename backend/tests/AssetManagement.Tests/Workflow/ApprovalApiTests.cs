@@ -108,6 +108,35 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Duplicate_asset_flow_message_identifies_current_applicant_and_flow()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        var activeFlow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "占用中的借用申请"
+        });
+
+        var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "重复申请"
+        });
+
+        response.EnsureSuccessStatusCode();
+        var duplicated = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        duplicated.Should().NotBeNull();
+        duplicated!.Code.Should().Be(4056);
+        duplicated.Message.Should().Contain("系统管理员");
+        duplicated.Message.Should().Contain("借用申请");
+        duplicated.Message.Should().Contain(activeFlow.Data!.FlowNo);
+        duplicated.Message.Should().Contain("当前节点");
+    }
+
+    [Fact]
     public async Task Borrow_flow_rejects_applicant_without_supervisor()
     {
         await Login();

@@ -143,8 +143,11 @@ public class WorkflowService : IWorkflowService
         await using var tx = await _db.Database.BeginTransactionAsync();
 
         // 防重检查放事务内，防止并发请求同时通过检查后各自插入
-        if (await _db.ApprovalFlows.AnyAsync(x => x.AssetId == asset.Id && x.Status == "pending"))
-            throw new BizException(4056, "该资产已有进行中的审批,请勿重复发起");
+        var activeFlow = await _db.ApprovalFlows
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.AssetId == asset.Id && x.Status == "pending");
+        if (activeFlow is not null)
+            throw new BizException(4056, BuildActiveFlowConflictMessage(activeFlow));
 
         var flow = new ApprovalFlow
         {
@@ -1132,6 +1135,21 @@ public class WorkflowService : IWorkflowService
         {
             return new List<string> { $"BPMN XML 解析失败: {ex.Message}" };
         }
+    }
+
+    private static string BuildActiveFlowConflictMessage(ApprovalFlow flow)
+    {
+        var currentNodeNames = flow.CurrentNodeIds
+            .Select(nodeId => flow.BpmnTokens.GetValueOrDefault(nodeId)?.NodeName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct()
+            .ToList();
+        var currentNodeText = currentNodeNames.Count > 0
+            ? $"，当前节点：{string.Join("、", currentNodeNames)}"
+            : "";
+
+        return $"该资产正在由“{flow.Applicant}”发起{BizTypeLabel(flow.BizType)}申请"
+               + $"（流程号：{flow.FlowNo}{currentNodeText}），请等待流程结束后再试";
     }
 
     private static ApprovalFlowDto ToFlowDto(ApprovalFlow f) => new()
