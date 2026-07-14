@@ -15,6 +15,7 @@ public interface IWorkflowService
     Task<ApprovalFlowDto> GetFlowAsync(int id, int userId);
     Task<ApprovalFlowDto> ApproveAsync(int id, ApprovalActionRequest request, int userId);
     Task<ApprovalFlowDto> RejectAsync(int id, RejectRequest request, int userId);
+    Task<ApprovalFlowDto> WithdrawAsync(int id, int userId);
     Task<ApprovalFlowDto> AddSignAsync(int id, AddSignRequest request, int userId);
     Task<ApprovalFlowDto> TransferSignAsync(int id, TransferSignRequest request, int userId);
     Task<ApprovalFlowDto> ConfirmReturnAsync(int id, int userId);

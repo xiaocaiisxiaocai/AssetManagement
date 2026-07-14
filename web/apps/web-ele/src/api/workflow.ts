@@ -105,7 +105,11 @@ export const saveWorkflowApi = (id: number, data: SaveWorkflowPayload) =>
   unwrap(requestClient.put<ApiResult<WorkflowItem>>(`/workflows/${id}`, data));
 
 export const setWorkflowStatusApi = (id: number, isActive: boolean) =>
-  unwrap(requestClient.post<ApiResult<WorkflowItem>>(`/workflows/${id}/status`, { isActive }));
+  unwrap(
+    requestClient.post<ApiResult<WorkflowItem>>(`/workflows/${id}/status`, {
+      isActive,
+    }),
+  );
 
 export const deleteWorkflowApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<boolean>>(`/workflows/${id}`));
@@ -121,19 +125,49 @@ export const getMineApprovalsApi = () =>
 
 // 待接收确认:已审批通过、尚未确认接收归还的借用单
 export const getPendingReturnsApi = () =>
-  unwrap(requestClient.get<ApiResult<ApprovalFlow[]>>('/approvals/pending-return'));
+  unwrap(
+    requestClient.get<ApiResult<ApprovalFlow[]>>('/approvals/pending-return'),
+  );
 
 export const getFlowDetailApi = (id: number) =>
   unwrap(requestClient.get<ApiResult<ApprovalFlow>>(`/approvals/${id}`));
 
 export const approveFlowApi = (id: number, data: ApprovalActionPayload) =>
-  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/approve`, data));
+  unwrap(
+    requestClient.post<ApiResult<ApprovalFlow>>(
+      `/approvals/${id}/approve`,
+      data,
+    ),
+  );
 
 export const rejectFlowApi = (id: number, data: RejectPayload) =>
-  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/reject`, data));
+  unwrap(
+    requestClient.post<ApiResult<ApprovalFlow>>(
+      `/approvals/${id}/reject`,
+      data,
+    ),
+  );
+
+export const withdrawApprovalApi = (id: number) =>
+  unwrap(
+    requestClient.post<ApiResult<ApprovalFlow>>(
+      `/approvals/${id}/withdraw`,
+      {},
+    ),
+  );
 
 export const addSignFlowApi = (id: number, data: AddSignPayload) =>
-  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/add-sign`, data));
+  unwrap(
+    requestClient.post<ApiResult<ApprovalFlow>>(
+      `/approvals/${id}/add-sign`,
+      data,
+    ),
+  );
 
 export const confirmReturnApi = (id: number) =>
-  unwrap(requestClient.post<ApiResult<ApprovalFlow>>(`/approvals/${id}/confirm-return`, {}));
+  unwrap(
+    requestClient.post<ApiResult<ApprovalFlow>>(
+      `/approvals/${id}/confirm-return`,
+      {},
+    ),
+  );

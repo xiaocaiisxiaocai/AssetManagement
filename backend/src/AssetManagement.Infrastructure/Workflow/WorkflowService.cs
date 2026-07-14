@@ -444,6 +444,32 @@ public class WorkflowService : IWorkflowService
         return ToFlowDto(flow);
     }
 
+    public async Task<ApprovalFlowDto> WithdrawAsync(int id, int userId)
+    {
+        var flow = await LoadFlow(id);
+        EnsureActive(flow);
+        if (flow.ApplicantId != userId)
+            throw new BizException(4031, "只有申请人本人可以撤回该申请");
+
+        var applicant = await LoadUser(userId);
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        BpmnEngine.Withdraw(flow, applicant.Name);
+        flow.ActiveScopeKey = null;
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
+        }
+        await AddRecord(id, "withdraw", applicant.Name, "申请人主动撤回");
+        await tx.CommitAsync();
+
+        return ToFlowDto(flow);
+    }
+
     public async Task<ApprovalFlowDto> AddSignAsync(int id, AddSignRequest request, int userId)
     {
         var flow = await LoadFlow(id);

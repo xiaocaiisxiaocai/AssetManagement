@@ -43,6 +43,11 @@ public class MaterialFlowController : ControllerBase
     public async Task<ApiResult<MaterialFlowDto>> Reject(int id, MaterialRejectRequest request)
         => ApiResult<MaterialFlowDto>.Ok(await _service.RejectAsync(id, request, CurrentUserId()));
 
+    [HttpPost("{id:int}/withdraw")]
+    [HasPermission("material-flow:view")]
+    public async Task<ApiResult<MaterialFlowDto>> Withdraw(int id)
+        => ApiResult<MaterialFlowDto>.Ok(await _service.WithdrawAsync(id, CurrentUserId()));
+
     private int CurrentUserId()
         => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");
 }

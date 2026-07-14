@@ -55,7 +55,9 @@ export function normalizeAssetApproval(flow: ApprovalFlow): ApprovalWorkItem {
   };
 }
 
-export function normalizeMaterialFlow(flow: MaterialFlowItem): ApprovalWorkItem {
+export function normalizeMaterialFlow(
+  flow: MaterialFlowItem,
+): ApprovalWorkItem {
   return {
     applicant: flow.applicant,
     applicantDept: flow.applicantDept,
@@ -94,9 +96,14 @@ export function mergeApprovalWorkItems(
   });
 }
 
+export function canWithdrawApproval(item: Pick<ApprovalWorkItem, 'status'>) {
+  return item.status === 'pending';
+}
+
 function currentAssetNodeLabel(flow: ApprovalFlow) {
   if (flow.currentNodeIds.length === 0) return '-';
-  if (flow.currentNodeIds.length > 1) return `${flow.currentNodeIds.length} 个并行节点`;
+  if (flow.currentNodeIds.length > 1)
+    return `${flow.currentNodeIds.length} 个并行节点`;
 
   const nodeId = flow.currentNodeIds[0];
   if (!nodeId) return '-';
@@ -105,6 +112,7 @@ function currentAssetNodeLabel(flow: ApprovalFlow) {
 
 function currentMaterialNodeLabel(flow: MaterialFlowItem) {
   if (flow.currentNodeIds.length === 0) return '-';
-  if (flow.currentNodeIds.length > 1) return `${flow.currentNodeIds.length} 个待审批节点`;
+  if (flow.currentNodeIds.length > 1)
+    return `${flow.currentNodeIds.length} 个待审批节点`;
   return '1 个待审批节点';
 }

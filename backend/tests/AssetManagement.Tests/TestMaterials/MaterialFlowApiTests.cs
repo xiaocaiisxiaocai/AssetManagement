@@ -114,6 +114,41 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Applicant_can_withdraw_pending_material_flow_and_start_again()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var project = await CreateProject("撤回流转项目");
+        var transferee = await CreateUser("0998", "撤回流转接收人");
+        var material = await CreateMaterial(project.Id, "撤回流转样品");
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "稍后撤回"
+        });
+
+        var withdrawn = await Post<ApiResult<MaterialFlowDto>>(
+            $"/api/material-flows/{flow.Data!.Id}/withdraw", new { });
+        withdrawn.Data!.Status.Should().Be("withdrawn");
+        withdrawn.Data.CurrentNodeIds.Should().BeEmpty();
+
+        var detail = await _client.GetFromJsonAsync<ApiResult<TestMaterialDetailDto>>(
+            $"/api/test-materials/{material.Id}/detail");
+        detail!.Data!.Records.Should().Contain(x =>
+            x.Action == "withdraw" && x.Comment == "申请人主动撤回");
+        detail.Data.Material.HasPendingFlow.Should().BeFalse();
+
+        var replacement = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "撤回后重新发起"
+        });
+        replacement.Code.Should().Be(0, "撤回后应释放料件的进行中流转锁");
+    }
+
+    [Fact]
     public async Task Transfer_with_switch_on_uses_active_material_workflow_only()
     {
         await Login();

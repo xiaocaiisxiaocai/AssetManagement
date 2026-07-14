@@ -375,6 +375,32 @@ public class MaterialFlowService : IMaterialFlowService
         return ToDto(flow);
     }
 
+    public async Task<MaterialFlowDto> WithdrawAsync(int id, int userId)
+    {
+        var flow = await LoadFlow(id);
+        EnsureActive(flow);
+        if (flow.ApplicantId != userId)
+            throw new BizException(4031, "只有申请人本人可以撤回该申请");
+
+        var applicant = await LoadUser(userId);
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        BpmnEngine.Withdraw(flow, applicant.Name);
+        flow.ActiveScopeKey = null;
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该流转单已被他人处理，请刷新后重试");
+        }
+        await AddRecord(id, "withdraw", applicant.Name, "申请人主动撤回");
+        await tx.CommitAsync();
+
+        return ToDto(flow);
+    }
+
     // ===== 私有辅助 =====
     // COUNT-then-generate 模式在高并发下存在 TOCTOU 竞态：两个请求同时 COUNT 得到相同值，
     // 生成同一 FlowNo，FlowNo 唯一索引会让其中一个抛 DbUpdateException。

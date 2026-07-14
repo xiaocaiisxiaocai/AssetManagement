@@ -348,6 +348,50 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Applicant_can_withdraw_pending_flow_and_release_asset_lock()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "稍后撤回"
+        });
+
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var employeeRole = roles!.Data!.Items.Single(r => r.Code == "employee");
+        var otherEmployeeNo = Unique("OTH");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = otherEmployeeNo,
+            Name = Unique("其他员工"),
+            Password = "123456",
+            RoleIds = new[] { employeeRole.Id }
+        });
+
+        Auth(await LoginToken(otherEmployeeNo, "123456"));
+        var forbiddenResponse = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/withdraw", new { });
+        forbiddenResponse.EnsureSuccessStatusCode();
+        var forbidden = await forbiddenResponse.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        forbidden!.Code.Should().Be(4031);
+        forbidden.Message.Should().Contain("申请人本人");
+
+        Auth(await LoginToken("1001", "123456"));
+        var withdrawn = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/withdraw", new { });
+        withdrawn.Data!.Status.Should().Be("withdrawn");
+        withdrawn.Data.CurrentNodeIds.Should().BeEmpty();
+
+        var replacement = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "撤回后重新发起"
+        });
+        replacement.Code.Should().Be(0, "撤回后应释放资产的进行中流程锁");
+    }
+
+    [Fact]
     public async Task Supervisor_node_resolves_department_manager_without_user_supervisor()
     {
         await Login();

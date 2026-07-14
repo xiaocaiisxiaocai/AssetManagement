@@ -19,6 +19,11 @@ public static class FlowStatus
     /// 已驳回
     /// </summary>
     public const string Rejected = "rejected";
+
+    /// <summary>
+    /// 申请人已撤回
+    /// </summary>
+    public const string Withdrawn = "withdrawn";
 }
 
 /// <summary>

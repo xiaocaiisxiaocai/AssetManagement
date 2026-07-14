@@ -8,11 +8,21 @@ import { useAccess } from '@vben/access';
 
 import { getAllAssetsApi } from '#/api/asset';
 import { getUserOptionsApi } from '#/api/user';
-import { listMyFlowsApi } from '#/api/material';
-import { getMineApprovalsApi, startApprovalApi } from '#/api/workflow';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { listMyFlowsApi, withdrawMaterialFlowApi } from '#/api/material';
+import {
+  getMineApprovalsApi,
+  startApprovalApi,
+  withdrawApprovalApi,
+} from '#/api/workflow';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
 import { buildApprovalActionAccess } from '#/views/permissions/action-access';
-import { mergeApprovalWorkItems } from '../approval-work-items';
+import {
+  canWithdrawApproval,
+  mergeApprovalWorkItems,
+} from '../approval-work-items';
 
 import {
   ElButton,
@@ -22,6 +32,7 @@ import {
   ElFormItem,
   ElInput,
   ElMessage,
+  ElMessageBox,
   ElOption,
   ElPagination,
   ElSelect,
@@ -33,10 +44,15 @@ import {
 defineOptions({ name: 'ApprovalMine' });
 
 const { hasAccessByCodes } = useAccess();
-const approvalActionAccess = computed(() => buildApprovalActionAccess(hasAccessByCodes));
-const canViewMaterialFlow = computed(() => hasAccessByCodes(['material-flow:view']));
+const approvalActionAccess = computed(() =>
+  buildApprovalActionAccess(hasAccessByCodes),
+);
+const canViewMaterialFlow = computed(() =>
+  hasAccessByCodes(['material-flow:view']),
+);
 const loading = ref(false);
 const saving = ref(false);
+const withdrawingKeys = ref<string[]>([]);
 const dialogVisible = ref(false);
 const flows = ref<ApprovalWorkItem[]>([]);
 const assets = ref<AssetItem[]>([]);
@@ -137,8 +153,48 @@ async function submit() {
   }
 }
 
+async function withdraw(row: ApprovalWorkItem) {
+  try {
+    await ElMessageBox.confirm(
+      `确认撤回申请「${row.flowNo}」？撤回后当前审批立即终止。`,
+      '撤回申请',
+      {
+        cancelButtonText: '取消',
+        confirmButtonText: '确认撤回',
+        type: 'warning',
+      },
+    );
+  } catch {
+    return;
+  }
+
+  withdrawingKeys.value.push(row.key);
+  try {
+    if (row.source === 'asset') {
+      await withdrawApprovalApi(row.id);
+    } else {
+      await withdrawMaterialFlowApi(row.id);
+    }
+    ElMessage.success('申请已撤回');
+    await loadData();
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    withdrawingKeys.value = withdrawingKeys.value.filter(
+      (key) => key !== row.key,
+    );
+  }
+}
+
 function statusText(status: string) {
-  return { approved: '已通过', pending: '审批中', rejected: '已驳回' }[status] ?? status;
+  return (
+    {
+      approved: '已通过',
+      pending: '审批中',
+      rejected: '已驳回',
+      withdrawn: '已撤回',
+    }[status] ?? status
+  );
 }
 
 function onPageSizeChange() {
@@ -160,8 +216,12 @@ onMounted(async () => {
           <h2 class="mine-title">我的申请</h2>
         </div>
         <div v-if="approvalActionAccess.canCreate" class="mine-actions">
-          <ElButton type="success" @click="openStart('borrow')">发起借用</ElButton>
-          <ElButton type="warning" @click="openStart('transfer')">发起转让</ElButton>
+          <ElButton type="success" @click="openStart('borrow')"
+            >发起借用</ElButton
+          >
+          <ElButton type="warning" @click="openStart('transfer')"
+            >发起转让</ElButton
+          >
           <ElButton @click="openStart('return')">发起归还</ElButton>
         </div>
       </div>
@@ -171,7 +231,10 @@ onMounted(async () => {
           <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
           <ElTableColumn label="来源" width="110" align="center">
             <template #default="{ row }">
-              <ElTag :type="row.source === 'asset' ? 'primary' : 'success'" size="small">
+              <ElTag
+                :type="row.source === 'asset' ? 'primary' : 'success'"
+                size="small"
+              >
                 {{ row.sourceLabel }}
               </ElTag>
             </template>
@@ -179,7 +242,15 @@ onMounted(async () => {
           <ElTableColumn label="类型" width="100" align="center">
             <template #default="{ row }">
               <ElTag
-                :type="row.bizType === 'borrow' ? 'success' : row.bizType === 'transfer' ? 'warning' : row.bizType === 'material_transfer' ? 'primary' : 'info'"
+                :type="
+                  row.bizType === 'borrow'
+                    ? 'success'
+                    : row.bizType === 'transfer'
+                      ? 'warning'
+                      : row.bizType === 'material_transfer'
+                        ? 'primary'
+                        : 'info'
+                "
                 size="small"
               >
                 {{ row.typeLabel }}
@@ -187,10 +258,17 @@ onMounted(async () => {
             </template>
           </ElTableColumn>
           <ElTableColumn label="对象" min-width="180" prop="objectName" />
-          <ElTableColumn class-name="hide-on-mobile" label="接收人" min-width="120" prop="transferee" />
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="接收人"
+            min-width="120"
+            prop="transferee"
+          />
           <ElTableColumn label="当前节点" min-width="150">
             <template #default="{ row }">
-              <span :class="{ 'mine-empty-text': row.currentNodeLabel === '-' }">
+              <span
+                :class="{ 'mine-empty-text': row.currentNodeLabel === '-' }"
+              >
                 {{ row.currentNodeLabel }}
               </span>
             </template>
@@ -198,21 +276,52 @@ onMounted(async () => {
           <ElTableColumn label="状态" width="100" align="center">
             <template #default="{ row }">
               <ElTag
-                :type="row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'danger' : 'warning'"
+                :type="
+                  row.status === 'approved'
+                    ? 'success'
+                    : row.status === 'rejected'
+                      ? 'danger'
+                      : row.status === 'withdrawn'
+                        ? 'info'
+                        : 'warning'
+                "
                 size="small"
               >
                 {{ statusText(row.status) }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="申请事由" min-width="220" prop="reason" />
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="申请事由"
+            min-width="220"
+            prop="reason"
+          />
+          <ElTableColumn fixed="right" label="操作" width="100" align="center">
+            <template #default="{ row }">
+              <ElButton
+                v-if="canWithdrawApproval(row)"
+                :loading="withdrawingKeys.includes(row.key)"
+                link
+                type="danger"
+                @click="withdraw(row)"
+              >
+                撤回
+              </ElButton>
+              <span v-else class="mine-empty-text">-</span>
+            </template>
+          </ElTableColumn>
         </ElTable>
         <div class="table-bottom-pager">
           <div class="table-bottom-pager-left">
             <span>共 {{ flows.length }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
-            <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
+            <ElSelect
+              v-model="query.pageSize"
+              style="width: 92px"
+              @change="onPageSizeChange"
+            >
               <ElOption
                 v-for="size in pageSizeOptions"
                 :key="size"
@@ -241,7 +350,12 @@ onMounted(async () => {
             </ElSelect>
           </ElFormItem>
           <ElFormItem label="资产" required>
-            <ElSelect v-model="form.assetId" filterable placeholder="选择资产" style="width: 100%">
+            <ElSelect
+              v-model="form.assetId"
+              filterable
+              placeholder="选择资产"
+              style="width: 100%"
+            >
               <ElOption
                 v-for="asset in assets"
                 :key="asset.id"
@@ -251,10 +365,25 @@ onMounted(async () => {
             </ElSelect>
           </ElFormItem>
           <ElFormItem v-if="showReturnDate" label="归还日期" required>
-            <ElDatePicker v-model="form.returnDate" type="date" value-format="YYYY-MM-DD" placeholder="选择归还日期" style="width: 100%" />
+            <ElDatePicker
+              v-model="form.returnDate"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择归还日期"
+              style="width: 100%"
+            />
           </ElFormItem>
-          <ElFormItem v-if="form.bizType === 'transfer'" label="接收人" required>
-            <ElSelect v-model="form.transfereeId" filterable placeholder="选择接收人" style="width: 100%">
+          <ElFormItem
+            v-if="form.bizType === 'transfer'"
+            label="接收人"
+            required
+          >
+            <ElSelect
+              v-model="form.transfereeId"
+              filterable
+              placeholder="选择接收人"
+              style="width: 100%"
+            >
               <ElOption
                 v-for="user in users"
                 :key="user.id"
@@ -264,12 +393,19 @@ onMounted(async () => {
             </ElSelect>
           </ElFormItem>
           <ElFormItem label="申请事由">
-            <ElInput v-model="form.reason" :rows="3" type="textarea" placeholder="请输入申请事由" />
+            <ElInput
+              v-model="form.reason"
+              :rows="3"
+              type="textarea"
+              placeholder="请输入申请事由"
+            />
           </ElFormItem>
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="submit">提交</ElButton>
+          <ElButton :loading="saving" type="primary" @click="submit"
+            >提交</ElButton
+          >
         </template>
       </ElDialog>
     </div>

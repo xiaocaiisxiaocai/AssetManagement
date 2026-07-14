@@ -113,7 +113,9 @@ export const listMaterialsApi = (params: MaterialQuery) =>
 
 export const getMaterialDetailApi = (id: number) =>
   unwrap(
-    requestClient.get<ApiResult<MaterialDetail>>(`/test-materials/${id}/detail`),
+    requestClient.get<ApiResult<MaterialDetail>>(
+      `/test-materials/${id}/detail`,
+    ),
   );
 
 export const createMaterialApi = (data: SaveMaterialPayload) =>
@@ -143,13 +145,18 @@ export const initiateTransferApi = (data: {
   reason?: string;
   transfereeId: number;
 }) =>
-  unwrap(requestClient.post<ApiResult<MaterialFlowItem>>('/material-flows', data));
+  unwrap(
+    requestClient.post<ApiResult<MaterialFlowItem>>('/material-flows', data),
+  );
 
 export const listPendingFlowsApi = (projectId?: number) =>
   unwrap(
-    requestClient.get<ApiResult<MaterialFlowItem[]>>('/material-flows/pending', {
-      params: projectId != null ? { projectId } : undefined,
-    }),
+    requestClient.get<ApiResult<MaterialFlowItem[]>>(
+      '/material-flows/pending',
+      {
+        params: projectId != null ? { projectId } : undefined,
+      },
+    ),
   );
 
 export const listMyFlowsApi = (projectId?: number) =>
@@ -172,5 +179,13 @@ export const rejectFlowApi = (id: number, reason: string, nodeId?: string) =>
     requestClient.post<ApiResult<MaterialFlowItem>>(
       `/material-flows/${id}/reject`,
       { reason, nodeId },
+    ),
+  );
+
+export const withdrawMaterialFlowApi = (id: number) =>
+  unwrap(
+    requestClient.post<ApiResult<MaterialFlowItem>>(
+      `/material-flows/${id}/withdraw`,
+      {},
     ),
   );

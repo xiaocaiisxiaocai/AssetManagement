@@ -4,6 +4,7 @@ import type { ApprovalFlow } from '#/api/workflow';
 import { describe, expect, it } from 'vitest';
 
 import {
+  canWithdrawApproval,
   mergeApprovalWorkItems,
   normalizeAssetApproval,
   normalizeMaterialFlow,
@@ -78,5 +79,12 @@ describe('审批工作项适配', () => {
     const result = mergeApprovalWorkItems([assetFlow], [materialFlow]);
 
     expect(result.map((item) => item.key)).toEqual(['material-2', 'asset-1']);
+  });
+
+  it('只有审批中的申请允许撤回', () => {
+    expect(canWithdrawApproval({ status: 'pending' })).toBe(true);
+    expect(canWithdrawApproval({ status: 'approved' })).toBe(false);
+    expect(canWithdrawApproval({ status: 'rejected' })).toBe(false);
+    expect(canWithdrawApproval({ status: 'withdrawn' })).toBe(false);
   });
 });

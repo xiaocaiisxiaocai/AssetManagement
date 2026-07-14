@@ -108,6 +108,25 @@ public static class BpmnEngine
     }
 
     /// <summary>
+    /// 申请人撤回进行中的流程
+    /// </summary>
+    public static void Withdraw(IBpmnFlowInstance flow, string applicant)
+    {
+        flow.Status = FlowStatus.Withdrawn;
+        flow.CurrentNodeIds.Clear();
+
+        var completedAt = DateTime.UtcNow;
+        foreach (var token in flow.BpmnTokens.Values.Where(token =>
+                     token.Status is BpmnTokenStatus.Active or BpmnTokenStatus.Waiting))
+        {
+            token.Status = BpmnTokenStatus.Skipped;
+            token.Approver = applicant;
+            token.Opinion = "[撤回] 申请人主动撤回";
+            token.CompletedAt = completedAt;
+        }
+    }
+
+    /// <summary>
     /// 从指定节点推进流程
     /// </summary>
     private static void AdvanceFrom(IBpmnFlowInstance flow, BpmnProcess process, string fromNodeId)
