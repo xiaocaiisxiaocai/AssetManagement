@@ -252,7 +252,7 @@ public class WorkflowService : IWorkflowService
         var result = new List<ApprovalFlowDto>();
         foreach (var flow in flows)
         {
-            if (isAdmin || await CanApprove(flow, user, workflowMap))
+            if (await CanApprove(flow, user, workflowMap))
             {
                 result.Add(ToFlowDto(flow));
             }
@@ -552,7 +552,7 @@ public class WorkflowService : IWorkflowService
         var signKey = signUserId.ToString();
         if (token.AddedSigners is null || !token.AddedSigners.TryGetValue(signKey, out var addedByUserId))
             throw new BizException(4057, "该用户不是动态加签人员，无法取消");
-        if (!IsAdmin(user) && addedByUserId != user.Id)
+        if (addedByUserId != user.Id)
             throw new BizException(4031, "只有执行加签的人可以取消该加签");
         if (token.SignStates?.GetValueOrDefault(signKey) != false)
             throw new BizException(4057, "该加签人已完成审批，无法取消");
@@ -760,11 +760,6 @@ public class WorkflowService : IWorkflowService
         if (node == null || node.Type != BpmnNodeType.UserTask)
         {
             throw new BizException(4015, "无效的审批节点");
-        }
-
-        if (IsAdmin(user))
-        {
-            return;
         }
 
         if (!await IsApproverForNode(node, user, flow))

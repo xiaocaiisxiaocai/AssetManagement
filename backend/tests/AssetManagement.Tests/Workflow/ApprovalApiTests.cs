@@ -216,6 +216,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var flowId = flow.Data!.Id;
         var initialNodeIds = flow.Data.CurrentNodeIds.ToList();
 
+        Auth(await LoginToken("TEST-SUPERVISOR", "123456"));
         var approveResponse = await _client.PostAsJsonAsync($"/api/approvals/{flowId}/approve",
             new ApprovalActionRequest { Opinion = "同意" });
 
@@ -255,6 +256,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         flow.Should().NotBeNull();
         flow!.Data.Should().NotBeNull();
 
+        Auth(await LoginToken("TEST-SUPERVISOR", "123456"));
         var rejectResponse = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/reject",
             new RejectRequest { Reason = "不同意" });
 

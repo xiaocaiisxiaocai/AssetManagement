@@ -165,12 +165,14 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             AssetId = created.Data!.Id,
             Reason = "借出后验证删除保护"
         });
+        Auth(await LoginToken("TEST-SUPERVISOR", "123456"));
         while (flow.Data!.Status == "pending")
         {
             flow = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
                 new ApprovalActionRequest { NodeId = flow.Data.CurrentNodeIds.FirstOrDefault(), Opinion = "同意" });
         }
 
+        await Login();
         var res = await _client.DeleteAsync($"/api/assets/{created.Data.Id}");
         var body = await res.Content.ReadFromJsonAsync<ApiResult<object?>>();
 
@@ -398,13 +400,21 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
     private async Task Login()
     {
+        Auth(await LoginToken("1001", "123456"));
+    }
+
+    private async Task<string> LoginToken(string employeeNo, string password)
+    {
         var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
-            employeeNo = "1001",
-            password = "123456"
+            employeeNo,
+            password
         });
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.Data!.Token);
+        return body.Data!.Token;
     }
+
+    private void Auth(string token)
+        => _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
     private async Task<T> Post<T>(string url, object body)
     {

@@ -69,15 +69,31 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
         var admin = db.Users.AsTracking().Single(x => x.EmployeeNo == "1001");
         if (!admin.SupervisorId.HasValue)
         {
+            var department = new Department
+            {
+                Name = "测试审批部门",
+                Code = $"TEST-{Guid.NewGuid():N}"[..20],
+                IsActive = true
+            };
+            db.Departments.Add(department);
+            db.SaveChanges();
             var supervisor = new User
             {
                 EmployeeNo = "TEST-SUPERVISOR",
                 Name = "测试直属主管",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
+                DepartmentId = department.Id,
                 IsActive = true
             };
             db.Users.Add(supervisor);
             db.SaveChanges();
+            var supervisorRole = db.Roles.Single(x => x.Code == "supervisor");
+            db.UserRoles.Add(new UserRole
+            {
+                UserId = supervisor.Id,
+                RoleId = supervisorRole.Id
+            });
+            department.ManagerId = supervisor.Id;
             admin.SupervisorId = supervisor.Id;
             db.SaveChanges();
         }

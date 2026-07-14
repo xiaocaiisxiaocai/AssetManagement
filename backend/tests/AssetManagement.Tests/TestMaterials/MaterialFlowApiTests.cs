@@ -103,7 +103,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         before!.Data!.CustodianId.Should().NotBe(transferee.Id);
         before.Data.HasPendingFlow.Should().BeTrue();
 
-        // admin 审批通过(admin 绕过审批人校验)
+        // 默认项目负责人分支明确将审批节点分配给工号 1001。
         var approved = await Post<ApiResult<MaterialFlowDto>>(
             $"/api/material-flows/{flow.Data.Id}/approve", new MaterialApprovalRequest { Opinion = "同意" });
         approved.Data!.Status.Should().Be("approved");
@@ -111,6 +111,62 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
         after!.Data!.CustodianId.Should().Be(transferee.Id);
         after.Data.HasPendingFlow.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Admin_cannot_handle_material_node_assigned_to_supervisor()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var originalBpmn = await ReplaceActiveMaterialWorkflowBpmn(SupervisorOnlyBpmn());
+        try
+        {
+            var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+                new CreateDepartmentRequest { Name = "料件审批隔离部门" });
+            var supervisor = await CreateUser("0941", "料件审批主管", "supervisor", department.Data!.Id);
+            var transferee = await CreateUser("0942", "料件流转接收人");
+            var project = await CreateProject("料件审批隔离项目");
+            var material = await CreateMaterial(
+                project.Id,
+                "料件审批隔离样品",
+                department.Data.Id,
+                supervisor.Id);
+
+            Auth(await LoginToken(supervisor.EmployeeNo, "123456"));
+            var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+            {
+                MaterialId = material.Id,
+                TransfereeId = transferee.Id,
+                Reason = "验证管理员不能越级处理料件流转"
+            });
+
+            await Login();
+            var pending = await _client.GetFromJsonAsync<ApiResult<List<MaterialFlowDto>>>("/api/material-flows/pending");
+            pending!.Data.Should().NotContain(x => x.Id == flow.Data!.Id);
+
+            var rejected = await _client.PostAsJsonAsync($"/api/material-flows/{flow.Data!.Id}/reject",
+                new MaterialRejectRequest { Reason = "管理员越级驳回" });
+            var rejectedBody = await rejected.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+            rejectedBody!.Code.Should().Be(4016);
+
+            var approved = await _client.PostAsJsonAsync($"/api/material-flows/{flow.Data.Id}/approve",
+                new MaterialApprovalRequest { Opinion = "管理员越级通过" });
+            var approvedBody = await approved.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+            approvedBody!.Code.Should().Be(4016);
+
+            Auth(await LoginToken(supervisor.EmployeeNo, "123456"));
+            var supervisorPending = await _client.GetFromJsonAsync<ApiResult<List<MaterialFlowDto>>>(
+                "/api/material-flows/pending");
+            supervisorPending!.Data.Should().Contain(x => x.Id == flow.Data.Id);
+            var supervisorApproved = await Post<ApiResult<MaterialFlowDto>>(
+                $"/api/material-flows/{flow.Data.Id}/approve",
+                new MaterialApprovalRequest { Opinion = "主管正常通过" });
+            supervisorApproved.Data!.Status.Should().Be("approved");
+        }
+        finally
+        {
+            await ReplaceActiveMaterialWorkflowBpmn(originalBpmn);
+        }
     }
 
     [Fact]
@@ -265,6 +321,29 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Admin_role_alone_cannot_transfer_unrelated_material()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var owner = await CreateUser("0943", "料件实际负责人");
+        var transferee = await CreateUser("0944", "管理员转移接收人");
+        var project = await CreateProject("管理员不可越权转移项目", owner.Id);
+        var material = await CreateMaterial(project.Id, "管理员不可越权转移样品", null, owner.Id);
+
+        var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "管理员角色本身不应获得料件转移权"
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        body!.Code.Should().Be(4047);
+        var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
+        after!.Data!.CustodianId.Should().Be(owner.Id);
+    }
+
+    [Fact]
     public async Task Project_owner_transfer_notifies_configured_employee_no_assignee()
     {
         await Login();
@@ -414,17 +493,60 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
 
     private static string NewProjectCode() => $"TP-{Guid.NewGuid():N}"[..20];
 
-    private async Task<TestMaterialDto> CreateMaterial(int projectId, string name)
+    private async Task<TestMaterialDto> CreateMaterial(
+        int projectId,
+        string name,
+        int? departmentId = null,
+        int? custodianId = null)
         => (await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
         {
-            Name = name, ProjectId = projectId
+            Name = name,
+            ProjectId = projectId,
+            DepartmentId = departmentId,
+            CustodianId = custodianId
         })).Data!;
 
-    private async Task<UserDto> CreateUser(string employeeNo, string name, string roleCode = "employee")
+    private async Task<UserDto> CreateUser(
+        string employeeNo,
+        string name,
+        string roleCode = "employee",
+        int? departmentId = null)
         => (await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
-            EmployeeNo = employeeNo, Name = name, Password = "123456", RoleIds = new[] { (await Role(roleCode)).Id }
+            EmployeeNo = employeeNo,
+            Name = name,
+            Password = "123456",
+            DepartmentId = departmentId,
+            RoleIds = new[] { (await Role(roleCode)).Id }
         })).Data!;
+
+    private async Task<string> ReplaceActiveMaterialWorkflowBpmn(string bpmnXml)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var workflow = await db.Workflows.AsTracking()
+            .SingleAsync(x => x.BizType == "material_transfer" && x.IsActive);
+        var original = workflow.BpmnXml!;
+        workflow.BpmnXml = bpmnXml;
+        await db.SaveChangesAsync();
+        return original;
+    }
+
+    private static string SupervisorOnlyBpmn() => """
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="Process_material_supervisor" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1"><bpmn:outgoing>Flow_1</bpmn:outgoing></bpmn:startEvent>
+    <bpmn:userTask id="Task_supervisor" name="主管审批" camunda:candidateGroups="supervisor">
+      <bpmn:incoming>Flow_1</bpmn:incoming><bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_1"><bpmn:incoming>Flow_2</bpmn:incoming></bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_supervisor" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_supervisor" targetRef="EndEvent_1" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
 
     private async Task<RoleDto> Role(string code)
     {

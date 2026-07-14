@@ -42,9 +42,9 @@ public class MaterialFlowService : IMaterialFlowService
             .SingleOrDefaultAsync(x => x.Id == applicantId)
             ?? throw new BizException(4041, "用户不存在");
         await EnsureMaterialInScopeAsync(material, applicant);
-        var isPrivileged = applicant.UserRoles.Any(x => x.Role?.Code is "admin" or "supervisor");
+        var isSupervisor = applicant.UserRoles.Any(x => x.Role?.Code == "supervisor");
         var isProjectOwner = await _db.TestProjects.AnyAsync(x => x.Id == material.ProjectId && x.OwnerId == applicantId);
-        if (!isPrivileged && material.CustodianId != applicantId && !isProjectOwner)
+        if (!isSupervisor && material.CustodianId != applicantId && !isProjectOwner)
             throw new BizException(4047, "只能流转本人保管或本人负责项目的料件");
         var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId && x.IsActive)
             ?? throw new BizException(4041, "受让人不存在或已停用");
@@ -245,7 +245,7 @@ public class MaterialFlowService : IMaterialFlowService
         var result = new List<MaterialFlowDto>();
         foreach (var flow in flows)
         {
-            if (isAdmin || await CanApprove(flow, user, workflowMap)) result.Add(ToDto(flow));
+            if (await CanApprove(flow, user, workflowMap)) result.Add(ToDto(flow));
         }
         return result;
     }
@@ -486,7 +486,6 @@ public class MaterialFlowService : IMaterialFlowService
         var process = BpmnParser.Parse(workflow.BpmnXml!);
         var node = process.FindNode(nodeId);
         if (node == null || node.Type != BpmnNodeType.UserTask) throw new BizException(4015, "无效的审批节点");
-        if (user.UserRoles.Any(ur => ur.Role?.Code == "admin")) return;
         if (!await IsApproverForNode(node, user, flow)) throw new BizException(4016, "您无权审批此节点");
     }
 

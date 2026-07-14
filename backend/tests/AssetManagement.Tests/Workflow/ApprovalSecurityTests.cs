@@ -23,7 +23,7 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         _client = factory.CreateClient();
     }
 
-    // P0-2:非当前节点审批人(且非超级管理员)不得处理他人工单
+    // P0-2:非当前节点审批人不得处理他人工单，系统管理员也不例外
     [Fact]
     public async Task NonApprover_cannot_approve_others_flow()
     {
@@ -72,6 +72,38 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         detail!.Code.Should().NotBe(0, "非申请人、接收人、审批人或管辖部门管理员不应读取他人工单详情");
     }
 
+    [Fact]
+    public async Task Admin_cannot_handle_supervisor_node_without_assignment()
+    {
+        Auth(await LoginToken("1001", "123456"));
+        await ResetBorrowWorkflow();
+        var asset = await CreateAsset();
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "管理员不得代替直属主管审批"
+        });
+
+        var pending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
+        pending!.Data.Should().NotContain(x => x.Id == flow.Data!.Id,
+            "待我审批只能返回当前用户实际负责的节点");
+
+        var rejected = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/reject",
+            new RejectRequest { Reason = "管理员越级驳回" });
+        var rejectedBody = await rejected.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        rejectedBody!.Code.Should().Be(4016);
+
+        var approved = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data.Id}/approve",
+            new ApprovalActionRequest { Opinion = "管理员越级通过" });
+        var approvedBody = await approved.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        approvedBody!.Code.Should().Be(4016);
+
+        var detail = await _client.GetFromJsonAsync<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}");
+        detail!.Code.Should().Be(0, "管理员仍可查看流程详情");
+        detail.Data!.Status.Should().Be("pending");
+    }
+
     // P0-5:已通过(终态)的流程不得再被驳回翻盘
     [Fact]
     public async Task Approved_flow_cannot_be_rejected()
@@ -93,6 +125,7 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         flow!.Data.Should().NotBeNull();
         var id = flow.Data!.Id;
 
+        Auth(await LoginToken("TEST-SUPERVISOR", "123456"));
         // 循环审批直到完成
         int maxAttempts = 10;
         for (int i = 0; i < maxAttempts; i++)
@@ -105,6 +138,7 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
             if (!approveRes.IsSuccessStatusCode) break;
         }
 
+        Auth(await LoginToken("1001", "123456"));
         var done = await _client.GetFromJsonAsync<ApiResult<ApprovalFlowDto>>($"/api/approvals/{id}");
         done!.Data!.Status.Should().Be("approved", "流程应该已完成");
 

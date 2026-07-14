@@ -122,6 +122,37 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         approved.Data!.Status.Should().Be("approved");
     }
 
+    [Fact]
+    public async Task Admin_added_signer_cannot_cancel_sign_added_by_another_user()
+    {
+        Auth(await LoginToken("1001", "123456"));
+        var userA = await CreateApprover("加签发起人");
+        var userB = await CreateApprover("被加签管理员");
+        var workflow = await CreateWorkflow("cancelothersign", SingleUserBpmn(userA.Id.ToString()));
+        var asset = await CreateAsset();
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = workflow.BizType,
+            AssetId = asset.Id,
+            Reason = "管理员不能取消别人发起的加签"
+        });
+
+        Auth(await LoginToken(userA.EmployeeNo, "123456"));
+        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/add-sign",
+            new AddSignRequest { Who = userB.Id.ToString() });
+
+        Auth(await LoginToken(userB.EmployeeNo, "123456"));
+        var denied = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data.Id}/cancel-add-sign",
+            new CancelAddSignRequest { Who = userB.Id.ToString() });
+        var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        deniedBody!.Code.Should().Be(4031);
+
+        Auth(await LoginToken(userA.EmployeeNo, "123456"));
+        var cancelled = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/cancel-add-sign",
+            new CancelAddSignRequest { Who = userB.Id.ToString() });
+        cancelled.Data!.BpmnTokens["Task_Approve"].SignStates.Should().NotContainKey(userB.Id.ToString());
+    }
+
     private async Task<UserDto> CreateApprover(string name)
     {
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");

@@ -82,10 +82,14 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         flow.Data.Should().NotBeNull();
 
         // 审批（BPMN 模式下，一次审批应该完成流程，默认流程）
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            await LoginToken("TEST-SUPERVISOR", "123456"));
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve", new ApprovalActionRequest { Opinion = "同意" });
         approved.Data.Should().NotBeNull();
         approved.Data!.Status.Should().Be("approved", "流程应该已完成");
 
+        await Login();
         var borrowed = await _client.GetFromJsonAsync<ApiResult<PagedResult<BorrowReportRow>>>("/api/reports/borrowed");
 
         borrowed!.Data!.Items.Should().Contain(x => x.AssetId == asset.Id && x.FlowId == flow.Data.Id);
