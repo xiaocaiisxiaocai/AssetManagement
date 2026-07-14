@@ -204,12 +204,6 @@ function summaryText(summary: null | string | undefined) {
           <ElDescriptionsItem label="数量">
             {{ detail.asset.quantity }}
           </ElDescriptionsItem>
-          <ElDescriptionsItem label="型号">
-            {{ detail.asset.model || '—' }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="品牌">
-            {{ detail.asset.brand || '—' }}
-          </ElDescriptionsItem>
           <ElDescriptionsItem label="购入日期">
             {{ detail.asset.purchaseDate?.slice(0, 10) || '—' }}
           </ElDescriptionsItem>

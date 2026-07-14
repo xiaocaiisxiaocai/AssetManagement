@@ -16,8 +16,6 @@ public record AssetDto
     public string? LocationName { get; init; }
     public int? CustodianId { get; init; }
     public string? CustodianName { get; init; }
-    public string? Model { get; init; }
-    public string? Brand { get; init; }
     public int Quantity { get; init; }
     public AssetStatus Status { get; init; }
     public DateTime? PurchaseDate { get; init; }
@@ -52,8 +50,6 @@ public record CreateAssetRequest
     public int? DepartmentId { get; init; }
     public int? LocationId { get; init; }
     public int? CustodianId { get; init; }
-    public string? Model { get; init; }
-    public string? Brand { get; init; }
     public int Quantity { get; init; } = 1;
     public DateTime? PurchaseDate { get; init; }
     public DateTime? RegistrationTime { get; init; }
@@ -70,8 +66,6 @@ public record UpdateAssetRequest
     public int? DepartmentId { get; init; }
     public int? LocationId { get; init; }
     public int? CustodianId { get; init; }
-    public string? Model { get; init; }
-    public string? Brand { get; init; }
     public int Quantity { get; init; } = 1;
     public AssetStatus Status { get; init; } = AssetStatus.Available;
     public DateTime? PurchaseDate { get; init; }
@@ -87,8 +81,6 @@ public record ImportPreviewRow
     public int Row { get; init; }
     public string Name { get; init; } = "";
     public string CategoryCode { get; init; } = "";
-    public string? Model { get; init; }
-    public string? Brand { get; init; }
     public DateTime? PurchaseDate { get; init; }
     public DateTime? RegistrationTime { get; init; }
     public string? CurrentCondition { get; init; }

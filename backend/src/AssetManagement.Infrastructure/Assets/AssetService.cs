@@ -137,8 +137,6 @@ public class AssetService : IAssetService
                 DepartmentId = request.DepartmentId,
                 LocationId = request.LocationId,
                 CustodianId = request.CustodianId,
-                Model = request.Model,
-                Brand = request.Brand,
                 Quantity = Math.Max(request.Quantity, 1),
                 Status = AssetStatus.Available,
                 PurchaseDate = request.PurchaseDate,
@@ -179,8 +177,6 @@ public class AssetService : IAssetService
         asset.Name = request.Name.Trim();
         asset.CategoryId = request.CategoryId;
         asset.LocationId = request.LocationId;
-        asset.Model = request.Model;
-        asset.Brand = request.Brand;
         asset.Quantity = Math.Max(request.Quantity, 1);
         asset.PurchaseDate = request.PurchaseDate;
         asset.RegistrationTime = request.RegistrationTime?.Date;
@@ -265,7 +261,7 @@ public class AssetService : IAssetService
     {
         var rows = new List<string[]>
         {
-            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "型号", "品牌", "数量", "状态", "购入日期", "资产登记日期", "目前状况", "首次登记", "备注" }
+            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "数量", "状态", "购入日期", "资产登记日期", "目前状况", "首次登记", "备注" }
         };
         var assets = await ApplyQuery(_db.Assets.AsQueryable(), query)
             .OrderBy(x => x.AssetNo)
@@ -278,8 +274,6 @@ public class AssetService : IAssetService
             x.CategoryCode,
             x.DepartmentName ?? "",
             x.LocationName ?? "",
-            x.Model ?? "",
-            x.Brand ?? "",
             x.Quantity.ToString(),
             x.Status.ToString(),
             x.PurchaseDate?.ToString("yyyy-MM-dd") ?? "",
@@ -294,7 +288,7 @@ public class AssetService : IAssetService
     public byte[] BuildImportTemplate()
         => XlsxTable.Write(new[]
         {
-            new[] { "名称", "分类编码", "型号", "品牌", "购入日期", "资产登记日期", "目前状况", "首次登记(是/否)", "备注" }
+            new[] { "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "首次登记(是/否)", "备注" }
         });
 
     public async Task<List<ImportPreviewRow>> ValidateImportAsync(Stream file)
@@ -338,8 +332,6 @@ public class AssetService : IAssetService
                 Name = row.Name,
                 CategoryId = category.Id,
                 DepartmentId = departmentId,
-                Model = row.Model,
-                Brand = row.Brand,
                 PurchaseDate = row.PurchaseDate,
                 RegistrationTime = row.RegistrationTime?.Date ?? DateTime.UtcNow.Date,
                 CurrentCondition = row.CurrentCondition,
@@ -546,8 +538,6 @@ public class AssetService : IAssetService
                 LocationName = x.LocationId.HasValue && locations.TryGetValue(x.LocationId.Value, out var loc) ? loc : null,
                 CustodianId = x.CustodianId,
                 CustodianName = x.CustodianId.HasValue && custodians.TryGetValue(x.CustodianId.Value, out var custodian) ? custodian : null,
-                Model = x.Model,
-                Brand = x.Brand,
                 Quantity = x.Quantity,
                 Status = x.Status,
                 PurchaseDate = x.PurchaseDate,
@@ -571,13 +561,11 @@ public class AssetService : IAssetService
     {
         var name = Cell(cells, 0);
         var categoryCode = Cell(cells, 1);
-        var model = Cell(cells, 2);
-        var brand = Cell(cells, 3);
-        var purchaseDateText = Cell(cells, 4);
-        var registrationTimeText = Cell(cells, 5);
-        var currentCondition = Cell(cells, 6);
-        var firstRegistrationText = Cell(cells, 7);
-        var remark = Cell(cells, 8);
+        var purchaseDateText = Cell(cells, 2);
+        var registrationTimeText = Cell(cells, 3);
+        var currentCondition = Cell(cells, 4);
+        var firstRegistrationText = Cell(cells, 5);
+        var remark = Cell(cells, 6);
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(name)) errors.Add("名称必填");
         if (string.IsNullOrWhiteSpace(categoryCode) || !categories.ContainsKey(categoryCode)) errors.Add("分类编码不存在");
@@ -595,8 +583,6 @@ public class AssetService : IAssetService
             Row = rowNumber,
             Name = name,
             CategoryCode = categoryCode,
-            Model = model,
-            Brand = brand,
             PurchaseDate = purchaseDate,
             RegistrationTime = registrationTime,
             CurrentCondition = currentCondition,

@@ -33,8 +33,6 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "示波器",
             CategoryId = category.Id,
-            Model = "TBS1102C",
-            Brand = "Tektronix",
             PurchaseDate = new DateTime(2026, 7, 1),
             RegistrationTime = new DateTime(2026, 7, 13, 9, 30, 0),
             CurrentCondition = "运行正常",
@@ -271,9 +269,9 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var category = await CreateCategory();
         var bytes = BuildXlsx(new[]
         {
-            new[] { "名称", "分类编码", "型号", "品牌" },
-            new[] { "万用表", category.Code, "UT61E", "UNI-T" },
-            new[] { "无效资产", "NO-SUCH-CAT", "X", "Demo" }
+            new[] { "名称", "分类编码" },
+            new[] { "万用表", category.Code },
+            new[] { "无效资产", "NO-SUCH-CAT" }
         });
 
         var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);

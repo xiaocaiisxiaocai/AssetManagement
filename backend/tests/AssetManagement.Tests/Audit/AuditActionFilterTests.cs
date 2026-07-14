@@ -93,15 +93,13 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
         var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
             Name = "审计前名称",
-            CategoryId = category.Data!.Id,
-            Brand = "旧品牌"
+            CategoryId = category.Data!.Id
         });
 
         var updated = await Put<ApiResult<AssetDto>>($"/api/assets/{created.Data!.Id}", new UpdateAssetRequest
         {
             Name = "审计后名称",
             CategoryId = category.Data.Id,
-            Brand = "新品牌",
             Quantity = 1,
             Status = AssetStatus.Available
         });

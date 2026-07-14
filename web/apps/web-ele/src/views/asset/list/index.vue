@@ -895,18 +895,6 @@ watch(
                 show-overflow-tooltip
               />
               <ElTableColumn
-                class-name="hide-on-mobile"
-                label="型号品牌"
-                min-width="180"
-                show-overflow-tooltip
-              >
-                <template #default="{ row }">
-                  <span v-if="row.model || row.brand">
-                    {{ row.model }} {{ row.brand }}
-                  </span>
-                </template>
-              </ElTableColumn>
-              <ElTableColumn
                 label="数量"
                 width="80"
                 prop="quantity"

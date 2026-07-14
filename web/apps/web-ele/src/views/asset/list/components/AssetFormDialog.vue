@@ -61,12 +61,10 @@ type AuthenticatedUploadFile = UploadUserFile & { rawUrl?: string };
 const imageFileList = ref<AuthenticatedUploadFile[]>([]);
 let imageLoadGeneration = 0;
 const form = reactive({
-  brand: '',
   categoryId: 0,
   custodianId: undefined as number | undefined,
   departmentId: undefined as number | undefined,
   locationId: undefined as number | undefined,
-  model: '',
   name: '',
   purchaseDate: '',
   quantity: 1,
@@ -127,12 +125,10 @@ watch(visible, async (opened) => {
     .catch(() => {});
   if (props.asset) {
     Object.assign(form, {
-      brand: props.asset.brand ?? '',
       categoryId: props.asset.categoryId,
       custodianId: props.asset.custodianId ?? undefined,
       departmentId: props.asset.departmentId ?? undefined,
       locationId: props.asset.locationId ?? undefined,
-      model: props.asset.model ?? '',
       name: props.asset.name,
       purchaseDate: props.asset.purchaseDate?.slice(0, 10) ?? '',
       quantity: props.asset.quantity,
@@ -158,12 +154,10 @@ watch(visible, async (opened) => {
     imageFileList.value = files;
   } else {
     Object.assign(form, {
-      brand: '',
       categoryId: props.defaultCategoryId,
       custodianId: undefined,
       departmentId: undefined,
       locationId: undefined,
-      model: '',
       name: '',
       purchaseDate: '',
       quantity: 1,
@@ -179,7 +173,6 @@ watch(visible, async (opened) => {
 
 function buildPayload(): AssetPayload {
   return {
-    brand: form.brand,
     categoryId: form.categoryId,
     custodianId: form.custodianId,
     departmentId: form.departmentId,
@@ -190,7 +183,6 @@ function buildPayload(): AssetPayload {
       )
       .filter((u): u is string => !!u),
     locationId: form.locationId,
-    model: form.model,
     name: form.name,
     purchaseDate: form.purchaseDate || null,
     quantity: form.quantity,
@@ -348,12 +340,6 @@ const debouncedSave = useDebounceFn(save, 300);
             :value="user.id"
           />
         </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="型号品牌" required>
-        <div class="grid w-full grid-cols-2 gap-2">
-          <ElInput v-model="form.model" placeholder="型号" />
-          <ElInput v-model="form.brand" placeholder="品牌" />
-        </div>
       </ElFormItem>
       <ElFormItem label="数量" required>
         <ElInput v-model.number="form.quantity" />

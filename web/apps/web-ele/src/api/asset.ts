@@ -17,7 +17,6 @@ export type AssetStatus = 0 | 1;
 
 export interface AssetItem {
   assetNo: string;
-  brand?: null | string;
   categoryCode: string;
   categoryId: number;
   createdAt: string;
@@ -33,7 +32,6 @@ export interface AssetItem {
   images?: null | string[];
   locationId?: null | number;
   locationName?: null | string;
-  model?: null | string;
   name: string;
   purchaseDate?: null | string;
   quantity: number;
@@ -56,14 +54,12 @@ export interface AssetQuery {
 }
 
 export interface AssetPayload {
-  brand?: null | string;
   categoryId: number;
   custodianId?: null | number;
   departmentId?: null | number;
   images?: string[];
   isFirstRegistration?: boolean;
   locationId?: null | number;
-  model?: null | string;
   name: string;
   purchaseDate?: null | string;
   quantity?: number;
@@ -79,11 +75,9 @@ export interface FileUploadResult {
 }
 
 export interface ImportPreviewRow {
-  brand?: null | string;
   categoryCode: string;
   error: string;
   isValid: boolean;
-  model?: null | string;
   name: string;
   row: number;
 }
