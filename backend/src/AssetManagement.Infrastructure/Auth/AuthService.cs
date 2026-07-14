@@ -44,6 +44,7 @@ public class AuthService : IAuthService
         }
 
         var user = await _db.Users
+            .AsSplitQuery()
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .ThenInclude(x => x.RolePermissions)
@@ -163,6 +164,7 @@ public class AuthService : IAuthService
     public async Task<List<RouteDto>> GetRoutesAsync(int userId)
     {
         var user = await _db.Users
+            .AsSplitQuery()
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .ThenInclude(x => x.RoleMenus)
@@ -229,6 +231,7 @@ public class AuthService : IAuthService
 
     private async Task<User?> QueryActiveUser(int userId)
         => await _db.Users
+            .AsSplitQuery()
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .ThenInclude(x => x.RolePermissions)

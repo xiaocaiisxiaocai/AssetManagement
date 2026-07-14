@@ -5,6 +5,7 @@ using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using MySqlConnector;
 
 namespace AssetManagement.Tests.Auth;
@@ -143,6 +144,8 @@ public class AuthServiceTests
             var connStr = $"{BaseConnStr}Database={dbName};";
             var options = new DbContextOptionsBuilder<AppDbContext>()
                 .UseMySql(connStr, ServerVersion.AutoDetect(connStr))
+                .ConfigureWarnings(warnings => warnings.Throw(
+                    RelationalEventId.MultipleCollectionIncludeWarning))
                 .Options;
             var db = new AppDbContext(options);
             await db.Database.EnsureCreatedAsync();

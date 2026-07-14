@@ -34,6 +34,7 @@ public sealed class AccountSecurityMiddleware
         }
 
         var user = await db.Users
+            .AsSplitQuery()
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .ThenInclude(x => x.RolePermissions)
