@@ -16,14 +16,34 @@ function people(step: WorkflowProgressStep) {
     .join('、');
 }
 
+function assigneeNames(step: WorkflowProgressStep, status: 'completed' | 'pending') {
+  return step.assignees
+    .filter((item) => item.status === status)
+    .map(({ employeeNo, name }) => `${name}（${employeeNo}）`)
+    .join('、');
+}
+
 const currentText = computed(() => {
   if (props.currentSteps?.length) {
     return props.currentSteps
-      .map((step) => `${step.nodeName} · ${people(step)}`)
+      .map((step) => {
+        const pending = assigneeNames(step, 'pending');
+        return `${step.nodeName} · ${pending || '等待节点流转'}`;
+      })
       .join('；');
   }
   return props.status === 'pending' ? '等待进入下一审批节点' : '流程已结束';
 });
+
+const completedText = computed(() =>
+  (props.currentSteps || [])
+    .map((step) => {
+      const completed = assigneeNames(step, 'completed');
+      return completed ? `${step.nodeName} · ${completed}` : '';
+    })
+    .filter(Boolean)
+    .join('；'),
+);
 
 const nextText = computed(() => {
   if (!props.nextSteps?.length) {
@@ -41,8 +61,12 @@ const nextText = computed(() => {
 <template>
   <div class="workflow-summary">
     <div class="workflow-summary-line">
-      <span class="workflow-summary-label">当前</span>
+      <span class="workflow-summary-label workflow-summary-current">待处理</span>
       <span>{{ currentText }}</span>
+    </div>
+    <div v-if="completedText" class="workflow-summary-line workflow-summary-signed">
+      <span class="workflow-summary-label">已同意</span>
+      <span>{{ completedText }}</span>
     </div>
     <div v-if="nextText" class="workflow-summary-line workflow-summary-next">
       <span class="workflow-summary-label">下一步</span>
@@ -66,6 +90,16 @@ const nextText = computed(() => {
   margin-top: 5px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+
+.workflow-summary-signed {
+  margin-top: 5px;
+  color: var(--el-color-success);
+  font-size: 12px;
+}
+
+.workflow-summary-current {
+  color: var(--el-color-primary);
 }
 
 .workflow-summary-label {

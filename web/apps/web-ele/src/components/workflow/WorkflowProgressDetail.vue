@@ -7,13 +7,6 @@ import { ElTag, ElTimeline, ElTimelineItem } from 'element-plus';
 
 defineProps<{ steps: WorkflowProgressStep[] }>();
 
-function assigneeText(step: WorkflowProgressStep) {
-  return step.assignees.length
-    ? step.assignees
-        .map(({ employeeNo, name }) => `${name}（${employeeNo}）`)
-        .join('、')
-    : '待系统确定处理人';
-}
 </script>
 
 <template>
@@ -46,7 +39,23 @@ function assigneeText(step: WorkflowProgressStep) {
           {{ step.isPossible ? '可能下一步' : '下一步' }}
         </ElTag>
       </div>
-      <div class="workflow-step-people">处理人：{{ assigneeText(step) }}</div>
+      <div v-if="step.assignees.length" class="workflow-step-people">
+        <div
+          v-for="person in step.assignees"
+          :key="person.userId"
+          class="workflow-step-person"
+        >
+          <span>{{ person.name }}（{{ person.employeeNo }}）</span>
+          <ElTag
+            :type="person.status === 'completed' ? 'success' : 'warning'"
+            effect="plain"
+            size="small"
+          >
+            {{ person.status === 'completed' ? '已同意' : '待处理' }}
+          </ElTag>
+        </div>
+      </div>
+      <div v-else class="workflow-step-people">待系统确定处理人</div>
       <div v-if="step.opinion" class="workflow-step-opinion">
         意见：{{ step.opinion }}
       </div>
@@ -70,6 +79,15 @@ function assigneeText(step: WorkflowProgressStep) {
 .workflow-step-opinion {
   margin-top: 6px;
   color: var(--el-text-color-secondary);
+}
+
+.workflow-step-person {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 360px;
+  padding: 4px 0;
 }
 
 .workflow-progress-empty {
