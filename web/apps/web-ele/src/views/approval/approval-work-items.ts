@@ -104,21 +104,21 @@ export function canWithdrawApproval(item: Pick<ApprovalWorkItem, 'status'>) {
 }
 
 function currentAssetNodeLabel(flow: ApprovalFlow) {
-  if (flow.actionableNodeIds.length === 0) return '-';
-  if (flow.actionableNodeIds.length > 1)
-    return `${flow.actionableNodeIds.length} 个可操作并行节点`;
+  if (flow.currentNodeIds.length === 0) return '-';
+  if (flow.currentNodeIds.length > 1)
+    return `${flow.currentNodeIds.length} 个并行节点`;
 
-  const nodeId = flow.actionableNodeIds[0];
+  const nodeId = flow.currentNodeIds[0];
   if (!nodeId) return '-';
   return flow.bpmnTokens[nodeId]?.nodeName || nodeId || '-';
 }
 
 function currentMaterialNodeLabel(flow: MaterialFlowItem) {
-  if (flow.actionableNodeIds.length === 0) return '-';
-  const nodeId = flow.actionableNodeIds[0];
+  if (flow.currentNodeIds.length === 0) return '-';
+  const nodeId = flow.currentNodeIds[0];
   if (!nodeId) return '-';
   const nodeName = flow.bpmnTokens[nodeId]?.nodeName || nodeId;
-  if (flow.actionableNodeIds.length > 1)
-    return `${nodeName}等 ${flow.actionableNodeIds.length} 个可操作节点`;
+  if (flow.currentNodeIds.length > 1)
+    return `${nodeName}等 ${flow.currentNodeIds.length} 个并行节点`;
   return nodeName;
 }

@@ -86,7 +86,7 @@ describe('审批工作项适配', () => {
     });
   });
 
-  it('并行流程只展示当前用户可操作的节点', () => {
+  it('并行流程展示全部当前节点而不是只看当前用户可操作节点', () => {
     const flow: ApprovalFlow = {
       ...assetFlow,
       actionableNodeIds: ['Task_manager'],
@@ -103,11 +103,11 @@ describe('审批工作项适配', () => {
 
     expect(normalizeAssetApproval(flow)).toMatchObject({
       actionableNodeIds: ['Task_manager'],
-      currentNodeLabel: '部门经理审批',
+      currentNodeLabel: '2 个并行节点',
     });
   });
 
-  it('测试料件并行流转不展示其他人的活跃节点', () => {
+  it('测试料件并行流转展示全部当前节点', () => {
     const flow: MaterialFlowItem = {
       ...materialFlow,
       actionableNodeIds: ['Task_owner'],
@@ -124,7 +124,20 @@ describe('审批工作项适配', () => {
 
     expect(normalizeMaterialFlow(flow)).toMatchObject({
       actionableNodeIds: ['Task_owner'],
-      currentNodeLabel: '项目负责人审批',
+      currentNodeLabel: '项目负责人审批等 2 个并行节点',
+    });
+  });
+
+  it('申请人不可审批时仍展示流程当前节点', () => {
+    const flow: ApprovalFlow = {
+      ...assetFlow,
+      actionableNodeIds: [],
+    };
+
+    expect(normalizeAssetApproval(flow)).toMatchObject({
+      actionableNodeIds: [],
+      currentNodeLabel: '部门经理审批',
+      status: 'pending',
     });
   });
 
