@@ -167,12 +167,17 @@ const handleSave = async (bpmnXml: string) => {
   if (!currentWorkflow.value) return;
 
   try {
-    await saveWorkflowApi(currentWorkflow.value.id, {
+    const previousId = currentWorkflow.value.id;
+    const saved = await saveWorkflowApi(previousId, {
       name: currentWorkflow.value.name,
       bizType: currentWorkflow.value.bizType,
       bpmnXml,
     });
-    ElMessage.success('保存成功');
+    ElMessage.success(
+      saved.id === previousId
+        ? '保存成功'
+        : '已创建并启用新版本，进行中的申请继续使用旧版本',
+    );
     dialogVisible.value = false;
     await loadWorkflows();
   } catch {

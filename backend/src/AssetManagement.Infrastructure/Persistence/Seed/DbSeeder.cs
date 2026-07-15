@@ -181,8 +181,8 @@ public static class DbSeeder
         else
         {
             var defaultBorrowWorkflow = defaultWorkflows.Single(x => x.BizType == "borrow");
-            var borrowWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "borrow");
-            if (borrowWorkflow is not null)
+            var borrowWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "borrow" && x.IsActive);
+            if (borrowWorkflow is not null && string.IsNullOrWhiteSpace(borrowWorkflow.BpmnXml))
             {
                 borrowWorkflow.Name = defaultBorrowWorkflow.Name;
                 borrowWorkflow.BpmnXml = defaultBorrowWorkflow.BpmnXml;
@@ -191,7 +191,7 @@ public static class DbSeeder
             // 修复早期内置转让模板：语义层包含角色网关和 7 条顺序流，但 DI 层缺少
             // 网关/分支节点及 4 条连线，bpmn-js 会直接跳过这些无 DI 的元素。
             // 仅匹配该已知损坏特征，避免覆盖用户自行设计的转让流程。
-            var transferWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "transfer");
+            var transferWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "transfer" && x.IsActive);
             if (transferWorkflow?.BpmnXml is { } transferXml
                 && transferXml.Contains("Gateway_applicantRole", StringComparison.Ordinal)
                 && !transferXml.Contains("bpmnElement=\"Gateway_applicantRole\"", StringComparison.Ordinal))

@@ -49,18 +49,41 @@ public class WorkflowService : IWorkflowService
     public async Task<WorkflowDto> SaveWorkflowAsync(int id, SaveWorkflowRequest request)
     {
         var workflow = await LoadWorkflow(id);
-        var definitionChanges = !string.Equals(workflow.BpmnXml, request.BpmnXml, StringComparison.Ordinal)
-                                || !string.Equals(workflow.BizType, request.BizType?.Trim(), StringComparison.Ordinal);
-        if (definitionChanges &&
-            (await _db.ApprovalFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending")
-             || await _db.MaterialFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending")))
+        var requestedBizType = request.BizType?.Trim() ?? "";
+        var bpmnChanges = !string.Equals(workflow.BpmnXml, request.BpmnXml, StringComparison.Ordinal);
+        var bizTypeChanges = !string.Equals(workflow.BizType, requestedBizType, StringComparison.Ordinal);
+        var hasPendingInstances = await _db.ApprovalFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending")
+                                  || await _db.MaterialFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending");
+        if (bizTypeChanges && hasPendingInstances)
         {
-            throw new BizException(4093, "该流程仍有进行中的实例，不能修改业务类型或流程定义");
+            throw new BizException(4093, "该流程仍有进行中的实例，不能修改业务类型；可直接修改流程图，系统会自动创建新版本");
+        }
+        if (bpmnChanges && hasPendingInstances)
+        {
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            workflow.IsActive = false;
+            workflow.Name = HistoricalWorkflowName(workflow);
+            await _db.SaveChangesAsync();
+
+            var nextVersion = new WorkflowEntity { IsActive = true };
+            await ApplyWorkflowDefinition(nextVersion, request);
+            _db.Workflows.Add(nextVersion);
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+            return ToWorkflowDto(nextVersion);
         }
         await ApplyWorkflowDefinition(workflow, request);
         _db.Entry(workflow).State = EntityState.Modified;
         await _db.SaveChangesAsync();
         return ToWorkflowDto(workflow);
+    }
+
+    private static string HistoricalWorkflowName(WorkflowEntity workflow)
+    {
+        var suffix = $"（历史版本 {workflow.Id}）";
+        var maxPrefixLength = Math.Max(0, 100 - suffix.Length);
+        var prefix = workflow.Name.Length > maxPrefixLength ? workflow.Name[..maxPrefixLength] : workflow.Name;
+        return prefix + suffix;
     }
 
     public async Task<WorkflowDto> SetWorkflowStatusAsync(int id, bool isActive)

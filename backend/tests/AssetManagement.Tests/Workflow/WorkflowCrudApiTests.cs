@@ -249,6 +249,80 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
         duplicated.Message.Should().Be("流程名称已存在");
     }
 
+    [Fact]
+    public async Task Workflow_definition_update_creates_new_version_when_instance_is_pending()
+    {
+        await Login();
+        var bizType = Unique("versioned");
+        var created = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = "版本化流程",
+            BizType = bizType
+        });
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var asset = await db.Assets.FirstOrDefaultAsync();
+            if (asset is null)
+            {
+                var category = await db.AssetCategories.FirstOrDefaultAsync(x => !x.IsDeleted);
+                if (category is null)
+                {
+                    category = new AssetCategory
+                    {
+                        CodeSeg = Unique("CAT")[..6],
+                        Code = Unique("CATEGORY")
+                    };
+                    db.AssetCategories.Add(category);
+                    await db.SaveChangesAsync();
+                }
+                asset = new Asset
+                {
+                    AssetNo = Unique("AST"),
+                    Name = "版本测试资产",
+                    CategoryId = category.Id,
+                    CreatedAt = DateTime.UtcNow
+                };
+                db.Assets.Add(asset);
+                await db.SaveChangesAsync();
+            }
+            var user = await db.Users.FirstAsync();
+            db.ApprovalFlows.Add(new ApprovalFlow
+            {
+                FlowNo = Unique("APV"),
+                BizType = bizType,
+                WorkflowId = created.Data!.Id,
+                AssetId = asset.Id,
+                AssetNo = asset.AssetNo,
+                AssetName = asset.Name,
+                ApplicantId = user.Id,
+                Applicant = user.Name,
+                Status = "pending",
+                ApplyTime = DateTime.UtcNow,
+                Deadline = DateTime.UtcNow.AddDays(1),
+                ActiveScopeKey = $"version-test:{asset.Id}:{Guid.NewGuid():N}"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var saved = await Put<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data!.Id}", new SaveWorkflowRequest
+        {
+            Name = "版本化流程",
+            BizType = bizType,
+            BpmnXml = SimpleBpmn()
+        });
+
+        saved.Code.Should().Be(0, saved.Message);
+        saved.Data!.Id.Should().NotBe(created.Data.Id);
+        saved.Data.IsActive.Should().BeTrue();
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var oldVersion = await verifyDb.Workflows.SingleAsync(x => x.Id == created.Data.Id);
+        oldVersion.IsActive.Should().BeFalse();
+        oldVersion.Name.Should().Contain("历史版本");
+        (await verifyDb.ApprovalFlows.SingleAsync(x => x.WorkflowId == oldVersion.Id)).Status.Should().Be("pending");
+    }
+
     private async Task Login()
     {
         var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
@@ -275,4 +349,18 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
 
     private static string Unique(string prefix)
         => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 10, 50)];
+
+    private static string SimpleBpmn() => """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                          xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+          <bpmn:process id="Process_Version" isExecutable="true">
+            <bpmn:startEvent id="Start" />
+            <bpmn:userTask id="Review" name="审批" camunda:assignee="supervisor" />
+            <bpmn:endEvent id="End" />
+            <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Review" />
+            <bpmn:sequenceFlow id="Flow_2" sourceRef="Review" targetRef="End" />
+          </bpmn:process>
+        </bpmn:definitions>
+        """;
 }
