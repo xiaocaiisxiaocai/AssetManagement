@@ -335,13 +335,13 @@ export const useTabbarStore = defineStore('core-tabbar', {
 
       this.excludeCachedTabs.add(name as string);
       this.renderRouteView = false;
-      startProgress();
+      await startProgress();
 
       await new Promise((resolve) => setTimeout(resolve, 200));
 
       this.excludeCachedTabs.delete(name as string);
       this.renderRouteView = true;
-      stopProgress();
+      await stopProgress();
     },
 
     /**
