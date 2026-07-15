@@ -1,5 +1,6 @@
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
+using AssetManagement.Application.Workflow;
 
 namespace AssetManagement.Application.TestMaterials;
 
@@ -161,6 +162,9 @@ public class MaterialFlowDto
     public DateTime Deadline { get; set; }
     /// <summary>当无需审批直接转移时为 true</summary>
     public bool DirectTransfer { get; set; }
+    public List<WorkflowProgressStepDto> ProgressSteps { get; set; } = new();
+    public List<WorkflowProgressStepDto> CurrentSteps { get; set; } = new();
+    public List<WorkflowProgressStepDto> NextSteps { get; set; } = new();
 }
 
 public class MaterialFlowRecordDto

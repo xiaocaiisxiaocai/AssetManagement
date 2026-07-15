@@ -203,7 +203,7 @@ public class WorkflowService : IWorkflowService
             _logger.LogWarning(ex, "通知发送失败，不影响审批发起结果");
         }
 
-        return ToFlowDto(flow);
+        return await ToFlowDtoAsync(flow);
     }
 
     public async Task<List<ApprovalFlowDto>> PendingAsync(int userId)
@@ -257,7 +257,7 @@ public class WorkflowService : IWorkflowService
             var actionableNodeIds = await GetActionableNodeIdsAsync(flow, user, workflowMap);
             if (actionableNodeIds.Count > 0)
             {
-                result.Add(ToFlowDto(flow, actionableNodeIds));
+                result.Add(await ToFlowDtoAsync(flow, actionableNodeIds));
             }
         }
 
@@ -273,7 +273,9 @@ public class WorkflowService : IWorkflowService
             .ToListAsync();
         await HydrateParticipantNamesAsync(flows);
 
-        return flows.Select(flow => ToFlowDto(flow)).ToList();
+        var result = new List<ApprovalFlowDto>();
+        foreach (var flow in flows) result.Add(await ToFlowDtoAsync(flow));
+        return result;
     }
 
     public async Task<List<ApprovalFlowDto>> PendingReturnsAsync(int userId)
@@ -291,7 +293,9 @@ public class WorkflowService : IWorkflowService
         var flows = await query.AsNoTracking().OrderByDescending(x => x.Id).ToListAsync();
         await HydrateParticipantNamesAsync(flows);
 
-        return flows.Select(flow => ToFlowDto(flow)).ToList();
+        var result = new List<ApprovalFlowDto>();
+        foreach (var flow in flows) result.Add(await ToFlowDtoAsync(flow));
+        return result;
     }
 
     public async Task<ApprovalFlowDto> GetFlowAsync(int id, int userId)
@@ -299,7 +303,7 @@ public class WorkflowService : IWorkflowService
         var flow = await LoadFlow(id);
         var user = await LoadUser(userId);
         await EnsureCanViewFlowAsync(flow, user);
-        return ToFlowDto(flow, await GetActionableNodeIdsAsync(flow, user));
+        return await ToFlowDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
     public async Task<ApprovalFlowDto> ApproveAsync(int id, ApprovalActionRequest request, int userId)
@@ -397,7 +401,7 @@ public class WorkflowService : IWorkflowService
             _logger.LogWarning(ex, "通知发送失败，不影响审批结果");
         }
 
-        return ToFlowDto(flow);
+        return await ToFlowDtoAsync(flow);
     }
 
     public async Task<ApprovalFlowDto> RejectAsync(int id, RejectRequest request, int userId)
@@ -456,7 +460,7 @@ public class WorkflowService : IWorkflowService
             _logger.LogWarning(ex, "通知发送失败，不影响审批结果");
         }
 
-        return ToFlowDto(flow);
+        return await ToFlowDtoAsync(flow);
     }
 
     private static string? ValidateReturnDate(string bizType, string? value)
@@ -495,7 +499,7 @@ public class WorkflowService : IWorkflowService
         await AddRecord(id, "withdraw", applicant.Name, "申请人主动撤回");
         await tx.CommitAsync();
 
-        return ToFlowDto(flow);
+        return await ToFlowDtoAsync(flow);
     }
 
     public async Task<ApprovalFlowDto> AddSignAsync(int id, AddSignRequest request, int userId)
@@ -569,7 +573,7 @@ public class WorkflowService : IWorkflowService
         {
             _logger.LogWarning(ex, "加签通知发送失败，不影响加签结果");
         }
-        return ToFlowDto(flow, await GetActionableNodeIdsAsync(flow, user));
+        return await ToFlowDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
     public async Task<ApprovalFlowDto> CancelAddSignAsync(int id, CancelAddSignRequest request, int userId)
@@ -604,7 +608,7 @@ public class WorkflowService : IWorkflowService
         token.AddedSigners.Remove(signKey);
         await _db.SaveChangesAsync();
         await AddRecord(id, "cancel_add_sign", user.Name, $"节点 {nodeId}: 取消加签 {signUser?.Name ?? signKey}");
-        return ToFlowDto(flow, await GetActionableNodeIdsAsync(flow, user));
+        return await ToFlowDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
     public async Task<ApprovalFlowDto> TransferSignAsync(int id, TransferSignRequest request, int userId)
@@ -673,7 +677,7 @@ public class WorkflowService : IWorkflowService
             _logger.LogWarning(ex, "通知发送失败，不影响接收确认结果");
         }
 
-        return ToFlowDto(flow);
+        return await ToFlowDtoAsync(flow);
     }
 
     // ========== 私有辅助方法 ==========
@@ -1251,6 +1255,149 @@ public class WorkflowService : IWorkflowService
 
         return $"该资产正在由“{flow.Applicant}”发起{BizTypeLabel(flow.BizType)}申请"
                + $"（流程号：{flow.FlowNo}{currentNodeText}），请等待流程结束后再试";
+    }
+
+    private async Task<ApprovalFlowDto> ToFlowDtoAsync(
+        ApprovalFlow flow,
+        IEnumerable<string>? actionableNodeIds = null)
+    {
+        var dto = ToFlowDto(flow, actionableNodeIds);
+        var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
+        if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return dto;
+
+        var process = BpmnParser.Parse(workflow.BpmnXml);
+        var completed = new List<WorkflowProgressStepDto>();
+        foreach (var token in flow.BpmnTokens.Values
+                     .Where(x => x.Status == BpmnTokenStatus.Completed)
+                     .OrderBy(x => x.CompletedAt))
+        {
+            var node = process.FindNode(token.NodeId);
+            if (node?.Type != BpmnNodeType.UserTask) continue;
+            completed.Add(await BuildProgressStepAsync(node, flow, token, "completed", false));
+        }
+
+        var current = new List<WorkflowProgressStepDto>();
+        foreach (var nodeId in flow.CurrentNodeIds)
+        {
+            var node = process.FindNode(nodeId);
+            if (node?.Type != BpmnNodeType.UserTask) continue;
+            flow.BpmnTokens.TryGetValue(nodeId, out var token);
+            current.Add(await BuildProgressStepAsync(node, flow, token, "current", false));
+        }
+
+        var next = new List<WorkflowProgressStepDto>();
+        if (flow.Status == "pending")
+        {
+            foreach (var candidate in FindNextUserTasks(process, flow.CurrentNodeIds))
+            {
+                next.Add(await BuildProgressStepAsync(candidate.Node, flow, null, "next", candidate.IsPossible));
+            }
+        }
+
+        return dto with
+        {
+            ProgressSteps = completed.Concat(current).Concat(next).ToList(),
+            CurrentSteps = current,
+            NextSteps = next
+        };
+    }
+
+    private async Task<WorkflowProgressStepDto> BuildProgressStepAsync(
+        BpmnNode node,
+        ApprovalFlow flow,
+        BpmnToken? token,
+        string state,
+        bool isPossible)
+    {
+        var userIds = state == "completed"
+            ? ParseCompletedApproverIds(token)
+            : await ResolveApproverUserIdsAsync(node, flow);
+        if (token?.SignStates is { Count: > 0 })
+        {
+            userIds = token.SignStates.Keys
+                .Select(x => int.TryParse(x, out var id) ? id : 0)
+                .Where(x => x > 0)
+                .Distinct()
+                .ToList();
+        }
+
+        var users = await _db.Users.AsNoTracking()
+            .Where(x => userIds.Contains(x.Id))
+            .OrderBy(x => x.Name)
+            .Select(x => new { x.Id, x.EmployeeNo, x.Name })
+            .ToListAsync();
+        var assignees = users.Select(user => new WorkflowAssigneeDto
+        {
+            UserId = user.Id,
+            EmployeeNo = user.EmployeeNo,
+            Name = user.Name,
+            Status = token?.SignStates?.GetValueOrDefault(user.Id.ToString()) == true || state == "completed"
+                ? "completed"
+                : "pending"
+        }).ToList();
+
+        var completedBy = token?.Approver;
+        if (int.TryParse(completedBy, out var completedById))
+            completedBy = users.FirstOrDefault(x => x.Id == completedById)?.Name ?? completedBy;
+
+        return new WorkflowProgressStepDto
+        {
+            NodeId = node.Id,
+            NodeName = string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name,
+            State = state,
+            IsPossible = isPossible,
+            StartedAt = token?.StartedAt,
+            CompletedAt = token?.CompletedAt,
+            CompletedBy = completedBy,
+            Opinion = token?.Opinion,
+            Assignees = assignees
+        };
+    }
+
+    private static List<int> ParseCompletedApproverIds(BpmnToken? token)
+    {
+        var result = new List<int>();
+        if (int.TryParse(token?.Approver, out var id)) result.Add(id);
+        if (token?.SignStates is not null)
+            result.AddRange(token.SignStates.Keys.Select(x => int.TryParse(x, out var value) ? value : 0).Where(x => x > 0));
+        return result.Distinct().ToList();
+    }
+
+    private static List<(BpmnNode Node, bool IsPossible)> FindNextUserTasks(
+        BpmnProcess process,
+        IEnumerable<string> currentNodeIds)
+    {
+        var result = new Dictionary<string, (BpmnNode Node, bool IsPossible)>();
+        var queue = new Queue<(string NodeId, bool IsPossible)>();
+        foreach (var currentNodeId in currentNodeIds)
+        {
+            var outgoing = process.GetOutgoingFlows(currentNodeId);
+            foreach (var edge in outgoing)
+                queue.Enqueue((edge.TargetRef, outgoing.Count > 1 || !string.IsNullOrWhiteSpace(edge.ConditionExpression)));
+        }
+
+        var visited = new HashSet<(string, bool)>();
+        while (queue.Count > 0)
+        {
+            var item = queue.Dequeue();
+            if (!visited.Add((item.NodeId, item.IsPossible))) continue;
+            var node = process.FindNode(item.NodeId);
+            if (node is null) continue;
+            if (node.Type == BpmnNodeType.UserTask)
+            {
+                if (!result.TryGetValue(node.Id, out var existing) || existing.IsPossible && !item.IsPossible)
+                    result[node.Id] = (node, item.IsPossible);
+                continue;
+            }
+            if (node.Type == BpmnNodeType.EndEvent) continue;
+            var outgoing = process.GetOutgoingFlows(node.Id);
+            var branchIsPossible = item.IsPossible ||
+                                   node.Type is BpmnNodeType.ExclusiveGateway or BpmnNodeType.InclusiveGateway ||
+                                   outgoing.Count > 1;
+            foreach (var edge in outgoing)
+                queue.Enqueue((edge.TargetRef, branchIsPossible || !string.IsNullOrWhiteSpace(edge.ConditionExpression)));
+        }
+        return result.Values.ToList();
     }
 
     private static ApprovalFlowDto ToFlowDto(ApprovalFlow f, IEnumerable<string>? actionableNodeIds = null) => new()

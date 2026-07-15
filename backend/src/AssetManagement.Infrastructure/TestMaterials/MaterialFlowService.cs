@@ -1,6 +1,7 @@
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Notifications;
 using AssetManagement.Application.TestMaterials;
+using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Domain.Workflow;
@@ -122,7 +123,7 @@ public class MaterialFlowService : IMaterialFlowService
                     _logger.LogWarning(ex, "通知发送失败，不影响料件直接转移结果");
                 }
 
-                return ToDto(directFlow);
+                return await ToDtoAsync(directFlow);
             }
         }
 
@@ -198,7 +199,7 @@ public class MaterialFlowService : IMaterialFlowService
                 _logger.LogWarning(ex, "通知发送失败，不影响料件流转发起结果");
             }
 
-            return ToDto(flow);
+            return await ToDtoAsync(flow);
         }
     }
 
@@ -247,7 +248,7 @@ public class MaterialFlowService : IMaterialFlowService
         foreach (var flow in flows)
         {
             var actionableNodeIds = await GetActionableNodeIdsAsync(flow, user, workflowMap);
-            if (actionableNodeIds.Count > 0) result.Add(ToDto(flow, actionableNodeIds));
+            if (actionableNodeIds.Count > 0) result.Add(await ToDtoAsync(flow, actionableNodeIds));
         }
         return result;
     }
@@ -261,7 +262,9 @@ public class MaterialFlowService : IMaterialFlowService
                 .Select(m => m.Id)
                 .Contains(x.MaterialId));
         var flows = await query.OrderByDescending(x => x.Id).ToListAsync();
-        return flows.Select(flow => ToDto(flow)).ToList();
+        var result = new List<MaterialFlowDto>();
+        foreach (var flow in flows) result.Add(await ToDtoAsync(flow));
+        return result;
     }
 
     public async Task<MaterialFlowDto> GetAsync(int id, int userId)
@@ -269,7 +272,7 @@ public class MaterialFlowService : IMaterialFlowService
         var flow = await LoadFlow(id);
         var user = await LoadUser(userId);
         await EnsureCanViewFlowAsync(flow, user);
-        return ToDto(flow, await GetActionableNodeIdsAsync(flow, user));
+        return await ToDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
     public async Task<MaterialFlowDto> ApproveAsync(int id, MaterialApprovalRequest request, int userId)
@@ -335,7 +338,7 @@ public class MaterialFlowService : IMaterialFlowService
             _logger.LogWarning(ex, "通知发送失败，不影响料件流转审批结果");
         }
 
-        return ToDto(flow);
+        return await ToDtoAsync(flow);
     }
 
     public async Task<MaterialFlowDto> RejectAsync(int id, MaterialRejectRequest request, int userId)
@@ -378,7 +381,7 @@ public class MaterialFlowService : IMaterialFlowService
             _logger.LogWarning(ex, "通知发送失败，不影响料件流转驳回结果");
         }
 
-        return ToDto(flow);
+        return await ToDtoAsync(flow);
     }
 
     public async Task<MaterialFlowDto> WithdrawAsync(int id, int userId)
@@ -404,7 +407,7 @@ public class MaterialFlowService : IMaterialFlowService
         await AddRecord(id, "withdraw", applicant.Name, "申请人主动撤回");
         await tx.CommitAsync();
 
-        return ToDto(flow);
+        return await ToDtoAsync(flow);
     }
 
     // ===== 私有辅助 =====
@@ -834,6 +837,135 @@ public class MaterialFlowService : IMaterialFlowService
     {
         if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
             throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{resolution.Diagnostic}");
+    }
+
+    private async Task<MaterialFlowDto> ToDtoAsync(
+        MaterialFlow flow,
+        IEnumerable<string>? actionableNodeIds = null)
+    {
+        var dto = ToDto(flow, actionableNodeIds);
+        var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
+        if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return dto;
+        var process = BpmnParser.Parse(workflow.BpmnXml);
+
+        var completed = new List<WorkflowProgressStepDto>();
+        foreach (var token in flow.BpmnTokens.Values
+                     .Where(x => x.Status == BpmnTokenStatus.Completed)
+                     .OrderBy(x => x.CompletedAt))
+        {
+            var node = process.FindNode(token.NodeId);
+            if (node?.Type != BpmnNodeType.UserTask) continue;
+            completed.Add(await BuildProgressStepAsync(node, flow, token, "completed", false));
+        }
+
+        var current = new List<WorkflowProgressStepDto>();
+        foreach (var nodeId in flow.CurrentNodeIds)
+        {
+            var node = process.FindNode(nodeId);
+            if (node?.Type != BpmnNodeType.UserTask) continue;
+            flow.BpmnTokens.TryGetValue(nodeId, out var token);
+            current.Add(await BuildProgressStepAsync(node, flow, token, "current", false));
+        }
+
+        var next = new List<WorkflowProgressStepDto>();
+        if (flow.Status == "pending")
+            foreach (var candidate in FindNextUserTasks(process, flow.CurrentNodeIds))
+                next.Add(await BuildProgressStepAsync(candidate.Node, flow, null, "next", candidate.IsPossible));
+
+        dto.ProgressSteps = completed.Concat(current).Concat(next).ToList();
+        dto.CurrentSteps = current;
+        dto.NextSteps = next;
+        return dto;
+    }
+
+    private async Task<WorkflowProgressStepDto> BuildProgressStepAsync(
+        BpmnNode node,
+        MaterialFlow flow,
+        BpmnToken? token,
+        string state,
+        bool isPossible)
+    {
+        var userIds = state == "completed"
+            ? ParseCompletedApproverIds(token)
+            : await ResolveApproverUserIdsAsync(node, flow);
+        if (token?.SignStates is { Count: > 0 })
+            userIds = token.SignStates.Keys.Select(x => int.TryParse(x, out var id) ? id : 0)
+                .Where(x => x > 0).Distinct().ToList();
+
+        var users = await _db.Users.AsNoTracking()
+            .Where(x => userIds.Contains(x.Id))
+            .OrderBy(x => x.Name)
+            .Select(x => new { x.Id, x.EmployeeNo, x.Name })
+            .ToListAsync();
+        var completedBy = token?.Approver;
+        if (int.TryParse(completedBy, out var completedById))
+            completedBy = users.FirstOrDefault(x => x.Id == completedById)?.Name ?? completedBy;
+
+        return new WorkflowProgressStepDto
+        {
+            NodeId = node.Id,
+            NodeName = string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name,
+            State = state,
+            IsPossible = isPossible,
+            StartedAt = token?.StartedAt,
+            CompletedAt = token?.CompletedAt,
+            CompletedBy = completedBy,
+            Opinion = token?.Opinion,
+            Assignees = users.Select(user => new WorkflowAssigneeDto
+            {
+                UserId = user.Id,
+                EmployeeNo = user.EmployeeNo,
+                Name = user.Name,
+                Status = token?.SignStates?.GetValueOrDefault(user.Id.ToString()) == true || state == "completed"
+                    ? "completed"
+                    : "pending"
+            }).ToList()
+        };
+    }
+
+    private static List<int> ParseCompletedApproverIds(BpmnToken? token)
+    {
+        var result = new List<int>();
+        if (int.TryParse(token?.Approver, out var id)) result.Add(id);
+        if (token?.SignStates is not null)
+            result.AddRange(token.SignStates.Keys.Select(x => int.TryParse(x, out var value) ? value : 0).Where(x => x > 0));
+        return result.Distinct().ToList();
+    }
+
+    private static List<(BpmnNode Node, bool IsPossible)> FindNextUserTasks(
+        BpmnProcess process,
+        IEnumerable<string> currentNodeIds)
+    {
+        var result = new Dictionary<string, (BpmnNode Node, bool IsPossible)>();
+        var queue = new Queue<(string NodeId, bool IsPossible)>();
+        foreach (var currentNodeId in currentNodeIds)
+        {
+            var outgoing = process.GetOutgoingFlows(currentNodeId);
+            foreach (var edge in outgoing)
+                queue.Enqueue((edge.TargetRef, outgoing.Count > 1 || !string.IsNullOrWhiteSpace(edge.ConditionExpression)));
+        }
+        var visited = new HashSet<(string, bool)>();
+        while (queue.Count > 0)
+        {
+            var item = queue.Dequeue();
+            if (!visited.Add((item.NodeId, item.IsPossible))) continue;
+            var node = process.FindNode(item.NodeId);
+            if (node is null) continue;
+            if (node.Type == BpmnNodeType.UserTask)
+            {
+                if (!result.TryGetValue(node.Id, out var existing) || existing.IsPossible && !item.IsPossible)
+                    result[node.Id] = (node, item.IsPossible);
+                continue;
+            }
+            if (node.Type == BpmnNodeType.EndEvent) continue;
+            var outgoing = process.GetOutgoingFlows(node.Id);
+            var branchIsPossible = item.IsPossible ||
+                                   node.Type is BpmnNodeType.ExclusiveGateway or BpmnNodeType.InclusiveGateway ||
+                                   outgoing.Count > 1;
+            foreach (var edge in outgoing)
+                queue.Enqueue((edge.TargetRef, branchIsPossible || !string.IsNullOrWhiteSpace(edge.ConditionExpression)));
+        }
+        return result.Values.ToList();
     }
 
     private static MaterialFlowDto ToDto(MaterialFlow f, IEnumerable<string>? actionableNodeIds = null) => new()

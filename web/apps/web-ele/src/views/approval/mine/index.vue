@@ -23,6 +23,8 @@ import {
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
 import { buildApprovalActionAccess } from '#/views/permissions/action-access';
+import WorkflowProgressDetail from '#/components/workflow/WorkflowProgressDetail.vue';
+import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 import {
   canWithdrawApproval,
   mergeApprovalWorkItems,
@@ -58,6 +60,8 @@ const loading = ref(false);
 const saving = ref(false);
 const withdrawingKeys = ref<string[]>([]);
 const dialogVisible = ref(false);
+const progressVisible = ref(false);
+const selectedFlow = ref<ApprovalWorkItem>();
 const flows = ref<ApprovalWorkItem[]>([]);
 const assets = ref<AssetItem[]>([]);
 const users = ref<UserOptionDto[]>([]);
@@ -209,6 +213,11 @@ function onPageSizeChange() {
   query.page = 1;
 }
 
+function showProgress(row: ApprovalWorkItem) {
+  selectedFlow.value = row;
+  progressVisible.value = true;
+}
+
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
   pageSizeOptions.value = createPageSizeOptions(query.pageSize);
@@ -272,13 +281,13 @@ onMounted(async () => {
             min-width="140"
             prop="participant"
           />
-          <ElTableColumn label="当前节点" min-width="150">
+          <ElTableColumn label="审批进度" min-width="310">
             <template #default="{ row }">
-              <span
-                :class="{ 'mine-empty-text': row.currentNodeLabel === '-' }"
-              >
-                {{ row.currentNodeLabel }}
-              </span>
+              <WorkflowProgressSummary
+                :current-steps="row.raw.currentSteps"
+                :next-steps="row.raw.nextSteps"
+                :status="row.status"
+              />
             </template>
           </ElTableColumn>
           <ElTableColumn label="状态" width="100" align="center">
@@ -305,8 +314,11 @@ onMounted(async () => {
             min-width="220"
             prop="reason"
           />
-          <ElTableColumn fixed="right" label="操作" width="100" align="center">
+          <ElTableColumn fixed="right" label="操作" width="130" align="center">
             <template #default="{ row }">
+              <ElButton link type="primary" @click="showProgress(row)">
+                流程
+              </ElButton>
               <ElButton
                 v-if="canWithdrawApproval(row)"
                 :loading="withdrawingKeys.includes(row.key)"
@@ -316,7 +328,6 @@ onMounted(async () => {
               >
                 撤回
               </ElButton>
-              <span v-else class="mine-empty-text">-</span>
             </template>
           </ElTableColumn>
         </ElTable>
@@ -347,6 +358,13 @@ onMounted(async () => {
           />
         </div>
       </div>
+
+      <ElDialog v-model="progressVisible" title="申请流转进度" width="620px">
+        <WorkflowProgressDetail
+          v-if="selectedFlow"
+          :steps="selectedFlow.raw.progressSteps || []"
+        />
+      </ElDialog>
 
       <ElDialog v-model="dialogVisible" title="发起申请" width="540px">
         <ElForm class="start-approval-form" label-width="100px">

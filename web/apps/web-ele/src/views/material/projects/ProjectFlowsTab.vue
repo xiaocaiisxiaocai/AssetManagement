@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { MaterialFlowItem } from '#/api/material';
 
-import { formatActionableWorkflowNode } from '#/utils/workflow-action-nodes';
+import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 
 import {
   ElButton,
@@ -88,9 +88,13 @@ function flowMetaOf(status: string) {
               prop="reason"
               show-overflow-tooltip
             />
-            <ElTableColumn label="处理节点" min-width="220">
+            <ElTableColumn label="审批进度" min-width="320">
               <template #default="{ row }">
-                {{ formatActionableWorkflowNode(row) }}
+                <WorkflowProgressSummary
+                  :current-steps="row.currentSteps"
+                  :next-steps="row.nextSteps"
+                  :status="row.status"
+                />
               </template>
             </ElTableColumn>
             <ElTableColumn align="center" label="操作" width="140">
@@ -173,6 +177,15 @@ function flowMetaOf(status: string) {
                   flowMetaOf(row.status).label
                 }}</ElTag></template
               >
+            </ElTableColumn>
+            <ElTableColumn label="审批进度" min-width="320">
+              <template #default="{ row }">
+                <WorkflowProgressSummary
+                  :current-steps="row.currentSteps"
+                  :next-steps="row.nextSteps"
+                  :status="row.status"
+                />
+              </template>
             </ElTableColumn>
           </ElTable>
           <div class="table-bottom-pager">

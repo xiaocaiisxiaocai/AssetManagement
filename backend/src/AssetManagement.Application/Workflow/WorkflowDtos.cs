@@ -49,6 +49,32 @@ public record ApprovalFlowDto
     public DateTime ApplyTime { get; init; }
     public DateTime Deadline { get; init; }
     public DateTime? ConfirmedAt { get; init; }
+    public List<WorkflowProgressStepDto> ProgressSteps { get; init; } = new();
+    public List<WorkflowProgressStepDto> CurrentSteps { get; init; } = new();
+    public List<WorkflowProgressStepDto> NextSteps { get; init; } = new();
+}
+
+public record WorkflowProgressStepDto
+{
+    public string NodeId { get; init; } = "";
+    public string NodeName { get; init; } = "";
+    /// <summary>completed / current / next</summary>
+    public string State { get; init; } = "";
+    public bool IsPossible { get; init; }
+    public DateTime? StartedAt { get; init; }
+    public DateTime? CompletedAt { get; init; }
+    public string? CompletedBy { get; init; }
+    public string? Opinion { get; init; }
+    public List<WorkflowAssigneeDto> Assignees { get; init; } = new();
+}
+
+public record WorkflowAssigneeDto
+{
+    public int UserId { get; init; }
+    public string EmployeeNo { get; init; } = "";
+    public string Name { get; init; } = "";
+    /// <summary>pending / completed</summary>
+    public string Status { get; init; } = "pending";
 }
 
 public record StartApprovalRequest

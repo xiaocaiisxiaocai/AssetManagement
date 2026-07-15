@@ -23,6 +23,8 @@ import {
 } from '#/api/workflow';
 import { getApproverOptionsApi } from '#/api/user';
 import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
+import WorkflowProgressDetail from '#/components/workflow/WorkflowProgressDetail.vue';
+import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 import {
   createPageSizeOptions,
   getDefaultPageSize,
@@ -548,9 +550,13 @@ onMounted(async () => {
           <ElTableColumn class-name="hide-on-mobile" label="申请时间" width="170">
             <template #default="{ row }">{{ formatDateTime(row.applyTime) }}</template>
           </ElTableColumn>
-          <ElTableColumn label="当前节点" width="160">
+          <ElTableColumn label="审批进度" min-width="320">
             <template #default="{ row }">
-              {{ row.currentNodeLabel }}
+              <WorkflowProgressSummary
+                :current-steps="row.raw.currentSteps"
+                :next-steps="row.raw.nextSteps"
+                :status="row.status"
+              />
             </template>
           </ElTableColumn>
           <ElTableColumn label="操作" width="150" fixed="right" align="center">
@@ -661,6 +667,9 @@ onMounted(async () => {
             <span v-if="currentNodeInfo.count > 1" class="pending-node-tip">
               ({{ currentNodeInfo.count }} 个并行节点)
             </span>
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="完整流转" :span="2">
+            <WorkflowProgressDetail :steps="selected.progressSteps || []" />
           </ElDescriptionsItem>
           <ElDescriptionsItem
             v-if="activeNodeOptions.length > 1"

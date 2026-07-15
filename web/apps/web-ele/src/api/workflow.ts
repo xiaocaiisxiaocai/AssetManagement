@@ -25,6 +25,25 @@ export interface BpmnToken {
   addedSigners?: Record<string, number> | null;
 }
 
+export interface WorkflowAssignee {
+  employeeNo: string;
+  name: string;
+  status: 'completed' | 'pending';
+  userId: number;
+}
+
+export interface WorkflowProgressStep {
+  assignees: WorkflowAssignee[];
+  completedAt?: null | string;
+  completedBy?: null | string;
+  isPossible: boolean;
+  nodeId: string;
+  nodeName: string;
+  opinion?: null | string;
+  startedAt?: null | string;
+  state: 'completed' | 'current' | 'next';
+}
+
 // 工作流定义（BPMN 模式）
 export interface WorkflowItem {
   bizType: string;
@@ -55,10 +74,13 @@ export interface ApprovalFlow {
   bizType: string;
   confirmedAt?: null | string;
   currentNodeIds: string[]; // BPMN: 当前活跃的节点 ID 列表
+  currentSteps?: WorkflowProgressStep[];
   bpmnTokens: Record<string, BpmnToken>; // BPMN: Token 状态字典
   deadline: string;
   flowNo: string;
   id: number;
+  nextSteps?: WorkflowProgressStep[];
+  progressSteps?: WorkflowProgressStep[];
   reason?: null | string;
   returnDate?: null | string;
   status: string;

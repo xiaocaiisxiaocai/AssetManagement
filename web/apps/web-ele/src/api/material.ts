@@ -1,6 +1,6 @@
 import { requestClient } from '#/api/request';
 
-import type { BpmnToken } from './workflow';
+import type { BpmnToken, WorkflowProgressStep } from './workflow';
 
 interface ApiResult<T> {
   code: number;
@@ -84,6 +84,9 @@ export interface MaterialFlowItem {
   reason?: null | string;
   status: string;
   currentNodeIds: string[];
+  currentSteps?: WorkflowProgressStep[];
+  nextSteps?: WorkflowProgressStep[];
+  progressSteps?: WorkflowProgressStep[];
   bpmnTokens: Record<string, BpmnToken>;
   applyTime: string;
   directTransfer: boolean;

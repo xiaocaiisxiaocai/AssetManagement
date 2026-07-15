@@ -56,6 +56,12 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
         var workItem = pending!.Data.Should().ContainSingle(x => x.Id == flow.Data.Id).Which;
         workItem.CurrentNodeIds.Should().BeEquivalentTo(NodeA, NodeB);
         workItem.ActionableNodeIds.Should().ContainSingle().Which.Should().Be(NodeA);
+        workItem.CurrentSteps.Should().HaveCount(2);
+        workItem.CurrentSteps.SelectMany(x => x.Assignees)
+            .Should().Contain(x => x.Name == approverA.Name && x.EmployeeNo == approverA.EmployeeNo);
+        workItem.CurrentSteps.SelectMany(x => x.Assignees)
+            .Should().Contain(x => x.Name == approverB.Name && x.EmployeeNo == approverB.EmployeeNo);
+        workItem.ProgressSteps.Should().Contain(x => x.State == "current" && x.NodeId == NodeA);
 
         var deniedResponse = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { NodeId = NodeB, Opinion = "越权处理B节点" });
@@ -107,6 +113,12 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
             var workItem = pending!.Data.Should().ContainSingle(x => x.Id == flow.Data.Id).Which;
             workItem.CurrentNodeIds.Should().BeEquivalentTo(NodeA, NodeB);
             workItem.ActionableNodeIds.Should().ContainSingle().Which.Should().Be(NodeA);
+            workItem.CurrentSteps.Should().HaveCount(2);
+            workItem.CurrentSteps.SelectMany(x => x.Assignees)
+                .Should().Contain(x => x.Name == approverA.Name && x.EmployeeNo == approverA.EmployeeNo);
+            workItem.CurrentSteps.SelectMany(x => x.Assignees)
+                .Should().Contain(x => x.Name == approverB.Name && x.EmployeeNo == approverB.EmployeeNo);
+            workItem.ProgressSteps.Should().Contain(x => x.State == "current" && x.NodeId == NodeA);
 
             var deniedResponse = await _client.PostAsJsonAsync($"/api/material-flows/{flow.Data.Id}/approve",
                 new MaterialApprovalRequest { NodeId = NodeB, Opinion = "越权处理B节点" });
