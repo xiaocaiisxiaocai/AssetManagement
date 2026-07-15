@@ -406,7 +406,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
 
         Auth(await LoginToken(supervisorNo, "123456"));
         var step1 = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
-            new ApprovalActionRequest { NodeId = "Task_supervisor", Opinion = "同意" });
+            new ApprovalActionRequest { NodeId = "Task_supervisorRole", Opinion = "同意" });
         step1.Data!.CurrentNodeIds.Should().Contain("Task_receiver");
 
         Auth(await LoginToken(receiverAdminNo, "123456"));

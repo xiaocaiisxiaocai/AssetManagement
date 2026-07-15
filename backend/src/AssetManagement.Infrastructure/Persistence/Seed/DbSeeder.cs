@@ -194,11 +194,30 @@ public static class DbSeeder
             var transferWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "transfer" && x.IsActive);
             if (transferWorkflow?.BpmnXml is { } transferXml
                 && transferXml.Contains("Gateway_applicantRole", StringComparison.Ordinal)
-                && !transferXml.Contains("bpmnElement=\"Gateway_applicantRole\"", StringComparison.Ordinal))
+                && (!transferXml.Contains("bpmnElement=\"Gateway_applicantRole\"", StringComparison.Ordinal)
+                    || transferXml.Contains("Flow_employeeDefault", StringComparison.Ordinal)))
             {
                 var defaultTransferWorkflow = defaultWorkflows.Single(x => x.BizType == "transfer");
-                transferWorkflow.Name = defaultTransferWorkflow.Name;
-                transferWorkflow.BpmnXml = defaultTransferWorkflow.BpmnXml;
+                var hasPendingInstances = db.ApprovalFlows.Any(x => x.WorkflowId == transferWorkflow.Id && x.Status == "pending")
+                                          || db.MaterialFlows.Any(x => x.WorkflowId == transferWorkflow.Id && x.Status == "pending");
+                if (hasPendingInstances)
+                {
+                    transferWorkflow.IsActive = false;
+                    transferWorkflow.Name = $"{transferWorkflow.Name}（历史版本 {transferWorkflow.Id}）";
+                    db.SaveChanges();
+                    db.Workflows.Add(new WorkflowEntity
+                    {
+                        Name = defaultTransferWorkflow.Name,
+                        BizType = defaultTransferWorkflow.BizType,
+                        BpmnXml = defaultTransferWorkflow.BpmnXml,
+                        IsActive = true
+                    });
+                }
+                else
+                {
+                    transferWorkflow.Name = defaultTransferWorkflow.Name;
+                    transferWorkflow.BpmnXml = defaultTransferWorkflow.BpmnXml;
+                }
             }
         }
 
@@ -1279,7 +1298,6 @@ public static class DbSeeder
       <bpmn:incoming>Flow_1</bpmn:incoming>
       <bpmn:outgoing>Flow_admin</bpmn:outgoing>
       <bpmn:outgoing>Flow_supervisorRole</bpmn:outgoing>
-      <bpmn:outgoing>Flow_employeeDefault</bpmn:outgoing>
     </bpmn:exclusiveGateway>
     <bpmn:userTask id=""Task_adminRole"" name=""部门主管审批"" camunda:candidateGroups=""role:supervisor"">
       <bpmn:incoming>Flow_admin</bpmn:incoming>
@@ -1289,14 +1307,9 @@ public static class DbSeeder
       <bpmn:incoming>Flow_supervisorRole</bpmn:incoming>
       <bpmn:outgoing>Flow_supervisor_to_receiver</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:userTask id=""Task_supervisor"" name=""直属主管审批"" camunda:assignee=""supervisor"">
-      <bpmn:incoming>Flow_employeeDefault</bpmn:incoming>
-      <bpmn:outgoing>Flow_supervisor_to_receiver</bpmn:outgoing>
-    </bpmn:userTask>
     <bpmn:userTask id=""Task_receiver"" name=""接收部门负责人审批"" camunda:assignee=""deptManager"">
       <bpmn:incoming>Flow_admin_to_receiver</bpmn:incoming>
       <bpmn:incoming>Flow_supervisor_to_receiver</bpmn:incoming>
-      <bpmn:incoming>Flow_employee_to_receiver</bpmn:incoming>
       <bpmn:outgoing>Flow_3</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:endEvent id=""EndEvent_1"" name=""流程结束"">
@@ -1306,13 +1319,9 @@ public static class DbSeeder
     <bpmn:sequenceFlow id=""Flow_admin"" sourceRef=""Gateway_applicantRole"" targetRef=""Task_adminRole"">
       <bpmn:conditionExpression>${applicantRole} == ""admin""</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id=""Flow_supervisorRole"" sourceRef=""Gateway_applicantRole"" targetRef=""Task_supervisorRole"">
-      <bpmn:conditionExpression>${applicantRole} == ""supervisor""</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id=""Flow_employeeDefault"" sourceRef=""Gateway_applicantRole"" targetRef=""Task_supervisor"" />
+    <bpmn:sequenceFlow id=""Flow_supervisorRole"" sourceRef=""Gateway_applicantRole"" targetRef=""Task_supervisorRole"" />
     <bpmn:sequenceFlow id=""Flow_admin_to_receiver"" sourceRef=""Task_adminRole"" targetRef=""Task_receiver"" />
     <bpmn:sequenceFlow id=""Flow_supervisor_to_receiver"" sourceRef=""Task_supervisorRole"" targetRef=""Task_receiver"" />
-    <bpmn:sequenceFlow id=""Flow_employee_to_receiver"" sourceRef=""Task_supervisor"" targetRef=""Task_receiver"" />
     <bpmn:sequenceFlow id=""Flow_3"" sourceRef=""Task_receiver"" targetRef=""EndEvent_1"" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
@@ -1328,9 +1337,6 @@ public static class DbSeeder
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id=""Task_supervisorRole_di"" bpmnElement=""Task_supervisorRole"">
         <dc:Bounds x=""340"" y=""200"" width=""100"" height=""80"" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id=""Task_supervisor_di"" bpmnElement=""Task_supervisor"">
-        <dc:Bounds x=""340"" y=""320"" width=""100"" height=""80"" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id=""Task_receiver_di"" bpmnElement=""Task_receiver"">
         <dc:Bounds x=""540"" y=""200"" width=""100"" height=""80"" />
@@ -1351,11 +1357,6 @@ public static class DbSeeder
         <di:waypoint x=""260"" y=""240"" />
         <di:waypoint x=""340"" y=""240"" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id=""Flow_employeeDefault_di"" bpmnElement=""Flow_employeeDefault"">
-        <di:waypoint x=""235"" y=""265"" />
-        <di:waypoint x=""235"" y=""360"" />
-        <di:waypoint x=""340"" y=""360"" />
-      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id=""Flow_admin_to_receiver_di"" bpmnElement=""Flow_admin_to_receiver"">
         <di:waypoint x=""440"" y=""120"" />
         <di:waypoint x=""490"" y=""120"" />
@@ -1365,12 +1366,6 @@ public static class DbSeeder
       <bpmndi:BPMNEdge id=""Flow_supervisor_to_receiver_di"" bpmnElement=""Flow_supervisor_to_receiver"">
         <di:waypoint x=""440"" y=""240"" />
         <di:waypoint x=""540"" y=""240"" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id=""Flow_employee_to_receiver_di"" bpmnElement=""Flow_employee_to_receiver"">
-        <di:waypoint x=""440"" y=""360"" />
-        <di:waypoint x=""490"" y=""360"" />
-        <di:waypoint x=""490"" y=""260"" />
-        <di:waypoint x=""540"" y=""260"" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id=""Flow_3_di"" bpmnElement=""Flow_3"">
         <di:waypoint x=""640"" y=""240"" />
