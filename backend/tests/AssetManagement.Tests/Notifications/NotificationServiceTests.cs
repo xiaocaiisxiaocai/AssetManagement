@@ -63,6 +63,27 @@ public class NotificationServiceTests : MySqlFixtureBase
         notifications.Should().Contain(x => x.IdempotencyKey == "next-key" && x.UserId == 3);
     }
 
+    [Fact]
+    public async Task Clear_removes_only_current_users_notifications()
+    {
+        var service = new NotificationService(_db);
+        await service.CreateBatchAsync(new[]
+        {
+            NewRequest("user-1-a", userId: 1, title: "用户一通知A"),
+            NewRequest("user-1-b", userId: 1, title: "用户一通知B"),
+            NewRequest("user-2-a", userId: 2, title: "用户二通知"),
+        });
+
+        await service.ClearAsync(1);
+
+        var remaining = await _db.Notifications
+            .Select(x => new { x.UserId, x.Title })
+            .ToListAsync();
+        remaining.Should().ContainSingle();
+        remaining[0].UserId.Should().Be(2);
+        remaining[0].Title.Should().Be("用户二通知");
+    }
+
     private static CreateNotificationRequest NewRequest(string key, int userId, string title) => new()
     {
         Type = "approval_pending",

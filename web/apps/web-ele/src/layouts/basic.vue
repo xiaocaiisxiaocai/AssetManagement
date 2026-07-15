@@ -16,6 +16,7 @@ import { useAccessStore, useUserStore } from '@vben/stores';
 import { createIconifyIcon } from '@vben/icons';
 import { useAuthStore } from '#/store';
 import {
+  clearNotificationsApi,
   getNotificationsApi,
   markAllReadApi,
   markReadApi,
@@ -106,8 +107,8 @@ async function handleLogout() {
 
 async function handleNoticeClear() {
   try {
-    await markAllReadApi();
-    rawNotifications.value = rawNotifications.value.map((n) => ({ ...n, isRead: true }));
+    await clearNotificationsApi();
+    rawNotifications.value = [];
   } catch {
     // 静默失败
   }

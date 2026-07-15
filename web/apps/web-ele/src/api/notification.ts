@@ -38,3 +38,7 @@ export async function markReadApi(id: number): Promise<void> {
 export async function markAllReadApi(): Promise<void> {
   await requestClient.post('/notifications/read-all');
 }
+
+export async function clearNotificationsApi(): Promise<void> {
+  await requestClient.delete('/notifications');
+}

@@ -38,4 +38,11 @@ public class NotificationController : ControllerBase
         await _svc.MarkAllReadAsync(CurrentUserId);
         return ApiResult.Ok();
     }
+
+    [HttpDelete]
+    public async Task<ApiResult<object?>> Clear()
+    {
+        await _svc.ClearAsync(CurrentUserId);
+        return ApiResult.Ok();
+    }
 }

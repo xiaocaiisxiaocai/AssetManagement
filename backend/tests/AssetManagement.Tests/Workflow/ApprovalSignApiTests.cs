@@ -90,6 +90,9 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
         notifications!.Data.Should().Contain(x =>
             x.Type == "approval_pending" && x.FlowId == flow.Data.Id && x.Title.Contains("加签"));
+        var pending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
+        var addedWorkItem = pending!.Data.Should().ContainSingle(x => x.Id == flow.Data.Id).Which;
+        addedWorkItem.ActionableNodeIds.Should().ContainSingle().Which.Should().Be("Task_Approve");
         var second = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "加签同意" });
 

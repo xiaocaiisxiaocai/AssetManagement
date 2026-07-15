@@ -28,6 +28,7 @@ public interface INotificationService
     Task<int> GetUnreadCountAsync(int userId);
     Task MarkReadAsync(int id, int userId);
     Task MarkAllReadAsync(int userId);
+    Task ClearAsync(int userId);
     /// <summary>写入单条通知；若 IdempotencyKey 已存在则静默跳过</summary>
     Task CreateAsync(CreateNotificationRequest request);
     /// <summary>批量写入通知；每条独立做幂等检查</summary>

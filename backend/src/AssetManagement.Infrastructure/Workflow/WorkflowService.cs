@@ -239,7 +239,8 @@ public class WorkflowService : IWorkflowService
                 .Select(u => new { u.Id, u.DepartmentId })
                 .ToDictionaryAsync(u => u.Id, u => u.DepartmentId);
             flows = flows
-                .Where(f => IsDeptInScope(userDeptMap.GetValueOrDefault(f.ApplicantId), allowedDeptIds)
+                .Where(f => HasPendingSignTaskForUser(f, user.Id)
+                            || IsDeptInScope(userDeptMap.GetValueOrDefault(f.ApplicantId), allowedDeptIds)
                             || (f.TransfereeId.HasValue && IsDeptInScope(userDeptMap.GetValueOrDefault(f.TransfereeId.Value), allowedDeptIds)))
                 .ToList();
         }
@@ -798,6 +799,15 @@ public class WorkflowService : IWorkflowService
 
     private async Task<bool> CanApprove(ApprovalFlow flow, User user)
         => (await GetActionableNodeIdsAsync(flow, user)).Count > 0;
+
+    private static bool HasPendingSignTaskForUser(ApprovalFlow flow, int userId)
+    {
+        var identity = userId.ToString();
+        return flow.CurrentNodeIds.Any(nodeId =>
+            flow.BpmnTokens.TryGetValue(nodeId, out var token) &&
+            token.Status == BpmnTokenStatus.Active &&
+            token.SignStates?.GetValueOrDefault(identity) == false);
+    }
 
     private async Task EnsureCanApproveNode(ApprovalFlow flow, string nodeId, User user)
     {

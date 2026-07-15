@@ -38,6 +38,13 @@ public class NotificationService : INotificationService
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsRead, true));
     }
 
+    public async Task ClearAsync(int userId)
+    {
+        await _db.Notifications
+            .Where(x => x.UserId == userId)
+            .ExecuteDeleteAsync();
+    }
+
     public async Task CreateAsync(CreateNotificationRequest request)
     {
         if (!string.IsNullOrEmpty(request.IdempotencyKey))
