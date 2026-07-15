@@ -916,11 +916,19 @@ public class MaterialFlowService : IMaterialFlowService
                 UserId = user.Id,
                 EmployeeNo = user.EmployeeNo,
                 Name = user.Name,
-                Status = token?.SignStates?.GetValueOrDefault(user.Id.ToString()) == true || state == "completed"
-                    ? "completed"
-                    : "pending"
+                Status = ResolveAssigneeStatus(token, user.Id, user.Name, state)
             }).ToList()
         };
+    }
+
+    private static string ResolveAssigneeStatus(BpmnToken? token, int userId, string userName, string stepState)
+    {
+        var isRejected = token?.Opinion?.StartsWith("[驳回]", StringComparison.Ordinal) == true;
+        if (isRejected && string.Equals(token?.Approver, userName, StringComparison.Ordinal)) return "rejected";
+        if (token?.SignStates is { Count: > 0 })
+            return token.SignStates.GetValueOrDefault(userId.ToString()) ? "completed" : "skipped";
+        if (isRejected) return "rejected";
+        return stepState == "completed" ? "completed" : "pending";
     }
 
     private static List<int> ParseCompletedApproverIds(BpmnToken? token)

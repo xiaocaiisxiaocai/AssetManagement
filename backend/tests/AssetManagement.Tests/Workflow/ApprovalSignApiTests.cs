@@ -58,6 +58,34 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Multi_sign_rejection_identifies_rejector_and_keeps_prior_approval()
+    {
+        Auth(await LoginToken("1001", "123456"));
+        var userA = await CreateApprover("先签人");
+        var userB = await CreateApprover("驳回人");
+        var workflow = await CreateWorkflow("signreject", MultiSignBpmn($"{userA.Id},{userB.Id}"));
+        var asset = await CreateAsset();
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = workflow.BizType,
+            AssetId = asset.Id,
+            Reason = "验证会签驳回人展示"
+        });
+
+        Auth(await LoginToken(userA.EmployeeNo, "123456"));
+        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
+            new ApprovalActionRequest { Opinion = "先签人同意" });
+        Auth(await LoginToken(userB.EmployeeNo, "123456"));
+        var rejected = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/reject",
+            new RejectRequest { Reason = "资料不完整" });
+
+        var step = rejected.Data!.ProgressSteps.Should().ContainSingle(x => x.NodeId == "Task_CounterSign").Which;
+        step.Assignees.Should().Contain(x => x.UserId == userA.Id && x.Status == "completed");
+        step.Assignees.Should().Contain(x => x.UserId == userB.Id && x.Status == "rejected");
+        step.Opinion.Should().Contain("资料不完整");
+    }
+
+    [Fact]
     public async Task Add_sign_requires_added_user_before_advancing()
     {
         Auth(await LoginToken("1001", "123456"));

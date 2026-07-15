@@ -28,7 +28,7 @@ export interface BpmnToken {
 export interface WorkflowAssignee {
   employeeNo: string;
   name: string;
-  status: 'completed' | 'pending';
+  status: 'completed' | 'pending' | 'rejected' | 'skipped';
   userId: number;
 }
 

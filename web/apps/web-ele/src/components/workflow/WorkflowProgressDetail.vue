@@ -7,6 +7,22 @@ import { ElTag, ElTimeline, ElTimelineItem } from 'element-plus';
 
 defineProps<{ steps: WorkflowProgressStep[] }>();
 
+function isRejected(step: WorkflowProgressStep) {
+  return step.assignees.some((person) => person.status === 'rejected');
+}
+
+function personStatusMeta(status: WorkflowProgressStep['assignees'][number]['status']) {
+  return {
+    completed: { label: '已同意', type: 'success' as const },
+    pending: { label: '待处理', type: 'warning' as const },
+    rejected: { label: '已驳回', type: 'danger' as const },
+    skipped: { label: '未处理', type: 'info' as const },
+  }[status];
+}
+
+function opinionText(step: WorkflowProgressStep) {
+  return (step.opinion || '').replace(/^\[驳回\]\s*/, '');
+}
 </script>
 
 <template>
@@ -22,7 +38,9 @@ defineProps<{ steps: WorkflowProgressStep[] }>();
             : undefined
       "
       :type="
-        step.state === 'completed'
+        isRejected(step)
+          ? 'danger'
+          : step.state === 'completed'
           ? 'success'
           : step.state === 'current'
             ? 'primary'
@@ -31,7 +49,8 @@ defineProps<{ steps: WorkflowProgressStep[] }>();
     >
       <div class="workflow-step-title">
         <strong>{{ step.nodeName }}</strong>
-        <ElTag v-if="step.state === 'completed'" size="small" type="success"
+        <ElTag v-if="isRejected(step)" size="small" type="danger">已驳回</ElTag>
+        <ElTag v-else-if="step.state === 'completed'" size="small" type="success"
           >已完成</ElTag
         >
         <ElTag v-else-if="step.state === 'current'" size="small">当前处理</ElTag>
@@ -47,17 +66,17 @@ defineProps<{ steps: WorkflowProgressStep[] }>();
         >
           <span>{{ person.name }}（{{ person.employeeNo }}）</span>
           <ElTag
-            :type="person.status === 'completed' ? 'success' : 'warning'"
+            :type="personStatusMeta(person.status).type"
             effect="plain"
             size="small"
           >
-            {{ person.status === 'completed' ? '已同意' : '待处理' }}
+            {{ personStatusMeta(person.status).label }}
           </ElTag>
         </div>
       </div>
       <div v-else class="workflow-step-people">待系统确定处理人</div>
       <div v-if="step.opinion" class="workflow-step-opinion">
-        意见：{{ step.opinion }}
+        {{ isRejected(step) ? '驳回原因' : '意见' }}：{{ opinionText(step) }}
       </div>
     </ElTimelineItem>
   </ElTimeline>

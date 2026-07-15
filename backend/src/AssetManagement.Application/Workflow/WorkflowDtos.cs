@@ -73,7 +73,7 @@ public record WorkflowAssigneeDto
     public int UserId { get; init; }
     public string EmployeeNo { get; init; } = "";
     public string Name { get; init; } = "";
-    /// <summary>pending / completed</summary>
+    /// <summary>pending / completed / rejected / skipped</summary>
     public string Status { get; init; } = "pending";
 }
 
