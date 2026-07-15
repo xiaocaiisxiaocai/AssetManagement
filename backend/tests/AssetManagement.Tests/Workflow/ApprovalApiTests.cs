@@ -9,8 +9,11 @@ using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Workflow;
 
@@ -26,9 +29,11 @@ namespace AssetManagement.Tests.Workflow;
 public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
+    private readonly TestWebAppFactory _factory;
 
     public ApprovalApiTests(TestWebAppFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -380,6 +385,14 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         });
 
         var asset = await CreateAsset(sourceDept.Data.Id, applicant.Data!.Id);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var borrowedAsset = await db.Assets.AsTracking().SingleAsync(x => x.Id == asset.Id);
+            borrowedAsset.Status = AssetStatus.Borrowed;
+            borrowedAsset.RowVersion++;
+            await db.SaveChangesAsync();
+        }
 
         Auth(await LoginToken(applicantNo, "123456"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
@@ -389,6 +402,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             TransfereeId = receiver.Data!.Id,
             Reason = "转让到接收部门"
         });
+        flow.Code.Should().Be(0, flow.Message);
 
         Auth(await LoginToken(supervisorNo, "123456"));
         var step1 = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
@@ -406,6 +420,11 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { NodeId = "Task_receiver", Opinion = "同意" });
         approved.Data!.Status.Should().Be("approved");
+
+        var transferredAsset = await _client.GetFromJsonAsync<ApiResult<AssetDto>>($"/api/assets/{asset.Id}");
+        transferredAsset!.Data!.Status.Should().Be(AssetStatus.Borrowed,
+            "借出资产转让后仍应保持借出状态");
+        transferredAsset.Data.CustodianId.Should().Be(receiver.Data.Id);
 
         Auth(await LoginToken(receiverNo, "123456"));
         var receiverNotifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");

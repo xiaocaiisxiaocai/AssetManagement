@@ -121,8 +121,10 @@ public class WorkflowService : IWorkflowService
             ?? throw new BizException(4041, "用户不存在或已停用");
         await EnsureAssetInScopeAsync(asset, applicant);
 
-        if (workflow.BizType is "borrow" or "transfer" && asset.Status != AssetStatus.Available)
-            throw new BizException(4055, "资产当前不可用,无法发起该流程");
+        if (workflow.BizType == "borrow" && asset.Status != AssetStatus.Available)
+            throw new BizException(4055, "资产当前不可用,无法发起借用流程");
+        if (workflow.BizType == "transfer" && asset.Status is not (AssetStatus.Available or AssetStatus.Borrowed))
+            throw new BizException(4055, "维护或报废状态的资产无法发起转让流程");
         if (workflow.BizType == "return" &&
             (asset.Status != AssetStatus.Borrowed || asset.CustodianId != applicantId))
             throw new BizException(4055, "只有当前借用人可以发起归还流程");
