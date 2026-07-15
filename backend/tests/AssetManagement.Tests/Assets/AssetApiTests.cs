@@ -163,7 +163,8 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = created.Data!.Id,
-            Reason = "借出后验证删除保护"
+            Reason = "借出后验证删除保护",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
         Auth(await LoginToken("TEST-SUPERVISOR", "123456"));
         while (flow.Data!.Status == "pending")
@@ -348,7 +349,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             BizType = "borrow",
             AssetId = id,
             Reason = "详情测试借用",
-            ReturnDate = "2026-06-30"
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         var detail = await _client.GetFromJsonAsync<ApiResult<AssetDetailDto>>($"/api/assets/{id}/detail");
@@ -373,7 +374,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             BizType = "borrow",
             AssetId = created.Data!.Id,
             Reason = "保留历史",
-            ReturnDate = "2026-06-30"
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
         await _client.DeleteAsync($"/api/assets/{created.Data.Id}");
 

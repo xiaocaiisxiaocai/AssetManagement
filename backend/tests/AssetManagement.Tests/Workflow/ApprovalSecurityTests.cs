@@ -52,7 +52,8 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "测试越权"
+            Reason = "测试越权",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         response.EnsureSuccessStatusCode();
@@ -82,7 +83,8 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "管理员不得代替直属主管审批"
+            Reason = "管理员不得代替直属主管审批",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         var pending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
@@ -116,7 +118,8 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "测试终态"
+            Reason = "测试终态",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         response.EnsureSuccessStatusCode();
@@ -203,6 +206,7 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
             BizType = "borrow",
             AssetId = asset.Id,
             Reason = "测试上级解析",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd"),
         });
 
         // 第二个节点(直属主管审批,ApproverType=Supervisor)应解析为申请人上级

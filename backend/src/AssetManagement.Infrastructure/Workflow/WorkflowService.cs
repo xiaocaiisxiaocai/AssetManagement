@@ -5,6 +5,7 @@ using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Persistence;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
@@ -131,6 +132,7 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4001, "转让申请必须选择接收人");
         if (workflow.BizType == "transfer" && request.TransfereeId == applicantId)
             throw new BizException(4001, "接收人不能与申请人相同");
+        var returnDate = ValidateReturnDate(workflow.BizType, request.ReturnDate);
         var transferee = request.TransfereeId.HasValue
             ? await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId.Value && x.IsActive)
             : null;
@@ -164,7 +166,7 @@ public class WorkflowService : IWorkflowService
             Transferee = transferee?.Name,
             TransfereeDept = await DepartmentName(transferee?.DepartmentId),
             Reason = request.Reason,
-            ReturnDate = workflow.BizType == "borrow" ? request.ReturnDate : null,
+            ReturnDate = returnDate,
             Status = "pending",
             ApplyTime = DateTime.UtcNow,
             Deadline = DateTime.UtcNow.AddDays(2),
@@ -455,6 +457,19 @@ public class WorkflowService : IWorkflowService
         }
 
         return ToFlowDto(flow);
+    }
+
+    private static string? ValidateReturnDate(string bizType, string? value)
+    {
+        if (bizType != "borrow") return null;
+        if (string.IsNullOrWhiteSpace(value))
+            throw new BizException(4001, "借用申请必须选择归还日期");
+        if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var returnDate))
+            throw new BizException(4001, "归还日期格式必须为 yyyy-MM-dd");
+        if (returnDate <= DateOnly.FromDateTime(DateTime.Now))
+            throw new BizException(4001, "归还日期必须晚于今天");
+        return returnDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 
     public async Task<ApprovalFlowDto> WithdrawAsync(int id, int userId)

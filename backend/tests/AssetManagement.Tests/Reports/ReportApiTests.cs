@@ -74,7 +74,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             BizType = "borrow",
             AssetId = asset.Id,
             Reason = "报表验证",
-            ReturnDate = "2026-06-20"
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         // 确保流程启动成功
@@ -126,7 +126,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             BizType = "borrow",
             AssetId = asset.Id,
             Reason = "逾期验证",
-            ReturnDate = "2020-01-01"
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         // 确保流程启动成功
@@ -138,6 +138,15 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve", new ApprovalActionRequest { Opinion = "同意" });
         approved.Data.Should().NotBeNull();
         approved.Data!.Status.Should().Be("approved", "流程应该已完成");
+
+        // 逾期是流程经过时间后形成的状态；正式发起接口不允许倒填历史归还日期。
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var storedFlow = await db.ApprovalFlows.AsTracking().SingleAsync(x => x.Id == flow.Data.Id);
+            storedFlow.ReturnDate = DateTime.Today.AddDays(-1).ToString("yyyy-MM-dd");
+            await db.SaveChangesAsync();
+        }
 
         var overdue = await _client.GetFromJsonAsync<ApiResult<List<OverdueReportRow>>>("/api/reports/overdue");
         await Post<ApiResult<object?>>($"/api/reports/overdue/{asset.Id}/remind", new { });

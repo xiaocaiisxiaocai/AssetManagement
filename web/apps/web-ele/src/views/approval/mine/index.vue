@@ -8,6 +8,10 @@ import { useAccess } from '@vben/access';
 
 import { getAllAssetsApi } from '#/api/asset';
 import { getUserOptionsApi } from '#/api/user';
+import {
+  disableNonFutureReturnDate,
+  isFutureReturnDate,
+} from '#/utils/return-date';
 import { listMyFlowsApi, withdrawMaterialFlowApi } from '#/api/material';
 import {
   getMineApprovalsApi,
@@ -128,6 +132,10 @@ async function submit() {
   }
   if (showReturnDate.value && !form.returnDate) {
     ElMessage.warning('请选择归还日期');
+    return;
+  }
+  if (showReturnDate.value && !isFutureReturnDate(form.returnDate)) {
+    ElMessage.warning('归还日期必须晚于今天');
     return;
   }
   if (form.bizType === 'transfer' && !form.transfereeId) {
@@ -367,6 +375,7 @@ onMounted(async () => {
           <ElFormItem v-if="showReturnDate" label="归还日期" required>
             <ElDatePicker
               v-model="form.returnDate"
+              :disabled-date="disableNonFutureReturnDate"
               type="date"
               value-format="YYYY-MM-DD"
               placeholder="选择归还日期"

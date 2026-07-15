@@ -16,6 +16,10 @@ import {
 } from 'element-plus';
 
 import { startApprovalApi } from '#/api/workflow';
+import {
+  disableNonFutureReturnDate,
+  isFutureReturnDate,
+} from '#/utils/return-date';
 
 const router = useRouter();
 
@@ -39,6 +43,10 @@ async function submit() {
   }
   if (!form.returnDate) {
     ElMessage.warning('请选择归还日期');
+    return;
+  }
+  if (!isFutureReturnDate(form.returnDate as string)) {
+    ElMessage.warning('归还日期必须晚于今天');
     return;
   }
   if (!form.reason || form.reason.length < 10 || form.reason.length > 200) {
@@ -78,6 +86,7 @@ async function submit() {
         <ElDatePicker
           v-model="form.returnDate"
           clearable
+          :disabled-date="disableNonFutureReturnDate"
           format="YYYY-MM-DD"
           value-format="YYYY-MM-DD"
           placeholder="选择归还日期（必填）"

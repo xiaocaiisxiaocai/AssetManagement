@@ -122,7 +122,8 @@ public class InactiveApproverSecurityTests : IClassFixture<TestWebAppFactory>
             {
                 BizType = "borrow",
                 AssetId = asset.Id,
-                Reason = "验证停用身份不能审批"
+                Reason = "验证停用身份不能审批",
+                ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
             });
 
         flow.Data!.Status.Should().Be("pending");

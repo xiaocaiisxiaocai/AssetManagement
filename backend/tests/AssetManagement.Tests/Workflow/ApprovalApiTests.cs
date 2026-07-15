@@ -88,7 +88,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             BizType = "borrow",
             AssetId = asset.Id,
             Reason = "测试借用",
-            ReturnDate = "2026-06-30"
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         // 添加响应检查
@@ -107,6 +107,47 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         flow.Data.CurrentNodeIds.Should().NotBeEmpty();
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-a-date")]
+    [InlineData("2026-02-30")]
+    [InlineData("2026-7-16")]
+    public async Task Borrow_flow_rejects_missing_or_invalid_return_date(string? returnDate)
+    {
+        await Login();
+        var asset = await CreateAsset();
+
+        var result = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "日期校验回归测试",
+            ReturnDate = returnDate
+        });
+
+        result.Code.Should().Be(4001);
+    }
+
+    [Fact]
+    public async Task Borrow_flow_rejects_today_and_past_return_dates()
+    {
+        await Login();
+        foreach (var returnDate in new[] { DateTime.Today.AddDays(-1), DateTime.Today })
+        {
+            var asset = await CreateAsset();
+            var result = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+            {
+                BizType = "borrow",
+                AssetId = asset.Id,
+                Reason = "日期校验回归测试",
+                ReturnDate = returnDate.ToString("yyyy-MM-dd")
+            });
+            result.Code.Should().Be(4001);
+            result.Message.Should().Be("归还日期必须晚于今天");
+        }
+    }
+
     [Fact]
     public async Task Duplicate_asset_flow_message_identifies_current_applicant_and_flow()
     {
@@ -116,14 +157,16 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "占用中的借用申请"
+            Reason = "占用中的借用申请",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "重复申请"
+            Reason = "重复申请",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         response.EnsureSuccessStatusCode();
@@ -157,7 +200,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "无主管不应发起"
+            Reason = "无主管不应发起",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         response.EnsureSuccessStatusCode();
@@ -205,7 +249,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "测试审批"
+            Reason = "测试审批",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         response.EnsureSuccessStatusCode();
@@ -248,7 +293,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "测试驳回"
+            Reason = "测试驳回",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         response.EnsureSuccessStatusCode();
@@ -417,7 +463,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "稍后撤回"
+            Reason = "稍后撤回",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
@@ -451,7 +498,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "撤回后重新发起"
+            Reason = "撤回后重新发起",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
         replacement.Code.Should().Be(0, "撤回后应释放资产的进行中流程锁");
     }
@@ -498,7 +546,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             BizType = "borrow",
             AssetId = asset.Id,
-            Reason = "按组织负责人审批"
+            Reason = "按组织负责人审批",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
         Auth(await LoginToken(managerNo, "123456"));
