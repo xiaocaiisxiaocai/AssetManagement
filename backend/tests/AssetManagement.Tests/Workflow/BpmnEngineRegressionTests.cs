@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Xml.Linq;
 using AssetManagement.Application.Assets;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
@@ -49,6 +50,49 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
 
         flow.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_Other");
         flow.BpmnTokens.Should().NotContainKey("Task_Tech");
+    }
+
+    [Fact]
+    public void Default_workflow_bpmn_has_complete_di_for_nodes_and_sequence_flows()
+    {
+        var method = typeof(DbSeeder).GetMethod("DefaultWorkflows", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var workflows = ((IEnumerable<WorkflowEntity>)method.Invoke(null, null)!).ToList();
+        XNamespace bpmn = "http://www.omg.org/spec/BPMN/20100524/MODEL";
+        XNamespace bpmndi = "http://www.omg.org/spec/BPMN/20100524/DI";
+
+        foreach (var workflow in workflows)
+        {
+            var document = XDocument.Parse(workflow.BpmnXml!);
+            var nodeNames = new[]
+            {
+                "startEvent", "endEvent", "userTask", "serviceTask",
+                "exclusiveGateway", "inclusiveGateway", "parallelGateway"
+            };
+            var semanticNodeIds = document.Descendants()
+                .Where(x => nodeNames.Contains(x.Name.LocalName))
+                .Select(x => (string?)x.Attribute("id"))
+                .Where(x => x is not null)
+                .ToHashSet();
+            var shapeIds = document.Descendants(bpmndi + "BPMNShape")
+                .Select(x => (string?)x.Attribute("bpmnElement"))
+                .Where(x => x is not null)
+                .ToHashSet();
+            var flowIds = document.Descendants(bpmn + "sequenceFlow")
+                .Select(x => (string?)x.Attribute("id"))
+                .Where(x => x is not null)
+                .ToHashSet();
+            var edgeIds = document.Descendants(bpmndi + "BPMNEdge")
+                .Select(x => (string?)x.Attribute("bpmnElement"))
+                .Where(x => x is not null)
+                .ToHashSet();
+
+            semanticNodeIds.Should().BeSubsetOf(shapeIds,
+                $"默认流程 {workflow.BizType} 的每个节点都必须有 BPMNShape");
+            flowIds.Should().BeSubsetOf(edgeIds,
+                $"默认流程 {workflow.BizType} 的每条顺序流都必须有 BPMNEdge");
+            edgeIds.Should().BeSubsetOf(flowIds,
+                $"默认流程 {workflow.BizType} 不应包含指向不存在顺序流的 BPMNEdge");
+        }
     }
 
     [Fact]

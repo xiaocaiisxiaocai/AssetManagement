@@ -187,6 +187,19 @@ public static class DbSeeder
                 borrowWorkflow.Name = defaultBorrowWorkflow.Name;
                 borrowWorkflow.BpmnXml = defaultBorrowWorkflow.BpmnXml;
             }
+
+            // 修复早期内置转让模板：语义层包含角色网关和 7 条顺序流，但 DI 层缺少
+            // 网关/分支节点及 4 条连线，bpmn-js 会直接跳过这些无 DI 的元素。
+            // 仅匹配该已知损坏特征，避免覆盖用户自行设计的转让流程。
+            var transferWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "transfer");
+            if (transferWorkflow?.BpmnXml is { } transferXml
+                && transferXml.Contains("Gateway_applicantRole", StringComparison.Ordinal)
+                && !transferXml.Contains("bpmnElement=\"Gateway_applicantRole\"", StringComparison.Ordinal))
+            {
+                var defaultTransferWorkflow = defaultWorkflows.Single(x => x.BizType == "transfer");
+                transferWorkflow.Name = defaultTransferWorkflow.Name;
+                transferWorkflow.BpmnXml = defaultTransferWorkflow.BpmnXml;
+            }
         }
 
         if (!db.SystemSettings.Any(x => x.Key == "audit_retention_months"))
@@ -1305,28 +1318,63 @@ public static class DbSeeder
   <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
     <bpmndi:BPMNPlane id=""BPMNPlane_1"" bpmnElement=""Process_transfer"">
       <bpmndi:BPMNShape id=""StartEvent_1_di"" bpmnElement=""StartEvent_1"">
-        <dc:Bounds x=""152"" y=""102"" width=""36"" height=""36"" />
+        <dc:Bounds x=""100"" y=""222"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Gateway_applicantRole_di"" bpmnElement=""Gateway_applicantRole"" isMarkerVisible=""true"">
+        <dc:Bounds x=""210"" y=""215"" width=""50"" height=""50"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Task_adminRole_di"" bpmnElement=""Task_adminRole"">
+        <dc:Bounds x=""340"" y=""80"" width=""100"" height=""80"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Task_supervisorRole_di"" bpmnElement=""Task_supervisorRole"">
+        <dc:Bounds x=""340"" y=""200"" width=""100"" height=""80"" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id=""Task_supervisor_di"" bpmnElement=""Task_supervisor"">
-        <dc:Bounds x=""240"" y=""80"" width=""100"" height=""80"" />
+        <dc:Bounds x=""340"" y=""320"" width=""100"" height=""80"" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id=""Task_receiver_di"" bpmnElement=""Task_receiver"">
-        <dc:Bounds x=""400"" y=""80"" width=""100"" height=""80"" />
+        <dc:Bounds x=""540"" y=""200"" width=""100"" height=""80"" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id=""EndEvent_1_di"" bpmnElement=""EndEvent_1"">
-        <dc:Bounds x=""552"" y=""102"" width=""36"" height=""36"" />
+        <dc:Bounds x=""720"" y=""222"" width=""36"" height=""36"" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id=""Flow_1_di"" bpmnElement=""Flow_1"">
-        <di:waypoint x=""188"" y=""120"" />
-        <di:waypoint x=""240"" y=""120"" />
+        <di:waypoint x=""136"" y=""240"" />
+        <di:waypoint x=""210"" y=""240"" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id=""Flow_2_di"" bpmnElement=""Flow_2"">
+      <bpmndi:BPMNEdge id=""Flow_admin_di"" bpmnElement=""Flow_admin"">
+        <di:waypoint x=""235"" y=""215"" />
+        <di:waypoint x=""235"" y=""120"" />
         <di:waypoint x=""340"" y=""120"" />
-        <di:waypoint x=""400"" y=""120"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_supervisorRole_di"" bpmnElement=""Flow_supervisorRole"">
+        <di:waypoint x=""260"" y=""240"" />
+        <di:waypoint x=""340"" y=""240"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_employeeDefault_di"" bpmnElement=""Flow_employeeDefault"">
+        <di:waypoint x=""235"" y=""265"" />
+        <di:waypoint x=""235"" y=""360"" />
+        <di:waypoint x=""340"" y=""360"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_admin_to_receiver_di"" bpmnElement=""Flow_admin_to_receiver"">
+        <di:waypoint x=""440"" y=""120"" />
+        <di:waypoint x=""490"" y=""120"" />
+        <di:waypoint x=""490"" y=""220"" />
+        <di:waypoint x=""540"" y=""220"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_supervisor_to_receiver_di"" bpmnElement=""Flow_supervisor_to_receiver"">
+        <di:waypoint x=""440"" y=""240"" />
+        <di:waypoint x=""540"" y=""240"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_employee_to_receiver_di"" bpmnElement=""Flow_employee_to_receiver"">
+        <di:waypoint x=""440"" y=""360"" />
+        <di:waypoint x=""490"" y=""360"" />
+        <di:waypoint x=""490"" y=""260"" />
+        <di:waypoint x=""540"" y=""260"" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id=""Flow_3_di"" bpmnElement=""Flow_3"">
-        <di:waypoint x=""500"" y=""120"" />
-        <di:waypoint x=""552"" y=""120"" />
+        <di:waypoint x=""640"" y=""240"" />
+        <di:waypoint x=""720"" y=""240"" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
