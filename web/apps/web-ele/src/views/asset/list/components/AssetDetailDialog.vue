@@ -11,6 +11,8 @@ import {
   ElImage,
   ElTable,
   ElTableColumn,
+  ElTabPane,
+  ElTabs,
   ElTag,
   ElTimeline,
   ElTimelineItem,
@@ -26,6 +28,7 @@ const props = defineProps<{
 
 const visible = defineModel<boolean>('visible', { default: false });
 const imageUrls = ref<string[]>([]);
+const activeTab = ref('basic');
 let imageLoadGeneration = 0;
 
 function revokeImageObjectUrls() {
@@ -50,6 +53,10 @@ watch(
   },
   { deep: true },
 );
+
+watch(visible, (opened) => {
+  if (opened) activeTab.value = 'basic';
+});
 
 const statusOptions: Array<{
   label: string;
@@ -141,7 +148,7 @@ function summaryText(summary: null | string | undefined) {
     v-model="visible"
     class="asset-detail-dialog"
     title="资产详情"
-    width="760px"
+    width="min(900px, 92vw)"
   >
     <div v-loading="loading" class="asset-detail">
       <template v-if="detail">
@@ -181,6 +188,9 @@ function summaryText(summary: null | string | undefined) {
           删除，可由有权限的人员在列表中「撤销删除」恢复或「彻底删除」。
         </div>
 
+        <ElTabs v-model="activeTab" class="ad-tabs">
+          <ElTabPane label="基本信息" name="basic">
+            <div class="ad-tab-content">
         <ElDescriptions :column="2" border class="ad-desc" size="small">
           <ElDescriptionsItem label="归属部门">
             {{ detail.asset.departmentName ?? '—' }}
@@ -237,8 +247,17 @@ function summaryText(summary: null | string | undefined) {
           </div>
         </section>
 
-        <section class="ad-section">
-          <div class="ad-section-title">流转时间线</div>
+            <ElEmpty
+              v-if="!detail.asset.images?.length"
+              :image-size="56"
+              description="暂无资产照片"
+            />
+            </div>
+          </ElTabPane>
+
+          <ElTabPane :label="`流转记录 ${detail.flows.length}`" name="flows">
+            <div class="ad-tab-content">
+        <section class="ad-section ad-timeline-section">
           <ElTimeline v-if="detail.flows.length">
             <ElTimelineItem
               v-for="flow in detail.flows"
@@ -269,13 +288,19 @@ function summaryText(summary: null | string | undefined) {
           </ElTimeline>
           <ElEmpty v-else :image-size="56" description="暂无流转记录" />
         </section>
+            </div>
+          </ElTabPane>
 
+          <ElTabPane :label="`操作日志 ${detail.recentLogs.length}`" name="logs">
+            <div class="ad-tab-content">
         <section class="ad-section">
-          <div class="ad-section-title">最近操作日志</div>
           <ElTable
             v-if="detail.recentLogs.length"
             :data="detail.recentLogs"
+            border
+            max-height="480"
             size="small"
+            stripe
           >
             <ElTableColumn label="时间" width="170">
               <template #default="{ row }">
@@ -304,6 +329,9 @@ function summaryText(summary: null | string | undefined) {
           </ElTable>
           <ElEmpty v-else :image-size="56" description="暂无操作日志" />
         </section>
+            </div>
+          </ElTabPane>
+        </ElTabs>
       </template>
       <ElEmpty v-else-if="!loading" description="暂无数据" />
     </div>
@@ -312,7 +340,7 @@ function summaryText(summary: null | string | undefined) {
 
 <style scoped>
 .asset-detail {
-  min-height: 120px;
+  min-height: 420px;
 }
 
 .ad-header {
@@ -380,7 +408,28 @@ function summaryText(summary: null | string | undefined) {
 }
 
 .ad-desc {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+}
+
+.ad-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+
+.ad-tabs :deep(.el-tabs__item) {
+  min-width: 112px;
+  height: 44px;
+  font-weight: 500;
+}
+
+.ad-tab-content {
+  min-height: 330px;
+  max-height: 56vh;
+  padding: 18px 2px 4px;
+  overflow: auto;
+}
+
+.ad-timeline-section {
+  padding: 6px 12px 0 4px;
 }
 
 .ad-section {
@@ -412,5 +461,20 @@ function summaryText(summary: null | string | undefined) {
   height: 88px;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 6px;
+}
+
+@media (max-width: 640px) {
+  .ad-header {
+    flex-direction: column;
+  }
+
+  .ad-sub {
+    flex-wrap: wrap;
+  }
+
+  .ad-tabs :deep(.el-tabs__item) {
+    min-width: auto;
+    padding: 0 12px;
+  }
 }
 </style>

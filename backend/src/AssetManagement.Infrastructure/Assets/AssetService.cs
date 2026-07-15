@@ -94,10 +94,12 @@ public class AssetService : IAssetService
             .ToListAsync();
 
         var idText = id.ToString();
+        var flowIdTexts = flows.Select(x => x.Id.ToString()).ToArray();
         var logs = await _db.AuditLogs
-            .Where(x => x.TargetType == "Asset" && x.TargetId == idText)
+            .Where(x => (x.TargetType == "Asset" && x.TargetId == idText)
+                        || (x.TargetType == "Approval" && x.TargetId != null && flowIdTexts.Contains(x.TargetId)))
             .OrderByDescending(x => x.OccurredAt)
-            .Take(5)
+            .Take(100)
             .ToListAsync();
         var userIds = logs.Where(x => x.UserId.HasValue).Select(x => x.UserId!.Value).Distinct().ToArray();
         var userNames = await _db.Users

@@ -357,6 +357,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         detail!.Data!.Asset.Id.Should().Be(id);
         detail.Data.Flows.Should().Contain(f => f.BizType == "borrow" && f.Applicant.Length > 0);
         detail.Data.RecentLogs.Should().Contain(l => l.ActionType == "PUT" && l.TargetId == id.ToString());
+        detail.Data.RecentLogs.Should().Contain(l => l.TargetType == "Approval");
     }
 
     [Fact]
