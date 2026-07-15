@@ -14,6 +14,7 @@ import {
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
 import { downloadBlob } from '#/utils/download';
+import { formatDateTime } from '#/utils/date-format';
 
 import {
   ElButton,
@@ -119,7 +120,7 @@ async function confirmCleanup() {
   const preview = cleanupPreview.value ?? await getAuditCleanupPreviewApi(cleanupRetentionDays.value);
   try {
     await ElMessageBox.confirm(
-      `确认清理 ${formatTime(preview.cutoffTime)} 之前的审计日志？预计删除 ${preview.deleteCount} 条。`,
+      `确认清理 ${formatDateTime(preview.cutoffTime, { seconds: true })} 之前的审计日志？预计删除 ${preview.deleteCount} 条。`,
       '清理审计日志',
       {
         confirmButtonText: '确认清理',
@@ -249,10 +250,6 @@ function formatValue(value: unknown): string {
 }
 
 
-function formatTime(value: string) {
-  return value?.replace('T', ' ').slice(0, 19);
-}
-
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
   pageSizeOptions.value = createPageSizeOptions(query.pageSize);
@@ -377,7 +374,7 @@ onMounted(async () => {
             </template>
           </ElTableColumn>
           <ElTableColumn label="时间" min-width="170">
-            <template #default="{ row }">{{ formatTime(row.occurredAt) }}</template>
+            <template #default="{ row }">{{ formatDateTime(row.occurredAt, { seconds: true }) }}</template>
           </ElTableColumn>
           <ElTableColumn label="操作人" min-width="120">
             <template #default="{ row }">{{ row.userName || row.userId || '-' }}</template>
@@ -455,7 +452,7 @@ onMounted(async () => {
           <div v-loading="cleanupPreviewLoading" class="cleanup-preview">
             <div class="preview-row">
               <span>截止时间</span>
-              <strong>{{ cleanupPreview ? formatTime(cleanupPreview.cutoffTime) : '-' }}</strong>
+              <strong>{{ cleanupPreview ? formatDateTime(cleanupPreview.cutoffTime, { seconds: true }) : '-' }}</strong>
             </div>
             <div class="preview-row">
               <span>预计删除</span>

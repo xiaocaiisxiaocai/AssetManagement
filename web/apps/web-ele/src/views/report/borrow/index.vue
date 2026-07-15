@@ -13,6 +13,7 @@ import { getUserOptionsApi } from '#/api/user';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
 import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
 import { downloadBlob } from '#/utils/download';
+import { formatDateTime } from '#/utils/date-format';
 
 import {
   ElButton,
@@ -226,7 +227,7 @@ onMounted(async () => {
           <ElTableColumn label="借用人" min-width="120" prop="borrower" />
           <ElTableColumn class-name="hide-on-mobile" label="部门" min-width="120" prop="borrowerDept" />
           <ElTableColumn class-name="hide-on-mobile" label="申请时间" min-width="160">
-            <template #default="{ row }">{{ row.applyTime?.replace('T', ' ').slice(0, 16) }}</template>
+            <template #default="{ row }">{{ formatDateTime(row.applyTime) }}</template>
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="预计归还" min-width="120" prop="returnDate" />
           <ElTableColumn label="状态" width="100" align="center">

@@ -5,6 +5,7 @@ import { onMounted, reactive, ref } from 'vue';
 
 import { getPendingReturnsApi, confirmReturnApi } from '#/api/workflow';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { formatDateTime } from '#/utils/date-format';
 
 import {
   ElButton,
@@ -123,18 +124,6 @@ async function confirmReturn(row: ApprovalFlow) {
   }
 }
 
-function formatTime(time: string | Date | null | undefined) {
-  if (!time) return '-';
-  const date = new Date(time);
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 function bizText(type: string) {
   return { borrow: '借用', return: '归还', transfer: '转让' }[type] ?? type;
 }
@@ -193,7 +182,7 @@ onMounted(async () => {
           <ElTableColumn label="应归还日期" min-width="140" prop="returnDate" />
           <ElTableColumn class-name="hide-on-mobile" label="申请时间" min-width="180">
             <template #default="{ row }">
-              {{ formatTime(row.applyTime) }}
+              {{ formatDateTime(row.applyTime) }}
             </template>
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="借用事由" min-width="200" prop="reason" show-overflow-tooltip />

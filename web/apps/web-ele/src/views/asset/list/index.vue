@@ -20,6 +20,8 @@ import { useDebounceFn } from '@vueuse/core';
 import { useAccess } from '@vben/access';
 import { useUserStore } from '@vben/stores';
 
+import { formatDate } from '#/utils/date-format';
+
 import {
   deleteAssetApi,
   exportAssetsApi,
@@ -911,7 +913,7 @@ watch(
                 align="center"
               >
                 <template #default="{ row }">
-                  {{ row.purchaseDate?.slice(0, 10) || '-' }}
+                  {{ formatDate(row.purchaseDate) }}
                 </template>
               </ElTableColumn>
               <ElTableColumn
@@ -921,7 +923,7 @@ watch(
                 align="center"
               >
                 <template #default="{ row }">
-                  {{ row.registrationTime?.slice(0, 10) || '-' }}
+                  {{ formatDate(row.registrationTime) }}
                 </template>
               </ElTableColumn>
               <ElTableColumn

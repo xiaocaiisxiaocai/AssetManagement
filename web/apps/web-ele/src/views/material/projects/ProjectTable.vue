@@ -3,6 +3,8 @@ import type { TestProjectItem, TestProjectOption } from '#/api/test-project';
 import type { ProjectFilter } from './project-filter';
 import type { DeleteStatus } from './project-workspace-types';
 
+import { formatDate } from '#/utils/date-format';
+
 import {
   ElButton,
   ElInput,
@@ -62,10 +64,6 @@ const followUpStatusMap: Record<
   upcoming: { label: '未到期', type: 'success' },
 };
 const defaultFollowUpStatus = { label: '未到期', type: 'success' as const };
-
-function dateText(value?: null | string) {
-  return value ? value.slice(0, 10) : '-';
-}
 
 function optionalText(value?: null | string) {
   return value && value.trim() ? value : '-';
@@ -198,17 +196,17 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       </ElTableColumn>
       <ElTableColumn align="center" label="开始时间" width="110"
         ><template #default="{ row }">{{
-          dateText(row.startDate)
+          formatDate(row.startDate)
         }}</template></ElTableColumn
       >
       <ElTableColumn align="center" label="计划完成" width="110"
         ><template #default="{ row }">{{
-          dateText(row.plannedFinishDate)
+          formatDate(row.plannedFinishDate)
         }}</template></ElTableColumn
       >
       <ElTableColumn align="center" label="结案时间" width="110"
         ><template #default="{ row }">{{
-          dateText(row.closedDate)
+          formatDate(row.closedDate)
         }}</template></ElTableColumn
       >
       <ElTableColumn label="进度" min-width="110"
@@ -225,7 +223,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       >
       <ElTableColumn align="center" label="下次跟进" width="130">
         <template #default="{ row }"
-          ><div>{{ dateText(row.nextFollowUpDueDate) }}</div>
+          ><div>{{ formatDate(row.nextFollowUpDueDate) }}</div>
           <ElTag :type="statusMeta(row.followUpStatus).type" size="small">{{
             statusMeta(row.followUpStatus).label
           }}</ElTag></template

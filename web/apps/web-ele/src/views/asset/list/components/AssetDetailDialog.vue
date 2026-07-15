@@ -17,6 +17,7 @@ import {
 } from 'element-plus';
 
 import { loadAssetImageObjectUrl } from '#/api/asset';
+import { formatDate, formatDateTime } from '#/utils/date-format';
 
 const props = defineProps<{
   detail: AssetDetail | null;
@@ -89,16 +90,6 @@ function statusMeta(status: AssetStatus) {
       value: status,
     }
   );
-}
-
-function formatTime(time: null | string | undefined) {
-  if (!time) {
-    return '—';
-  }
-  const d = new Date(time);
-  return Number.isNaN(d.getTime())
-    ? time
-    : d.toLocaleString('zh-CN', { hour12: false });
 }
 
 const actionTypeText: Record<string, string> = {
@@ -186,7 +177,7 @@ function summaryText(summary: null | string | undefined) {
 
         <div v-if="detail.asset.isDeleted" class="ad-deleted-banner">
           该资产已于
-          {{ formatTime(detail.asset.deletedAt) }}
+          {{ formatDateTime(detail.asset.deletedAt, { empty: '—' }) }}
           删除，可由有权限的人员在列表中「撤销删除」恢复或「彻底删除」。
         </div>
 
@@ -204,10 +195,10 @@ function summaryText(summary: null | string | undefined) {
             {{ detail.asset.quantity }}
           </ElDescriptionsItem>
           <ElDescriptionsItem label="购入日期">
-            {{ detail.asset.purchaseDate?.slice(0, 10) || '—' }}
+            {{ formatDate(detail.asset.purchaseDate, '—') }}
           </ElDescriptionsItem>
           <ElDescriptionsItem label="资产登记日期">
-            {{ detail.asset.registrationTime?.slice(0, 10) || '—' }}
+            {{ formatDate(detail.asset.registrationTime, '—') }}
           </ElDescriptionsItem>
           <ElDescriptionsItem label="目前状况">
             {{ detail.asset.currentCondition || '—' }}
@@ -219,10 +210,10 @@ function summaryText(summary: null | string | undefined) {
             :span="detail.asset.isDeleted ? 1 : 2"
             label="创建时间"
           >
-            {{ formatTime(detail.asset.createdAt) }}
+            {{ formatDateTime(detail.asset.createdAt, { empty: '—' }) }}
           </ElDescriptionsItem>
           <ElDescriptionsItem v-if="detail.asset.isDeleted" label="删除时间">
-            {{ formatTime(detail.asset.deletedAt) }}
+            {{ formatDateTime(detail.asset.deletedAt, { empty: '—' }) }}
           </ElDescriptionsItem>
         </ElDescriptions>
 
@@ -253,10 +244,10 @@ function summaryText(summary: null | string | undefined) {
               v-for="flow in detail.flows"
               :key="flow.id"
               :timestamp="
-                formatTime(
+                formatDateTime(
                   flow.status === 'withdrawn'
                     ? flow.withdrawnAt
-                    : flow.applyTime,
+                    : formatDateTime(flow.applyTime),
                 )
               "
               :type="flowStatusMeta[flow.status]?.tag ?? 'primary'"
@@ -272,7 +263,7 @@ function summaryText(summary: null | string | undefined) {
                 事由：{{ flow.reason }}
               </div>
               <div v-if="flow.returnDate" class="text-xs text-gray-400">
-                应归还：{{ flow.returnDate }}
+                应归还：{{ formatDate(flow.returnDate) }}
               </div>
             </ElTimelineItem>
           </ElTimeline>
@@ -288,7 +279,7 @@ function summaryText(summary: null | string | undefined) {
           >
             <ElTableColumn label="时间" width="170">
               <template #default="{ row }">
-                {{ formatTime(row.occurredAt) }}
+                {{ formatDateTime(row.occurredAt, { empty: '—', seconds: true }) }}
               </template>
             </ElTableColumn>
             <ElTableColumn label="操作人" prop="userName" width="110" />

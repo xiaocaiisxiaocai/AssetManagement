@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import type { TestProjectFollowup, TestProjectItem } from '#/api/test-project';
 
+import { formatDate, formatDateTime } from '#/utils/date-format';
+
 import {
   ElButton,
   ElDatePicker,
@@ -31,13 +33,6 @@ const emit = defineEmits<{
   save: [];
 }>();
 
-function dateText(value?: null | string) {
-  return value ? value.slice(0, 10) : '-';
-}
-
-function dateTimeText(value?: null | string) {
-  return value ? value.replace('T', ' ').slice(0, 16) : '-';
-}
 </script>
 
 <template>
@@ -110,13 +105,13 @@ function dateTimeText(value?: null | string) {
           <ElTimelineItem
             v-for="item in followups"
             :key="item.id"
-            :timestamp="dateText(item.dueDate)"
+            :timestamp="formatDate(item.dueDate)"
             placement="top"
           >
             <article class="followup-record">
               <div class="followup-record-meta">
                 <span>{{ item.filledByName || '-' }}</span
-                ><span>{{ dateTimeText(item.filledAt) }}</span>
+                ><span>{{ formatDateTime(item.filledAt) }}</span>
               </div>
               <div class="followup-content">{{ item.content }}</div>
               <div v-if="project.canWriteFollowUp" class="record-actions">

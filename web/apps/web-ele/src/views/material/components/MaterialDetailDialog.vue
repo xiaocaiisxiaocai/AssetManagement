@@ -16,6 +16,7 @@ import {
 } from 'element-plus';
 
 import { loadAssetImageObjectUrl } from '#/api/asset';
+import { formatDate, formatDateTime } from '#/utils/date-format';
 
 const props = defineProps<{
   detail: MaterialDetail | null;
@@ -144,7 +145,7 @@ const actionText: Record<string, string> = {
             {{ detail.material.custodianName ?? '-' }}
           </ElDescriptionsItem>
           <ElDescriptionsItem label="接收日期">
-            {{ detail.material.receivedDate?.slice(0, 10) ?? '-' }}
+            {{ formatDate(detail.material.receivedDate) }}
           </ElDescriptionsItem>
           <ElDescriptionsItem :span="2" label="备注">
             {{ detail.material.remark ?? '-' }}
@@ -200,7 +201,7 @@ const actionText: Record<string, string> = {
             <ElTimelineItem
               v-for="record in detail.records"
               :key="record.id"
-              :timestamp="record.operatedAt.replace('T', ' ').slice(0, 19)"
+              :timestamp="formatDateTime(record.operatedAt, { seconds: true })"
             >
               <div class="material-flow-record">
                 <span class="font-medium">

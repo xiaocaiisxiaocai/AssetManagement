@@ -11,6 +11,7 @@ import {
   getDatabaseBackupsApi,
 } from '#/api/report';
 import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import { formatDateTime } from '#/utils/date-format';
 
 import {
   ElButton,
@@ -80,10 +81,6 @@ async function backupDatabase() {
 async function downloadBackup(row: DatabaseBackupFile) {
   const response = await downloadDatabaseBackupApi(row.fileName);
   downloadBlob(response.data, row.fileName);
-}
-
-function formatTime(value: string) {
-  return value?.replace('T', ' ').slice(0, 19);
 }
 
 function formatSize(bytes: number) {
@@ -161,7 +158,7 @@ onMounted(async () => {
             <template #default="{ row }">{{ formatSize(row.sizeBytes) }}</template>
           </ElTableColumn>
           <ElTableColumn label="创建时间" width="180">
-            <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+            <template #default="{ row }">{{ formatDateTime(row.createdAt, { seconds: true }) }}</template>
           </ElTableColumn>
           <ElTableColumn class-name="hide-on-mobile" label="完整路径" min-width="360" prop="filePath" />
           <ElTableColumn v-if="canManageBackup" fixed="right" label="操作" width="100" align="center">

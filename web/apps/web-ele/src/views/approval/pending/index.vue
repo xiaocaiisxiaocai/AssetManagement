@@ -28,6 +28,7 @@ import {
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
 import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
+import { formatDate, formatDateTime } from '#/utils/date-format';
 import {
   mergeApprovalWorkItems,
   normalizeAssetApproval,
@@ -544,12 +545,9 @@ onMounted(async () => {
             label="借用人/接收人"
             width="140"
           />
-          <ElTableColumn
-            class-name="hide-on-mobile"
-            prop="applyTime"
-            label="申请时间"
-            width="170"
-          />
+          <ElTableColumn class-name="hide-on-mobile" label="申请时间" width="170">
+            <template #default="{ row }">{{ formatDateTime(row.applyTime) }}</template>
+          </ElTableColumn>
           <ElTableColumn label="当前节点" width="160">
             <template #default="{ row }">
               {{ row.currentNodeLabel }}
@@ -646,7 +644,7 @@ onMounted(async () => {
             selected.applicantDept || '-'
           }}</ElDescriptionsItem>
           <ElDescriptionsItem label="申请时间" :span="2">
-            {{ selected.applyTime }}
+            {{ formatDateTime(selected.applyTime) }}
           </ElDescriptionsItem>
           <ElDescriptionsItem label="申请理由" :span="2">
             {{ selected.reason || '-' }}
@@ -656,7 +654,7 @@ onMounted(async () => {
             label="归还日期"
             :span="2"
           >
-            {{ selected.returnDate || '-' }}
+            {{ formatDate(selected.returnDate) }}
           </ElDescriptionsItem>
           <ElDescriptionsItem v-if="currentNodeInfo" label="当前节点" :span="2">
             {{ currentNodeInfo.names }}

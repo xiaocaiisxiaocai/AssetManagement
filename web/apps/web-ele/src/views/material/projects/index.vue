@@ -30,6 +30,7 @@ import {
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
 import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
+import { formatDate } from '#/utils/date-format';
 import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
 import {
   approveFlowApi,
@@ -282,10 +283,6 @@ const pagedProjects = computed(() => {
 
 function activeOptions(kind: OptionKind) {
   return options.value.filter((item) => item.kind === kind && item.isActive);
-}
-
-function dateText(value?: null | string) {
-  return value ? value.slice(0, 10) : '-';
 }
 
 function normalizeText(value?: null | string) {
@@ -1083,7 +1080,7 @@ onMounted(async () => {
                 <span class="brief-stat-label">下次跟进</span>
                 <div class="brief-stat-value">
                   <strong>{{
-                    dateText(currentProject.nextFollowUpDueDate)
+                    formatDate(currentProject.nextFollowUpDueDate)
                   }}</strong>
                   <ElTag
                     :type="statusMeta(currentProject.followUpStatus).type"
