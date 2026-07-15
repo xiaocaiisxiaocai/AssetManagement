@@ -6,6 +6,11 @@ import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
 import 'bpmn-js/dist/assets/bpmn-js.css';
 import 'bpmn-js/dist/assets/diagram-js.css';
 import BpmnProperties from './bpmn-properties.vue';
+import {
+  getBranchLabelDelta,
+  getGatewayValidationError,
+  getSuggestedBranchName,
+} from './gateway-branches';
 
 defineOptions({ name: 'BpmnModeler' });
 
@@ -24,6 +29,8 @@ const saving = ref(false);
 const containerRef = ref<HTMLDivElement>();
 const modeler = shallowRef<any>();
 const selectedElement = shallowRef<any>(null); // 当前选中的元素
+let branchNormalizationQueued = false;
+let isNormalizingBranches = false;
 
 const elementTypeText = computed(() => {
   const type = selectedElement.value?.businessObject?.$type;
@@ -38,6 +45,12 @@ const elementTypeText = computed(() => {
     'bpmn:UserTask': '审批节点',
   };
   return type ? map[type] || '流程元素' : '未选择';
+});
+
+const selectedElementText = computed(() => {
+  const businessObject = selectedElement.value?.businessObject;
+  const name = businessObject?.name || selectedElement.value?.id;
+  return name ? `${name} · ${elementTypeText.value}` : elementTypeText.value;
 });
 
 const allowedPaletteEntries = new Set([
@@ -164,7 +177,12 @@ function installWorkflowPalette(modelerInstance: any) {
     },
   });
 
-  function createShapeEntry(type: string, group: string, className: string, title: string) {
+  function createShapeEntry(
+    type: string,
+    group: string,
+    className: string,
+    title: string,
+  ) {
     const createShape = (event: Event) => {
       const shape = elementFactory.createShape({ type });
       create.start(event, shape);
@@ -226,6 +244,106 @@ function installWorkflowPalette(modelerInstance: any) {
   });
 }
 
+function normalizeGatewayBranchLabels() {
+  if (!modeler.value || isNormalizingBranches) return 0;
+
+  const elementRegistry = modeler.value.get('elementRegistry');
+  const modeling = modeler.value.get('modeling');
+  const gateways = elementRegistry
+    .getAll()
+    .filter((element: any) =>
+      [
+        'bpmn:ExclusiveGateway',
+        'bpmn:InclusiveGateway',
+        'bpmn:ParallelGateway',
+      ].includes(element.businessObject?.$type),
+    );
+  let normalizedCount = 0;
+
+  isNormalizingBranches = true;
+  try {
+    for (const gateway of gateways) {
+      const gatewayType = gateway.businessObject.$type;
+      const explicitDefault = gateway.businessObject.default;
+      for (const [index, flow] of (gateway.outgoing || []).entries()) {
+        const businessObject = flow.businessObject;
+        if (businessObject?.name?.trim()) continue;
+
+        const isExplicitDefault =
+          explicitDefault === businessObject ||
+          explicitDefault === businessObject?.id ||
+          explicitDefault?.id === businessObject?.id;
+        modeling.updateProperties(flow, {
+          name: getSuggestedBranchName({
+            conditionExpression: businessObject?.conditionExpression?.body,
+            gatewayType,
+            index,
+            isExplicitDefault,
+            targetId: flow.target?.id,
+            targetName: flow.target?.businessObject?.name,
+            targetType: flow.target?.businessObject?.$type,
+          }),
+        });
+        if (flow.label && flow.waypoints?.length > 1) {
+          const delta = getBranchLabelDelta(flow.waypoints, flow.label, {
+            x: gateway.x + gateway.width / 2,
+            y: gateway.y + gateway.height / 2,
+          });
+          if (Math.abs(delta.x) > 1 || Math.abs(delta.y) > 1) {
+            modeling.moveShape(flow.label, delta);
+          }
+        }
+        normalizedCount += 1;
+      }
+    }
+  } finally {
+    isNormalizingBranches = false;
+  }
+
+  return normalizedCount;
+}
+
+function scheduleGatewayBranchNormalization() {
+  if (branchNormalizationQueued || isNormalizingBranches) return;
+
+  branchNormalizationQueued = true;
+  queueMicrotask(() => {
+    branchNormalizationQueued = false;
+    normalizeGatewayBranchLabels();
+  });
+}
+
+function validateGatewayBranches() {
+  const elementRegistry = modeler.value.get('elementRegistry');
+  let validationError = '';
+  const invalidGateway = elementRegistry.getAll().find((element: any) => {
+    const gatewayType = element.businessObject?.$type;
+    if (
+      gatewayType !== 'bpmn:ExclusiveGateway' &&
+      gatewayType !== 'bpmn:ParallelGateway'
+    ) {
+      return false;
+    }
+
+    const error = getGatewayValidationError({
+      expressions: (element.outgoing || []).map(
+        (flow: any) => flow.businessObject?.conditionExpression?.body || '',
+      ),
+      gatewayName: element.businessObject?.name || element.id,
+      gatewayType,
+    });
+    if (!error) return false;
+    validationError = error;
+    return true;
+  });
+
+  if (!invalidGateway) return true;
+  modeler.value.get('selection').select(invalidGateway);
+  modeler.value.get('canvas').scrollToElement(invalidGateway);
+  ElMessage.error(validationError);
+  return false;
+}
+
 async function initModeler() {
   if (!containerRef.value) return;
 
@@ -243,6 +361,12 @@ async function initModeler() {
     // 加载初始 XML 或空白模板
     const xml = props.initialXml || emptyBpmnTemplate;
     await modeler.value.importXML(xml);
+    const normalizedBranchCount = normalizeGatewayBranchLabels();
+    if (normalizedBranchCount > 0) {
+      ElMessage.info(
+        `已为 ${normalizedBranchCount} 条旧分支补充画布标签，保存后将写入流程定义`,
+      );
+    }
 
     // 自动适配画布大小
     const canvas = modeler.value.get('canvas');
@@ -258,7 +382,7 @@ async function initModeler() {
         selectedElement.value = null;
       }
     });
-
+    eventBus.on('commandStack.changed', scheduleGatewayBranchNormalization);
   } catch (error: any) {
     console.error('初始化 BPMN 设计器失败:', error);
     ElMessage.error(error.message || '初始化失败');
@@ -272,6 +396,8 @@ async function handleSave() {
 
   saving.value = true;
   try {
+    normalizeGatewayBranchLabels();
+    if (!validateGatewayBranches()) return;
     const { xml } = await modeler.value.saveXML({ format: true });
     emit('save', xml);
   } catch (error: any) {
@@ -394,9 +520,7 @@ onUnmounted(() => {
           <ElButton @click="handleZoomReset">适应</ElButton>
           <ElButton @click="handleZoomIn">放大</ElButton>
         </ElButtonGroup>
-        <ElButton @click="handleDownload">
-          下载
-        </ElButton>
+        <ElButton @click="handleDownload"> 下载 </ElButton>
         <ElButton type="primary" :loading="saving" @click="handleSave">
           保存
         </ElButton>
@@ -520,8 +644,8 @@ onUnmounted(() => {
 
       <main class="canvas-shell">
         <div class="canvas-statusbar">
-          <span>当前选中：{{ elementTypeText }}</span>
-          <span>支持中文节点名称和中文条件配置</span>
+          <span>当前选中：{{ selectedElementText }}</span>
+          <span>网关分支名称会同步显示在画布连线上</span>
         </div>
         <div
           ref="containerRef"
@@ -792,8 +916,8 @@ onUnmounted(() => {
 }
 
 .bpmn-modeler-wrapper .properties-panel {
-  width: 340px;
-  flex: 0 0 340px;
+  width: 380px;
+  flex: 0 0 380px;
   overflow-y: auto;
   background: var(--workflow-panel-bg);
   border: 1px solid var(--workflow-border);
@@ -804,8 +928,10 @@ onUnmounted(() => {
 :deep(.bpmn-container .viewport),
 :deep(.bpmn-container .djs-container) {
   background-color: var(--workflow-canvas-bg);
-  background-image:
-    linear-gradient(var(--workflow-grid-line) 1px, transparent 1px),
+  background-image: linear-gradient(
+      var(--workflow-grid-line) 1px,
+      transparent 1px
+    ),
     linear-gradient(90deg, var(--workflow-grid-line) 1px, transparent 1px);
   background-size: 16px 16px;
 }
@@ -823,7 +949,7 @@ onUnmounted(() => {
 :deep(.bpmn-container .djs-shape .djs-visual text),
 :deep(.bpmn-container .djs-label .djs-visual text) {
   fill: var(--workflow-node-text) !important;
-  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif !important;
+  font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif !important;
   font-size: 12px !important;
   stroke: none !important;
 }
@@ -842,8 +968,10 @@ onUnmounted(() => {
   fill: var(--workflow-label-text) !important;
 }
 
-:deep(.bpmn-container .djs-element[data-element-id$="_label"] .djs-visual text),
-:deep(.bpmn-container .djs-element[data-element-id$="_label"] .djs-visual tspan) {
+:deep(.bpmn-container .djs-element[data-element-id$='_label'] .djs-visual text),
+:deep(
+  .bpmn-container .djs-element[data-element-id$='_label'] .djs-visual tspan
+) {
   fill: var(--workflow-label-text) !important;
 }
 
@@ -940,8 +1068,8 @@ onUnmounted(() => {
   }
 
   .bpmn-modeler-wrapper .properties-panel {
-    width: 320px;
-    flex-basis: 320px;
+    width: 340px;
+    flex-basis: 340px;
   }
 }
 </style>
@@ -984,8 +1112,10 @@ onUnmounted(() => {
 .bpmn-modeler-wrapper .bpmn-container .djs-canvas,
 .bpmn-modeler-wrapper .bpmn-container svg[data-element-id] {
   background-color: var(--workflow-canvas-bg) !important;
-  background-image:
-    linear-gradient(var(--workflow-grid-line) 1px, transparent 1px),
+  background-image: linear-gradient(
+      var(--workflow-grid-line) 1px,
+      transparent 1px
+    ),
     linear-gradient(90deg, var(--workflow-grid-line) 1px, transparent 1px) !important;
   background-size: 16px 16px !important;
 }
@@ -1017,7 +1147,7 @@ onUnmounted(() => {
 .bpmn-modeler-wrapper .bpmn-container .djs-label .djs-visual text,
 .bpmn-modeler-wrapper .bpmn-container .djs-label .djs-visual tspan {
   fill: var(--workflow-node-text) !important;
-  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif !important;
+  font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif !important;
   font-size: 12px !important;
   stroke: none !important;
 }
@@ -1031,6 +1161,33 @@ onUnmounted(() => {
 
 .bpmn-modeler-wrapper .bpmn-container .djs-connection .djs-visual marker path {
   fill: var(--workflow-flow-stroke) !important;
+}
+
+.bpmn-modeler-wrapper
+  .bpmn-container
+  .djs-connection.selected
+  .djs-visual
+  > path {
+  stroke: var(--workflow-primary) !important;
+  stroke-width: 3px !important;
+}
+
+.bpmn-modeler-wrapper
+  .bpmn-container
+  .djs-element[data-element-id$='_label']
+  .djs-visual
+  text,
+.bpmn-modeler-wrapper
+  .bpmn-container
+  .djs-element[data-element-id$='_label']
+  .djs-visual
+  tspan {
+  fill: var(--workflow-label-text) !important;
+  stroke: var(--workflow-canvas-bg) !important;
+  stroke-width: 5px !important;
+  stroke-linejoin: round !important;
+  paint-order: stroke !important;
+  font-weight: 600 !important;
 }
 
 .bpmn-modeler-wrapper .bpmn-container .djs-palette,

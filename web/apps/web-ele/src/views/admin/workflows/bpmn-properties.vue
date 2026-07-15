@@ -4,7 +4,7 @@ import type { UserOptionDto } from '#/api/user';
 import type { DepartmentNode } from '#/api/base-data';
 import type { AssigneeType } from './assignee-identities';
 
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { useAccess } from '@vben/access';
 
@@ -18,14 +18,22 @@ import {
   userAssigneeIdentity,
 } from './assignee-identities';
 import {
+  ElButton,
   ElForm,
   ElFormItem,
   ElInput,
-  ElSelect,
   ElOption,
   ElRadioGroup,
   ElRadioButton,
+  ElSelect,
+  ElTag,
 } from 'element-plus';
+import {
+  gatewaySupportsConditions,
+  getSuggestedBranchName,
+  getTargetNodeTitle,
+  isDefaultGatewayBranch,
+} from './gateway-branches';
 
 defineOptions({ name: 'BpmnProperties' });
 
@@ -56,6 +64,8 @@ const conditionOperator = ref('==');
 const conditionValue = ref('');
 const gatewayConditions = ref<GatewayCondition[]>([]);
 const isLoadingElement = ref(false);
+let boundEventBus: any;
+let gatewayRefreshQueued = false;
 
 interface ParsedCondition {
   expression: string;
@@ -66,7 +76,12 @@ interface ParsedCondition {
 
 interface GatewayCondition extends ParsedCondition {
   id: string;
+  index: number;
+  isDefault: boolean;
+  isExplicitDefault: boolean;
   label: string;
+  suggestedLabel: string;
+  supportsCondition: boolean;
   targetName: string;
   flow: any;
 }
@@ -100,8 +115,11 @@ const isGateway = computed(
     elementType.value === 'bpmn:ParallelGateway' ||
     elementType.value === 'bpmn:InclusiveGateway',
 );
-const isExclusiveGateway = computed(
-  () => elementType.value === 'bpmn:ExclusiveGateway',
+const isConditionGateway = computed(() =>
+  gatewaySupportsConditions(elementType.value),
+);
+const defaultBranchCount = computed(
+  () => gatewayConditions.value.filter((item) => item.isDefault).length,
 );
 const assigneeValueOptions = computed(() => {
   if (assigneeType.value === 'username') {
@@ -223,7 +241,7 @@ function loadElement() {
     conditionValue.value = '';
   }
 
-  if (isExclusiveGateway.value) {
+  if (isGateway.value) {
     gatewayConditions.value = loadGatewayConditions();
   } else {
     gatewayConditions.value = [];
@@ -286,18 +304,38 @@ function buildConditionExpression() {
 
 function loadGatewayConditions(): GatewayCondition[] {
   const outgoing = props.element?.outgoing || [];
+  const gatewayBusinessObject = props.element?.businessObject;
   return outgoing.map((flow: any, index: number) => {
     const businessObject = flow.businessObject;
     const expression = businessObject.conditionExpression?.body || '';
     const parsed = parseCondition(expression);
-    const targetName =
-      flow.target?.businessObject?.name || flow.target?.id || '未连接节点';
+    const explicitDefault = gatewayBusinessObject?.default;
+    const isExplicitDefault =
+      explicitDefault === businessObject ||
+      explicitDefault === businessObject.id ||
+      explicitDefault?.id === businessObject.id;
+    const source = {
+      conditionExpression: expression,
+      gatewayType: elementType.value,
+      index,
+      isExplicitDefault,
+      name: businessObject.name,
+      targetId: flow.target?.id,
+      targetName: flow.target?.businessObject?.name,
+      targetType: flow.target?.businessObject?.$type,
+    };
+    const suggestedLabel = getSuggestedBranchName(source);
     return {
       ...parsed,
       flow,
       id: flow.id,
-      label: businessObject.name || `分支 ${index + 1}`,
-      targetName,
+      index,
+      isDefault: isDefaultGatewayBranch(source),
+      isExplicitDefault,
+      label: businessObject.name?.trim() || suggestedLabel,
+      suggestedLabel,
+      supportsCondition: gatewaySupportsConditions(elementType.value),
+      targetName: getTargetNodeTitle(source),
     };
   });
 }
@@ -305,22 +343,38 @@ function loadGatewayConditions(): GatewayCondition[] {
 function updateGatewayCondition(item: GatewayCondition) {
   if (isLoadingElement.value || !props.modeler) return;
 
-  item.expression = buildExpressionByField(
-    item.field,
-    item.operator,
-    item.value,
-  );
+  const usedSuggestedLabel = item.label.trim() === item.suggestedLabel;
+  item.expression = item.supportsCondition
+    ? buildExpressionByField(item.field, item.operator, item.value)
+    : '';
+  item.isDefault = item.supportsCondition && !item.expression.trim();
+  const nextSuggestedLabel = getSuggestedBranchName({
+    conditionExpression: item.expression,
+    gatewayType: elementType.value,
+    index: item.index,
+    isExplicitDefault: item.isExplicitDefault,
+    targetId: item.flow.target?.id,
+    targetName: item.flow.target?.businessObject?.name,
+    targetType: item.flow.target?.businessObject?.$type,
+  });
+  if (usedSuggestedLabel) item.label = nextSuggestedLabel;
+  item.suggestedLabel = nextSuggestedLabel;
+  const normalizedLabel = item.label.trim() || item.suggestedLabel;
+  item.label = normalizedLabel;
 
   const modeling = props.modeler.get('modeling');
   const moddle = props.modeler.get('moddle');
   const businessObject = item.flow.businessObject;
   const updates: Record<string, any> = {};
 
-  if ((businessObject.name || '') !== item.label) {
-    updates.name = item.label || undefined;
+  if ((businessObject.name || '') !== normalizedLabel) {
+    updates.name = normalizedLabel;
   }
 
-  if (businessObject.conditionExpression?.body !== item.expression) {
+  if (
+    item.supportsCondition &&
+    businessObject.conditionExpression?.body !== item.expression
+  ) {
     updates.conditionExpression = item.expression
       ? moddle.create('bpmn:FormalExpression', { body: item.expression })
       : undefined;
@@ -329,6 +383,31 @@ function updateGatewayCondition(item: GatewayCondition) {
   if (Object.keys(updates).length > 0) {
     modeling.updateProperties(item.flow, updates);
   }
+}
+
+function focusGatewayBranch(item: GatewayCondition) {
+  if (!props.modeler) return;
+  props.modeler.get('selection').select(item.flow);
+  props.modeler.get('canvas').scrollToElement(item.flow);
+}
+
+function handleCommandStackChanged() {
+  if (!isGateway.value || gatewayRefreshQueued) return;
+
+  gatewayRefreshQueued = true;
+  queueMicrotask(() => {
+    gatewayRefreshQueued = false;
+    if (!isGateway.value) return;
+    gatewayConditions.value = loadGatewayConditions();
+  });
+}
+
+function bindModelerEvents(nextModeler: any, previousModeler?: any) {
+  previousModeler
+    ?.get?.('eventBus')
+    ?.off?.('commandStack.changed', handleCommandStackChanged);
+  boundEventBus = nextModeler?.get?.('eventBus');
+  boundEventBus?.on('commandStack.changed', handleCommandStackChanged);
 }
 
 function getConditionValueOptions(field: string) {
@@ -437,6 +516,7 @@ function updateElement() {
 
 // 监听元素变化
 watch(() => props.element, loadElement, { immediate: true });
+watch(() => props.modeler, bindModelerEvents, { immediate: true });
 
 // 监听属性变化，实时更新
 watch(
@@ -465,6 +545,10 @@ watch([conditionOperator, conditionValue], () => {
 
 onMounted(() => {
   void loadAssigneeOptions();
+});
+
+onUnmounted(() => {
+  boundEventBus?.off?.('commandStack.changed', handleCommandStackChanged);
 });
 </script>
 
@@ -657,32 +741,99 @@ onMounted(() => {
             </div>
           </section>
 
-          <template v-if="isExclusiveGateway">
-            <section class="property-section">
-              <div class="section-title">分支条件</div>
+          <section class="property-section branch-section">
+            <div class="section-title-row">
+              <div class="section-title">出线分支</div>
+              <ElTag effect="plain" size="small">
+                {{ gatewayConditions.length }} 条
+              </ElTag>
+            </div>
 
-              <div v-if="gatewayConditions.length === 0" class="empty-branch">
-                请先从条件分支连出审批节点或结束节点。
+            <div
+              v-if="isConditionGateway && defaultBranchCount === 1"
+              class="branch-health is-ready"
+            >
+              已设置 1 条默认分支，其他条件均不满足时从默认分支继续。
+            </div>
+            <div
+              v-else-if="isConditionGateway"
+              class="branch-health is-warning"
+            >
+              当前有 {{ defaultBranchCount }} 条默认分支，应且只能保留 1
+              条无条件分支。
+            </div>
+            <div v-else class="branch-health is-parallel">
+              并行网关会同时进入全部分支，无需配置条件。
+            </div>
+
+            <div v-if="gatewayConditions.length === 0" class="empty-branch">
+              请先从该网关连出审批节点或结束节点。
+            </div>
+
+            <div
+              v-for="item in gatewayConditions"
+              :key="item.id"
+              class="branch-condition"
+            >
+              <div class="branch-card-header">
+                <div class="branch-identity">
+                  <span class="branch-number">{{ item.index + 1 }}</span>
+                  <div>
+                    <strong>{{ item.label }}</strong>
+                    <span
+                      >{{ elementName || '当前网关' }} →
+                      {{ item.targetName }}</span
+                    >
+                  </div>
+                </div>
+                <ElButton
+                  link
+                  size="small"
+                  type="primary"
+                  @click="focusGatewayBranch(item)"
+                >
+                  定位连线
+                </ElButton>
               </div>
 
-              <div
-                v-for="item in gatewayConditions"
-                :key="item.id"
-                class="branch-condition"
-              >
-                <ElFormItem label="分支名称">
-                  <ElInput
-                    v-model="item.label"
-                    placeholder="如：信息部分支"
-                    @change="updateGatewayCondition(item)"
-                  />
-                </ElFormItem>
+              <div class="branch-tags">
+                <ElTag
+                  v-if="item.isDefault"
+                  effect="light"
+                  size="small"
+                  type="success"
+                >
+                  默认分支
+                </ElTag>
+                <ElTag
+                  v-else-if="item.supportsCondition"
+                  effect="plain"
+                  size="small"
+                >
+                  条件分支
+                </ElTag>
+                <ElTag v-else effect="plain" size="small" type="warning">
+                  并行分支
+                </ElTag>
+                <span>流向：{{ item.targetName }}</span>
+              </div>
 
-                <ElFormItem label="流向节点">
-                  <div class="readonly-field">{{ item.targetName }}</div>
-                </ElFormItem>
+              <ElFormItem label="画布标签">
+                <ElInput
+                  v-model="item.label"
+                  placeholder="请输入连线上显示的分支名称"
+                  @change="updateGatewayCondition(item)"
+                />
+                <div class="field-help">此名称会直接显示在画布连线上。</div>
+              </ElFormItem>
 
-                <ElFormItem label="条件">
+              <template v-if="item.supportsCondition">
+                <ElFormItem v-if="item.isDefault" label="流转规则">
+                  <div class="default-rule">
+                    无需设置条件，未命中其他分支时自动进入此分支。
+                  </div>
+                </ElFormItem>
+                <ElFormItem label="分支条件（留空表示默认）">
                   <div class="condition-builder">
                     <ElSelect
                       v-model="item.field"
@@ -701,12 +852,7 @@ onMounted(() => {
                       style="width: 82px"
                       @change="updateGatewayCondition(item)"
                     >
-                      <ElOption
-                        v-for="operator in [{ label: '等于', value: '==' }]"
-                        :key="operator.value"
-                        :label="operator.label"
-                        :value="operator.value"
-                      />
+                      <ElOption label="等于" value="==" />
                     </ElSelect>
                     <ElSelect
                       v-model="item.value"
@@ -726,18 +872,14 @@ onMounted(() => {
                   </div>
                 </ElFormItem>
 
-                <ElFormItem label="表达式">
-                  <ElInput
-                    v-model="item.expression"
-                    class="expression-input"
-                    :rows="2"
-                    readonly
-                    type="textarea"
-                  />
+                <ElFormItem v-if="item.expression" label="表达式">
+                  <div class="readonly-field code-field branch-expression">
+                    {{ item.expression || '尚未设置条件' }}
+                  </div>
                 </ElFormItem>
-              </div>
-            </section>
-          </template>
+              </template>
+            </div>
+          </section>
         </template>
       </ElForm>
     </div>
@@ -828,6 +970,17 @@ onMounted(() => {
   font-weight: 600;
 }
 
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.section-title-row .section-title {
+  margin-bottom: 0;
+}
+
 .section-title::before {
   width: 3px;
   height: 14px;
@@ -853,9 +1006,19 @@ onMounted(() => {
 }
 
 .condition-builder {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 78px;
   width: 100%;
   gap: 6px;
+}
+
+.condition-builder > :deep(.el-select) {
+  width: 100% !important;
+  min-width: 0;
+}
+
+.condition-builder > :deep(.el-select:nth-child(3)) {
+  grid-column: 1 / -1;
 }
 
 .expression-input {
@@ -873,11 +1036,128 @@ onMounted(() => {
 }
 
 .branch-condition {
-  padding: 10px;
-  margin-bottom: 10px;
+  padding: 12px;
+  margin-top: 10px;
   background: var(--workflow-panel-bg, var(--el-bg-color));
   border: 1px solid var(--workflow-border-soft, var(--el-border-color));
+  border-radius: 6px;
+}
+
+.branch-card-header,
+.branch-identity,
+.branch-tags {
+  display: flex;
+  align-items: center;
+}
+
+.branch-card-header {
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.branch-identity {
+  min-width: 0;
+  gap: 8px;
+}
+
+.branch-identity > div {
+  min-width: 0;
+}
+
+.branch-identity strong,
+.branch-identity span {
+  display: block;
+}
+
+.branch-identity strong {
+  overflow: hidden;
+  color: var(--workflow-title, var(--el-text-color-primary));
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-identity span {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-number {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  color: var(--workflow-primary, var(--el-color-primary));
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 26px;
+  text-align: center;
+  background: var(--workflow-card-icon-bg, var(--el-color-primary-light-9));
+  border-radius: 50%;
+}
+
+.branch-tags {
+  padding: 7px 8px;
+  margin-bottom: 10px;
+  gap: 6px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+  font-size: 11px;
+  background: var(--workflow-card-bg, var(--el-fill-color-light));
   border-radius: 4px;
+}
+
+.branch-health {
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  line-height: 18px;
+  border: 1px solid;
+  border-radius: 4px;
+}
+
+.branch-health.is-ready {
+  color: var(--el-color-success-dark-2);
+  background: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-7);
+}
+
+.branch-health.is-warning {
+  color: var(--el-color-danger-dark-2);
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-7);
+}
+
+.branch-health.is-parallel {
+  color: var(--el-color-warning-dark-2);
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-7);
+}
+
+.field-help {
+  margin-top: 4px;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.default-rule {
+  width: 100%;
+  padding: 8px;
+  color: var(--el-color-success-dark-2);
+  font-size: 12px;
+  line-height: 18px;
+  background: var(--el-color-success-light-9);
+  border: 1px dashed var(--el-color-success-light-5);
+  border-radius: 4px;
+}
+
+.branch-expression {
+  width: 100%;
+  word-break: break-all;
 }
 
 .empty-branch {
@@ -925,6 +1205,14 @@ onMounted(() => {
 :deep(.el-select__placeholder),
 :deep(.el-textarea__inner) {
   color: var(--workflow-text, var(--el-text-color-primary));
+}
+
+:deep(.el-select__selected-item),
+:deep(.el-select__placeholder) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 :deep(.el-radio-button__inner) {
