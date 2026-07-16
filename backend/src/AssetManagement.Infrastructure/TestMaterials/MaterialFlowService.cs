@@ -163,7 +163,7 @@ public class MaterialFlowService : IMaterialFlowService
                 Status = "pending",
                 ApplyTime = DateTime.UtcNow,
                 Deadline = DateTime.UtcNow.AddDays(2),
-                Context = await BuildWorkflowContext(applicant, material.ProjectId)
+                Context = await BuildWorkflowContext(applicant, material.ProjectId, process)
             };
             BpmnEngine.Start(flow, process);
             await NormalizeSignStatesAsync(flow, process);
@@ -523,6 +523,12 @@ public class MaterialFlowService : IMaterialFlowService
 
         if (!string.IsNullOrEmpty(assignee))
         {
+            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
+            {
+                var approverIds = await OrganizationApprovalResolver.ResolveApproverUserIdsAsync(
+                    _db, flow.ApplicantId, assignee);
+                return approverIds.Contains(user.Id);
+            }
             if (assignee == "deptManager")
             {
                 var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
@@ -650,6 +656,10 @@ public class MaterialFlowService : IMaterialFlowService
                 throw new BizException(4051, "申请人未配置直属主管，无法发起审批");
             if (assignee == "deptManager")
                 throw new BizException(4051, $"审批节点“{node.Name}”未配置有效部门负责人");
+            if (assignee == OrganizationApprovalResolver.SectionManagerAssignee)
+                throw new BizException(4051, "申请人所属课未配置有效课级负责人");
+            if (assignee == OrganizationApprovalResolver.DepartmentManagerAssignee)
+                throw new BizException(4051, "申请人所属部门未配置有效部门负责人");
             throw new BizException(4051, $"审批节点“{node.Name}”未配置唯一且有效的审批人，请在流程设计器重新选择");
         }
     }
@@ -699,7 +709,10 @@ public class MaterialFlowService : IMaterialFlowService
         return dept?.Name;
     }
 
-    private async Task<Dictionary<string, string>> BuildWorkflowContext(User applicant, int projectId)
+    private async Task<Dictionary<string, string>> BuildWorkflowContext(
+        User applicant,
+        int projectId,
+        BpmnProcess process)
     {
         var roleCodes = applicant.UserRoles
             .Select(x => x.Role?.Code)
@@ -711,13 +724,18 @@ public class MaterialFlowService : IMaterialFlowService
         var project = await _db.TestProjects
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == projectId);
-
-        return new Dictionary<string, string>
+        var context = new Dictionary<string, string>
         {
             ["applicantRole"] = roleCodes.FirstOrDefault() ?? "",
             ["applicantRoles"] = string.Join(",", roleCodes),
             ["isProjectOwner"] = project?.OwnerId == applicant.Id ? "true" : "false"
         };
+        if (!OrganizationApprovalResolver.IsUsedBy(process)) return context;
+
+        var organizationPlan = await OrganizationApprovalResolver.ResolvePlanAsync(_db, applicant.Id);
+        context["requiresSectionApproval"] = organizationPlan.RequiresSectionApproval ? "true" : "false";
+        context["requiresDepartmentApproval"] = organizationPlan.RequiresDepartmentApproval ? "true" : "false";
+        return context;
     }
 
     private async Task AddRecord(int flowId, string action, string actor, string? remark)
@@ -772,7 +790,12 @@ public class MaterialFlowService : IMaterialFlowService
 
         if (!string.IsNullOrEmpty(assignee))
         {
-            if (assignee == "deptManager")
+            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
+            {
+                result.AddRange(await OrganizationApprovalResolver.ResolveApproverUserIdsAsync(
+                    _db, flow.ApplicantId, assignee));
+            }
+            else if (assignee == "deptManager")
             {
                 var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 if (applicant?.DepartmentId is not null)

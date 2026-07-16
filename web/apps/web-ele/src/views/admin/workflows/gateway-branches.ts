@@ -88,13 +88,19 @@ export function getConditionSummary(expression?: string) {
   const match = expression
     ?.trim()
     .match(
-      /^\$\{(applicantDept|applicantRole|isProjectOwner)\}\s*==\s*["'](.+)["']$/,
+      /^\$\{(applicantDept|applicantRole|isProjectOwner|requiresSectionApproval|requiresDepartmentApproval)\}\s*==\s*["'](.+)["']$/,
     );
   if (!match) return '';
 
   const [, field, value] = match;
   if (field === 'isProjectOwner') {
     return value === 'true' ? '是项目负责人' : '非项目负责人';
+  }
+  if (field === 'requiresSectionApproval') {
+    return value === 'true' ? '需要课级审批' : '跳过课级审批';
+  }
+  if (field === 'requiresDepartmentApproval') {
+    return value === 'true' ? '需要部门级审批' : '跳过部门级审批';
   }
   if (field === 'applicantRole') return `申请角色：${value}`;
   return `申请部门：${value}`;

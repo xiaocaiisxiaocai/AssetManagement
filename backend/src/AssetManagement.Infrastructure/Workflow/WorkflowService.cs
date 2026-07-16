@@ -195,7 +195,7 @@ public class WorkflowService : IWorkflowService
             Status = "pending",
             ApplyTime = DateTime.UtcNow,
             Deadline = DateTime.UtcNow.AddDays(2),
-            Context = BuildWorkflowContext(applicant)
+            Context = await BuildWorkflowContext(applicant, bpmnProcess)
         };
 
         // 启动 BPMN 流程引擎
@@ -872,7 +872,13 @@ public class WorkflowService : IWorkflowService
         // 指定用户
         if (!string.IsNullOrEmpty(assignee))
         {
-            if (assignee == "deptManager")
+            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
+            {
+                var approverIds = await OrganizationApprovalResolver.ResolveApproverUserIdsAsync(
+                    _db, flow.ApplicantId, assignee);
+                return approverIds.Contains(user.Id);
+            }
+            else if (assignee == "deptManager")
             {
                 var targetDeptId = await ResolveDeptManagerTargetDepartmentIdAsync(node, flow);
                 if (targetDeptId is null)
@@ -979,6 +985,10 @@ public class WorkflowService : IWorkflowService
                 throw new BizException(4051, "申请人未配置直属主管，无法发起审批");
             if (assignee == "deptManager")
                 throw new BizException(4051, $"审批节点“{node.Name}”未配置有效部门负责人");
+            if (assignee == OrganizationApprovalResolver.SectionManagerAssignee)
+                throw new BizException(4051, "申请人所属课未配置有效课级负责人");
+            if (assignee == OrganizationApprovalResolver.DepartmentManagerAssignee)
+                throw new BizException(4051, "申请人所属部门未配置有效部门负责人");
             throw new BizException(4051, $"审批节点“{node.Name}”未配置唯一且有效的审批人，请在流程设计器重新选择");
         }
     }
@@ -1042,7 +1052,12 @@ public class WorkflowService : IWorkflowService
 
         if (!string.IsNullOrEmpty(assignee))
         {
-            if (assignee == "deptManager")
+            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
+            {
+                result.AddRange(await OrganizationApprovalResolver.ResolveApproverUserIdsAsync(
+                    _db, flow.ApplicantId, assignee));
+            }
+            else if (assignee == "deptManager")
             {
                 var targetDeptId = await ResolveDeptManagerTargetDepartmentIdAsync(node, flow);
                 if (targetDeptId is not null)
@@ -1179,7 +1194,7 @@ public class WorkflowService : IWorkflowService
         }
     }
 
-    private static Dictionary<string, string> BuildWorkflowContext(User applicant)
+    private async Task<Dictionary<string, string>> BuildWorkflowContext(User applicant, BpmnProcess process)
     {
         var roleCodes = applicant.UserRoles
             .Select(x => x.Role?.Code)
@@ -1189,11 +1204,17 @@ public class WorkflowService : IWorkflowService
             .Cast<string>()
             .ToArray();
 
-        return new Dictionary<string, string>
+        var context = new Dictionary<string, string>
         {
             ["applicantRole"] = roleCodes.FirstOrDefault() ?? "",
             ["applicantRoles"] = string.Join(",", roleCodes)
         };
+        if (!OrganizationApprovalResolver.IsUsedBy(process)) return context;
+
+        var organizationPlan = await OrganizationApprovalResolver.ResolvePlanAsync(_db, applicant.Id);
+        context["requiresSectionApproval"] = organizationPlan.RequiresSectionApproval ? "true" : "false";
+        context["requiresDepartmentApproval"] = organizationPlan.RequiresDepartmentApproval ? "true" : "false";
+        return context;
     }
 
     private async Task<int?> ResolveDeptManagerTargetDepartmentIdAsync(BpmnNode node, ApprovalFlow flow)

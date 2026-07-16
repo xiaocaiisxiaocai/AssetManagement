@@ -113,6 +113,38 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         flow.BpmnTokens.Should().NotContainKey("Task_Default");
     }
 
+    [Theory]
+    [InlineData("true", "true", "Task_SectionManager")]
+    [InlineData("false", "true", "Task_DepartmentManager")]
+    [InlineData("false", "false", null)]
+    public void Organization_approval_conditions_route_without_department_names(
+        string requiresSectionApproval,
+        string requiresDepartmentApproval,
+        string? expectedNode)
+    {
+        var process = BpmnParser.Parse(OrganizationApprovalBpmn);
+        var flow = new TestFlow
+        {
+            Context = new Dictionary<string, string>
+            {
+                ["requiresSectionApproval"] = requiresSectionApproval,
+                ["requiresDepartmentApproval"] = requiresDepartmentApproval
+            }
+        };
+
+        BpmnEngine.Start(flow, process);
+
+        if (expectedNode is null)
+        {
+            flow.Status.Should().Be("approved");
+            flow.CurrentNodeIds.Should().BeEmpty();
+        }
+        else
+        {
+            flow.CurrentNodeIds.Should().ContainSingle().Which.Should().Be(expectedNode);
+        }
+    }
+
     [Fact]
     public async Task Applicant_role_condition_routes_supervisor_to_dept_manager()
     {
@@ -474,4 +506,25 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         public string? ApplicantDept { get; init; }
         public Dictionary<string, string>? Context { get; set; }
     }
+
+    private const string OrganizationApprovalBpmn = """
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="Process_Organization" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:exclusiveGateway id="Gateway_Section" />
+    <bpmn:userTask id="Task_SectionManager" camunda:assignee="sectionManager" />
+    <bpmn:exclusiveGateway id="Gateway_Department" />
+    <bpmn:userTask id="Task_DepartmentManager" camunda:assignee="departmentManager" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Gateway_Section" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Gateway_Section" targetRef="Task_SectionManager"><bpmn:conditionExpression>${requiresSectionApproval} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Gateway_Section" targetRef="Gateway_Department" />
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_SectionManager" targetRef="Gateway_Department" />
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Gateway_Department" targetRef="Task_DepartmentManager"><bpmn:conditionExpression>${requiresDepartmentApproval} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_6" sourceRef="Gateway_Department" targetRef="End" />
+    <bpmn:sequenceFlow id="Flow_7" sourceRef="Task_DepartmentManager" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
 }

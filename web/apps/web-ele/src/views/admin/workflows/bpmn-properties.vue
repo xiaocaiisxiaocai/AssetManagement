@@ -88,8 +88,10 @@ interface GatewayCondition extends ParsedCondition {
 
 // 审批人类型选项
 const assigneeTypes = [
-  { label: '所属组织负责人', value: 'supervisor' },
-  { label: '部门经理', value: 'deptManager' },
+  { label: '所属课负责人', value: 'sectionManager' },
+  { label: '上级部门负责人', value: 'departmentManager' },
+  { label: '所属组织负责人（兼容）', value: 'supervisor' },
+  { label: '当前组织负责人（兼容）', value: 'deptManager' },
   { label: '指定人员', value: 'username' },
   { label: '多人审批', value: 'usernames' },
   { label: '按角色审批', value: 'roleName' },
@@ -98,6 +100,8 @@ const conditionFields = [
   { label: '申请部门', value: 'applicantDept' },
   { label: '申请人角色', value: 'applicantRole' },
   { label: '是否项目负责人', value: 'isProjectOwner' },
+  { label: '是否需要课级审批', value: 'requiresSectionApproval' },
+  { label: '是否需要部门级审批', value: 'requiresDepartmentApproval' },
 ];
 const conditionOperators = computed(() => [{ label: '等于', value: '==' }]);
 const conditionValueOptions = computed(() =>
@@ -254,7 +258,7 @@ function loadElement() {
 
 function parseCondition(expression: string): ParsedCondition {
   const stringMatch = expression.match(
-    /^\$\{(applicantDept|applicantRole|isProjectOwner)\}\s*(==|!=)\s*["'](.+)["']$/,
+    /^\$\{(applicantDept|applicantRole|isProjectOwner|requiresSectionApproval|requiresDepartmentApproval)\}\s*(==|!=)\s*["'](.+)["']$/,
   );
   if (stringMatch) {
     return {
@@ -418,7 +422,11 @@ function getConditionValueOptions(field: string) {
     }));
   }
 
-  if (field === 'isProjectOwner') {
+  if (
+    field === 'isProjectOwner' ||
+    field === 'requiresSectionApproval' ||
+    field === 'requiresDepartmentApproval'
+  ) {
     return [
       { label: '是', value: 'true' },
       { label: '否', value: 'false' },
@@ -430,6 +438,8 @@ function getConditionValueOptions(field: string) {
 
 function conditionValuePlaceholder(field: string) {
   if (field === 'isProjectOwner') return '选择是否项目负责人';
+  if (field === 'requiresSectionApproval') return '选择是否需要课级审批';
+  if (field === 'requiresDepartmentApproval') return '选择是否需要部门级审批';
   return field === 'applicantRole' ? '选择申请人角色' : '选择申请部门';
 }
 
@@ -653,6 +663,12 @@ onUnmounted(() => {
               <div v-if="assigneeType === 'supervisor'">
                 自动解析申请人所属组织节点负责人，未配置时兼容历史直属上级。
               </div>
+              <div v-else-if="assigneeType === 'sectionManager'">
+                自动解析申请人所属课的负责人；课负责人本人申请时由条件分支跳过此节点。
+              </div>
+              <div v-else-if="assigneeType === 'departmentManager'">
+                自动解析申请人所在课的上级部门负责人，或直属部门的负责人。
+              </div>
               <div v-else-if="assigneeType === 'deptManager'">
                 自动解析申请人所在部门的管理员。
               </div>
@@ -718,7 +734,7 @@ onUnmounted(() => {
             </ElFormItem>
 
             <div class="tip-box">
-              条件为空时表示默认流向；支持申请部门、申请人角色、是否项目负责人。
+              条件为空时表示默认流向；支持申请部门、申请人角色和组织审批条件。
             </div>
           </section>
         </template>

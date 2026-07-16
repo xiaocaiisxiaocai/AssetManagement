@@ -1,7 +1,9 @@
 export type AssigneeType =
   | ''
+  | 'departmentManager'
   | 'deptManager'
   | 'roleName'
+  | 'sectionManager'
   | 'supervisor'
   | 'username'
   | 'usernames';
@@ -30,7 +32,12 @@ export function loadAssigneeSelection(
   candidateUsers?: null | string,
   candidateGroups?: null | string,
 ): AssigneeSelection {
-  if (assignee === 'supervisor' || assignee === 'deptManager') {
+  if (
+    assignee === 'supervisor' ||
+    assignee === 'deptManager' ||
+    assignee === 'sectionManager' ||
+    assignee === 'departmentManager'
+  ) {
     return { type: assignee, value: '' };
   }
   if (assignee) return { type: 'username', value: assignee };
@@ -59,7 +66,12 @@ export function serializeAssigneeSelection(
     candidateUsers: '',
   };
 
-  if (type === 'supervisor' || type === 'deptManager') {
+  if (
+    type === 'supervisor' ||
+    type === 'deptManager' ||
+    type === 'sectionManager' ||
+    type === 'departmentManager'
+  ) {
     result.assignee = type;
   } else if (type === 'username') {
     result.assignee = typeof value === 'string' ? value : '';
