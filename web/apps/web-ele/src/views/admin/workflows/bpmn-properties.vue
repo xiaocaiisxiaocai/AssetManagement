@@ -1,14 +1,17 @@
 <script lang="ts" setup>
 import type { RoleDto } from '#/api/role';
 import type { UserOptionDto } from '#/api/user';
-import type { DepartmentNode } from '#/api/base-data';
+import type { DepartmentNode, OrganizationLevel } from '#/api/base-data';
 import type { AssigneeType } from './assignee-identities';
 
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { useAccess } from '@vben/access';
 
-import { getDepartmentTreeApi } from '#/api/base-data';
+import {
+  getDepartmentTreeApi,
+  getOrganizationLevelsApi,
+} from '#/api/base-data';
 import { getRoleListApi } from '#/api/role';
 import { getUserListApi, getUserOptionsApi } from '#/api/user';
 import {
@@ -56,6 +59,7 @@ const approvalMode = ref<'all' | 'any'>('any');
 const userOptions = ref<UserOptionDto[]>([]);
 const roleOptions = ref<RoleDto[]>([]);
 const departmentOptions = ref<{ label: string; value: string }[]>([]);
+const organizationLevels = ref<OrganizationLevel[]>([]);
 
 // 条件表达式
 const conditionExpression = ref('');
@@ -88,6 +92,7 @@ interface GatewayCondition extends ParsedCondition {
 
 // 审批人类型选项
 const assigneeTypes = [
+  { label: '指定组织层级负责人', value: 'organizationManager' },
   { label: '所属课负责人', value: 'sectionManager' },
   { label: '上级部门负责人', value: 'departmentManager' },
   { label: '所属组织负责人（兼容）', value: 'supervisor' },
@@ -96,13 +101,20 @@ const assigneeTypes = [
   { label: '多人审批', value: 'usernames' },
   { label: '按角色审批', value: 'roleName' },
 ];
-const conditionFields = [
+const conditionFields = computed(() => [
   { label: '申请部门', value: 'applicantDept' },
   { label: '申请人角色', value: 'applicantRole' },
   { label: '是否项目负责人', value: 'isProjectOwner' },
-  { label: '是否需要课级审批', value: 'requiresSectionApproval' },
-  { label: '是否需要部门级审批', value: 'requiresDepartmentApproval' },
-];
+  ...organizationLevels.value.map((level) => ({
+    label: `是否需要${level.name}审批`,
+    value: `requiresApproval_${level.code}`,
+  })),
+  { label: '是否需要课级审批（兼容）', value: 'requiresSectionApproval' },
+  {
+    label: '是否需要部门级审批（兼容）',
+    value: 'requiresDepartmentApproval',
+  },
+]);
 const conditionOperators = computed(() => [{ label: '等于', value: '==' }]);
 const conditionValueOptions = computed(() =>
   getConditionValueOptions(conditionField.value),
@@ -147,14 +159,25 @@ const assigneeValueOptions = computed(() => {
     }));
   }
 
+  if (assigneeType.value === 'organizationManager') {
+    return organizationLevels.value.map((level) => ({
+      label: `${level.name}负责人`,
+      value: level.code,
+    }));
+  }
+
   return [];
 });
 const assigneeValuePlaceholder = computed(() =>
-  assigneeType.value === 'roleName' ? '选择角色' : '选择审批人员',
+  assigneeType.value === 'roleName'
+    ? '选择角色'
+    : assigneeType.value === 'organizationManager'
+      ? '选择目标组织层级'
+      : '选择审批人员',
 );
 
 async function loadAssigneeOptions() {
-  const [users, roles, departments] = await Promise.all([
+  const [users, roles, departments, levels] = await Promise.all([
     hasAccessByCodes(['approval:create']) ||
     hasAccessByCodes(['material-flow:transfer'])
       ? getUserOptionsApi()
@@ -163,10 +186,12 @@ async function loadAssigneeOptions() {
         ),
     getRoleListApi('', 1, 200),
     getDepartmentTreeApi(),
+    getOrganizationLevelsApi(),
   ]);
   userOptions.value = users;
   roleOptions.value = roles.items.filter((role) => role.isActive);
   departmentOptions.value = flattenDepartments(departments);
+  organizationLevels.value = levels;
 }
 
 function flattenDepartments(
@@ -258,7 +283,7 @@ function loadElement() {
 
 function parseCondition(expression: string): ParsedCondition {
   const stringMatch = expression.match(
-    /^\$\{(applicantDept|applicantRole|isProjectOwner|requiresSectionApproval|requiresDepartmentApproval)\}\s*(==|!=)\s*["'](.+)["']$/,
+    /^\$\{(applicantDept|applicantRole|isProjectOwner|requiresSectionApproval|requiresDepartmentApproval|requiresApproval_[a-z][a-z0-9_]{0,49})\}\s*(==|!=)\s*["'](.+)["']$/,
   );
   if (stringMatch) {
     return {
@@ -425,7 +450,8 @@ function getConditionValueOptions(field: string) {
   if (
     field === 'isProjectOwner' ||
     field === 'requiresSectionApproval' ||
-    field === 'requiresDepartmentApproval'
+    field === 'requiresDepartmentApproval' ||
+    field.startsWith('requiresApproval_')
   ) {
     return [
       { label: '是', value: 'true' },
@@ -440,6 +466,7 @@ function conditionValuePlaceholder(field: string) {
   if (field === 'isProjectOwner') return '选择是否项目负责人';
   if (field === 'requiresSectionApproval') return '选择是否需要课级审批';
   if (field === 'requiresDepartmentApproval') return '选择是否需要部门级审批';
+  if (field.startsWith('requiresApproval_')) return '选择是否需要该层级审批';
   return field === 'applicantRole' ? '选择申请人角色' : '选择申请部门';
 }
 
@@ -624,9 +651,16 @@ onUnmounted(() => {
               v-if="
                 assigneeType === 'username' ||
                 assigneeType === 'usernames' ||
-                assigneeType === 'roleName'
+                assigneeType === 'roleName' ||
+                assigneeType === 'organizationManager'
               "
-              :label="assigneeType === 'roleName' ? '审批角色' : '审批人员'"
+              :label="
+                assigneeType === 'roleName'
+                  ? '审批角色'
+                  : assigneeType === 'organizationManager'
+                    ? '目标组织层级'
+                    : '审批人员'
+              "
             >
               <ElSelect
                 v-model="assigneeValue"
@@ -662,6 +696,9 @@ onUnmounted(() => {
             <div class="tip-box">
               <div v-if="assigneeType === 'supervisor'">
                 自动解析申请人所属组织节点负责人，未配置时兼容历史直属上级。
+              </div>
+              <div v-else-if="assigneeType === 'organizationManager'">
+                沿申请人的组织链向上查找所选层级负责人，不依赖组织名称或树深度。
               </div>
               <div v-else-if="assigneeType === 'sectionManager'">
                 自动解析申请人所属课的负责人；课负责人本人申请时由条件分支跳过此节点。

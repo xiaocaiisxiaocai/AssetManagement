@@ -990,6 +990,8 @@ public class WorkflowService : IWorkflowService
                 throw new BizException(4051, "申请人所属课未配置有效课级负责人");
             if (assignee == OrganizationApprovalResolver.DepartmentManagerAssignee)
                 throw new BizException(4051, "申请人所属部门未配置有效部门负责人");
+            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
+                throw new BizException(4051, $"审批节点“{node.Name}”未解析到有效的组织层级负责人");
             throw new BizException(4051, $"审批节点“{node.Name}”未配置唯一且有效的审批人，请在流程设计器重新选择");
         }
     }
@@ -1233,9 +1235,14 @@ public class WorkflowService : IWorkflowService
         };
         if (!OrganizationApprovalResolver.IsUsedBy(process)) return context;
 
-        var organizationPlan = await OrganizationApprovalResolver.ResolvePlanAsync(_db, applicant.Id);
-        context["requiresSectionApproval"] = organizationPlan.RequiresSectionApproval ? "true" : "false";
-        context["requiresDepartmentApproval"] = organizationPlan.RequiresDepartmentApproval ? "true" : "false";
+        foreach (var levelCode in OrganizationApprovalResolver.GetRequestedLevelCodes(process))
+        {
+            var target = await OrganizationApprovalResolver.ResolveTargetAsync(_db, applicant.Id, levelCode);
+            var value = target.RequiresApproval ? "true" : "false";
+            context[OrganizationApprovalResolver.ApprovalConditionKey(levelCode)] = value;
+            if (levelCode == "section") context["requiresSectionApproval"] = value;
+            if (levelCode == "department") context["requiresDepartmentApproval"] = value;
+        }
         return context;
     }
 

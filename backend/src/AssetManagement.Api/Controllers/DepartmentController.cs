@@ -22,6 +22,11 @@ public class DepartmentController : ControllerBase
     public async Task<ApiResult<List<DepartmentNodeDto>>> Tree()
         => ApiResult<List<DepartmentNodeDto>>.Ok(await _service.GetDepartmentTreeAsync());
 
+    [HttpGet("levels")]
+    [HasPermission("department:view")]
+    public async Task<ApiResult<List<OrganizationLevelDto>>> Levels()
+        => ApiResult<List<OrganizationLevelDto>>.Ok(await _service.GetOrganizationLevelsAsync());
+
     [HttpGet("options")]
     [Authorize]
     public async Task<ApiResult<List<DepartmentOptionDto>>> Options()

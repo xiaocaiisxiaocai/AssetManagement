@@ -13,6 +13,7 @@ namespace AssetManagement.Infrastructure.BaseData;
 
 public class BaseDataService : IBaseDataService
 {
+    private sealed record OrganizationLevelInfo(string Code, string Name);
     private const int MaxCategoryDepth = 3;
     private const int MaxCategoryCodeSegLength = 20;
     private const int MaxRetentionDays = 3650;
@@ -55,9 +56,26 @@ public class BaseDataService : IBaseDataService
         var managers = await _db.Users
             .Where(x => managerIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name);
+        var levels = await _db.OrganizationLevels.AsNoTracking()
+            .ToDictionaryAsync(x => x.Id, x => new OrganizationLevelInfo(x.Code, x.Name));
 
-        return BuildDepartmentTree(null, departments, managers);
+        return BuildDepartmentTree(null, departments, managers, levels);
     }
+
+    public async Task<List<OrganizationLevelDto>> GetOrganizationLevelsAsync()
+        => await _db.OrganizationLevels.AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Sort)
+            .ThenBy(x => x.Id)
+            .Select(x => new OrganizationLevelDto
+            {
+                Id = x.Id,
+                Code = x.Code,
+                Name = x.Name,
+                Sort = x.Sort,
+                IsActive = x.IsActive
+            })
+            .ToListAsync();
 
     public async Task<DepartmentNodeDto> CreateDepartmentAsync(CreateDepartmentRequest request)
     {
@@ -65,12 +83,15 @@ public class BaseDataService : IBaseDataService
         var name = request.Name.Trim();
         await EnsureDepartmentNameAvailableAsync(name);
         await EnsureDepartmentManagerAvailableAsync(request.ManagerId);
+        var organizationLevel = await ResolveOrganizationLevelAsync(
+            request.OrganizationLevelCode ?? "department");
         var department = new Department
         {
             ParentId = request.ParentId,
             Name = name,
             Code = await NextDepartmentCodeAsync(),
             ManagerId = request.ManagerId,
+            OrganizationLevelId = organizationLevel.Id,
             IsActive = true
         };
         _db.Departments.Add(department);
@@ -79,7 +100,7 @@ public class BaseDataService : IBaseDataService
         // 清除部门树缓存
         _cache.Remove("department_tree");
 
-        return ToDepartmentDto(department, null);
+        return ToDepartmentDto(department, null, organizationLevel.Code, organizationLevel.Name);
     }
 
     public async Task<DepartmentNodeDto> UpdateDepartmentAsync(int id, UpdateDepartmentRequest request)
@@ -93,6 +114,20 @@ public class BaseDataService : IBaseDataService
         {
             await EnsureDepartmentManagerAvailableAsync(request.ManagerId, id);
         }
+        OrganizationLevelInfo? organizationLevel = null;
+        if (!string.IsNullOrWhiteSpace(request.OrganizationLevelCode))
+        {
+            var resolved = await ResolveOrganizationLevelAsync(request.OrganizationLevelCode);
+            department.OrganizationLevelId = resolved.Id;
+            organizationLevel = new OrganizationLevelInfo(resolved.Code, resolved.Name);
+        }
+        else if (department.OrganizationLevelId.HasValue)
+        {
+            organizationLevel = await _db.OrganizationLevels.AsNoTracking()
+                .Where(x => x.Id == department.OrganizationLevelId.Value)
+                .Select(x => new OrganizationLevelInfo(x.Code, x.Name))
+                .SingleOrDefaultAsync();
+        }
         department.ParentId = request.ParentId;
         department.Name = name;
         department.ManagerId = request.ManagerId;
@@ -102,7 +137,22 @@ public class BaseDataService : IBaseDataService
         // 清除部门树缓存
         _cache.Remove("department_tree");
 
-        return ToDepartmentDto(department, null);
+        return ToDepartmentDto(
+            department,
+            null,
+            organizationLevel?.Code,
+            organizationLevel?.Name);
+    }
+
+    private async Task<(int Id, string Code, string Name)> ResolveOrganizationLevelAsync(string code)
+    {
+        var normalized = code.Trim();
+        var level = await _db.OrganizationLevels.AsNoTracking()
+            .Where(x => x.Code == normalized && x.IsActive)
+            .Select(x => new { x.Id, x.Code, x.Name })
+            .SingleOrDefaultAsync()
+            ?? throw new BizException(4001, $"组织层级“{normalized}”不存在或已停用");
+        return (level.Id, level.Code, level.Name);
     }
 
     private static void ValidateDepartmentRequest(string name)
@@ -526,15 +576,25 @@ public class BaseDataService : IBaseDataService
         return raw;
     }
 
-    private static List<DepartmentNodeDto> BuildDepartmentTree(int? parentId, List<Department> departments, Dictionary<int, string> managers)
+    private static List<DepartmentNodeDto> BuildDepartmentTree(
+        int? parentId,
+        List<Department> departments,
+        Dictionary<int, string> managers,
+        Dictionary<int, OrganizationLevelInfo> levels)
         => departments
             .Where(x => x.ParentId == parentId)
             .OrderBy(x => x.Code)
             .ThenBy(x => x.Id)
             .Select(x =>
             {
-                var dto = ToDepartmentDto(x, x.ManagerId.HasValue && managers.TryGetValue(x.ManagerId.Value, out var name) ? name : null);
-                return dto with { Children = BuildDepartmentTree(x.Id, departments, managers) };
+                var managerName = x.ManagerId.HasValue && managers.TryGetValue(x.ManagerId.Value, out var name)
+                    ? name
+                    : null;
+                var level = x.OrganizationLevelId.HasValue && levels.TryGetValue(x.OrganizationLevelId.Value, out var value)
+                    ? value
+                    : null;
+                var dto = ToDepartmentDto(x, managerName, level?.Code, level?.Name);
+                return dto with { Children = BuildDepartmentTree(x.Id, departments, managers, levels) };
             })
             .ToList();
 
@@ -803,10 +863,16 @@ public class BaseDataService : IBaseDataService
         }
     }
 
-    private static DepartmentNodeDto ToDepartmentDto(Department x, string? managerName) => new()
+    private static DepartmentNodeDto ToDepartmentDto(
+        Department x,
+        string? managerName,
+        string? organizationLevelCode,
+        string? organizationLevelName) => new()
     {
         Id = x.Id,
         ParentId = x.ParentId,
+        OrganizationLevelCode = organizationLevelCode,
+        OrganizationLevelName = organizationLevelName,
         Name = x.Name,
         ManagerId = x.ManagerId,
         ManagerName = managerName,

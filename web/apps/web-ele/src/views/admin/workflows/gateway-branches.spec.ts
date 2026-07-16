@@ -33,12 +33,15 @@ describe('流程设计器网关分支展示', () => {
   });
 
   it('把通用组织审批条件转换为可读标签', () => {
-    expect(
-      getConditionSummary('${requiresSectionApproval} == "true"'),
-    ).toBe('需要课级审批');
+    expect(getConditionSummary('${requiresSectionApproval} == "true"')).toBe(
+      '需要课级审批',
+    );
     expect(
       getConditionSummary('${requiresDepartmentApproval} == "false"'),
     ).toBe('跳过部门级审批');
+    expect(getConditionSummary('${requiresApproval_division} == "true"')).toBe(
+      '需要 division 层级审批',
+    );
   });
 
   it('把旧流程的无条件出线识别为默认分支', () => {

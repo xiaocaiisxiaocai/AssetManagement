@@ -127,8 +127,8 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         {
             Context = new Dictionary<string, string>
             {
-                ["requiresSectionApproval"] = requiresSectionApproval,
-                ["requiresDepartmentApproval"] = requiresDepartmentApproval
+                ["requiresApproval_section"] = requiresSectionApproval,
+                ["requiresApproval_department"] = requiresDepartmentApproval
             }
         };
 
@@ -513,15 +513,15 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
   <bpmn:process id="Process_Organization" isExecutable="true">
     <bpmn:startEvent id="Start" />
     <bpmn:exclusiveGateway id="Gateway_Section" />
-    <bpmn:userTask id="Task_SectionManager" camunda:assignee="sectionManager" />
+    <bpmn:userTask id="Task_SectionManager" camunda:assignee="orgManager:section" />
     <bpmn:exclusiveGateway id="Gateway_Department" />
-    <bpmn:userTask id="Task_DepartmentManager" camunda:assignee="departmentManager" />
+    <bpmn:userTask id="Task_DepartmentManager" camunda:assignee="orgManager:department" />
     <bpmn:endEvent id="End" />
     <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Gateway_Section" />
-    <bpmn:sequenceFlow id="Flow_2" sourceRef="Gateway_Section" targetRef="Task_SectionManager"><bpmn:conditionExpression>${requiresSectionApproval} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Gateway_Section" targetRef="Task_SectionManager"><bpmn:conditionExpression>${requiresApproval_section} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_3" sourceRef="Gateway_Section" targetRef="Gateway_Department" />
     <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_SectionManager" targetRef="Gateway_Department" />
-    <bpmn:sequenceFlow id="Flow_5" sourceRef="Gateway_Department" targetRef="Task_DepartmentManager"><bpmn:conditionExpression>${requiresDepartmentApproval} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Gateway_Department" targetRef="Task_DepartmentManager"><bpmn:conditionExpression>${requiresApproval_department} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_6" sourceRef="Gateway_Department" targetRef="End" />
     <bpmn:sequenceFlow id="Flow_7" sourceRef="Task_DepartmentManager" targetRef="End" />
   </bpmn:process>

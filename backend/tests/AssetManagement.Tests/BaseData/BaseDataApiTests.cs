@@ -37,6 +37,25 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Organization_levels_are_exposed_and_department_level_is_persisted()
+    {
+        await Login();
+
+        var levels = await _client.GetFromJsonAsync<ApiResult<List<OrganizationLevelDto>>>(
+            "/api/departments/levels");
+        var created = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("课别"),
+            OrganizationLevelCode = "section"
+        });
+
+        levels!.Data!.Select(x => x.Code)
+            .Should().Contain(new[] { "company", "division", "department", "section" });
+        created.Data!.OrganizationLevelCode.Should().Be("section");
+        created.Data.OrganizationLevelName.Should().Be("课别");
+    }
+
+    [Fact]
     public async Task Department_tree_returns_nested_children()
     {
         await Login();

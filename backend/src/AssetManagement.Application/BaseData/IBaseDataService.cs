@@ -3,6 +3,7 @@ namespace AssetManagement.Application.BaseData;
 public interface IBaseDataService
 {
     Task<List<DepartmentNodeDto>> GetDepartmentTreeAsync();
+    Task<List<OrganizationLevelDto>> GetOrganizationLevelsAsync();
     Task<DepartmentNodeDto> CreateDepartmentAsync(CreateDepartmentRequest request);
     Task<DepartmentNodeDto> UpdateDepartmentAsync(int id, UpdateDepartmentRequest request);
     Task DeleteDepartmentAsync(int id);

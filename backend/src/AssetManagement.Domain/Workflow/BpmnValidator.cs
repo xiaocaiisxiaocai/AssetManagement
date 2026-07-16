@@ -164,7 +164,7 @@ public static class BpmnValidator
         }
 
         // 只允许工作流已注入的字符串上下文变量，避免任意表达式执行。
-        var pattern = @"^\$\{(applicantDept|applicantRole|isProjectOwner|requiresSectionApproval|requiresDepartmentApproval)\}\s*(==|!=)\s*[""'][^""']+[""']$";
+        var pattern = @"^\$\{(applicantDept|applicantRole|isProjectOwner|requiresSectionApproval|requiresDepartmentApproval|requiresApproval_[a-z][a-z0-9_]{0,49})\}\s*(==|!=)\s*[""'][^""']+[""']$";
         return System.Text.RegularExpressions.Regex.IsMatch(expression.Trim(), pattern);
     }
 

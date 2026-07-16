@@ -18,7 +18,17 @@ export interface DepartmentNode extends TreeNodeBase {
   isActive: boolean;
   managerId?: null | number;
   managerName?: null | string;
+  organizationLevelCode?: null | string;
+  organizationLevelName?: null | string;
   children: DepartmentNode[];
+}
+
+export interface OrganizationLevel {
+  code: string;
+  id: number;
+  isActive: boolean;
+  name: string;
+  sort: number;
 }
 
 export interface DepartmentOptionNode {
@@ -75,6 +85,7 @@ export type DepartmentPayload = {
   isActive?: boolean;
   managerId?: null | number;
   name: string;
+  organizationLevelCode?: null | string;
   parentId?: null | number;
 };
 
@@ -102,21 +113,38 @@ async function unwrap<T>(request: Promise<ApiResult<T>>) {
 export const getDepartmentTreeApi = () =>
   unwrap(requestClient.get<ApiResult<DepartmentNode[]>>('/departments/tree'));
 
+export const getOrganizationLevelsApi = () =>
+  unwrap(
+    requestClient.get<ApiResult<OrganizationLevel[]>>('/departments/levels'),
+  );
+
 /** 业务表单部门选择器；只返回活动部门。 */
 export const getDepartmentOptionsApi = () =>
-  unwrap(requestClient.get<ApiResult<DepartmentOptionNode[]>>('/departments/options'));
+  unwrap(
+    requestClient.get<ApiResult<DepartmentOptionNode[]>>(
+      '/departments/options',
+    ),
+  );
 
 export const createDepartmentApi = (data: DepartmentPayload) =>
   unwrap(requestClient.post<ApiResult<DepartmentNode>>('/departments', data));
 
 export const updateDepartmentApi = (id: number, data: DepartmentPayload) =>
-  unwrap(requestClient.put<ApiResult<DepartmentNode>>(`/departments/${id}`, data));
+  unwrap(
+    requestClient.put<ApiResult<DepartmentNode>>(`/departments/${id}`, data),
+  );
 
 export const deleteDepartmentApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<null>>(`/departments/${id}`));
 
-export const getCategoryTreeApi = (deleteStatus?: 'active' | 'all' | 'deleted') =>
-  unwrap(requestClient.get<ApiResult<CategoryNode[]>>('/categories/tree', { params: { deleteStatus } }));
+export const getCategoryTreeApi = (
+  deleteStatus?: 'active' | 'all' | 'deleted',
+) =>
+  unwrap(
+    requestClient.get<ApiResult<CategoryNode[]>>('/categories/tree', {
+      params: { deleteStatus },
+    }),
+  );
 
 export const createCategoryApi = (data: CategoryPayload) =>
   unwrap(requestClient.post<ApiResult<CategoryNode>>('/categories', data));

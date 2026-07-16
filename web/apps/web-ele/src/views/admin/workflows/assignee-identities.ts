@@ -2,6 +2,7 @@ export type AssigneeType =
   | ''
   | 'departmentManager'
   | 'deptManager'
+  | 'organizationManager'
   | 'roleName'
   | 'sectionManager'
   | 'supervisor'
@@ -27,11 +28,21 @@ export function roleAssigneeIdentity(roleCode: string) {
   return `role:${roleCode}`;
 }
 
+export function organizationManagerIdentity(levelCode: string) {
+  return `orgManager:${levelCode}`;
+}
+
 export function loadAssigneeSelection(
   assignee?: null | string,
   candidateUsers?: null | string,
   candidateGroups?: null | string,
 ): AssigneeSelection {
+  if (assignee?.startsWith('orgManager:')) {
+    return {
+      type: 'organizationManager',
+      value: assignee.slice('orgManager:'.length),
+    };
+  }
   if (
     assignee === 'supervisor' ||
     assignee === 'deptManager' ||
@@ -66,7 +77,12 @@ export function serializeAssigneeSelection(
     candidateUsers: '',
   };
 
-  if (
+  if (type === 'organizationManager') {
+    result.assignee =
+      typeof value === 'string' && value
+        ? organizationManagerIdentity(value)
+        : '';
+  } else if (
     type === 'supervisor' ||
     type === 'deptManager' ||
     type === 'sectionManager' ||

@@ -19,6 +19,7 @@ public static class DbSeeder
 
         try
         {
+            EnsureOrganizationLevels(db);
             if (db.Users.Any())
             {
                 SeedIncremental(db);
@@ -434,6 +435,55 @@ public static class DbSeeder
         }
 
         SyncMenuPermissionCodes(db);
+        db.SaveChanges();
+    }
+
+    private static void EnsureOrganizationLevels(AppDbContext db)
+    {
+        var defaults = new[]
+        {
+            new OrganizationLevel { Code = "company", Name = "公司/中心", Sort = 10, IsActive = true },
+            new OrganizationLevel { Code = "division", Name = "事业部", Sort = 20, IsActive = true },
+            new OrganizationLevel { Code = "department", Name = "部门", Sort = 30, IsActive = true },
+            new OrganizationLevel { Code = "section", Name = "课别", Sort = 40, IsActive = true }
+        };
+        foreach (var item in defaults)
+        {
+            var existing = db.OrganizationLevels.SingleOrDefault(x => x.Code == item.Code);
+            if (existing is null)
+            {
+                db.OrganizationLevels.Add(item);
+            }
+            else
+            {
+                existing.Name = item.Name;
+                existing.Sort = item.Sort;
+            }
+        }
+        db.SaveChanges();
+
+        var levels = db.OrganizationLevels.ToDictionary(x => x.Code, x => x.Id);
+        var departments = db.Departments.AsTracking().ToList();
+        foreach (var department in departments.Where(x => !x.OrganizationLevelId.HasValue))
+        {
+            if (!department.ParentId.HasValue)
+            {
+                department.OrganizationLevelId = levels["company"];
+                continue;
+            }
+            if (department.Name.Contains("事业部", StringComparison.Ordinal))
+            {
+                department.OrganizationLevelId = levels["division"];
+                continue;
+            }
+            var parent = departments.SingleOrDefault(x => x.Id == department.ParentId.Value);
+            var parentLevelCode = parent?.OrganizationLevelId is int parentLevelId
+                ? levels.Single(x => x.Value == parentLevelId).Key
+                : null;
+            department.OrganizationLevelId = parentLevelCode is "company" or "division"
+                ? levels["department"]
+                : levels["section"];
+        }
         db.SaveChanges();
     }
 

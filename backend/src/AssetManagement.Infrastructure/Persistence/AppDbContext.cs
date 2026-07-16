@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<RoleMenu> RoleMenus => Set<RoleMenu>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Department> Departments => Set<Department>();
+    public DbSet<OrganizationLevel> OrganizationLevels => Set<OrganizationLevel>();
     public DbSet<AssetCategory> AssetCategories => Set<AssetCategory>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();

@@ -4,6 +4,8 @@ public record DepartmentNodeDto
 {
     public int Id { get; init; }
     public int? ParentId { get; init; }
+    public string? OrganizationLevelCode { get; init; }
+    public string? OrganizationLevelName { get; init; }
     public string Name { get; init; } = "";
     public int? ManagerId { get; init; }
     public string? ManagerName { get; init; }
@@ -17,6 +19,7 @@ public record CreateDepartmentRequest
     public int? ParentId { get; init; }
     public string Name { get; init; } = "";
     public int? ManagerId { get; init; }
+    public string? OrganizationLevelCode { get; init; }
 }
 
 public record DepartmentOptionDto
@@ -27,11 +30,21 @@ public record DepartmentOptionDto
     public List<DepartmentOptionDto> Children { get; init; } = new();
 }
 
+public record OrganizationLevelDto
+{
+    public int Id { get; init; }
+    public string Code { get; init; } = "";
+    public string Name { get; init; } = "";
+    public int Sort { get; init; }
+    public bool IsActive { get; init; }
+}
+
 public record UpdateDepartmentRequest
 {
     public int? ParentId { get; init; }
     public string Name { get; init; } = "";
     public int? ManagerId { get; init; }
+    public string? OrganizationLevelCode { get; init; }
     public bool IsActive { get; init; } = true;
 }
 

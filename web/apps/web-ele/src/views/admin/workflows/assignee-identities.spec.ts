@@ -38,7 +38,7 @@ describe('工作流审批人标识', () => {
     );
   });
 
-  it('课级和部门级负责人作为可编辑的动态审批人来源保存', () => {
+  it('组织层级负责人作为可编辑的动态审批人来源保存', () => {
     expect(loadAssigneeSelection('sectionManager')).toEqual({
       type: 'sectionManager',
       value: '',
@@ -53,5 +53,12 @@ describe('工作流审批人标识', () => {
     expect(serializeAssigneeSelection('departmentManager', '')).toMatchObject({
       assignee: 'departmentManager',
     });
+    expect(loadAssigneeSelection('orgManager:division')).toEqual({
+      type: 'organizationManager',
+      value: 'division',
+    });
+    expect(
+      serializeAssigneeSelection('organizationManager', 'division'),
+    ).toMatchObject({ assignee: 'orgManager:division' });
   });
 });

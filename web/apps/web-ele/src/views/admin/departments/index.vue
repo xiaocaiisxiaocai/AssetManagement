@@ -1,5 +1,9 @@
 <script lang="ts" setup>
-import type { DepartmentNode, DepartmentPayload } from '#/api/base-data';
+import type {
+  DepartmentNode,
+  DepartmentPayload,
+  OrganizationLevel,
+} from '#/api/base-data';
 import type { UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
@@ -10,10 +14,14 @@ import {
   createDepartmentApi,
   deleteDepartmentApi,
   getDepartmentTreeApi,
+  getOrganizationLevelsApi,
   updateDepartmentApi,
 } from '#/api/base-data';
 import { getUserListApi, getUserOptionsApi } from '#/api/user';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
 import { buildDepartmentActionAccess } from '#/views/permissions/action-access';
 
 import {
@@ -36,12 +44,15 @@ import {
 defineOptions({ name: 'AdminDepartments' });
 
 const { hasAccessByCodes } = useAccess();
-const departmentActionAccess = computed(() => buildDepartmentActionAccess(hasAccessByCodes));
+const departmentActionAccess = computed(() =>
+  buildDepartmentActionAccess(hasAccessByCodes),
+);
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const departments = ref<DepartmentNode[]>([]);
+const organizationLevels = ref<OrganizationLevel[]>([]);
 const userOptions = ref<UserOptionDto[]>([]);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const page = ref(1);
@@ -54,6 +65,7 @@ const form = reactive<DepartmentForm>({
   isActive: true,
   managerId: undefined,
   name: '',
+  organizationLevelCode: '',
   parentId: null,
 });
 
@@ -86,12 +98,17 @@ async function loadData() {
   }
 }
 
+async function loadOrganizationLevels() {
+  organizationLevels.value = await getOrganizationLevelsApi();
+}
+
 function openCreate(parent?: DepartmentNode) {
   editingId.value = null;
   Object.assign(form, {
     isActive: true,
     managerId: undefined,
     name: '',
+    organizationLevelCode: '',
     parentId: parent?.id ?? null,
   });
   dialogVisible.value = true;
@@ -103,6 +120,7 @@ function openEdit(row: DepartmentNode) {
     isActive: row.isActive,
     managerId: row.managerId ?? undefined,
     name: row.name,
+    organizationLevelCode: row.organizationLevelCode ?? 'department',
     parentId: row.parentId ?? null,
   });
   dialogVisible.value = true;
@@ -111,6 +129,10 @@ function openEdit(row: DepartmentNode) {
 async function save() {
   if (!form.name.trim()) {
     ElMessage.warning('请填写部门名称');
+    return;
+  }
+  if (!form.organizationLevelCode) {
+    ElMessage.warning('请选择组织层级');
     return;
   }
   saving.value = true;
@@ -152,7 +174,7 @@ function onPageSizeChange() {
 onMounted(async () => {
   pageSize.value = await getDefaultPageSize();
   pageSizeOptions.value = createPageSizeOptions(pageSize.value);
-  await Promise.all([loadUsers(), loadData()]);
+  await Promise.all([loadUsers(), loadOrganizationLevels(), loadData()]);
 });
 </script>
 
@@ -163,7 +185,12 @@ onMounted(async () => {
         <div>
           <h2 class="page-title">组织架构管理</h2>
         </div>
-        <ElButton v-if="departmentActionAccess.canCreate" type="primary" @click="openCreate()">新增部门</ElButton>
+        <ElButton
+          v-if="departmentActionAccess.canCreate"
+          type="primary"
+          @click="openCreate()"
+          >新增部门</ElButton
+        >
       </div>
 
       <div class="table-panel">
@@ -177,7 +204,19 @@ onMounted(async () => {
         >
           <ElTableColumn label="ID" prop="id" width="90" align="center" />
           <ElTableColumn label="部门名称" min-width="200" prop="name" />
-          <ElTableColumn class-name="hide-on-mobile" label="负责人" min-width="140" prop="managerName" />
+          <ElTableColumn label="组织层级" min-width="120">
+            <template #default="{ row }">
+              <ElTag size="small" type="info">
+                {{ row.organizationLevelName || '未配置' }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="负责人"
+            min-width="140"
+            prop="managerName"
+          />
           <ElTableColumn label="状态" min-width="100" align="center">
             <template #default="{ row }">
               <ElTag :type="row.isActive ? 'success' : 'info'" size="small">
@@ -187,11 +226,31 @@ onMounted(async () => {
           </ElTableColumn>
           <ElTableColumn fixed="right" label="操作" width="240" align="center">
             <template #default="{ row }">
-              <ElButton v-if="departmentActionAccess.canCreate" link type="primary" size="small" @click="openCreate(row)">
+              <ElButton
+                v-if="departmentActionAccess.canCreate"
+                link
+                type="primary"
+                size="small"
+                @click="openCreate(row)"
+              >
                 新增下级
               </ElButton>
-              <ElButton v-if="departmentActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-              <ElButton v-if="departmentActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
+              <ElButton
+                v-if="departmentActionAccess.canEdit"
+                link
+                type="primary"
+                size="small"
+                @click="openEdit(row)"
+                >编辑</ElButton
+              >
+              <ElButton
+                v-if="departmentActionAccess.canDelete"
+                link
+                type="danger"
+                size="small"
+                @click="remove(row)"
+                >删除</ElButton
+              >
             </template>
           </ElTableColumn>
         </ElTable>
@@ -200,7 +259,11 @@ onMounted(async () => {
             <span>共 {{ departments.length }} 条</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
-            <ElSelect v-model="pageSize" style="width: 92px" @change="onPageSizeChange">
+            <ElSelect
+              v-model="pageSize"
+              style="width: 92px"
+              @change="onPageSizeChange"
+            >
               <ElOption
                 v-for="size in pageSizeOptions"
                 :key="size"
@@ -226,10 +289,28 @@ onMounted(async () => {
       >
         <ElForm label-width="100px">
           <ElFormItem label="上级 ID">
-            <ElInput v-model.number="form.parentId" clearable placeholder="留空为事业部/顶级组织" />
+            <ElInput
+              v-model.number="form.parentId"
+              clearable
+              placeholder="留空为事业部/顶级组织"
+            />
           </ElFormItem>
           <ElFormItem label="部门名称" required>
             <ElInput v-model="form.name" placeholder="请输入部门名称" />
+          </ElFormItem>
+          <ElFormItem label="组织层级" required>
+            <ElSelect
+              v-model="form.organizationLevelCode"
+              placeholder="请选择组织层级"
+              style="width: 100%"
+            >
+              <ElOption
+                v-for="level in organizationLevels"
+                :key="level.code"
+                :label="level.name"
+                :value="level.code"
+              />
+            </ElSelect>
           </ElFormItem>
           <ElFormItem label="负责人">
             <ElSelect
@@ -253,7 +334,9 @@ onMounted(async () => {
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
+          <ElButton :loading="saving" type="primary" @click="save"
+            >保存</ElButton
+          >
         </template>
       </ElDialog>
     </div>

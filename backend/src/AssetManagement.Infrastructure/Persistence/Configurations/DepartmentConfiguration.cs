@@ -14,5 +14,10 @@ public class DepartmentConfiguration : IEntityTypeConfiguration<Department>
         b.Property(x => x.Code).HasMaxLength(50).IsRequired();
         b.HasIndex(x => x.Code).IsUnique();
         b.HasIndex(x => x.ParentId);
+        b.HasIndex(x => x.OrganizationLevelId);
+        b.HasOne<OrganizationLevel>()
+            .WithMany()
+            .HasForeignKey(x => x.OrganizationLevelId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
