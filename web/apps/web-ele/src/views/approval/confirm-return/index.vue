@@ -104,9 +104,15 @@ function resetQuery() {
 async function confirmReturn(row: ApprovalFlow) {
   try {
     await ElMessageBox.confirm(
-      `确认已接收「${row.applicant}」归还的资产「${row.assetName}」？`,
-      '接收确认',
-      { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
+      `请确认已实际收回「${row.applicant}」归还的资产「${row.assetName}」（${row.assetNo}）。确认后资产将恢复为可用状态，并清空当前保管人。`,
+      '确认资产已归还',
+      {
+        type: 'warning',
+        confirmButtonText: '确认已收回',
+        cancelButtonText: '暂不确认',
+        closeOnClickModal: false,
+        closeOnPressEscape: false,
+      }
     );
   } catch {
     return;
@@ -115,7 +121,7 @@ async function confirmReturn(row: ApprovalFlow) {
   confirmingIds.value.add(row.id);
   try {
     await confirmReturnApi(row.id);
-    ElMessage.success('接收确认成功，资产已恢复可用状态');
+    ElMessage.success('归还确认成功，资产已恢复可用状态');
     await loadData();
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
@@ -172,7 +178,7 @@ onMounted(async () => {
           <ElTableColumn label="流程编号" min-width="160" prop="flowNo" />
           <ElTableColumn class-name="hide-on-mobile" label="资产编号" min-width="140" prop="assetNo" />
           <ElTableColumn label="资产名称" min-width="200" prop="assetName" />
-          <ElTableColumn label="借用类型" width="100" align="center">
+          <ElTableColumn label="业务类型" width="100" align="center">
             <template #default="{ row }">
               <ElTag type="success" size="small">{{ bizText(row.bizType) }}</ElTag>
             </template>
@@ -195,7 +201,7 @@ onMounted(async () => {
                 size="small"
                 @click="confirmReturn(row)"
               >
-                确认接收
+                确认已收回
               </ElButton>
             </template>
           </ElTableColumn>

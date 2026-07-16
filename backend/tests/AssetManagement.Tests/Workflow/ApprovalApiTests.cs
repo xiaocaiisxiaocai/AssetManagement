@@ -580,6 +580,73 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Only_asset_organization_manager_can_confirm_borrow_return()
+    {
+        await Login();
+
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
+        var employeeRole = roles.Data.Items.Single(r => r.Code == "employee");
+        var dept = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("归还课别") });
+        var managerNo = Unique("RETURN-MGR");
+        var manager = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = managerNo,
+            Name = Unique("归还负责人"),
+            Password = "123456",
+            DepartmentId = dept.Data!.Id,
+            RoleIds = new[] { supervisorRole.Id }
+        });
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{dept.Data.Id}", new UpdateDepartmentRequest
+        {
+            Name = dept.Data.Name,
+            ManagerId = manager.Data!.Id,
+            IsActive = true
+        });
+        var applicantNo = Unique("RETURN-APP");
+        var applicant = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = applicantNo,
+            Name = Unique("归还申请人"),
+            Password = "123456",
+            DepartmentId = dept.Data.Id,
+            RoleIds = new[] { employeeRole.Id }
+        });
+        var asset = await CreateAsset(dept.Data.Id, null);
+
+        Auth(await LoginToken(applicantNo, "123456"));
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "归还权限测试",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
+        });
+        Auth(await LoginToken(managerNo, "123456"));
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
+            new ApprovalActionRequest { Opinion = "同意" });
+        approved.Data!.Status.Should().Be("approved");
+
+        Auth(await LoginToken("1001", "123456"));
+        var adminPending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>(
+            "/api/approvals/pending-return");
+        adminPending!.Data.Should().NotContain(x => x.Id == flow.Data.Id,
+            "系统管理员没有管理该资产所属组织，不能代替业务负责人确认归还");
+        var denied = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/confirm-return", new { });
+        denied.Code.Should().Be(4030);
+        denied.Message.Should().Contain("资产所属组织负责人");
+
+        Auth(await LoginToken(managerNo, "123456"));
+        var managerPending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>(
+            "/api/approvals/pending-return");
+        managerPending!.Data.Should().Contain(x => x.Id == flow.Data.Id);
+        var confirmed = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/confirm-return", new { });
+        confirmed.Code.Should().Be(0);
+        confirmed.Data!.ConfirmedAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task Exclusive_gateway_routes_based_on_condition()
     {
         // 测试 BPMN ExclusiveGateway 根据条件选择不同分支

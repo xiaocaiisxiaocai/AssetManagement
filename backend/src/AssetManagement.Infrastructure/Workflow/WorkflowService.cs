@@ -307,15 +307,15 @@ public class WorkflowService : IWorkflowService
     public async Task<List<ApprovalFlowDto>> PendingReturnsAsync(int userId)
     {
         var user = await LoadUser(userId);
+        var managedDepartmentIds = await ManagedDepartmentIdsAsync(user.Id);
+        if (managedDepartmentIds.Length == 0) return [];
+
         var query = _db.ApprovalFlows
             .Where(x => x.Status == "approved" && x.BizType == "borrow" && x.ConfirmedAt == null)
-            .AsQueryable();
-        if (!IsAdmin(user) && IsSupervisor(user))
-        {
-            if (!user.DepartmentId.HasValue) return new List<ApprovalFlowDto>();
-            var deptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
-            query = query.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && a.DepartmentId.HasValue && deptIds.Contains(a.DepartmentId.Value)));
-        }
+            .Where(x => _db.Assets.Any(a =>
+                a.Id == x.AssetId &&
+                a.DepartmentId.HasValue &&
+                managedDepartmentIds.Contains(a.DepartmentId.Value)));
         var flows = await query.AsNoTracking().OrderByDescending(x => x.Id).ToListAsync();
         await HydrateParticipantNamesAsync(flows);
 
@@ -657,10 +657,11 @@ public class WorkflowService : IWorkflowService
         }
 
         var user = await LoadUser(userId);
-        await EnsureAssetInScopeAsync(
-            await _db.Assets.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId)
-                ?? throw new BizException(4048, "资产不存在"),
-            user);
+        var scopedAsset = await _db.Assets.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId)
+            ?? throw new BizException(4048, "资产不存在");
+        var managedDepartmentIds = await ManagedDepartmentIdsAsync(user.Id);
+        if (!scopedAsset.DepartmentId.HasValue || !managedDepartmentIds.Contains(scopedAsset.DepartmentId.Value))
+            throw new BizException(4030, "仅资产所属组织负责人可确认归还");
 
         await using var tx = await _db.Database.BeginTransactionAsync();
         flow.ConfirmedAt = DateTime.UtcNow;
@@ -1124,6 +1125,27 @@ public class WorkflowService : IWorkflowService
             }
         }
         Walk(rootId);
+        return ids.ToArray();
+    }
+
+    private async Task<int[]> ManagedDepartmentIdsAsync(int userId)
+    {
+        var all = await _db.Departments.AsNoTracking()
+            .Where(x => x.IsActive)
+            .Select(x => new { x.Id, x.ParentId, x.ManagerId })
+            .ToListAsync();
+        var roots = all.Where(x => x.ManagerId == userId).Select(x => x.Id).ToArray();
+        if (roots.Length == 0) return [];
+
+        var ids = new HashSet<int>(roots);
+        var queue = new Queue<int>(roots);
+        while (queue.TryDequeue(out var parentId))
+        {
+            foreach (var childId in all.Where(x => x.ParentId == parentId).Select(x => x.Id))
+            {
+                if (ids.Add(childId)) queue.Enqueue(childId);
+            }
+        }
         return ids.ToArray();
     }
 

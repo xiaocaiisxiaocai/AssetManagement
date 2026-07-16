@@ -209,7 +209,7 @@ onMounted(loadData);
                 <strong>{{ pendingMineCount }}</strong>
               </button>
               <button v-if="canConfirmReturns" class="workspace-todo-item" type="button" @click="go('/approval/confirm-return')">
-                <span>待接收确认</span>
+                <span>待确认归还</span>
                 <strong>{{ pendingReturns.length }}</strong>
               </button>
               <button v-if="canViewReports" class="workspace-todo-item" type="button" @click="go('/report/overdue')">
