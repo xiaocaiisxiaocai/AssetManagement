@@ -3,11 +3,15 @@ import type { WorkflowProgressStep } from '#/api/workflow';
 
 import { computed } from 'vue';
 
+import { getTerminalProgress } from './workflow-progress-summary';
+
 const props = defineProps<{
   currentSteps?: WorkflowProgressStep[];
   nextSteps?: WorkflowProgressStep[];
   status: string;
 }>();
+
+const terminalProgress = computed(() => getTerminalProgress(props.status));
 
 function people(step: WorkflowProgressStep) {
   if (step.assignees.length === 0) return '待系统确定处理人';
@@ -16,7 +20,10 @@ function people(step: WorkflowProgressStep) {
     .join('、');
 }
 
-function assigneeNames(step: WorkflowProgressStep, status: 'completed' | 'pending') {
+function assigneeNames(
+  step: WorkflowProgressStep,
+  status: 'completed' | 'pending',
+) {
   return step.assignees
     .filter((item) => item.status === status)
     .map(({ employeeNo, name }) => `${name}（${employeeNo}）`)
@@ -32,7 +39,7 @@ const currentText = computed(() => {
       })
       .join('；');
   }
-  return props.status === 'pending' ? '等待进入下一审批节点' : '流程已结束';
+  return '等待进入下一审批节点';
 });
 
 const completedText = computed(() =>
@@ -60,18 +67,32 @@ const nextText = computed(() => {
 
 <template>
   <div class="workflow-summary">
-    <div class="workflow-summary-line">
-      <span class="workflow-summary-label workflow-summary-current">待处理</span>
-      <span>{{ currentText }}</span>
+    <div
+      v-if="terminalProgress"
+      class="workflow-summary-terminal"
+      :class="`workflow-summary-terminal-${terminalProgress.tone}`"
+    >
+      {{ terminalProgress.text }}
     </div>
-    <div v-if="completedText" class="workflow-summary-line workflow-summary-signed">
-      <span class="workflow-summary-label">已同意</span>
-      <span>{{ completedText }}</span>
-    </div>
-    <div v-if="nextText" class="workflow-summary-line workflow-summary-next">
-      <span class="workflow-summary-label">下一步</span>
-      <span>{{ nextText }}</span>
-    </div>
+    <template v-else>
+      <div class="workflow-summary-line">
+        <span class="workflow-summary-label workflow-summary-current"
+          >待处理</span
+        >
+        <span>{{ currentText }}</span>
+      </div>
+      <div
+        v-if="completedText"
+        class="workflow-summary-line workflow-summary-signed"
+      >
+        <span class="workflow-summary-label">已同意</span>
+        <span>{{ completedText }}</span>
+      </div>
+      <div v-if="nextText" class="workflow-summary-line workflow-summary-next">
+        <span class="workflow-summary-label">下一步</span>
+        <span>{{ nextText }}</span>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -106,5 +127,21 @@ const nextText = computed(() => {
   flex: none;
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+
+.workflow-summary-terminal {
+  font-weight: 500;
+}
+
+.workflow-summary-terminal-success {
+  color: var(--el-color-success);
+}
+
+.workflow-summary-terminal-danger {
+  color: var(--el-color-danger);
+}
+
+.workflow-summary-terminal-info {
+  color: var(--el-text-color-secondary);
 }
 </style>
