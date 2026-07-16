@@ -10,6 +10,8 @@ import {
   getBranchLabelDelta,
   getGatewayValidationError,
   getSuggestedBranchName,
+  isGatewayDiagramNode,
+  resolveDiagramElement,
 } from './gateway-branches';
 
 defineOptions({ name: 'BpmnModeler' });
@@ -251,13 +253,7 @@ function normalizeGatewayBranchLabels() {
   const modeling = modeler.value.get('modeling');
   const gateways = elementRegistry
     .getAll()
-    .filter((element: any) =>
-      [
-        'bpmn:ExclusiveGateway',
-        'bpmn:InclusiveGateway',
-        'bpmn:ParallelGateway',
-      ].includes(element.businessObject?.$type),
-    );
+    .filter((element: any) => isGatewayDiagramNode(element));
   let normalizedCount = 0;
 
   isNormalizingBranches = true;
@@ -317,6 +313,8 @@ function validateGatewayBranches() {
   const elementRegistry = modeler.value.get('elementRegistry');
   let validationError = '';
   const invalidGateway = elementRegistry.getAll().find((element: any) => {
+    if (!isGatewayDiagramNode(element)) return false;
+
     const gatewayType = element.businessObject?.$type;
     if (
       gatewayType !== 'bpmn:ExclusiveGateway' &&
@@ -377,7 +375,7 @@ async function initModeler() {
     eventBus.on('selection.changed', (event: any) => {
       const { newSelection } = event;
       if (newSelection && newSelection.length > 0) {
-        selectedElement.value = newSelection[0];
+        selectedElement.value = resolveDiagramElement(newSelection[0]);
       } else {
         selectedElement.value = null;
       }

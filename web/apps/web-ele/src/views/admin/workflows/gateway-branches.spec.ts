@@ -4,10 +4,12 @@ import {
   gatewaySupportsConditions,
   getBranchLabelDelta,
   getConditionSummary,
-  getSuggestedBranchName,
   getGatewayValidationError,
+  getSuggestedBranchName,
   getTargetNodeTitle,
   isDefaultGatewayBranch,
+  isGatewayDiagramNode,
+  resolveDiagramElement,
 } from './gateway-branches';
 
 describe('流程设计器网关分支展示', () => {
@@ -91,6 +93,39 @@ describe('流程设计器网关分支展示', () => {
     expect(gatewaySupportsConditions('bpmn:ExclusiveGateway')).toBe(true);
     expect(gatewaySupportsConditions('bpmn:InclusiveGateway')).toBe(true);
     expect(gatewaySupportsConditions('bpmn:ParallelGateway')).toBe(false);
+  });
+
+  it('点击网关文字标签时解析到真实网关节点', () => {
+    const gateway = {
+      businessObject: { $type: 'bpmn:ExclusiveGateway' },
+      id: 'Gateway_projectOwner',
+      outgoing: [{ id: 'Flow_projectOwner' }, { id: 'Flow_nonOwner' }],
+    };
+    const label = {
+      businessObject: gateway.businessObject,
+      id: 'Gateway_projectOwner_label',
+      labelTarget: gateway,
+      type: 'label',
+    };
+
+    expect(resolveDiagramElement(label)).toBe(gateway);
+    expect(resolveDiagramElement(gateway)).toBe(gateway);
+  });
+
+  it('网关校验只处理真实节点，不把外部文字标签当成第二个网关', () => {
+    const businessObject = { $type: 'bpmn:ExclusiveGateway' };
+
+    expect(
+      isGatewayDiagramNode({ businessObject, id: 'Gateway_projectOwner' }),
+    ).toBe(true);
+    expect(
+      isGatewayDiagramNode({
+        businessObject,
+        id: 'Gateway_projectOwner_label',
+        labelTarget: { id: 'Gateway_projectOwner' },
+        type: 'label',
+      }),
+    ).toBe(false);
   });
 
   it('把上方分支标签放到最长横线段的上侧', () => {

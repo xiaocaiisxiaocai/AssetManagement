@@ -15,6 +15,15 @@ export interface GatewayValidationSource {
   gatewayType: string;
 }
 
+interface DiagramElementLike {
+  businessObject?: {
+    $type?: string;
+  };
+  id?: string;
+  labelTarget?: DiagramElementLike | null;
+  type?: string;
+}
+
 interface Point {
   x: number;
   y: number;
@@ -34,6 +43,26 @@ const targetTypeNames: Record<string, string> = {
   'bpmn:StartEvent': '流程开始',
   'bpmn:UserTask': '审批节点',
 };
+
+const gatewayTypes = new Set([
+  'bpmn:ExclusiveGateway',
+  'bpmn:InclusiveGateway',
+  'bpmn:ParallelGateway',
+]);
+
+export function resolveDiagramElement<T extends DiagramElementLike>(
+  element: T | null | undefined,
+) {
+  return element?.labelTarget || element;
+}
+
+export function isGatewayDiagramNode(element: DiagramElementLike) {
+  return (
+    element.type !== 'label' &&
+    !element.labelTarget &&
+    gatewayTypes.has(element.businessObject?.$type || '')
+  );
+}
 
 export function gatewaySupportsConditions(gatewayType: string) {
   return (
