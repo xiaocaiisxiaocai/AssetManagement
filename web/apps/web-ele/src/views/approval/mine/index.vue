@@ -282,7 +282,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="filter-panel mine-filter-panel">
+      <div class="filter-panel">
         <ElForm class="filter-form" inline>
           <ElFormItem label="关键字">
             <ElInput
@@ -556,17 +556,6 @@ onMounted(async () => {
 .mine-actions {
   display: flex;
   gap: 12px;
-}
-
-/* 筛选区保持紧凑，控件高度不变以保证易用性 */
-@media (min-width: 769px) {
-  .mine-filter-panel {
-    padding: 10px 20px;
-  }
-}
-
-.mine-filter-panel :deep(.el-form-item) {
-  margin-bottom: 0;
 }
 
 /* ========== 表格面板 ========== */

@@ -172,7 +172,7 @@
 /* ========== 筛选面板 ========== */
 .filter-panel {
   flex-shrink: 0;
-  padding: 16px 20px;
+  padding: 10px 20px;
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
   background: var(--asset-page-surface);
@@ -182,12 +182,15 @@
 .role-filter-panel,
 .user-filter-panel,
 .filter-panel {
+  padding-block: 10px !important;
   border-color: var(--asset-page-border) !important;
   background: var(--asset-page-surface) !important;
   box-shadow: var(--asset-page-shadow);
 }
 
-.filter-form .el-form-item {
+.role-filter-panel .filter-form .el-form-item,
+.user-filter-panel .filter-form .el-form-item,
+.filter-panel .filter-form .el-form-item {
   margin-bottom: 0;
   margin-right: 12px;
 }
