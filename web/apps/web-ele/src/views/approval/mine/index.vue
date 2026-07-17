@@ -74,13 +74,39 @@ const form = reactive({
   transfereeId: undefined as number | undefined,
 });
 const query = reactive({
+  bizType: '',
+  keyword: '',
   page: 1,
   pageSize: 20,
+  status: '',
 });
 const showReturnDate = computed(() => form.bizType === 'borrow');
+const filteredFlows = computed(() => {
+  const keyword = query.keyword.trim().toLowerCase();
+
+  return flows.value.filter((flow) => {
+    const matchesBizType = !query.bizType || flow.bizType === query.bizType;
+    const matchesStatus = !query.status || flow.status === query.status;
+    const matchesKeyword =
+      !keyword ||
+      [
+        flow.flowNo,
+        flow.objectNo,
+        flow.objectName,
+        flow.participant,
+        flow.reason,
+        flow.sourceLabel,
+        flow.typeLabel,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword));
+
+    return matchesBizType && matchesStatus && matchesKeyword;
+  });
+});
 const pagedFlows = computed(() => {
   const start = (query.page - 1) * query.pageSize;
-  return flows.value.slice(start, start + query.pageSize);
+  return filteredFlows.value.slice(start, start + query.pageSize);
 });
 
 async function loadData() {
@@ -94,7 +120,7 @@ async function loadData() {
       materialMinePromise,
     ]);
     flows.value = mergeApprovalWorkItems(mine, materialMine);
-    if ((query.page - 1) * query.pageSize >= flows.value.length) {
+    if ((query.page - 1) * query.pageSize >= filteredFlows.value.length) {
       query.page = 1;
     }
   } catch {
@@ -213,6 +239,19 @@ function onPageSizeChange() {
   query.page = 1;
 }
 
+function search() {
+  query.page = 1;
+}
+
+function resetQuery() {
+  Object.assign(query, {
+    bizType: '',
+    keyword: '',
+    page: 1,
+    status: '',
+  });
+}
+
 function showProgress(row: ApprovalWorkItem) {
   selectedFlow.value = row;
   progressVisible.value = true;
@@ -241,6 +280,50 @@ onMounted(async () => {
           >
           <ElButton @click="openStart('return')">发起归还</ElButton>
         </div>
+      </div>
+
+      <div class="filter-panel">
+        <ElForm class="filter-form" inline>
+          <ElFormItem label="关键字">
+            <ElInput
+              v-model="query.keyword"
+              clearable
+              placeholder="流程编号/对象/借用人/接收人/事由"
+              style="width: 280px"
+              @keyup.enter="search"
+            />
+          </ElFormItem>
+          <ElFormItem label="业务类型">
+            <ElSelect
+              v-model="query.bizType"
+              clearable
+              placeholder="全部类型"
+              style="width: 150px"
+            >
+              <ElOption label="借用" value="borrow" />
+              <ElOption label="转让" value="transfer" />
+              <ElOption label="归还" value="return" />
+              <ElOption label="测试料件流转" value="material_transfer" />
+            </ElSelect>
+          </ElFormItem>
+          <ElFormItem label="状态">
+            <ElSelect
+              v-model="query.status"
+              clearable
+              placeholder="全部状态"
+              style="width: 130px"
+            >
+              <ElOption label="审批中" value="pending" />
+              <ElOption label="已通过" value="approved" />
+              <ElOption label="已驳回" value="rejected" />
+              <ElOption label="已撤回" value="withdrawn" />
+            </ElSelect>
+          </ElFormItem>
+          <ElFormItem>
+            <ElButton type="primary" @click="search">查询</ElButton>
+            <ElButton @click="resetQuery">重置</ElButton>
+          </ElFormItem>
+        </ElForm>
       </div>
 
       <div class="mine-table-panel">
@@ -333,7 +416,7 @@ onMounted(async () => {
         </ElTable>
         <div class="table-bottom-pager">
           <div class="table-bottom-pager-left">
-            <span>共 {{ flows.length }} 条记录</span>
+            <span>共 {{ filteredFlows.length }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
             <ElSelect
@@ -352,7 +435,7 @@ onMounted(async () => {
           <ElPagination
             v-model:current-page="query.page"
             :page-size="query.pageSize"
-            :total="flows.length"
+            :total="filteredFlows.length"
             background
             layout="prev, pager, next"
           />
