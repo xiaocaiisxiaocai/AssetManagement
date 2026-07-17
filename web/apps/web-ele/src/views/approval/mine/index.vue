@@ -565,6 +565,10 @@ onMounted(async () => {
   }
 }
 
+.mine-filter-panel :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+
 /* ========== 表格面板 ========== */
 .mine-table-panel {
   flex: 1;
