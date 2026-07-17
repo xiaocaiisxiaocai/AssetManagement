@@ -1182,13 +1182,13 @@ watch(
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  padding: 16px 20px;
+  padding: 4px 0 12px;
   border-bottom: 1px solid var(--asset-page-border);
 }
 
 /* ========== 标题与路径 ========== */
 .asset-section-title {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   font-size: 18px;
   font-weight: 600;
   color: var(--asset-page-text);
@@ -1201,7 +1201,7 @@ watch(
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  min-height: 32px;
+  min-height: 24px;
   font-size: 14px;
   line-height: 20px;
 }
