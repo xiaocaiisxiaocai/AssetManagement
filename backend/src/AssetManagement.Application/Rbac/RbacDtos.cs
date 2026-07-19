@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace AssetManagement.Application.Rbac;
 
 public record UserDto
@@ -25,9 +27,13 @@ public record UserOptionDto
 
 public record CreateUserRequest
 {
+    [Required, StringLength(50)]
     public string EmployeeNo { get; init; } = "";
+    [Required, StringLength(100)]
     public string Name { get; init; } = "";
+    [EmailAddress, StringLength(200)]
     public string? Email { get; init; }
+    [StringLength(50)]
     public string? Phone { get; init; }
     public string? Password { get; init; }
     public int? DepartmentId { get; init; }
@@ -37,8 +43,11 @@ public record CreateUserRequest
 
 public record UpdateUserRequest
 {
+    [Required, StringLength(100)]
     public string Name { get; init; } = "";
+    [EmailAddress, StringLength(200)]
     public string? Email { get; init; }
+    [StringLength(50)]
     public string? Phone { get; init; }
     public int? DepartmentId { get; init; }
     public int? SupervisorId { get; init; }
@@ -79,6 +88,26 @@ public record RoleDto
     public int[] MenuIds { get; init; } = Array.Empty<int>();
 }
 
+/// <summary>创建角色时只允许设置角色自身属性；权限和菜单必须走独立授权接口。</summary>
+public record CreateRoleRequest
+{
+    [Required, StringLength(50)]
+    public string Code { get; init; } = "";
+
+    [Required, StringLength(100)]
+    public string Name { get; init; } = "";
+
+    public bool IsActive { get; init; } = true;
+}
+
+public record UpdateRoleRequest
+{
+    [Required, StringLength(100)]
+    public string Name { get; init; } = "";
+
+    public bool IsActive { get; init; } = true;
+}
+
 public record SetRolePermissionsRequest
 {
     public int[] PermissionIds { get; init; } = Array.Empty<int>();
@@ -98,8 +127,11 @@ public record SetRoleAccessRequest
 public record PermissionDto
 {
     public int Id { get; init; }
+    [Required, StringLength(100)]
     public string Code { get; init; } = "";
+    [Required, StringLength(100)]
     public string Name { get; init; } = "";
+    [StringLength(50)]
     public string? Module { get; init; }
 }
 
@@ -107,13 +139,19 @@ public record MenuDto
 {
     public int Id { get; init; }
     public int? ParentId { get; init; }
+    [Required, StringLength(100)]
     public string Name { get; init; } = "";
+    [Required, StringLength(100)]
     public string Title { get; init; } = "";
+    [StringLength(200)]
     public string? Path { get; init; }
+    [StringLength(200)]
     public string? Component { get; init; }
+    [StringLength(100)]
     public string? Icon { get; init; }
     public int Sort { get; init; }
     public string Type { get; init; } = "menu";
+    [StringLength(100)]
     public string? PermissionCode { get; init; }
     public List<MenuDto> Children { get; init; } = new();
 }

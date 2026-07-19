@@ -59,6 +59,19 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Audit_write_failure_does_not_turn_a_successful_business_response_into_failure()
+    {
+        await Login();
+
+        var response = await _client.PostAsJsonAsync("/api/test-audit/audit-write-failure", new { });
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<string>>();
+        body!.Code.Should().Be(0);
+        body.Data.Should().Be("business-succeeded");
+    }
+
+    [Fact]
     public async Task Failed_write_operation_creates_audit_log()
     {
         await Login();
@@ -326,6 +339,20 @@ public class AuditProbeController : ControllerBase
 {
     [HttpPost("write")]
     public ApiResult<string> Write() => ApiResult<string>.Ok("written");
+
+    [HttpPost("audit-write-failure")]
+    public ApiResult<string> AuditWriteFailure([FromServices] AppDbContext db)
+    {
+        // 留下一条不可持久化的审计实体，模拟业务已完成后审计库写入失败。
+        db.AuditLogs.Add(new AuditLog
+        {
+            ActionType = "POST",
+            TargetType = "AuditProbe",
+            Summary = null!,
+            OccurredAt = DateTime.UtcNow
+        });
+        return ApiResult<string>.Ok("business-succeeded");
+    }
 
     [HttpPost("fail")]
     public ActionResult<ApiResult<object?>> Fail()

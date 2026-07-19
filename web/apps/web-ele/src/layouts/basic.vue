@@ -24,6 +24,7 @@ import {
 } from '#/api/notification';
 import LoginForm from '#/views/_core/authentication/login.vue';
 import Password from './password.vue';
+import { formatNotificationDate } from './notification-date';
 import { resolveNotificationRoute } from './notification-route';
 
 const passwordRef = ref<InstanceType<typeof Password>>();
@@ -35,7 +36,7 @@ const rawNotifications = ref<NotificationDto[]>([]);
 const notifications = computed<NotificationItem[]>(() =>
   rawNotifications.value.map((n) => ({
     avatar: typeIcon(n.type),
-    date: formatDate(n.createdAt),
+    date: formatNotificationDate(n.createdAt),
     isRead: n.isRead,
     message: n.body,
     title: n.title,
@@ -59,22 +60,13 @@ function typeIcon(type: string): string {
   return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" rx="20" fill="#e5e7eb"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="18">${emoji}</text></svg>`)}`;
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diff = Math.floor((now.getTime() - d.getTime()) / 1000);
-  if (diff < 60) return '刚刚';
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
-  return d.toLocaleDateString('zh-CN');
-}
-
 async function loadNotifications() {
   if (mustChangePassword.value) return;
   try {
     rawNotifications.value = await getNotificationsApi();
   } catch {
-    // 静默失败，不影响页面
+    // 请求失败时清空旧通知，避免把过期数据继续展示为当前状态。
+    rawNotifications.value = [];
   }
 }
 

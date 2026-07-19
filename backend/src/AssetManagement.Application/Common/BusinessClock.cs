@@ -14,6 +14,24 @@ public static class BusinessClock
 
     public static DateOnly TodayDateOnly => DateOnly.FromDateTime(Now);
 
+    /// <summary>
+    /// 将不带时区标记的中国标准时间转换为 UTC。数据库中的时间戳统一使用 UTC。
+    /// </summary>
+    public static DateTime ToUtc(DateTime chinaTime)
+    {
+        var unspecified = DateTime.SpecifyKind(chinaTime, DateTimeKind.Unspecified);
+        return TimeZoneInfo.ConvertTimeToUtc(unspecified, ChinaTimeZone);
+    }
+
+    /// <summary>
+    /// 将 UTC 时间转换为不带时区标记的中国标准时间，供业务日期计算使用。
+    /// </summary>
+    public static DateTime FromUtc(DateTime utcTime)
+    {
+        var utc = DateTime.SpecifyKind(utcTime, DateTimeKind.Utc);
+        return TimeZoneInfo.ConvertTimeFromUtc(utc, ChinaTimeZone);
+    }
+
     private static TimeZoneInfo ResolveChinaTimeZone()
     {
         foreach (var id in new[] { "China Standard Time", "Asia/Shanghai" })

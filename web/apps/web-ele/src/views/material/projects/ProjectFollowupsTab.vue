@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import type { TestProjectFollowup, TestProjectItem } from '#/api/test-project';
 
+import { computed } from 'vue';
+
 import { formatDate, formatDateTime } from '#/utils/date-format';
 
 import {
@@ -16,7 +18,7 @@ import {
   ElTimelineItem,
 } from 'element-plus';
 
-defineProps<{
+const props = defineProps<{
   editingId: null | number;
   followups: TestProjectFollowup[];
   form: { content: string; dueDate: string };
@@ -24,6 +26,9 @@ defineProps<{
   project: TestProjectItem;
   saving: boolean;
 }>();
+const canWrite = computed(
+  () => props.project.canWriteFollowUp && !props.project.isDeleted,
+);
 
 const emit = defineEmits<{
   cancelEdit: [];
@@ -46,9 +51,9 @@ const emit = defineEmits<{
             <h3>{{ editingId ? '编辑跟进记录' : '新增跟进记录' }}</h3>
             <p>记录本周期进展、问题和下一步动作。</p>
           </div>
-          <ElTag v-if="!project.canWriteFollowUp" type="info">只读</ElTag>
+          <ElTag v-if="!canWrite" type="info">只读</ElTag>
         </div>
-        <template v-if="project.canWriteFollowUp">
+        <template v-if="canWrite">
           <ElForm label-position="top">
             <ElFormItem label="跟进日期"
               ><ElDatePicker
@@ -80,7 +85,11 @@ const emit = defineEmits<{
           </div>
         </template>
         <div v-else class="readonly-note">
-          项目进入落地跟进后，负责人或管理员才能填写。
+          {{
+            project.isDeleted
+              ? '项目已删除，仅保留历史记录供查看。'
+              : '项目进入落地跟进后，负责人或管理员才能填写。'
+          }}
         </div>
       </aside>
       <section v-loading="loading" class="followup-history-panel">
@@ -108,7 +117,7 @@ const emit = defineEmits<{
                 ><span>{{ formatDateTime(item.filledAt) }}</span>
               </div>
               <div class="followup-content">{{ item.content }}</div>
-              <div v-if="project.canWriteFollowUp" class="record-actions">
+              <div v-if="canWrite" class="record-actions">
                 <ElButton
                   link
                   size="small"

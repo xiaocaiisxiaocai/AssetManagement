@@ -2,6 +2,7 @@
 import type { MaterialFlowItem } from '#/api/material';
 
 import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
+import { canWithdrawMaterialFlow } from './project-workspace-rules';
 
 import {
   ElButton,
@@ -26,6 +27,7 @@ defineProps<{
   pendingFlows: MaterialFlowItem[];
   pendingLoading: boolean;
   pendingQuery: { page: number; pageSize: number };
+  readOnly: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -192,7 +194,7 @@ function flowMetaOf(status: string) {
             <ElTableColumn align="center" fixed="right" label="操作" width="90">
               <template #default="{ row }">
                 <ElButton
-                  v-if="row.status === 'pending'"
+                  v-if="!readOnly && canWithdrawMaterialFlow(row)"
                   link
                   size="small"
                   type="danger"

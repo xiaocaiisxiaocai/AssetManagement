@@ -21,6 +21,7 @@ import { useAccess } from '@vben/access';
 import { useUserStore } from '@vben/stores';
 
 import { formatDate } from '#/utils/date-format';
+import { createLatestRequestGuard } from '#/utils/latest-request';
 
 import {
   deleteAssetApi,
@@ -120,6 +121,7 @@ const users = ref<UserOptionDto[]>([]);
 const currentAssetForAction = ref<AssetItem | null>(null);
 const detailVisible = ref(false);
 const detailLoading = ref(false);
+const detailRequestGuard = createLatestRequestGuard();
 const detail = ref<AssetDetail | null>(null);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 
@@ -347,13 +349,19 @@ function openEdit(row: AssetItem) {
 }
 
 async function openDetail(row: AssetItem) {
+  const requestGeneration = detailRequestGuard.next();
   detailVisible.value = true;
   detailLoading.value = true;
   detail.value = null;
   try {
-    detail.value = await getAssetDetailApi(row.id);
+    const response = await getAssetDetailApi(row.id);
+    if (detailRequestGuard.isLatest(requestGeneration) && detailVisible.value) {
+      detail.value = response;
+    }
   } finally {
-    detailLoading.value = false;
+    if (detailRequestGuard.isLatest(requestGeneration)) {
+      detailLoading.value = false;
+    }
   }
 }
 
@@ -614,6 +622,14 @@ watch(
     await applyCategoryCodeFromRoute();
   },
 );
+
+watch(detailVisible, (opened) => {
+  if (!opened) {
+    detailRequestGuard.invalidate();
+    detailLoading.value = false;
+    detail.value = null;
+  }
+});
 </script>
 
 <template>

@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace AssetManagement.Infrastructure.Audit;
 
@@ -54,17 +55,19 @@ public class AuditActionFilter : IAsyncActionFilter
     };
 
     private readonly AppDbContext _db;
+    private readonly ILogger<AuditActionFilter> _logger;
 
-    public AuditActionFilter(AppDbContext db)
+    public AuditActionFilter(AppDbContext db, ILogger<AuditActionFilter> logger)
     {
         _db = db;
+        _logger = logger;
     }
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var controllerName = (context.ActionDescriptor as ControllerActionDescriptor)?.ControllerName;
         var targetId = RouteValue(context, "id") ?? RouteValue(context, "assetId");
-        var before = await TakeSnapshot(context, controllerName, targetId);
+        var before = await TryTakeSnapshot(context, controllerName, targetId);
 
         var stopwatch = Stopwatch.StartNew();
         var executed = await next();
@@ -84,28 +87,66 @@ public class AuditActionFilter : IAsyncActionFilter
         int? userId = int.TryParse(userIdText, out var value) ? value : null;
         // 从路由 {id} 捕获目标实体主键,便于按实体回溯其操作日志(如资产详情)
         targetId ??= ExtractResultId(executed);
-        var after = await TakeSnapshot(context, controllerName, targetId);
-        var success = IsSuccess(context, executed);
-        var changes = BuildChanges(before, after);
-
-        _db.AuditLogs.Add(new AuditLog
+        try
         {
-            UserId = userId,
-            ActionType = ResolveActionType(context, controllerName),
-            TargetType = controllerName,
-            TargetId = targetId ?? BuildBatchTargetId(controllerName, changes),
-            Summary = BuildSummary(context, executed, controllerName, changes),
-            Detail = BuildDetail(context, executed, success, before, after, changes),
-            Ip = IpNormalizer.Normalize(context.HttpContext.Connection.RemoteIpAddress?.ToString()),
-            UserAgent = Truncate(context.HttpContext.Request.Headers.UserAgent.ToString(), 500),
-            DurationMs = (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue),
-            OccurredAt = DateTime.UtcNow
-        });
-        await _db.SaveChangesAsync(context.HttpContext.RequestAborted);
+            var after = await TryTakeSnapshot(context, controllerName, targetId);
+            var success = IsSuccess(context, executed);
+            var changes = BuildChanges(before, after);
+
+            _db.AuditLogs.Add(new AuditLog
+            {
+                UserId = userId,
+                ActionType = ResolveActionType(context, controllerName),
+                TargetType = controllerName,
+                TargetId = targetId ?? BuildBatchTargetId(controllerName, changes),
+                Summary = BuildSummary(context, executed, controllerName, changes),
+                Detail = BuildDetail(context, executed, success, before, after, changes),
+                Ip = IpNormalizer.Normalize(context.HttpContext.Connection.RemoteIpAddress?.ToString()),
+                UserAgent = Truncate(context.HttpContext.Request.Headers.UserAgent.ToString(), 500),
+                DurationMs = (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue),
+                OccurredAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync(context.HttpContext.RequestAborted);
+        }
+        catch (OperationCanceledException) when (context.HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            // 客户端已取消，不再尝试写审计日志。
+        }
+        catch (Exception ex)
+        {
+            foreach (var entry in _db.ChangeTracker.Entries<AuditLog>()
+                         .Where(x => x.State == EntityState.Added))
+            {
+                entry.State = EntityState.Detached;
+            }
+            _logger.LogError(ex, "业务请求已完成，但审计日志写入失败：{Method} {Path}",
+                context.HttpContext.Request.Method, context.HttpContext.Request.Path);
+        }
     }
 
     private static bool ShouldLog(ActionExecutingContext context, ActionExecutedContext executed)
         => WriteMethods.Contains(context.HttpContext.Request.Method);
+
+    private async Task<Dictionary<string, object?>?> TryTakeSnapshot(
+        ActionExecutingContext context,
+        string? controllerName,
+        string? targetId)
+    {
+        try
+        {
+            return await TakeSnapshot(context, controllerName, targetId);
+        }
+        catch (OperationCanceledException) when (context.HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "读取审计快照失败：{Method} {Path}",
+                context.HttpContext.Request.Method, context.HttpContext.Request.Path);
+            return null;
+        }
+    }
 
     private static string ResolveActionType(ActionExecutingContext context, string? controllerName)
     {

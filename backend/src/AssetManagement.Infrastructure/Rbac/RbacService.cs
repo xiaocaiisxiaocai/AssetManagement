@@ -118,6 +118,8 @@ public class RbacService : IRbacService
 
     public async Task<UserDto> CreateUserAsync(CreateUserRequest request, bool canAssignRole)
     {
+        EnsureRequiredText(request.EmployeeNo, 50, "工号");
+        EnsureRequiredText(request.Name, 100, "姓名");
         EnsureSingleRole(request.RoleIds);
         EnsureCanAssignUserRole(canAssignRole);
         var employeeNo = request.EmployeeNo.Trim();
@@ -155,6 +157,7 @@ public class RbacService : IRbacService
 
     public async Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request, int currentUserId, bool canAssignRole)
     {
+        EnsureRequiredText(request.Name, 100, "姓名");
         EnsureSingleRole(request.RoleIds);
         await using var transaction = await _db.Database.BeginTransactionAsync();
         await LockAdminUsersAsync();
@@ -337,8 +340,10 @@ public class RbacService : IRbacService
 
     public async Task<RoleDto> GetRoleAsync(int id) => await LoadRoleDto(id);
 
-    public async Task<RoleDto> CreateRoleAsync(RoleDto request)
+    public async Task<RoleDto> CreateRoleAsync(CreateRoleRequest request)
     {
+        EnsureRequiredText(request.Code, 50, "角色编码");
+        EnsureRequiredText(request.Name, 100, "角色名称");
         var code = request.Code.Trim();
         var name = request.Name.Trim();
         await EnsureRoleCodeAvailable(code);
@@ -347,14 +352,14 @@ public class RbacService : IRbacService
         var role = new Role { Code = code, Name = name, IsActive = request.IsActive };
         _db.Roles.Add(role);
         await _db.SaveChangesAsync();
-        await RewriteRolePermissions(role.Id, request.PermissionIds);
-        await RewriteRoleMenus(role.Id, request.MenuIds);
         await transaction.CommitAsync();
         return await LoadRoleDto(role.Id);
     }
 
-    public async Task<RoleDto> UpdateRoleAsync(int id, RoleDto request)
+    public async Task<RoleDto> UpdateRoleAsync(int id, UpdateRoleRequest request)
     {
+        EnsureRequiredText(request.Name, 100, "角色名称");
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         var role = await _db.Roles.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4042, "角色不存在");
         if (role.Code == "admin" && !request.IsActive)
@@ -363,10 +368,17 @@ public class RbacService : IRbacService
         }
         var name = request.Name.Trim();
         await EnsureRoleNameAvailable(name, id);
+        var statusChanged = role.IsActive != request.IsActive;
         role.Name = name;
         role.IsActive = request.IsActive;
         await _db.SaveChangesAsync();
-        return await LoadRoleDto(id);
+        if (statusChanged)
+        {
+            await BumpRoleMemberTokenVersionsAsync(id);
+        }
+        var result = await LoadRoleDto(id);
+        await transaction.CommitAsync();
+        return result;
     }
 
     public async Task DeleteRoleAsync(int id)
@@ -452,6 +464,17 @@ public class RbacService : IRbacService
             throw new BizException(4001, $"以下菜单缺少访问权限：{string.Join("、", missingMenuPermissions)}");
         }
 
+        var currentPermissionIds = await _db.RolePermissions
+            .Where(x => x.RoleId == id)
+            .Select(x => x.PermissionId)
+            .ToArrayAsync();
+        var currentMenuIds = await _db.RoleMenus
+            .Where(x => x.RoleId == id)
+            .Select(x => x.MenuId)
+            .ToArrayAsync();
+        var accessChanged = !currentPermissionIds.ToHashSet().SetEquals(distinctPermissionIds)
+            || !currentMenuIds.ToHashSet().SetEquals(expandedMenuIds);
+
         await using var transaction = await _db.Database.BeginTransactionAsync();
         _db.RolePermissions.RemoveRange(_db.RolePermissions.Where(x => x.RoleId == id));
         _db.RoleMenus.RemoveRange(_db.RoleMenus.Where(x => x.RoleId == id));
@@ -466,6 +489,10 @@ public class RbacService : IRbacService
             MenuId = menuId
         }));
         await _db.SaveChangesAsync();
+        if (accessChanged)
+        {
+            await BumpRoleMemberTokenVersionsAsync(id);
+        }
         await transaction.CommitAsync();
         return await LoadRoleDto(id);
     }
@@ -475,6 +502,8 @@ public class RbacService : IRbacService
 
     public async Task<PermissionDto> CreatePermissionAsync(PermissionDto request)
     {
+        EnsureRequiredText(request.Code, 100, "权限编码");
+        EnsureRequiredText(request.Name, 100, "权限名称");
         var code = request.Code.Trim();
         await EnsurePermissionCodeAvailable(code);
         await using var transaction = await _db.Database.BeginTransactionAsync();
@@ -493,11 +522,15 @@ public class RbacService : IRbacService
 
     public async Task<PermissionDto> UpdatePermissionAsync(int id, PermissionDto request)
     {
+        EnsureRequiredText(request.Code, 100, "权限编码");
+        EnsureRequiredText(request.Name, 100, "权限名称");
         var permission = await _db.Permissions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4043, "权限不存在");
         var code = request.Code.Trim();
-        await EnsurePermissionCodeAvailable(code, id);
-        permission.Code = code;
+        if (!string.Equals(permission.Code, code, StringComparison.Ordinal))
+        {
+            throw new BizException(4094, "权限编码创建后不能修改");
+        }
         permission.Name = request.Name.Trim();
         permission.Module = request.Module;
         await _db.SaveChangesAsync();
@@ -528,6 +561,8 @@ public class RbacService : IRbacService
 
     public async Task<MenuDto> CreateMenuAsync(MenuDto request)
     {
+        EnsureRequiredText(request.Name, 100, "菜单名称");
+        EnsureRequiredText(request.Title, 100, "菜单标题");
         await ValidateMenuParentAsync(null, request.ParentId);
         await using var transaction = await _db.Database.BeginTransactionAsync();
         var menu = new Menu
@@ -556,6 +591,8 @@ public class RbacService : IRbacService
 
     public async Task<MenuDto> UpdateMenuAsync(int id, MenuDto request)
     {
+        EnsureRequiredText(request.Name, 100, "菜单名称");
+        EnsureRequiredText(request.Title, 100, "菜单标题");
         var menu = await _db.Menus.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4044, "菜单不存在");
         await ValidateMenuParentAsync(id, request.ParentId);
@@ -703,6 +740,10 @@ public class RbacService : IRbacService
         {
             throw new BizException(4094, "用户已被项目负责人使用，不能删除");
         }
+        if (await _db.TestProjectFollowups.AnyAsync(x => x.FilledById == id))
+        {
+            throw new BizException(4094, "用户已被项目跟进记录使用，不能删除");
+        }
         if (await _db.TestMaterials.AnyAsync(x => x.CustodianId == id))
         {
             throw new BizException(4094, "用户已被测试料件保管人使用，不能删除");
@@ -791,6 +832,26 @@ public class RbacService : IRbacService
         {
             throw new BizException(4001, "请选择角色");
         }
+    }
+
+    private static void EnsureRequiredText(string? value, int maxLength, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new BizException(4001, $"{fieldName}必填");
+        }
+        if (value.Trim().Length > maxLength)
+        {
+            throw new BizException(4001, $"{fieldName}不能超过 {maxLength} 个字符");
+        }
+    }
+
+    private async Task BumpRoleMemberTokenVersionsAsync(int roleId)
+    {
+        await _db.Users
+            .Where(user => user.UserRoles.Any(userRole => userRole.RoleId == roleId))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(user => user.TokenVersion, user => user.TokenVersion + 1));
     }
 
     private async Task EnsureEmployeeNoAvailable(string employeeNo)

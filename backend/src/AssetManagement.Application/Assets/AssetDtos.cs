@@ -1,5 +1,5 @@
 using AssetManagement.Domain.Entities;
-using AssetManagement.Application.Audit;
+using System.ComponentModel.DataAnnotations;
 
 namespace AssetManagement.Application.Assets;
 
@@ -44,6 +44,7 @@ public record AssetQuery
 
 public record CreateAssetRequest
 {
+    [Required, StringLength(100)]
     public string Name { get; init; } = "";
     public int CategoryId { get; init; }
     public int? DepartmentId { get; init; }
@@ -53,12 +54,14 @@ public record CreateAssetRequest
     public DateTime? PurchaseDate { get; init; }
     public DateTime? RegistrationTime { get; init; }
     public string? CurrentCondition { get; init; }
+    [StringLength(500)]
     public string? Remark { get; init; }
     public List<string>? Images { get; init; }
 }
 
 public record UpdateAssetRequest
 {
+    [Required, StringLength(100)]
     public string Name { get; init; } = "";
     public int CategoryId { get; init; }
     public int? DepartmentId { get; init; }
@@ -69,6 +72,7 @@ public record UpdateAssetRequest
     public DateTime? PurchaseDate { get; init; }
     public DateTime? RegistrationTime { get; init; }
     public string? CurrentCondition { get; init; }
+    [StringLength(500)]
     public string? Remark { get; init; }
     public List<string>? Images { get; init; }
 }
@@ -98,7 +102,20 @@ public record AssetDetailDto
 {
     public AssetDto Asset { get; init; } = new();
     public List<AssetFlowDto> Flows { get; init; } = new();
-    public List<AuditLogDto> RecentLogs { get; init; } = new();
+    public List<AssetAuditLogDto> RecentLogs { get; init; } = new();
+}
+
+/// <summary>资产详情页可见的最小审计信息，不包含请求详情、IP 和 User-Agent。</summary>
+public record AssetAuditLogDto
+{
+    public int Id { get; init; }
+    public int? UserId { get; init; }
+    public string? UserName { get; init; }
+    public string ActionType { get; init; } = "";
+    public string? TargetType { get; init; }
+    public string? TargetId { get; init; }
+    public string Summary { get; init; } = "";
+    public DateTime OccurredAt { get; init; }
 }
 
 /// <summary>资产流转时间线条目(借出/归还/转让等审批单的精简视图)</summary>

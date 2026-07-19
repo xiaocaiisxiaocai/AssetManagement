@@ -1,4 +1,5 @@
 using AssetManagement.Application.TestMaterials;
+using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.TestMaterials;
 using FluentAssertions;
@@ -60,6 +61,71 @@ public class TestProjectServiceNoTrackingTests : MySqlFixtureBase
         await using var verifyDb = CreateNoTrackingContext();
         var exists = await verifyDb.TestProjectOptions.AsNoTracking().AnyAsync(x => x.Id == option.Id);
         exists.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Deleted_project_keeps_followup_history_readable_but_never_writable_or_purgeable()
+    {
+        var owner = new User { EmployeeNo = "FOLLOW-OWNER", Name = "项目负责人", PasswordHash = "x" };
+        _db.Users.Add(owner);
+        await _db.SaveChangesAsync();
+        var project = new TestProject
+        {
+            Name = "已删除历史项目",
+            Code = "DELETED-HISTORY",
+            ProgressCode = TestProjectService.ProgressLanding,
+            OwnerId = owner.Id,
+            IsDeleted = true,
+            DeletedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.TestProjects.Add(project);
+        await _db.SaveChangesAsync();
+        _db.TestProjectFollowups.Add(new TestProjectFollowup
+        {
+            ProjectId = project.Id,
+            DueDate = BusinessClock.Today,
+            Content = "历史跟进",
+            FilledById = owner.Id,
+            FilledAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+
+        var service = CreateService();
+        (await service.ListFollowupsAsync(project.Id)).Should().ContainSingle();
+        var dto = (await service.ListAsync("all", owner.Id)).Single(x => x.Id == project.Id);
+        dto.CanWriteFollowUp.Should().BeFalse();
+        var purge = () => service.PurgeAsync(project.Id);
+        await purge.Should().ThrowAsync<BizException>().WithMessage("*跟进历史*");
+    }
+
+    [Fact]
+    public async Task Monthly_stats_group_followups_by_china_business_date()
+    {
+        var year = BusinessClock.Now.Year;
+        var project = new TestProject
+        {
+            Name = "跨时区统计项目",
+            Code = "TZ-STATS",
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.TestProjects.Add(project);
+        await _db.SaveChangesAsync();
+        _db.TestProjectFollowups.Add(new TestProjectFollowup
+        {
+            ProjectId = project.Id,
+            DueDate = new DateTime(year, 1, 1),
+            Content = "中国时间一月一日",
+            FilledById = 0,
+            FilledAt = BusinessClock.ToUtc(new DateTime(year, 1, 1, 0, 30, 0)),
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+
+        var stats = await CreateService().GetStatsAsync();
+
+        stats.MonthlyStat.Single(x => x.Month == 1).FollowUpCount.Should().Be(1);
     }
 
     private TestProjectService CreateService() => new(CreateNoTrackingContext());

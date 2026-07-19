@@ -8,6 +8,7 @@ import type { UserDto, UserOptionDto } from '#/api/user';
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 
 import { useDebounceFn } from '@vueuse/core';
+import { useAccess } from '@vben/access';
 
 import {
   ElButton,
@@ -44,6 +45,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
+const { hasAccessByCodes } = useAccess();
+const canUploadImages = computed(() => hasAccessByCodes(['file:upload']));
 
 const saving = ref(false);
 const attachmentMaxMb = ref(5);
@@ -123,7 +126,7 @@ watch(visible, async (opened) => {
       remark: props.material.remark ?? '',
       vendorName: props.material.vendorName ?? '',
     });
-    const files = await Promise.all(
+    const results = await Promise.allSettled(
       (props.material.images ?? []).map(async (rawUrl, index) => ({
         name: rawUrl.split('/').pop() ?? rawUrl,
         rawUrl,
@@ -132,11 +135,30 @@ watch(visible, async (opened) => {
         url: await loadAssetImageObjectUrl(rawUrl),
       })),
     );
+    const sourceImages = props.material.images ?? [];
+    const files: AuthenticatedUploadFile[] = results.map((result, index) => {
+      if (result.status === 'fulfilled') return result.value;
+      const rawUrl = sourceImages[index]!;
+      return {
+        name: rawUrl.split('/').pop() ?? rawUrl,
+        rawUrl,
+        status: 'success',
+        uid: -(index + 1),
+      };
+    });
     if (generation !== imageLoadGeneration || !visible.value) {
-      files.forEach((file) => URL.revokeObjectURL(file.url));
+      files.forEach((file) => {
+        if (file.url) URL.revokeObjectURL(file.url);
+      });
       return;
     }
     imageFileList.value = files;
+    const failedCount = results.filter(
+      (result) => result.status === 'rejected',
+    ).length;
+    if (failedCount > 0) {
+      ElMessage.warning(`有 ${failedCount} 张原照片加载失败，保存前请确认`);
+    }
   } else {
     const projectId = props.defaultProjectId;
     Object.assign(form, {
@@ -344,6 +366,7 @@ const debouncedSave = useDebounceFn(save, 300);
         <ElUpload
           v-model:file-list="imageFileList"
           :before-upload="beforeImageUpload"
+          :disabled="!canUploadImages"
           :http-request="customImageUpload"
           :limit="5"
           :on-exceed="onImageExceed"
@@ -351,8 +374,11 @@ const debouncedSave = useDebounceFn(save, 300);
           accept="image/png,image/jpeg,image/gif,image/webp"
           list-type="picture-card"
         >
-          <span class="text-2xl">+</span>
+          <span v-if="canUploadImages" class="text-2xl">+</span>
         </ElUpload>
+        <div v-if="!canUploadImages" class="text-xs text-gray-400">
+          当前账号无文件上传权限
+        </div>
       </ElFormItem>
       <ElFormItem label="备注">
         <ElInput

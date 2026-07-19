@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using AssetManagement.Application.Workflow;
+using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,9 +25,13 @@ public class BizEffectApplier : IBizEffectApplier
     public async Task ApplyAsync(ApprovalFlow flow, int? operatorUserId = null)
     {
         var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId);
-        if (asset is null || asset.IsDeleted)
+        if (asset is null)
         {
-            return;
+            throw new BizException(4048, "审批关联的资产不存在，业务效果无法生效");
+        }
+        if (asset.IsDeleted)
+        {
+            throw new BizException(4094, "审批关联的资产已删除，业务效果无法生效");
         }
 
         var before = Snapshot(asset);

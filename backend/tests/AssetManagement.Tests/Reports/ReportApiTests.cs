@@ -177,14 +177,15 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         db.AuditLogs.AddRange(
-            new AuditLog { ActionType = "POST", TargetType = "Test", Summary = "old-10", OccurredAt = DateTime.Now.AddDays(-10) },
-            new AuditLog { ActionType = "POST", TargetType = "Test", Summary = "old-20", OccurredAt = DateTime.Now.AddDays(-20) },
-            new AuditLog { ActionType = "POST", TargetType = "Test", Summary = "new-3", OccurredAt = DateTime.Now.AddDays(-3) });
+            new AuditLog { ActionType = "POST", TargetType = "Test", Summary = "old-10", OccurredAt = DateTime.UtcNow.AddDays(-10) },
+            new AuditLog { ActionType = "POST", TargetType = "Test", Summary = "old-20", OccurredAt = DateTime.UtcNow.AddDays(-20) },
+            new AuditLog { ActionType = "POST", TargetType = "Test", Summary = "new-3", OccurredAt = DateTime.UtcNow.AddDays(-3) });
         await db.SaveChangesAsync();
 
         var preview = await _client.GetFromJsonAsync<ApiResult<AuditCleanupPreviewDto>>("/api/audit-logs/cleanup-preview?retentionDays=7");
         preview!.Data!.RetentionDays.Should().Be(7);
         preview.Data.DeleteCount.Should().BeGreaterThanOrEqualTo(2);
+        preview.Data.CutoffTime.Should().Be(BusinessClock.ToUtc(BusinessClock.Today.AddDays(-7)));
 
         var invalid = await _client.DeleteAsync("/api/audit-logs?retentionDays=10");
         invalid.EnsureSuccessStatusCode();

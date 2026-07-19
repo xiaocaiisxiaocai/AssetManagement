@@ -33,15 +33,10 @@ public class AuditMaintenanceService : IAuditMaintenanceService
     {
         ValidateRetentionDays(retentionDays);
         var cutoff = CutoffTime(retentionDays);
-        var logs = await _db.AuditLogs
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var deletedCount = await _db.AuditLogs
             .Where(x => x.OccurredAt < cutoff)
-            .ToListAsync();
-        var deletedCount = logs.Count;
-
-        if (deletedCount > 0)
-        {
-            _db.AuditLogs.RemoveRange(logs);
-        }
+            .ExecuteDeleteAsync();
 
         _db.AuditLogs.Add(new AuditLog
         {
@@ -53,6 +48,7 @@ public class AuditMaintenanceService : IAuditMaintenanceService
             OccurredAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return new AuditCleanupResultDto
         {
@@ -63,7 +59,7 @@ public class AuditMaintenanceService : IAuditMaintenanceService
     }
 
     private static DateTime CutoffTime(int retentionDays)
-        => BusinessClock.Today.AddDays(-retentionDays);
+        => BusinessClock.ToUtc(BusinessClock.Today.AddDays(-retentionDays));
 
     private static void ValidateRetentionDays(int retentionDays)
     {

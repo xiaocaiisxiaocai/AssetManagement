@@ -13,5 +13,9 @@ public class TestProjectFollowupConfiguration : IEntityTypeConfiguration<TestPro
         b.Property(x => x.Content).HasMaxLength(2000).IsRequired();
         b.HasIndex(x => x.ProjectId);
         b.HasIndex(x => x.DueDate);
+        b.HasOne<TestProject>()
+            .WithMany()
+            .HasForeignKey(x => x.ProjectId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

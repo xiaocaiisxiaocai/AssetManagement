@@ -3,6 +3,7 @@ using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace AssetManagement.Infrastructure.TestMaterials;
 
@@ -41,6 +42,7 @@ public class TestProjectService : ITestProjectService
 
     public async Task<TestProjectDto> CreateAsync(SaveTestProjectRequest request)
     {
+        NormalizeProjectCodes(request);
         var name = (request.Name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
         var code = (request.Code ?? "").Trim();
@@ -64,12 +66,20 @@ public class TestProjectService : ITestProjectService
             CreatedAt = DateTime.UtcNow
         };
         _db.TestProjects.Add(project);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "项目编号或项目名称已存在");
+        }
         return (await ToDtos(new[] { project }, new Dictionary<int, int>(), null)).Single();
     }
 
     public async Task<TestProjectDto> UpdateAsync(int id, SaveTestProjectRequest request)
     {
+        NormalizeProjectCodes(request);
         var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
@@ -91,14 +101,25 @@ public class TestProjectService : ITestProjectService
         project.OwnerId = request.OwnerId;
         project.TestStatus = request.TestStatus?.Trim();
         project.FollowUpIntervalDays = NormalizeInterval(request.FollowUpIntervalDays);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "项目编号或项目名称已存在");
+        }
         var count = await _db.TestMaterials.CountAsync(x => !x.IsDeleted && x.ProjectId == id);
         return (await ToDtos(new[] { project }, new Dictionary<int, int> { [id] = count }, null)).Single();
     }
 
     public async Task DeleteAsync(int id)
     {
-        var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
         if (await _db.TestMaterials.AnyAsync(x => !x.IsDeleted && x.ProjectId == id))
@@ -106,6 +127,7 @@ public class TestProjectService : ITestProjectService
         project.IsDeleted = true;
         project.DeletedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
     }
 
     public async Task RestoreAsync(int id)
@@ -125,6 +147,8 @@ public class TestProjectService : ITestProjectService
         if (!project.IsDeleted) throw new BizException(4097, "请先删除项目后再彻底删除");
         if (await _db.TestMaterials.AnyAsync(x => x.ProjectId == id))
             throw new BizException(4092, "该项目下仍有测试料件(含已删除),不能彻底删除");
+        if (await _db.TestProjectFollowups.AnyAsync(x => x.ProjectId == id))
+            throw new BizException(4092, "该项目仍有跟进历史,不能彻底删除");
         _db.TestProjects.Remove(project);
         await _db.SaveChangesAsync();
     }
@@ -203,7 +227,7 @@ public class TestProjectService : ITestProjectService
 
     public async Task<List<TestProjectFollowupDto>> ListFollowupsAsync(int projectId)
     {
-        await EnsureProjectExists(projectId);
+        await EnsureProjectExists(projectId, includeDeleted: true);
         var followups = await _db.TestProjectFollowups
             .Where(x => x.ProjectId == projectId)
             .OrderByDescending(x => x.DueDate)
@@ -214,7 +238,8 @@ public class TestProjectService : ITestProjectService
 
     public async Task<TestProjectFollowupDto> CreateFollowupAsync(int projectId, SaveTestProjectFollowupRequest request, int currentUserId)
     {
-        var project = await LoadProject(projectId);
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await LockActiveProjectAsync(projectId);
         await EnsureCanWriteFollowup(project, currentUserId);
         var content = (request.Content ?? "").Trim();
         if (string.IsNullOrWhiteSpace(content)) throw new BizException(4001, "请填写落地情况");
@@ -230,12 +255,15 @@ public class TestProjectService : ITestProjectService
         };
         _db.TestProjectFollowups.Add(followup);
         await _db.SaveChangesAsync();
-        return (await ToFollowupDtos(new[] { followup })).Single();
+        var result = (await ToFollowupDtos(new[] { followup })).Single();
+        await transaction.CommitAsync();
+        return result;
     }
 
     public async Task<TestProjectFollowupDto> UpdateFollowupAsync(int projectId, int followupId, SaveTestProjectFollowupRequest request, int currentUserId)
     {
-        var project = await LoadProject(projectId);
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await LockActiveProjectAsync(projectId);
         await EnsureCanWriteFollowup(project, currentUserId);
         var followup = await _db.TestProjectFollowups.AsTracking()
             .SingleOrDefaultAsync(x => x.Id == followupId && x.ProjectId == projectId)
@@ -245,18 +273,22 @@ public class TestProjectService : ITestProjectService
         followup.DueDate = request.DueDate?.Date ?? followup.DueDate;
         followup.Content = content;
         await _db.SaveChangesAsync();
-        return (await ToFollowupDtos(new[] { followup })).Single();
+        var result = (await ToFollowupDtos(new[] { followup })).Single();
+        await transaction.CommitAsync();
+        return result;
     }
 
     public async Task DeleteFollowupAsync(int projectId, int followupId, int currentUserId)
     {
-        var project = await LoadProject(projectId);
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await LockActiveProjectAsync(projectId);
         await EnsureCanWriteFollowup(project, currentUserId);
         var followup = await _db.TestProjectFollowups.AsTracking()
             .SingleOrDefaultAsync(x => x.Id == followupId && x.ProjectId == projectId)
             ?? throw new BizException(4046, "跟进记录不存在");
         _db.TestProjectFollowups.Remove(followup);
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
     }
 
     public async Task<TestProjectStatsDto> GetStatsAsync()
@@ -277,11 +309,15 @@ public class TestProjectService : ITestProjectService
         int inProgress = projects.Count - closed - landed;
 
         var projectIds = projects.Select(x => x.Id).ToArray();
+        var yearStartUtc = BusinessClock.ToUtc(new DateTime(year, 1, 1));
+        var nextYearStartUtc = BusinessClock.ToUtc(new DateTime(year + 1, 1, 1));
         var followups = await _db.TestProjectFollowups
             .AsNoTracking()
-            .Where(x => projectIds.Contains(x.ProjectId) && x.FilledAt.Year == year)
+            .Where(x => projectIds.Contains(x.ProjectId) &&
+                        x.FilledAt >= yearStartUtc && x.FilledAt < nextYearStartUtc)
             .Select(x => x.FilledAt)
             .ToListAsync();
+        var followupBusinessTimes = followups.Select(BusinessClock.FromUtc).ToList();
 
         var typeDist = projects
             .Where(x => !string.IsNullOrEmpty(x.ProjectTypeCode))
@@ -301,7 +337,7 @@ public class TestProjectService : ITestProjectService
         {
             Month = m,
             ClosedCount = projects.Count(x => x.ClosedDate?.Year == year && x.ClosedDate?.Month == m),
-            FollowUpCount = followups.Count(x => x.Month == m)
+            FollowUpCount = followupBusinessTimes.Count(x => x.Month == m)
         }).ToList();
 
         return new TestProjectStatsDto
@@ -323,7 +359,9 @@ public class TestProjectService : ITestProjectService
             .Where(x => ownerIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name);
         var options = await _db.TestProjectOptions.AsNoTracking().ToListAsync();
-        var optionMap = options.ToDictionary(x => (x.Kind, x.Code), x => x.Label);
+        var optionMap = options
+            .GroupBy(x => (x.Kind, Code: x.Code.ToLowerInvariant()))
+            .ToDictionary(x => x.Key, x => x.First().Label);
         var projectIds = list.Select(x => x.Id).ToArray();
         var followups = await _db.TestProjectFollowups.AsNoTracking()
             .Where(x => projectIds.Contains(x.ProjectId))
@@ -357,10 +395,12 @@ public class TestProjectService : ITestProjectService
                 TestStatus = x.TestStatus,
                 FollowUpIntervalDays = NormalizeInterval(x.FollowUpIntervalDays),
                 NextFollowUpDueDate = nextDue,
-                FollowUpStatus = FollowUpStatus(nextDue),
+                FollowUpStatus = string.Equals(x.ProgressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase)
+                    ? "closed"
+                    : FollowUpStatus(nextDue),
                 LatestFollowUpContent = latest?.Content,
                 LatestFollowUpAt = latest?.FilledAt,
-                CanWriteFollowUp = isLanding && currentUserId.HasValue && (isAdmin || x.OwnerId == currentUserId.Value),
+                CanWriteFollowUp = !x.IsDeleted && isLanding && currentUserId.HasValue && (isAdmin || x.OwnerId == currentUserId.Value),
                 CreatedAt = x.CreatedAt,
                 IsDeleted = x.IsDeleted,
                 DeletedAt = x.DeletedAt,
@@ -432,8 +472,22 @@ public class TestProjectService : ITestProjectService
         => await _db.TestProjects.SingleOrDefaultAsync(x => x.Id == projectId && !x.IsDeleted)
            ?? throw new BizException(4046, "测试项目不存在");
 
-    private async Task EnsureProjectExists(int projectId)
-        => _ = await LoadProject(projectId);
+    private async Task<TestProject> LockActiveProjectAsync(int projectId)
+    {
+        var project = await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {projectId} FOR UPDATE")
+            .AsNoTracking()
+            .SingleOrDefaultAsync();
+        if (project is null || project.IsDeleted)
+            throw new BizException(4046, "测试项目不存在");
+        return project;
+    }
+
+    private async Task EnsureProjectExists(int projectId, bool includeDeleted = false)
+    {
+        if (!await _db.TestProjects.AnyAsync(x => x.Id == projectId && (includeDeleted || !x.IsDeleted)))
+            throw new BizException(4046, "测试项目不存在");
+    }
 
     private async Task EnsureCanWriteFollowup(TestProject project, int currentUserId)
     {
@@ -477,7 +531,7 @@ public class TestProjectService : ITestProjectService
     }
 
     private static string? LabelFor(Dictionary<(string Kind, string Code), string> optionMap, string kind, string? code)
-        => string.IsNullOrWhiteSpace(code) ? null : optionMap.GetValueOrDefault((kind, code));
+        => string.IsNullOrWhiteSpace(code) ? null : optionMap.GetValueOrDefault((kind, code.ToLowerInvariant()));
 
     private static TestProjectOptionDto ToOptionDto(TestProjectOption x) => new()
     {
@@ -548,6 +602,15 @@ public class TestProjectService : ITestProjectService
 
     private static string? NormalizeOptional(string? text)
         => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+
+    private static void NormalizeProjectCodes(SaveTestProjectRequest request)
+    {
+        request.ProjectTypeCode = NormalizeOptional(request.ProjectTypeCode)?.ToLowerInvariant();
+        request.ProgressCode = NormalizeOptional(request.ProgressCode)?.ToLowerInvariant();
+    }
+
+    private static bool IsDuplicateKey(DbUpdateException ex)
+        => ex.InnerException is MySqlException { Number: 1062 };
 
     private static int NormalizeInterval(int days)
         => Math.Clamp(days <= 0 ? 14 : days, 1, 365);

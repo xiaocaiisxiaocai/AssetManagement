@@ -137,7 +137,7 @@ public class ReportServiceTests : MySqlFixtureBase
         var other = new Department { Name = "财务部", Code = "D2000", IsActive = true };
         _db.Departments.AddRange(root, other);
         await _db.SaveChangesAsync();
-        var child = new Department { Name = "研发一组", Code = "D1001", ParentId = root.Id, IsActive = true };
+        var child = new Department { Name = "研发一组", Code = "D1001", ParentId = root.Id, IsActive = false };
         var category = new AssetCategory { CodeSeg = "PC", Code = "PC", ParentId = null };
         _db.AddRange(child, category);
         await _db.SaveChangesAsync();
@@ -209,6 +209,46 @@ public class ReportServiceTests : MySqlFixtureBase
         overdueList[0].AssetNo.Should().Be("PC-001");
         overdueList[0].Borrower.Should().Be("张三");
         overdueList[0].OverdueDays.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task RemindOverdueBatch_prevalidates_entire_batch_before_writing()
+    {
+        var category = new AssetCategory { CodeSeg = "BAT", Code = "BAT" };
+        _db.AssetCategories.Add(category);
+        await _db.SaveChangesAsync();
+        var asset = new Asset
+        {
+            AssetNo = "BAT-001",
+            Name = "批量催办资产",
+            CategoryId = category.Id,
+            Status = AssetStatus.Borrowed,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.Assets.Add(asset);
+        await _db.SaveChangesAsync();
+        _db.ApprovalFlows.Add(new ApprovalFlow
+        {
+            FlowNo = "BAT-FLOW-001",
+            BizType = "borrow",
+            Status = "approved",
+            AssetId = asset.Id,
+            AssetNo = asset.AssetNo,
+            AssetName = asset.Name,
+            ApplicantId = 88,
+            Applicant = "借用人",
+            ReturnDate = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd"),
+            ApplyTime = DateTime.UtcNow.AddDays(-5),
+            CurrentNodeIds = new List<string>(),
+            BpmnTokens = new Dictionary<string, BpmnToken>()
+        });
+        await _db.SaveChangesAsync();
+
+        var action = () => _service.RemindOverdueBatchAsync(new[] { asset.Id, int.MaxValue }, 1);
+
+        await action.Should().ThrowAsync<AssetManagement.Application.Common.BizException>();
+        (await _db.AuditLogs.CountAsync(x => x.ActionType == "remind")).Should().Be(0);
+        (await _db.Notifications.CountAsync()).Should().Be(0);
     }
 
     private ReportService CreateServiceFor(params Claim[] claims)

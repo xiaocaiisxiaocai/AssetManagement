@@ -9,17 +9,22 @@ using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Assets;
 
 public class AssetApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
+    private readonly TestWebAppFactory _factory;
 
     public AssetApiTests(TestWebAppFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -416,6 +421,45 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         detail.Data.Flows.Should().Contain(f => f.BizType == "borrow" && f.Applicant.Length > 0);
         detail.Data.RecentLogs.Should().Contain(l => l.ActionType == "PUT" && l.TargetId == id.ToString());
         detail.Data.RecentLogs.Should().Contain(l => l.TargetType == "Approval");
+        typeof(AssetAuditLogDto).GetProperty("Detail").Should().BeNull();
+        typeof(AssetAuditLogDto).GetProperty("Ip").Should().BeNull();
+        typeof(AssetAuditLogDto).GetProperty("UserAgent").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Update_asset_increments_concurrency_version()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "并发版本资产",
+            CategoryId = category.Id
+        });
+
+        uint before;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            before = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Assets
+                .Where(x => x.Id == created.Data!.Id)
+                .Select(x => x.RowVersion)
+                .SingleAsync();
+        }
+
+        await Put<ApiResult<AssetDto>>($"/api/assets/{created.Data!.Id}", new UpdateAssetRequest
+        {
+            Name = "并发版本资产-已更新",
+            CategoryId = category.Id,
+            Quantity = 1,
+            Status = AssetStatus.Available
+        });
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var after = await verifyScope.ServiceProvider.GetRequiredService<AppDbContext>().Assets
+            .Where(x => x.Id == created.Data.Id)
+            .Select(x => x.RowVersion)
+            .SingleAsync();
+        after.Should().Be(before + 1);
     }
 
     [Fact]
@@ -428,13 +472,19 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             Name = "有流转历史资产",
             CategoryId = category.Id,
         });
-        await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
             AssetId = created.Data!.Id,
             Reason = "保留历史",
             ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
+        var pendingDelete = await _client.DeleteAsync($"/api/assets/{created.Data.Id}");
+        var pendingDeleteBody = await pendingDelete.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        pendingDeleteBody!.Code.Should().Be(4094);
+        pendingDeleteBody.Message.Should().Contain("待审批");
+
+        await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/withdraw", new { });
         await _client.DeleteAsync($"/api/assets/{created.Data.Id}");
 
         var purged = await _client.DeleteAsync($"/api/assets/{created.Data.Id}/purge");

@@ -18,5 +18,7 @@ public class TestProjectConfiguration : IEntityTypeConfiguration<TestProject>
         b.Property(x => x.FollowUpIntervalDays).HasDefaultValue(14);
         b.HasIndex(x => x.IsDeleted);
         b.HasIndex(x => x.OwnerId);
+        b.HasIndex(x => x.Code).IsUnique();
+        b.HasIndex(x => x.Name).IsUnique();
     }
 }

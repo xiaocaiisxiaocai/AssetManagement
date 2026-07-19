@@ -23,32 +23,36 @@ public class DatabaseBackupWorker : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var (enabled, nextRun) = await LoadScheduleAsync();
-            await DelayUntil(nextRun, stoppingToken);
-            if (stoppingToken.IsCancellationRequested) break;
-            if (!enabled) continue;
-
             try
             {
+                var (enabled, nextRun) = await LoadScheduleAsync(stoppingToken);
+                await DelayUntil(nextRun, stoppingToken);
+                if (!enabled) continue;
+
                 using var scope = _scopeFactory.CreateScope();
                 var service = scope.ServiceProvider.GetRequiredService<IDatabaseBackupService>();
                 var result = await service.BackupAsync(stoppingToken);
                 _logger.LogInformation("定时数据库备份完成：{FilePath}", result.FilePath);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "定时数据库备份异常");
+                _logger.LogError(ex, "定时数据库备份轮询异常，将在 1 分钟后重试");
+                await DelayAfterFailure(stoppingToken);
             }
         }
     }
 
-    private async Task<(bool Enabled, DateTime NextRun)> LoadScheduleAsync()
+    private async Task<(bool Enabled, DateTime NextRun)> LoadScheduleAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var settings = await db.SystemSettings.AsNoTracking()
             .Where(x => x.Key.StartsWith("database_backup_"))
-            .ToDictionaryAsync(x => x.Key, x => x.Value);
+            .ToDictionaryAsync(x => x.Key, x => x.Value, ct);
 
         var enabled = !settings.TryGetValue("database_backup_enabled", out var enabledValue)
             || enabledValue.Equals("true", StringComparison.OrdinalIgnoreCase);
@@ -70,6 +74,18 @@ public class DatabaseBackupWorker : BackgroundService
     {
         var delay = nextRun - BusinessClock.Now;
         if (delay <= TimeSpan.Zero) delay = TimeSpan.FromMinutes(1);
-        await Task.Delay(delay, ct).ContinueWith(_ => { });
+        await Task.Delay(delay, ct);
+    }
+
+    private static async Task DelayAfterFailure(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1), ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 宿主停止时立即结束重试等待。
+        }
     }
 }

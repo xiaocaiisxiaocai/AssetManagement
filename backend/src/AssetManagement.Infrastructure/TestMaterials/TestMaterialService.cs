@@ -8,6 +8,7 @@ using AssetManagement.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using MySqlConnector;
 
 namespace AssetManagement.Infrastructure.TestMaterials;
 
@@ -104,18 +105,21 @@ public class TestMaterialService : ITestMaterialService
         await EnsureActiveDepartmentAsync(request.DepartmentId);
         await EnsureLocationExistsAsync(request.LocationId);
         await EnsureActiveCustodianAsync(request.CustodianId, request.DepartmentId);
-        var project = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ProjectId && !x.IsDeleted)
-            ?? throw new BizException(4046, "测试项目不存在");
-        await EnsureCanWriteMaterialAsync(project, "material:create");
         var name = request.Name.Trim();
         if (string.IsNullOrWhiteSpace(name))
             throw new BizException(4001, "请填写料件名称");
-        await EnsureMaterialNameAvailableAsync(request.ProjectId, name);
 
-        for (var attempt = 0; ; attempt++)
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var project = await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {request.ProjectId} FOR UPDATE")
+            .AsNoTracking()
+            .SingleOrDefaultAsync();
+        if (project is null || project.IsDeleted)
+            throw new BizException(4046, "测试项目不存在");
+        await EnsureCanWriteMaterialAsync(project, "material:create");
+        await EnsureMaterialNameAvailableAsync(request.ProjectId, name);
+        var m = new TestMaterial
         {
-            var m = new TestMaterial
-            {
                 MaterialNo = await NextMaterialNo(),
                 Name = name,
                 ProjectId = request.ProjectId,
@@ -131,17 +135,17 @@ public class TestMaterialService : ITestMaterialService
                 ImageUrls = JoinImages(request.Images),
                 Remark = request.Remark?.Trim(),
                 CreatedAt = DateTime.UtcNow
-            };
-            _db.TestMaterials.Add(m);
-            try
-            {
-                await _db.SaveChangesAsync();
-                return await GetAsync(m.Id);
-            }
-            catch (DbUpdateException) when (attempt < 3)
-            {
-                _db.Entry(m).State = EntityState.Detached;
-            }
+        };
+        _db.TestMaterials.Add(m);
+        try
+        {
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+            return await GetAsync(m.Id);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "同一项目下的料件名称已存在");
         }
     }
 
@@ -186,6 +190,10 @@ public class TestMaterialService : ITestMaterialService
         {
             throw new BizException(4090, "料件已被其他操作更新，请刷新后重试");
         }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "同一项目下的料件名称已存在");
+        }
         return await GetAsync(id);
     }
 
@@ -201,21 +209,49 @@ public class TestMaterialService : ITestMaterialService
         m.IsDeleted = true;
         m.DeletedAt = DateTime.UtcNow;
         m.RowVersion++;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "料件已被其他操作更新，请刷新后重试");
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "同一项目下的料件名称已存在");
+        }
     }
 
     public async Task RestoreAsync(int id)
     {
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
         if (!m.IsDeleted) throw new BizException(4099, "料件未删除,无需恢复");
-        if (!await _db.TestProjects.AnyAsync(x => x.Id == m.ProjectId && !x.IsDeleted))
+        var project = await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {m.ProjectId} FOR UPDATE")
+            .AsNoTracking()
+            .SingleOrDefaultAsync();
+        if (project is null || project.IsDeleted)
             throw new BizException(4094, "料件所属项目已删除，请先恢复项目");
         m.IsDeleted = false;
         m.DeletedAt = null;
         m.RowVersion++;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "料件已被其他操作更新，请刷新后重试");
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "同一项目下已有同名活动料件，不能恢复");
+        }
+        await transaction.CommitAsync();
     }
 
     public async Task PurgeAsync(int id)
@@ -249,7 +285,14 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4099, "料件已退回厂商,无需重复操作");
         m.Status = MaterialStatus.ReturnedToVendor;
         m.RowVersion++;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "料件已被其他操作更新，请刷新后重试");
+        }
         return await GetAsync(id);
     }
 
@@ -296,16 +339,16 @@ public class TestMaterialService : ITestMaterialService
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(AppConstants.DepartmentTreeCacheMinutes);
             return await _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToListAsync();
         });
-        var ids = new List<int> { rootId };
-        void Walk(int parentId)
+        var ids = new HashSet<int> { rootId };
+        var queue = new Queue<int>();
+        queue.Enqueue(rootId);
+        while (queue.TryDequeue(out var parentId))
         {
             foreach (var child in departments!.Where(x => x.ParentId == parentId))
             {
-                ids.Add(child.Id);
-                Walk(child.Id);
+                if (ids.Add(child.Id)) queue.Enqueue(child.Id);
             }
         }
-        Walk(rootId);
         return ids.ToArray();
     }
 
@@ -410,8 +453,13 @@ public class TestMaterialService : ITestMaterialService
             .Select(x => int.TryParse(x[prefix.Length..], out var sequence) ? sequence : 0)
             .DefaultIfEmpty(0)
             .Max();
-        return MaterialNoGenerator.Next(today, maxSequence);
+        var sequence = await BusinessSequenceGenerator.NextAsync(
+            _db, $"test-material:{today:yyyyMMdd}", maxSequence);
+        return $"{prefix}{sequence:D3}";
     }
+
+    private static bool IsDuplicateKey(DbUpdateException ex)
+        => ex.InnerException is MySqlException { Number: 1062 };
 
     private async Task<List<TestMaterialDto>> ToDtos(IEnumerable<TestMaterial> materials)
     {

@@ -16,7 +16,7 @@ import type {
 } from '#/api/test-project';
 import type { UserOptionDto } from '#/api/user';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import { useAccess } from '@vben/access';
 import { useUserStore } from '@vben/stores';
@@ -31,6 +31,7 @@ import {
 } from '#/utils/runtime-settings';
 import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
 import { formatDate } from '#/utils/date-format';
+import { createLatestRequestGuard } from '#/utils/latest-request';
 import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
 import {
   approveFlowApi,
@@ -84,24 +85,9 @@ import {
 } from '#/views/permissions/action-access';
 import { filterProjects, type ProjectFilter } from './project-filter';
 import { validateProjectForm } from './project-form-rules';
+import { projectFollowUpStatusMeta } from './project-workspace-rules';
 
 defineOptions({ name: 'MaterialProjects' });
-
-const followUpStatusMap: Record<
-  string,
-  { label: string; type: 'danger' | 'success' | 'warning' }
-> = {
-  due: { label: '今日到期', type: 'warning' },
-  overdue: { label: '已超期', type: 'danger' },
-  upcoming: { label: '未到期', type: 'success' },
-};
-const defaultFollowUpStatus: {
-  label: string;
-  type: 'danger' | 'success' | 'warning';
-} = {
-  label: '未到期',
-  type: 'success',
-};
 
 const { hasAccessByCodes } = useAccess();
 const userStore = useUserStore();
@@ -111,6 +97,15 @@ const projectActionAccess = computed(() =>
 const materialActionAccess = computed(() =>
   buildMaterialActionAccess(hasAccessByCodes),
 );
+const isCurrentProjectReadOnly = computed(
+  () => currentProject.value?.isDeleted === true,
+);
+const currentMaterialActionAccess = computed(() => {
+  if (!isCurrentProjectReadOnly.value) return materialActionAccess.value;
+  return Object.fromEntries(
+    Object.keys(materialActionAccess.value).map((key) => [key, false]),
+  ) as typeof materialActionAccess.value;
+});
 const isCurrentProjectOwner = computed(
   () =>
     !!currentProject.value?.ownerId &&
@@ -118,10 +113,14 @@ const isCurrentProjectOwner = computed(
       String(userStore.userInfo?.userId ?? ''),
 );
 const canWriteCurrentProjectMaterial = computed(
-  () => materialActionAccess.value.canCreate || isCurrentProjectOwner.value,
+  () =>
+    !isCurrentProjectReadOnly.value &&
+    (materialActionAccess.value.canCreate || isCurrentProjectOwner.value),
 );
 const canEditCurrentProjectMaterial = computed(
-  () => materialActionAccess.value.canEdit || isCurrentProjectOwner.value,
+  () =>
+    !isCurrentProjectReadOnly.value &&
+    (materialActionAccess.value.canEdit || isCurrentProjectOwner.value),
 );
 
 const loading = ref(false);
@@ -193,6 +192,11 @@ const editingMaterial = ref<MaterialItem | null>(null);
 const materialDetailVisible = ref(false);
 const materialDetailLoading = ref(false);
 const materialDetail = ref<MaterialDetail | null>(null);
+const followupRequestGuard = createLatestRequestGuard();
+const materialRequestGuard = createLatestRequestGuard();
+const pendingFlowRequestGuard = createLatestRequestGuard();
+const myFlowRequestGuard = createLatestRequestGuard();
+const materialDetailRequestGuard = createLatestRequestGuard();
 const transferVisible = ref(false);
 const workflowNodeSelector = ref<InstanceType<
   typeof WorkflowNodeSelectDialog
@@ -291,8 +295,8 @@ function normalizeText(value?: null | string) {
   return text ? text : null;
 }
 
-function statusMeta(status: string) {
-  return followUpStatusMap[status] ?? defaultFollowUpStatus;
+function statusMeta(project: TestProjectItem) {
+  return projectFollowUpStatusMeta(project);
 }
 
 function generateOptionCode(kind: OptionKind) {
@@ -595,10 +599,14 @@ async function removeOption(row: TestProjectOption) {
 }
 
 async function openFollowups(row: TestProjectItem) {
+  followupRequestGuard.invalidate();
+  materialRequestGuard.invalidate();
+  pendingFlowRequestGuard.invalidate();
+  myFlowRequestGuard.invalidate();
   currentProject.value = row;
   pendingFlows.value = [];
   myFlows.value = [];
-  flowActiveTab.value = materialActionAccess.value.canApprove
+  flowActiveTab.value = currentMaterialActionAccess.value.canApprove
     ? 'pending'
     : 'mine';
   pendingFlowQuery.page = 1;
@@ -620,11 +628,21 @@ async function openFollowups(row: TestProjectItem) {
 }
 
 async function loadFollowups(projectId: number) {
+  const requestGeneration = followupRequestGuard.next();
   followupLoading.value = true;
   try {
-    followups.value = await listTestProjectFollowupsApi(projectId);
+    const response = await listTestProjectFollowupsApi(projectId);
+    if (
+      followupRequestGuard.isLatest(requestGeneration) &&
+      followupDrawerVisible.value &&
+      currentProject.value?.id === projectId
+    ) {
+      followups.value = response;
+    }
   } finally {
-    followupLoading.value = false;
+    if (followupRequestGuard.isLatest(requestGeneration)) {
+      followupLoading.value = false;
+    }
   }
 }
 
@@ -649,7 +667,7 @@ function cancelFollowupEdit() {
 async function saveFollowup() {
   const project = currentProject.value;
   if (!project) return;
-  if (!project.canWriteFollowUp) {
+  if (project.isDeleted || !project.canWriteFollowUp) {
     ElMessage.warning('项目进入落地跟进后，负责人或管理员才能填写');
     return;
   }
@@ -683,6 +701,10 @@ async function saveFollowup() {
 async function deleteFollowup(row: TestProjectFollowup) {
   const project = currentProject.value;
   if (!project) return;
+  if (project.isDeleted || !project.canWriteFollowUp) {
+    ElMessage.warning('当前项目为只读状态');
+    return;
+  }
   try {
     await ElMessageBox.confirm('确认删除该跟进记录？', '删除确认', {
       type: 'warning',
@@ -714,13 +736,22 @@ function buildMaterialQuery(projectId: number): MaterialQuery {
 
 async function loadProjectMaterials(projectId = currentProject.value?.id) {
   if (!projectId) return;
+  const requestGeneration = materialRequestGuard.next();
   materialLoading.value = true;
   try {
     const result = await listMaterialsApi(buildMaterialQuery(projectId));
-    materials.value = result.items;
-    materialTotal.value = result.total;
+    if (
+      materialRequestGuard.isLatest(requestGeneration) &&
+      followupDrawerVisible.value &&
+      currentProject.value?.id === projectId
+    ) {
+      materials.value = result.items;
+      materialTotal.value = result.total;
+    }
   } finally {
-    materialLoading.value = false;
+    if (materialRequestGuard.isLatest(requestGeneration)) {
+      materialLoading.value = false;
+    }
   }
 }
 
@@ -754,12 +785,14 @@ function loadMaterialFormOptions() {
 }
 
 function openCreateMaterial() {
+  if (isCurrentProjectReadOnly.value) return;
   editingMaterial.value = null;
   loadMaterialFormOptions();
   materialFormVisible.value = true;
 }
 
 function onMaterialRowCommand(command: number | string, row: MaterialItem) {
+  if (isCurrentProjectReadOnly.value) return;
   switch (command) {
     case 'delete': {
       void removeMaterial(row);
@@ -786,23 +819,34 @@ function onMaterialRowCommand(command: number | string, row: MaterialItem) {
 }
 
 function openEditMaterial(row: MaterialItem) {
+  if (isCurrentProjectReadOnly.value) return;
   editingMaterial.value = row;
   loadMaterialFormOptions();
   materialFormVisible.value = true;
 }
 
 async function openMaterialDetail(row: MaterialItem) {
+  const requestGeneration = materialDetailRequestGuard.next();
   materialDetailVisible.value = true;
   materialDetailLoading.value = true;
   materialDetail.value = null;
   try {
-    materialDetail.value = await getMaterialDetailApi(row.id);
+    const response = await getMaterialDetailApi(row.id);
+    if (
+      materialDetailRequestGuard.isLatest(requestGeneration) &&
+      materialDetailVisible.value
+    ) {
+      materialDetail.value = response;
+    }
   } finally {
-    materialDetailLoading.value = false;
+    if (materialDetailRequestGuard.isLatest(requestGeneration)) {
+      materialDetailLoading.value = false;
+    }
   }
 }
 
 function openTransfer(row: MaterialItem) {
+  if (isCurrentProjectReadOnly.value) return;
   transferMaterial.value = row;
   transferVisible.value = true;
 }
@@ -887,23 +931,7 @@ async function purgeMaterial(row: MaterialItem) {
 
 async function afterMaterialChanged() {
   await loadProjectMaterials();
-  if (currentProject.value?.id) {
-    const id = currentProject.value.id;
-    if (materialActionAccess.value.canApprove) {
-      void listPendingFlowsApi(id)
-        .then((v) => {
-          pendingFlows.value = v;
-          normalizeFlowPage('pending');
-        })
-        .catch(() => {});
-    }
-    void listMyFlowsApi(id)
-      .then((v) => {
-        myFlows.value = v;
-        normalizeFlowPage('mine');
-      })
-      .catch(() => {});
-  }
+  void loadProjectFlows();
 }
 
 async function loadProjectFlows(projectId = currentProject.value?.id) {
@@ -912,10 +940,19 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
   if (!loadMine && !materialActionAccess.value.canApprove) return;
   if (loadMine) myFlowLoading.value = true;
   else pendingFlowLoading.value = true;
+  const requestGuard = loadMine ? myFlowRequestGuard : pendingFlowRequestGuard;
+  const requestGeneration = requestGuard.next();
   try {
     const flows = await (loadMine
       ? listMyFlowsApi(projectId)
       : listPendingFlowsApi(projectId));
+    if (
+      !requestGuard.isLatest(requestGeneration) ||
+      !followupDrawerVisible.value ||
+      currentProject.value?.id !== projectId
+    ) {
+      return;
+    }
     if (loadMine) {
       myFlows.value = flows;
       normalizeFlowPage('mine');
@@ -924,12 +961,15 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
       normalizeFlowPage('pending');
     }
   } finally {
-    if (loadMine) myFlowLoading.value = false;
-    else pendingFlowLoading.value = false;
+    if (requestGuard.isLatest(requestGeneration)) {
+      if (loadMine) myFlowLoading.value = false;
+      else pendingFlowLoading.value = false;
+    }
   }
 }
 
 async function approveFlow(row: MaterialFlowItem) {
+  if (isCurrentProjectReadOnly.value) return;
   const node = await workflowNodeSelector.value?.selectNode(row, '通过');
   if (!node) return;
   try {
@@ -951,6 +991,7 @@ async function approveFlow(row: MaterialFlowItem) {
 }
 
 async function rejectFlow(row: MaterialFlowItem) {
+  if (isCurrentProjectReadOnly.value) return;
   const node = await workflowNodeSelector.value?.selectNode(row, '驳回');
   if (!node) return;
   let reason = '不同意';
@@ -974,6 +1015,7 @@ async function rejectFlow(row: MaterialFlowItem) {
 }
 
 async function withdrawFlow(row: MaterialFlowItem) {
+  if (isCurrentProjectReadOnly.value || row.canWithdraw !== true) return;
   try {
     await ElMessageBox.confirm(
       `确认撤回料件「${row.materialName}」的流转申请？`,
@@ -1032,6 +1074,25 @@ onMounted(async () => {
   materialPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   flowPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   await Promise.all([loadOptions(), loadData()]);
+});
+
+watch(followupDrawerVisible, (opened) => {
+  if (opened) return;
+  followupRequestGuard.invalidate();
+  materialRequestGuard.invalidate();
+  pendingFlowRequestGuard.invalidate();
+  myFlowRequestGuard.invalidate();
+  followupLoading.value = false;
+  materialLoading.value = false;
+  pendingFlowLoading.value = false;
+  myFlowLoading.value = false;
+});
+
+watch(materialDetailVisible, (opened) => {
+  if (opened) return;
+  materialDetailRequestGuard.invalidate();
+  materialDetailLoading.value = false;
+  materialDetail.value = null;
 });
 </script>
 
@@ -1111,11 +1172,8 @@ onMounted(async () => {
                   <strong>{{
                     formatDate(currentProject.nextFollowUpDueDate)
                   }}</strong>
-                  <ElTag
-                    :type="statusMeta(currentProject.followUpStatus).type"
-                    size="small"
-                  >
-                    {{ statusMeta(currentProject.followUpStatus).label }}
+                  <ElTag :type="statusMeta(currentProject).type" size="small">
+                    {{ statusMeta(currentProject).label }}
                   </ElTag>
                 </div>
               </div>
@@ -1136,7 +1194,7 @@ onMounted(async () => {
             @tab-change="onProjectTabChange"
           >
             <ProjectMaterialsTab
-              :access="materialActionAccess"
+              :access="currentMaterialActionAccess"
               :can-create="canWriteCurrentProjectMaterial"
               :can-edit="canEditCurrentProjectMaterial"
               :loading="materialLoading"
@@ -1156,7 +1214,7 @@ onMounted(async () => {
 
             <ProjectFlowsTab
               v-model:active-tab="flowActiveTab"
-              :can-approve="materialActionAccess.canApprove"
+              :can-approve="currentMaterialActionAccess.canApprove"
               :my-count="myFlowCount"
               :my-flows="pagedMyFlows"
               :my-loading="myFlowLoading"
@@ -1166,6 +1224,7 @@ onMounted(async () => {
               :pending-flows="pagedPendingFlows"
               :pending-loading="pendingFlowLoading"
               :pending-query="pendingFlowQuery"
+              :read-only="isCurrentProjectReadOnly"
               @approve="approveFlow"
               @my-page-size-change="onMyFlowPageSizeChange"
               @pending-page-size-change="onPendingFlowPageSizeChange"

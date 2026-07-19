@@ -32,6 +32,7 @@ import {
 import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
 import { formatDate, formatDateTime } from '#/utils/date-format';
 import {
+  findApprovalWorkItemIndex,
   mergeApprovalWorkItems,
   normalizeAssetApproval,
 } from '../approval-work-items';
@@ -274,9 +275,7 @@ async function cancelAddSign(item: {
       who: item.name,
     });
     selected.value = updated;
-    const index = flows.value.findIndex(
-      (flow) => flow.id === updated.id && flow.source === 'asset',
-    );
+    const index = findApprovalWorkItemIndex(flows.value, 'asset', updated.id);
     if (index >= 0) flows.value[index] = normalizeAssetApproval(updated);
     ElMessage.success('已取消加签');
   } catch {
@@ -321,7 +320,7 @@ async function addSign() {
       who: addSignUser.value,
     });
     selected.value = updated;
-    const index = flows.value.findIndex((item) => item.id === updated.id);
+    const index = findApprovalWorkItemIndex(flows.value, 'asset', updated.id);
     if (index >= 0) flows.value[index] = normalizeAssetApproval(updated);
     ElMessage.success('已加签');
     addSignVisible.value = false;

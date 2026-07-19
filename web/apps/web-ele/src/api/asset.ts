@@ -102,13 +102,9 @@ export interface AssetFlow {
 
 export interface AssetAuditLog {
   actionType: string;
-  detail?: null | string;
   id: number;
-  ip?: null | string;
   occurredAt: string;
   summary: string;
-  targetId?: null | string;
-  targetType?: null | string;
   userId?: null | number;
   userName?: null | string;
 }

@@ -210,18 +210,61 @@ public class ReportService : IReportService
     {
         var row = (await QueryOverdueAsync()).FirstOrDefault(x => x.AssetId == assetId)
             ?? throw new BizException(4060, "资产不存在或未逾期");
-        _db.AuditLogs.Add(new AuditLog
+        var (auditLog, notification) = BuildOverdueReminder(row, userId);
+        _db.AuditLogs.Add(auditLog);
+        await _notifications.CreateAsync(notification);
+        // 幂等通知已存在时 NotificationService 会直接返回，仍需显式保存本次催办审计。
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<int> RemindOverdueBatchAsync(IReadOnlyCollection<int> assetIds, int? userId)
+    {
+        var ids = assetIds.Distinct().ToArray();
+        if (ids.Length == 0)
+        {
+            throw new BizException(4001, "请选择需要催办的逾期资产");
+        }
+        if (ids.Length > AppConstants.MaxPageSize)
+        {
+            throw new BizException(4001, $"单次最多催办 {AppConstants.MaxPageSize} 项");
+        }
+
+        // 任何无效 ID 都必须在产生审计或通知之前失败，避免半批成功。
+        var overdueRows = await QueryOverdueAsync();
+        var rowMap = overdueRows
+            .Where(row => ids.Contains(row.AssetId))
+            .GroupBy(row => row.AssetId)
+            .ToDictionary(group => group.Key, group => group.First());
+        var invalidIds = ids.Where(id => !rowMap.ContainsKey(id)).ToArray();
+        if (invalidIds.Length > 0)
+        {
+            throw new BizException(4060, $"以下资产不存在或未逾期：{string.Join("、", invalidIds)}");
+        }
+
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var reminders = ids.Select(id => BuildOverdueReminder(rowMap[id], userId)).ToList();
+        _db.AuditLogs.AddRange(reminders.Select(x => x.AuditLog));
+        await _notifications.CreateBatchAsync(reminders.Select(x => x.Notification));
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return ids.Length;
+    }
+
+    private static (AuditLog AuditLog, CreateNotificationRequest Notification) BuildOverdueReminder(
+        OverdueReportRow row,
+        int? userId)
+    {
+        var auditLog = new AuditLog
         {
             UserId = userId,
             ActionType = "remind",
             TargetType = "asset",
-            TargetId = assetId.ToString(CultureInfo.InvariantCulture),
+            TargetId = row.AssetId.ToString(CultureInfo.InvariantCulture),
             Summary = $"逾期催办：{row.AssetNo} {row.AssetName}",
             Detail = $"借用人：{row.Borrower}；预计归还：{row.ReturnDate}；逾期：{row.OverdueDays}天",
             OccurredAt = DateTime.UtcNow
-        });
-        await _db.SaveChangesAsync();
-        await _notifications.CreateAsync(new CreateNotificationRequest
+        };
+        var notification = new CreateNotificationRequest
         {
             Type = "overdue",
             Title = $"逾期催办：{row.AssetNo} {row.AssetName}",
@@ -229,18 +272,8 @@ public class ReportService : IReportService
             FlowId = row.FlowId,
             UserId = row.BorrowerId,
             IdempotencyKey = $"overdue_remind_{row.FlowId}_{BusinessClock.Today:yyyyMMdd}_{userId ?? 0}"
-        });
-    }
-
-    public async Task<int> RemindOverdueBatchAsync(IReadOnlyCollection<int> assetIds, int? userId)
-    {
-        var ids = assetIds.Distinct().ToArray();
-        foreach (var id in ids)
-        {
-            await RemindOverdueAsync(id, userId);
-        }
-
-        return ids.Length;
+        };
+        return (auditLog, notification);
     }
 
     private IQueryable<ApprovalFlow> ApplyBorrowQuery(IQueryable<ApprovalFlow> queryable, BorrowReportQuery query)
@@ -439,8 +472,8 @@ public class ReportService : IReportService
             return Array.Empty<int>();
         }
 
+        // 历史部门停用后，主管仍须能够处理其后代部门的归还和报表数据。
         var departments = _db.Departments.AsNoTracking()
-            .Where(x => x.IsActive)
             .Select(x => new { x.Id, x.ParentId })
             .ToList();
         if (!departments.Any(x => x.Id == rootDepartmentId))

@@ -4,6 +4,7 @@ import type { ProjectFilter } from './project-filter';
 import type { DeleteStatus } from './project-workspace-types';
 
 import { formatDate } from '#/utils/date-format';
+import { projectFollowUpStatusMeta } from './project-workspace-rules';
 
 import {
   ElButton,
@@ -55,22 +56,8 @@ const deleteStatus = defineModel<DeleteStatus>('deleteStatus', {
   required: true,
 });
 
-const followUpStatusMap: Record<
-  string,
-  { label: string; type: 'danger' | 'success' | 'warning' }
-> = {
-  due: { label: '今日到期', type: 'warning' },
-  overdue: { label: '已超期', type: 'danger' },
-  upcoming: { label: '未到期', type: 'success' },
-};
-const defaultFollowUpStatus = { label: '未到期', type: 'success' as const };
-
 function optionalText(value?: null | string) {
   return value && value.trim() ? value : '-';
-}
-
-function statusMeta(status: string) {
-  return followUpStatusMap[status] ?? defaultFollowUpStatus;
 }
 
 function tableRowClassName({ row }: { row: TestProjectItem }) {
@@ -224,8 +211,8 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       <ElTableColumn align="center" label="下次跟进" width="130">
         <template #default="{ row }"
           ><div>{{ formatDate(row.nextFollowUpDueDate) }}</div>
-          <ElTag :type="statusMeta(row.followUpStatus).type" size="small">{{
-            statusMeta(row.followUpStatus).label
+          <ElTag :type="projectFollowUpStatusMeta(row).type" size="small">{{
+            projectFollowUpStatusMeta(row).label
           }}</ElTag></template
         >
       </ElTableColumn>

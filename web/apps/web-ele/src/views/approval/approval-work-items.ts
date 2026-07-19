@@ -103,6 +103,14 @@ export function canWithdrawApproval(item: Pick<ApprovalWorkItem, 'status'>) {
   return item.status === 'pending';
 }
 
+export function findApprovalWorkItemIndex(
+  items: Pick<ApprovalWorkItem, 'id' | 'source'>[],
+  source: ApprovalWorkItemSource,
+  id: number,
+) {
+  return items.findIndex((item) => item.source === source && item.id === id);
+}
+
 function currentAssetNodeLabel(flow: ApprovalFlow) {
   if (flow.currentNodeIds.length === 0) return '-';
   if (flow.currentNodeIds.length > 1)

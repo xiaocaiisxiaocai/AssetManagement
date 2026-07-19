@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
     public DbSet<MaterialFlow> MaterialFlows => Set<MaterialFlow>();
     public DbSet<MaterialFlowRecord> MaterialFlowRecords => Set<MaterialFlowRecord>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<BusinessSequence> BusinessSequences => Set<BusinessSequence>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {

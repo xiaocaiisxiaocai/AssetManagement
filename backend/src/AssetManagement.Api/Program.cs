@@ -101,7 +101,20 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 builder.Services.AddScoped<AuditActionFilter>();
-builder.Services.AddControllers(o => o.Filters.Add<AuditActionFilter>());
+builder.Services.AddControllers(o => o.Filters.Add<AuditActionFilter>())
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var message = context.ModelState.Values
+                .SelectMany(value => value.Errors)
+                .Select(error => error.ErrorMessage)
+                .FirstOrDefault(error => !string.IsNullOrWhiteSpace(error))
+                ?? "请求参数不正确";
+            return new Microsoft.AspNetCore.Mvc.OkObjectResult(
+                ApiResult<object?>.Fail(4001, message));
+        };
+    });
 builder.Services.AddDbContext<AppDbContext>(o =>
 {
     var connStr = builder.Configuration.GetConnectionString("Default")

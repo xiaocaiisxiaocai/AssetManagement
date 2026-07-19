@@ -90,6 +90,8 @@ export interface MaterialFlowItem {
   bpmnTokens: Record<string, BpmnToken>;
   applyTime: string;
   directTransfer: boolean;
+  /** 是否允许当前登录用户撤回；以服务端申请人身份判断为准。 */
+  canWithdraw?: boolean;
 }
 
 export interface MaterialFlowRecordItem {

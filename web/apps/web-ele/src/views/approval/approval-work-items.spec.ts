@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canWithdrawApproval,
+  findApprovalWorkItemIndex,
   mergeApprovalWorkItems,
   normalizeAssetApproval,
   normalizeMaterialFlow,
@@ -152,5 +153,13 @@ describe('审批工作项适配', () => {
     expect(canWithdrawApproval({ status: 'approved' })).toBe(false);
     expect(canWithdrawApproval({ status: 'rejected' })).toBe(false);
     expect(canWithdrawApproval({ status: 'withdrawn' })).toBe(false);
+  });
+
+  it('按来源和编号共同定位审批项，避免跨业务同号误更新', () => {
+    const items = [
+      { id: 7, source: 'material' as const },
+      { id: 7, source: 'asset' as const },
+    ];
+    expect(findApprovalWorkItemIndex(items, 'asset', 7)).toBe(1);
   });
 });

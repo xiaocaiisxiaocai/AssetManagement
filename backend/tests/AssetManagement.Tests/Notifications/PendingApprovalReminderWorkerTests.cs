@@ -144,6 +144,143 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
         notifications[0].UserId.Should().Be(unsigned.Id);
     }
 
+    [Fact]
+    public async Task ScanAndRemindAsync_parallel_flow_only_reminds_nodes_that_reached_threshold()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<AppDbContext>(options =>
+            options.UseMySql(ConnectionString, ServerVersion.AutoDetect(ConnectionString)));
+        services.AddScoped<AssetManagement.Application.Notifications.INotificationService, NotificationService>();
+        var provider = services.BuildServiceProvider();
+        var worker = new PendingApprovalReminderWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<PendingApprovalReminderWorker>.Instance);
+
+        var overdueApprover = new User { EmployeeNo = "OLD001", Name = "超时审批人", PasswordHash = "x" };
+        var freshApprover = new User { EmployeeNo = "NEW001", Name = "新节点审批人", PasswordHash = "x" };
+        _db.Users.AddRange(overdueApprover, freshApprover);
+        var workflow = new Domain.Entities.Workflow
+        {
+            Name = "并行节点独立催办",
+            BizType = "borrow",
+            BpmnXml = ParallelBpmn(),
+            IsActive = true
+        };
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        _db.ApprovalFlows.Add(new ApprovalFlow
+        {
+            FlowNo = "APV-PARALLEL-REMIND",
+            BizType = "borrow",
+            WorkflowId = workflow.Id,
+            AssetId = 3,
+            AssetNo = "A003",
+            AssetName = "并行催办资产",
+            ApplicantId = overdueApprover.Id,
+            Applicant = "申请人",
+            Status = "pending",
+            CurrentNodeIds = ["Task_Old", "Task_Fresh"],
+            BpmnTokens = new Dictionary<string, BpmnToken>
+            {
+                ["Task_Old"] = new()
+                {
+                    NodeId = "Task_Old", Status = BpmnTokenStatus.Active,
+                    StartedAt = DateTime.UtcNow.AddDays(-2),
+                    SignStates = new Dictionary<string, bool> { [overdueApprover.Id.ToString()] = false }
+                },
+                ["Task_Fresh"] = new()
+                {
+                    NodeId = "Task_Fresh", Status = BpmnTokenStatus.Active,
+                    StartedAt = DateTime.UtcNow.AddHours(-2),
+                    SignStates = new Dictionary<string, bool> { [freshApprover.Id.ToString()] = false }
+                }
+            },
+            ApplyTime = DateTime.UtcNow.AddDays(-2),
+            Deadline = DateTime.UtcNow.AddDays(1)
+        });
+        await _db.SaveChangesAsync();
+
+        await InvokeScanAndRemindAsync(worker);
+
+        var notifications = await _db.Notifications.ToListAsync();
+        notifications.Should().ContainSingle().Which.UserId.Should().Be(overdueApprover.Id);
+    }
+
+    [Fact]
+    public async Task ScanAndRemindAsync_org_manager_node_uses_configured_organization_level_manager()
+    {
+        var worker = CreateWorker();
+        var manager = new User { EmployeeNo = "ORG-MGR", Name = "事业部负责人", PasswordHash = "x" };
+        var applicant = new User { EmployeeNo = "ORG-USER", Name = "组织申请人", PasswordHash = "x" };
+        _db.Users.AddRange(manager, applicant);
+        var level = new OrganizationLevel { Code = "department", Name = "事业部", Sort = 1, IsActive = true };
+        _db.OrganizationLevels.Add(level);
+        await _db.SaveChangesAsync();
+        var department = new Department
+        {
+            Name = "组织层级事业部", Code = "ORG-DEPT", ManagerId = manager.Id,
+            OrganizationLevelId = level.Id, IsActive = true
+        };
+        _db.Departments.Add(department);
+        await _db.SaveChangesAsync();
+        applicant.DepartmentId = department.Id;
+        await _db.SaveChangesAsync();
+
+        var workflow = new Domain.Entities.Workflow
+        {
+            Name = "组织层级催办", BizType = "borrow",
+            BpmnXml = SingleTaskBpmn("Task_Org", "orgManager:department"), IsActive = true
+        };
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+        _db.ApprovalFlows.Add(PendingFlow(workflow.Id, applicant, "Task_Org", "APV-ORG-REMIND"));
+        await _db.SaveChangesAsync();
+
+        await InvokeScanAndRemindAsync(worker);
+
+        (await _db.Notifications.SingleAsync()).UserId.Should().Be(manager.Id);
+    }
+
+    [Fact]
+    public async Task ScanAndRemindAsync_transfer_receiver_task_uses_transferee_department_manager()
+    {
+        var worker = CreateWorker();
+        var applicantManager = new User { EmployeeNo = "APP-MGR", Name = "申请方主管", PasswordHash = "x" };
+        var receiverManager = new User { EmployeeNo = "REC-MGR", Name = "接收方主管", PasswordHash = "x" };
+        var applicant = new User { EmployeeNo = "APP-USER", Name = "转让申请人", PasswordHash = "x" };
+        var transferee = new User { EmployeeNo = "REC-USER", Name = "接收人", PasswordHash = "x" };
+        _db.Users.AddRange(applicantManager, receiverManager, applicant, transferee);
+        await _db.SaveChangesAsync();
+        var applicantDept = new Department { Name = "申请部门", Code = "APP-DEPT", ManagerId = applicantManager.Id };
+        var receiverDept = new Department { Name = "接收部门", Code = "REC-DEPT", ManagerId = receiverManager.Id };
+        _db.Departments.AddRange(applicantDept, receiverDept);
+        await _db.SaveChangesAsync();
+        applicant.DepartmentId = applicantDept.Id;
+        transferee.DepartmentId = receiverDept.Id;
+        await _db.SaveChangesAsync();
+
+        var workflow = new Domain.Entities.Workflow
+        {
+            Name = "接收方主管催办", BizType = "transfer",
+            BpmnXml = SingleTaskBpmn("Task_receiver", "deptManager"), IsActive = true
+        };
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+        var flow = PendingFlow(workflow.Id, applicant, "Task_receiver", "APV-RECEIVER-REMIND");
+        flow.BizType = "transfer";
+        flow.TransfereeId = transferee.Id;
+        flow.Transferee = transferee.Name;
+        _db.ApprovalFlows.Add(flow);
+        await _db.SaveChangesAsync();
+
+        await InvokeScanAndRemindAsync(worker);
+
+        var notification = await _db.Notifications.SingleAsync();
+        notification.UserId.Should().Be(receiverManager.Id);
+        notification.UserId.Should().NotBe(applicantManager.Id);
+    }
+
     private static string SupervisorBpmn() => """
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -155,6 +292,75 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
     <bpmn:endEvent id="End" name="结束" />
     <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Task_Supervisor" />
     <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_Supervisor" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string ParallelBpmn() => """
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="Process_ParallelReminder" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:parallelGateway id="Fork" />
+    <bpmn:userTask id="Task_Old" />
+    <bpmn:userTask id="Task_Fresh" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="Fork" />
+    <bpmn:sequenceFlow id="F2" sourceRef="Fork" targetRef="Task_Old" />
+    <bpmn:sequenceFlow id="F3" sourceRef="Fork" targetRef="Task_Fresh" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private PendingApprovalReminderWorker CreateWorker()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<AppDbContext>(options =>
+            options.UseMySql(ConnectionString, ServerVersion.AutoDetect(ConnectionString)));
+        services.AddScoped<AssetManagement.Application.Notifications.INotificationService, NotificationService>();
+        var provider = services.BuildServiceProvider();
+        return new PendingApprovalReminderWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<PendingApprovalReminderWorker>.Instance);
+    }
+
+    private static ApprovalFlow PendingFlow(
+        int workflowId,
+        User applicant,
+        string nodeId,
+        string flowNo) => new()
+    {
+        FlowNo = flowNo,
+        BizType = "borrow",
+        WorkflowId = workflowId,
+        AssetId = Math.Abs(flowNo.GetHashCode()),
+        AssetNo = flowNo,
+        AssetName = "催办测试资产",
+        ApplicantId = applicant.Id,
+        Applicant = applicant.Name,
+        Status = "pending",
+        CurrentNodeIds = [nodeId],
+        BpmnTokens = new Dictionary<string, BpmnToken>
+        {
+            [nodeId] = new()
+            {
+                NodeId = nodeId, Status = BpmnTokenStatus.Active,
+                StartedAt = DateTime.UtcNow.AddDays(-2)
+            }
+        },
+        ApplyTime = DateTime.UtcNow.AddDays(-2),
+        Deadline = DateTime.UtcNow.AddDays(1)
+    };
+
+    private static string SingleTaskBpmn(string nodeId, string assignee) => $$"""
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="Process_Reminder" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:userTask id="{{nodeId}}" camunda:assignee="{{assignee}}" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="{{nodeId}}" />
+    <bpmn:sequenceFlow id="F2" sourceRef="{{nodeId}}" targetRef="End" />
   </bpmn:process>
 </bpmn:definitions>
 """;

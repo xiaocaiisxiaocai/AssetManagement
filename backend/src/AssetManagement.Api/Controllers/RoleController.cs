@@ -28,12 +28,12 @@ public class RoleController : ControllerBase
 
     [HttpPost]
     [HasPermission("role:create")]
-    public async Task<ApiResult<RoleDto>> Create(RoleDto request)
+    public async Task<ApiResult<RoleDto>> Create(CreateRoleRequest request)
         => ApiResult<RoleDto>.Ok(await _rbac.CreateRoleAsync(request));
 
     [HttpPut("{id:int}")]
     [HasPermission("role:edit")]
-    public async Task<ApiResult<RoleDto>> Update(int id, RoleDto request)
+    public async Task<ApiResult<RoleDto>> Update(int id, UpdateRoleRequest request)
         => ApiResult<RoleDto>.Ok(await _rbac.UpdateRoleAsync(id, request));
 
     [HttpDelete("{id:int}")]

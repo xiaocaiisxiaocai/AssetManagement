@@ -162,6 +162,8 @@ public class MaterialFlowDto
     public DateTime Deadline { get; set; }
     /// <summary>当无需审批直接转移时为 true</summary>
     public bool DirectTransfer { get; set; }
+    /// <summary>当前调用人是否可撤回该流转申请。</summary>
+    public bool CanWithdraw { get; set; }
     public List<WorkflowProgressStepDto> ProgressSteps { get; set; } = new();
     public List<WorkflowProgressStepDto> CurrentSteps { get; set; } = new();
     public List<WorkflowProgressStepDto> NextSteps { get; set; } = new();

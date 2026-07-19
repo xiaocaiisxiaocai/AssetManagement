@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 using AssetManagement.Application.Common;
 
@@ -7,6 +8,14 @@ namespace AssetManagement.Infrastructure.Common;
 
 internal static class XlsxTable
 {
+    private const int MaxArchiveEntries = 100;
+    private const long MaxArchiveUncompressedBytes = 20 * 1024 * 1024;
+    private const long MaxWorksheetBytes = 10 * 1024 * 1024;
+    private const long MaxSharedStringsBytes = 5 * 1024 * 1024;
+    private const int MaxRows = AppConstants.MaxImportRows + 1;
+    private const int MaxColumns = 50;
+    private const int MaxCellCharacters = 10_000;
+    private const int MaxSharedStrings = MaxRows * MaxColumns;
     private static readonly XNamespace SheetNs = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
     public static byte[] Write(IEnumerable<string[]> rows)
@@ -49,15 +58,29 @@ internal static class XlsxTable
 
     public static List<List<string>> Read(Stream stream)
     {
-        using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
-        var sharedStrings = ReadSharedStrings(zip);
-        var entry = zip.GetEntry("xl/worksheets/sheet1.xml")
-            ?? throw new BizException(4001, "Excel 文件缺少工作表");
-        using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
-        var doc = XDocument.Parse(reader.ReadToEnd());
-        return doc.Descendants(SheetNs + "row")
-            .Select(row => ReadRow(row, sharedStrings))
-            .ToList();
+        try
+        {
+            using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+            ValidateArchive(zip);
+            var sharedStrings = ReadSharedStrings(zip);
+            var entry = zip.GetEntry("xl/worksheets/sheet1.xml")
+                ?? throw new BizException(4001, "Excel 文件缺少工作表");
+            var doc = ReadXml(entry, MaxWorksheetBytes, "工作表");
+            var rows = doc.Descendants(SheetNs + "row").Take(MaxRows + 1).ToList();
+            if (rows.Count > MaxRows)
+            {
+                throw new BizException(4153, $"Excel 文件不能超过 {AppConstants.MaxImportRows} 行数据");
+            }
+            return rows.Select(row => ReadRow(row, sharedStrings)).ToList();
+        }
+        catch (BizException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or XmlException or IOException or UnauthorizedAccessException)
+        {
+            throw new BizException(4001, "Excel 文件格式无效或已损坏");
+        }
     }
 
     private static List<string> ReadRow(XElement row, IReadOnlyList<string> sharedStrings)
@@ -70,13 +93,22 @@ internal static class XlsxTable
             {
                 columnIndex = values.Count;
             }
+            if (columnIndex >= MaxColumns)
+            {
+                throw new BizException(4153, $"Excel 文件不能超过 {MaxColumns} 列");
+            }
 
             while (values.Count <= columnIndex)
             {
                 values.Add("");
             }
 
-            values[columnIndex] = ReadCell(cell, sharedStrings);
+            var value = ReadCell(cell, sharedStrings);
+            if (value.Length > MaxCellCharacters)
+            {
+                throw new BizException(4153, $"单元格内容不能超过 {MaxCellCharacters} 个字符");
+            }
+            values[columnIndex] = value;
         }
 
         return values;
@@ -90,11 +122,89 @@ internal static class XlsxTable
             return new List<string>();
         }
 
-        using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
-        var doc = XDocument.Parse(reader.ReadToEnd());
-        return doc.Descendants(SheetNs + "si")
+        var doc = ReadXml(entry, MaxSharedStringsBytes, "共享字符串");
+        var items = doc.Descendants(SheetNs + "si").Take(MaxSharedStrings + 1).ToList();
+        if (items.Count > MaxSharedStrings)
+        {
+            throw new BizException(4153, "Excel 文件的共享字符串数量过多");
+        }
+        var result = items
             .Select(item => string.Concat(item.Descendants(SheetNs + "t").Select(x => x.Value)))
             .ToList();
+        if (result.Any(x => x.Length > MaxCellCharacters))
+        {
+            throw new BizException(4153, $"单元格内容不能超过 {MaxCellCharacters} 个字符");
+        }
+        return result;
+    }
+
+    private static void ValidateArchive(ZipArchive zip)
+    {
+        if (zip.Entries.Count > MaxArchiveEntries)
+        {
+            throw new BizException(4153, "Excel 文件包含过多压缩条目");
+        }
+
+        long totalLength = 0;
+        foreach (var entry in zip.Entries)
+        {
+            totalLength = checked(totalLength + entry.Length);
+            if (totalLength > MaxArchiveUncompressedBytes)
+            {
+                throw new BizException(4153, "Excel 文件解压后体积过大");
+            }
+            if (entry.Length > 1024 * 1024
+                && entry.Length / Math.Max(entry.CompressedLength, 1) > 100)
+            {
+                throw new BizException(4153, "Excel 文件压缩比异常");
+            }
+        }
+    }
+
+    private static XDocument ReadXml(ZipArchiveEntry entry, long maxBytes, string partName)
+    {
+        if (entry.Length > maxBytes)
+        {
+            throw new BizException(4153, $"Excel {partName}体积过大");
+        }
+
+        using var stream = entry.Open();
+        using var limited = new BoundedReadStream(stream, maxBytes);
+        using var reader = XmlReader.Create(limited, new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            MaxCharactersInDocument = maxBytes,
+            XmlResolver = null
+        });
+        return XDocument.Load(reader, LoadOptions.None);
+    }
+
+    private sealed class BoundedReadStream(Stream inner, long maxBytes) : Stream
+    {
+        private long _read;
+        public override bool CanRead => inner.CanRead;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _read; set => throw new NotSupportedException(); }
+        public override void Flush() => inner.Flush();
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = inner.Read(buffer, offset, count);
+            _read += read;
+            if (_read > maxBytes) throw new InvalidDataException("解压内容超过安全上限");
+            return read;
+        }
+        public override int Read(Span<byte> buffer)
+        {
+            var read = inner.Read(buffer);
+            _read += read;
+            if (_read > maxBytes) throw new InvalidDataException("解压内容超过安全上限");
+            return read;
+        }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private static string ReadCell(XElement cell, IReadOnlyList<string> sharedStrings)
@@ -133,6 +243,10 @@ internal static class XlsxTable
             }
 
             index = index * 26 + char.ToUpperInvariant(ch) - 'A' + 1;
+            if (index > MaxColumns)
+            {
+                return MaxColumns;
+            }
         }
 
         return index == 0 ? -1 : index - 1;

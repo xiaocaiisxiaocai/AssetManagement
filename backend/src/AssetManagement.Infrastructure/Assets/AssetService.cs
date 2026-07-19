@@ -1,5 +1,4 @@
 using AssetManagement.Application.Assets;
-using AssetManagement.Application.Audit;
 using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
@@ -106,7 +105,7 @@ public class AssetService : IAssetService
         var userNames = await _db.Users
             .Where(x => userIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name);
-        var recentLogs = logs.Select(x => new AuditLogDto
+        var recentLogs = logs.Select(x => new AssetAuditLogDto
         {
             Id = x.Id,
             UserId = x.UserId,
@@ -115,8 +114,6 @@ public class AssetService : IAssetService
             TargetType = x.TargetType,
             TargetId = x.TargetId,
             Summary = x.Summary,
-            Detail = x.Detail,
-            Ip = x.Ip,
             OccurredAt = x.OccurredAt
         }).ToList();
 
@@ -130,6 +127,7 @@ public class AssetService : IAssetService
 
     public async Task<AssetDto> CreateAsync(CreateAssetRequest request)
     {
+        EnsureAssetName(request.Name);
         EnsureCanAssignDepartment(request.DepartmentId);
         await EnsureActiveDepartment(request.DepartmentId);
         await EnsureLocationExistsAsync(request.LocationId);
@@ -181,6 +179,11 @@ public class AssetService : IAssetService
 
     public async Task<AssetDto> UpdateAsync(int id, UpdateAssetRequest request)
     {
+        EnsureAssetName(request.Name);
+        if (!Enum.IsDefined(request.Status))
+        {
+            throw new BizException(4001, "资产状态无效");
+        }
         var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
         if (asset.IsDeleted) throw new BizException(4048, "资产不存在");
@@ -208,13 +211,25 @@ public class AssetService : IAssetService
         {
             asset.ImageUrls = JoinImages(request.Images);
         }
-        await _db.SaveChangesAsync();
+        asset.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "资产已被其他操作更新，请刷新后重试");
+        }
         return await GetAsync(id);
     }
 
     public async Task DeleteAsync(int id)
     {
-        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var asset = await _db.Assets
+            .FromSqlInterpolated($"SELECT * FROM assets WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "资产不存在");
         if (asset.IsDeleted)
         {
@@ -225,11 +240,23 @@ public class AssetService : IAssetService
         {
             throw new BizException(4092, "借出中资产不能删除");
         }
+        if (await _db.ApprovalFlows.AnyAsync(x => x.AssetId == id && x.Status == "pending"))
+        {
+            throw new BizException(4094, "资产存在待审批流转，不能删除");
+        }
 
         asset.IsDeleted = true;
         asset.DeletedAt = DateTime.UtcNow;
         asset.RowVersion++;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "资产已被其他操作更新，请刷新后重试");
+        }
+        await transaction.CommitAsync();
     }
 
     public async Task PurgeAsync(int id)
@@ -275,7 +302,14 @@ public class AssetService : IAssetService
         asset.IsDeleted = false;
         asset.DeletedAt = null;
         asset.RowVersion++;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "资产已被其他操作更新，请刷新后重试");
+        }
     }
 
     public async Task<byte[]> ExportAsync(AssetQuery query)
@@ -609,6 +643,18 @@ public class AssetService : IAssetService
     private static string? JoinImages(IEnumerable<string>? images) => ImageHelpers.Join(images);
 
     private static List<string> SplitImages(string? imageUrls) => ImageHelpers.Split(imageUrls);
+
+    private static void EnsureAssetName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new BizException(4001, "资产名称必填");
+        }
+        if (name.Trim().Length > 100)
+        {
+            throw new BizException(4001, "资产名称不能超过 100 个字符");
+        }
+    }
 
     private static ImportPreviewRow ValidateRow(
         int rowNumber,

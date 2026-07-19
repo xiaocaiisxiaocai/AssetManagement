@@ -31,7 +31,14 @@ public class PendingApprovalReminderWorker : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await WaitUntilNineAm(stoppingToken);
+            try
+            {
+                await WaitUntilNineAm(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
             if (stoppingToken.IsCancellationRequested) break;
 
             try
@@ -51,7 +58,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         var nextRun = now.Date.AddHours(9);
         if (nextRun <= now) nextRun = nextRun.AddDays(1);
         var delay = nextRun - now;
-        await Task.Delay(delay, ct).ContinueWith(_ => { });
+        await Task.Delay(delay, ct);
     }
 
     internal async Task ScanAndRemindAsync()
@@ -93,14 +100,16 @@ public class PendingApprovalReminderWorker : BackgroundService
 
         foreach (var flow in pendingFlows)
         {
-            if (!HasCurrentNodeWaitedLongEnough(flow.CurrentNodeIds, flow.BpmnTokens, flow.ApplyTime, threshold))
+            var overdueNodeIds = OverdueCurrentNodeIds(
+                flow.CurrentNodeIds, flow.BpmnTokens, flow.ApplyTime, threshold);
+            if (overdueNodeIds.Count == 0)
                 continue;
 
             if (!workflowMap.TryGetValue(flow.WorkflowId, out var wf) ||
                 string.IsNullOrEmpty(wf.BpmnXml)) continue;
 
             var process = BpmnParser.Parse(wf.BpmnXml);
-            var approverIds = await ResolveApproversForFlowAsync(db, flow, process);
+            var approverIds = await ResolveApproversForFlowAsync(db, flow, process, overdueNodeIds);
 
             foreach (var uid in approverIds)
             {
@@ -134,14 +143,16 @@ public class PendingApprovalReminderWorker : BackgroundService
 
         foreach (var flow in pendingFlows)
         {
-            if (!HasCurrentNodeWaitedLongEnough(flow.CurrentNodeIds, flow.BpmnTokens, flow.ApplyTime, threshold))
+            var overdueNodeIds = OverdueCurrentNodeIds(
+                flow.CurrentNodeIds, flow.BpmnTokens, flow.ApplyTime, threshold);
+            if (overdueNodeIds.Count == 0)
                 continue;
 
             if (!workflowMap.TryGetValue(flow.WorkflowId, out var wf) ||
                 string.IsNullOrEmpty(wf.BpmnXml)) continue;
 
             var process = BpmnParser.Parse(wf.BpmnXml);
-            var approverIds = await ResolveApproversForMaterialFlowAsync(db, flow, process);
+            var approverIds = await ResolveApproversForMaterialFlowAsync(db, flow, process, overdueNodeIds);
 
             foreach (var uid in approverIds)
             {
@@ -160,10 +171,10 @@ public class PendingApprovalReminderWorker : BackgroundService
     }
 
     private async Task<List<int>> ResolveApproversForFlowAsync(
-        AppDbContext db, ApprovalFlow flow, BpmnProcess process)
+        AppDbContext db, ApprovalFlow flow, BpmnProcess process, IReadOnlyCollection<string> nodeIds)
     {
         var result = new List<int>();
-        foreach (var nodeId in flow.CurrentNodeIds)
+        foreach (var nodeId in nodeIds)
         {
             if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) ||
                 token.Status != BpmnTokenStatus.Active) continue;
@@ -173,19 +184,21 @@ public class PendingApprovalReminderWorker : BackgroundService
 
             var ids = token.SignStates is { Count: > 0 }
                 ? await ResolvePendingSignStateUserIdsAsync(db, token)
-                : await ResolveAssigneeAsync(db, node, flow.ApplicantId);
+                : await ResolveAssigneeAsync(
+                    db, node, flow.ApplicantId, flow.TransfereeId, flow.BizType);
             foreach (var id in ids)
                 if (!result.Contains(id)) result.Add(id);
         }
         return result;
     }
 
-    private static bool HasCurrentNodeWaitedLongEnough(
+    private static List<string> OverdueCurrentNodeIds(
         IEnumerable<string> currentNodeIds,
         IReadOnlyDictionary<string, BpmnToken> tokens,
         DateTime fallbackApplyTime,
         DateTime threshold)
     {
+        var result = new List<string>();
         foreach (var nodeId in currentNodeIds)
         {
             if (!tokens.TryGetValue(nodeId, out var token) || token.Status != BpmnTokenStatus.Active)
@@ -193,17 +206,16 @@ public class PendingApprovalReminderWorker : BackgroundService
 
             var startedAt = token.StartedAt ?? fallbackApplyTime;
             if (startedAt < threshold)
-                return true;
+                result.Add(nodeId);
         }
-
-        return false;
+        return result;
     }
 
     private async Task<List<int>> ResolveApproversForMaterialFlowAsync(
-        AppDbContext db, MaterialFlow flow, BpmnProcess process)
+        AppDbContext db, MaterialFlow flow, BpmnProcess process, IReadOnlyCollection<string> nodeIds)
     {
         var result = new List<int>();
-        foreach (var nodeId in flow.CurrentNodeIds)
+        foreach (var nodeId in nodeIds)
         {
             if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) ||
                 token.Status != BpmnTokenStatus.Active) continue;
@@ -220,7 +232,12 @@ public class PendingApprovalReminderWorker : BackgroundService
         return result;
     }
 
-    private async Task<List<int>> ResolveAssigneeAsync(AppDbContext db, BpmnNode node, int applicantId)
+    private async Task<List<int>> ResolveAssigneeAsync(
+        AppDbContext db,
+        BpmnNode node,
+        int applicantId,
+        int? transfereeId = null,
+        string? bizType = null)
     {
         var result = new List<int>();
         var assignee = node.Properties.GetValueOrDefault("assignee");
@@ -229,18 +246,27 @@ public class PendingApprovalReminderWorker : BackgroundService
 
         if (!string.IsNullOrEmpty(assignee))
         {
-            if (assignee == "deptManager")
+            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
             {
-                var applicant = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId);
-                if (applicant?.DepartmentId is not null)
+                foreach (var uid in await OrganizationApprovalResolver.ResolveApproverUserIdsAsync(
+                             db, applicantId, assignee))
+                    if (!result.Contains(uid)) result.Add(uid);
+            }
+            else if (assignee == "deptManager")
+            {
+                var targetUserId = bizType == "transfer" && node.Id == "Task_receiver" && transfereeId.HasValue
+                    ? transfereeId.Value
+                    : applicantId;
+                var targetUser = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetUserId);
+                if (targetUser?.DepartmentId is not null)
                 {
-                    var dept = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
+                    var dept = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetUser.DepartmentId.Value);
                     if (dept?.ManagerId is int managerId && managerId != applicantId &&
                         await db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
                         result.Add(managerId);
                     var deptAdmins = await db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.Id != applicantId && u.IsActive && u.DepartmentId == applicant.DepartmentId &&
+                        .Where(u => u.Id != applicantId && u.IsActive && u.DepartmentId == targetUser.DepartmentId &&
                                     u.UserRoles.Any(ur => ur.Role != null && ur.Role.IsActive && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id).ToListAsync();
                     foreach (var uid in deptAdmins)

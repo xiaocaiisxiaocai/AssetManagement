@@ -23,12 +23,14 @@ public class OverdueNotificationWorker : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await WaitUntilMidnight(stoppingToken);
-            if (stoppingToken.IsCancellationRequested) break;
-
             try
             {
-                await ScanAndNotifyAsync();
+                await WaitUntilMidnight(stoppingToken);
+                await ScanAndNotifyAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -43,10 +45,10 @@ public class OverdueNotificationWorker : BackgroundService
         var nextRun = now.Date.AddDays(1); // 次日 00:00
         var delay = nextRun - now;
         if (delay <= TimeSpan.Zero) delay = TimeSpan.FromMinutes(1);
-        await Task.Delay(delay, ct).ContinueWith(_ => { }); // 忽略取消异常
+        await Task.Delay(delay, ct);
     }
 
-    internal async Task ScanAndNotifyAsync()
+    internal async Task ScanAndNotifyAsync(CancellationToken ct = default)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -61,7 +63,7 @@ public class OverdueNotificationWorker : BackgroundService
                      && f.ReturnDate != null
                      && !db.Assets.Any(a => a.Id == f.AssetId && a.IsDeleted))
             .Select(f => new { f.Id, f.ApplicantId, f.ReturnDate, f.AssetName, f.AssetNo })
-            .ToListAsync();
+            .ToListAsync(ct);
 
         var notifications = new List<Notification>();
         var todayStr = today.ToString("yyyyMMdd");
@@ -72,7 +74,7 @@ public class OverdueNotificationWorker : BackgroundService
         var existingKeys = (await db.Notifications
             .Where(n => n.IdempotencyKey != null && candidateKeys.Contains(n.IdempotencyKey!))
             .Select(n => n.IdempotencyKey!)
-            .ToListAsync()).ToHashSet();
+            .ToListAsync(ct)).ToHashSet();
 
         foreach (var flow in flows)
         {
@@ -109,7 +111,7 @@ public class OverdueNotificationWorker : BackgroundService
         if (notifications.Count > 0)
         {
             db.Notifications.AddRange(notifications);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
             _logger.LogInformation("生成到期提醒 {Count} 条", notifications.Count);
         }
     }

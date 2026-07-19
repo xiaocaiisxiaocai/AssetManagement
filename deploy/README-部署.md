@@ -52,6 +52,12 @@ FLUSH PRIVILEGES;
 
 确认迁移和种子完成后，生产环境建议改回 `false`。
 
+### 升级前的数据完整性检查
+
+`20260719112523_HardenTestProjectAndMaterialIntegrity` 迁移会为项目编号/名称、活动料件名称增加唯一约束，并为料件和项目跟进增加项目外键。迁移会在执行任何 MySQL DDL 前检查历史重复数据和孤儿数据；若报错包含 `migration blocked:`，应先备份数据库，按错误中的 `duplicate`/`orphan` 类型人工核对并修复数据，然后重新执行迁移。预检失败时不会部分创建业务索引、外键或序列表。
+
+该预检会临时创建并删除存储过程，执行迁移的账号需具有 `CREATE ROUTINE`/`ALTER ROUTINE` 权限；本文上述 `GRANT ALL PRIVILEGES ON assetmgmt.*` 方案已包含所需权限。
+
 初始化管理员工号为 `1001`。生产环境必须设置 `ASSET_ADMIN_PASSWORD`；未设置时的回退密码 `123456` 仅供本地开发，使用默认密码登录后必须先修改密码。
 
 ## 3. 运行方式
@@ -110,7 +116,9 @@ mysqldump -u assetmgmt_user -p assetmgmt > "\\nas\backup\assetmgmt_$(Get-Date -F
 2. 恢复备份：`mysql -u assetmgmt_user -p assetmgmt < backup_file.sql`
 3. 启动后端服务并访问 `/api/health`。
 
-> 旧版 SQLite 备份脚本（`backup.ps1`、`backup-database.*`）已废弃，仅作历史存档。
+> 旧版 SQLite 备份脚本（`backup.ps1`、`backup-database.*`）已停用，执行时会直接报错，不会再复制或删除文件。
+
+> 旧版 `deploy.ps1`/`deploy.sh` 只发布后端且会递归清空可配置目录，现已停用。请严格按本文第 2、4 节分别发布后端与正式 `web-ele` 前端。
 
 ## 6. 常见问题
 

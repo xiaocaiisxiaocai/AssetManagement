@@ -4,6 +4,7 @@ import type { AssetDetail, AssetStatus } from '#/api/asset';
 import { onBeforeUnmount, ref, watch } from 'vue';
 
 import {
+  ElAlert,
   ElDescriptions,
   ElDescriptionsItem,
   ElDialog,
@@ -28,6 +29,8 @@ const props = defineProps<{
 
 const visible = defineModel<boolean>('visible', { default: false });
 const imageUrls = ref<string[]>([]);
+const imagesLoading = ref(false);
+const imageLoadError = ref('');
 const activeTab = ref('basic');
 let imageLoadGeneration = 0;
 
@@ -36,20 +39,40 @@ function revokeImageObjectUrls() {
   imageUrls.value = [];
 }
 
-onBeforeUnmount(revokeImageObjectUrls);
+function disposeImages() {
+  imageLoadGeneration += 1;
+  imagesLoading.value = false;
+  imageLoadError.value = '';
+  revokeImageObjectUrls();
+}
+
+onBeforeUnmount(disposeImages);
 
 watch(
   [visible, () => props.detail?.asset.images],
   async ([opened, images]) => {
     const generation = ++imageLoadGeneration;
+    imagesLoading.value = false;
+    imageLoadError.value = '';
     revokeImageObjectUrls();
     if (!opened || !images?.length) return;
-    const urls = await Promise.all(images.map(loadAssetImageObjectUrl));
+    imagesLoading.value = true;
+    const results = await Promise.allSettled(
+      images.map(loadAssetImageObjectUrl),
+    );
+    const urls = results.flatMap((result) =>
+      result.status === 'fulfilled' ? [result.value] : [],
+    );
     if (generation !== imageLoadGeneration || !visible.value) {
       urls.forEach((url) => URL.revokeObjectURL(url));
       return;
     }
     imageUrls.value = urls;
+    const failedCount = results.length - urls.length;
+    if (failedCount > 0) {
+      imageLoadError.value = `有 ${failedCount} 张照片加载失败，请稍后重试`;
+    }
+    imagesLoading.value = false;
   },
   { deep: true },
 );
@@ -191,144 +214,164 @@ function summaryText(summary: null | string | undefined) {
         <ElTabs v-model="activeTab" class="ad-tabs">
           <ElTabPane label="基本信息" name="basic">
             <div class="ad-tab-content">
-        <ElDescriptions :column="2" border class="ad-desc" size="small">
-          <ElDescriptionsItem label="归属部门">
-            {{ detail.asset.departmentName ?? '—' }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="存放位置">
-            {{ detail.asset.locationName ?? '—' }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="保管人">
-            {{ detail.asset.custodianName ?? '—' }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="数量">
-            {{ detail.asset.quantity }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="购入日期">
-            {{ formatDate(detail.asset.purchaseDate, '—') }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="资产登记日期">
-            {{ formatDate(detail.asset.registrationTime, '—') }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="目前状况">
-            {{ detail.asset.currentCondition || '—' }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem :span="2" label="备注">
-            {{ detail.asset.remark || '—' }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem
-            :span="detail.asset.isDeleted ? 1 : 2"
-            label="创建时间"
-          >
-            {{ formatDateTime(detail.asset.createdAt, { empty: '—' }) }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem v-if="detail.asset.isDeleted" label="删除时间">
-            {{ formatDateTime(detail.asset.deletedAt, { empty: '—' }) }}
-          </ElDescriptionsItem>
-        </ElDescriptions>
+              <ElDescriptions :column="2" border class="ad-desc" size="small">
+                <ElDescriptionsItem label="归属部门">
+                  {{ detail.asset.departmentName ?? '—' }}
+                </ElDescriptionsItem>
+                <ElDescriptionsItem label="存放位置">
+                  {{ detail.asset.locationName ?? '—' }}
+                </ElDescriptionsItem>
+                <ElDescriptionsItem label="保管人">
+                  {{ detail.asset.custodianName ?? '—' }}
+                </ElDescriptionsItem>
+                <ElDescriptionsItem label="数量">
+                  {{ detail.asset.quantity }}
+                </ElDescriptionsItem>
+                <ElDescriptionsItem label="购入日期">
+                  {{ formatDate(detail.asset.purchaseDate, '—') }}
+                </ElDescriptionsItem>
+                <ElDescriptionsItem label="资产登记日期">
+                  {{ formatDate(detail.asset.registrationTime, '—') }}
+                </ElDescriptionsItem>
+                <ElDescriptionsItem label="目前状况">
+                  {{ detail.asset.currentCondition || '—' }}
+                </ElDescriptionsItem>
+                <ElDescriptionsItem :span="2" label="备注">
+                  {{ detail.asset.remark || '—' }}
+                </ElDescriptionsItem>
+                <ElDescriptionsItem
+                  :span="detail.asset.isDeleted ? 1 : 2"
+                  label="创建时间"
+                >
+                  {{ formatDateTime(detail.asset.createdAt, { empty: '—' }) }}
+                </ElDescriptionsItem>
+                <ElDescriptionsItem
+                  v-if="detail.asset.isDeleted"
+                  label="删除时间"
+                >
+                  {{ formatDateTime(detail.asset.deletedAt, { empty: '—' }) }}
+                </ElDescriptionsItem>
+              </ElDescriptions>
 
-        <section
-          v-if="detail.asset.images && detail.asset.images.length"
-          class="ad-section"
-        >
-          <div class="ad-section-title">资产照片</div>
-          <div class="ad-photos">
-            <ElImage
-              v-for="(url, i) in imageUrls"
-              :key="i"
-              :alt="`${detail.asset.name}资产照片 ${i + 1}`"
-              :initial-index="i"
-              :preview-src-list="imageUrls"
-              :src="url"
-              class="ad-photo"
-              fit="cover"
-              preview-teleported
-            />
-          </div>
-        </section>
+              <section
+                v-if="detail.asset.images && detail.asset.images.length"
+                v-loading="imagesLoading"
+                class="ad-section"
+              >
+                <div class="ad-section-title">资产照片</div>
+                <ElAlert
+                  v-if="imageLoadError"
+                  :closable="false"
+                  :title="imageLoadError"
+                  class="mb-3"
+                  show-icon
+                  type="warning"
+                />
+                <div class="ad-photos">
+                  <ElImage
+                    v-for="(url, i) in imageUrls"
+                    :key="i"
+                    :alt="`${detail.asset.name}资产照片 ${i + 1}`"
+                    :initial-index="i"
+                    :preview-src-list="imageUrls"
+                    :src="url"
+                    class="ad-photo"
+                    fit="cover"
+                    preview-teleported
+                  />
+                </div>
+              </section>
 
-            <ElEmpty
-              v-if="!detail.asset.images?.length"
-              :image-size="56"
-              description="暂无资产照片"
-            />
+              <ElEmpty
+                v-if="!detail.asset.images?.length"
+                :image-size="56"
+                description="暂无资产照片"
+              />
             </div>
           </ElTabPane>
 
           <ElTabPane :label="`流转记录 ${detail.flows.length}`" name="flows">
             <div class="ad-tab-content">
-        <section class="ad-section ad-timeline-section">
-          <ElTimeline v-if="detail.flows.length">
-            <ElTimelineItem
-              v-for="flow in detail.flows"
-              :key="flow.id"
-              :timestamp="
-                formatDateTime(
-                  flow.status === 'withdrawn'
-                    ? flow.withdrawnAt
-                    : formatDateTime(flow.applyTime),
-                )
-              "
-              :type="flowStatusMeta[flow.status]?.tag ?? 'primary'"
-            >
-              <div class="text-sm">
-                <span class="font-medium">{{ flowTitle(flow) }}</span>
-                <span class="text-gray-500"> · {{ flow.applicant }}</span>
-                <span v-if="flow.transferee" class="text-gray-500">
-                  → {{ flow.transferee }}</span
-                >
-              </div>
-              <div v-if="flow.reason" class="text-xs text-gray-400">
-                事由：{{ flow.reason }}
-              </div>
-              <div v-if="flow.returnDate" class="text-xs text-gray-400">
-                应归还：{{ formatDate(flow.returnDate) }}
-              </div>
-            </ElTimelineItem>
-          </ElTimeline>
-          <ElEmpty v-else :image-size="56" description="暂无流转记录" />
-        </section>
+              <section class="ad-section ad-timeline-section">
+                <ElTimeline v-if="detail.flows.length">
+                  <ElTimelineItem
+                    v-for="flow in detail.flows"
+                    :key="flow.id"
+                    :timestamp="
+                      formatDateTime(
+                        flow.status === 'withdrawn'
+                          ? flow.withdrawnAt
+                          : flow.applyTime,
+                      )
+                    "
+                    :type="flowStatusMeta[flow.status]?.tag ?? 'primary'"
+                  >
+                    <div class="text-sm">
+                      <span class="font-medium">{{ flowTitle(flow) }}</span>
+                      <span class="text-gray-500"> · {{ flow.applicant }}</span>
+                      <span v-if="flow.transferee" class="text-gray-500">
+                        → {{ flow.transferee }}</span
+                      >
+                    </div>
+                    <div v-if="flow.reason" class="text-xs text-gray-400">
+                      事由：{{ flow.reason }}
+                    </div>
+                    <div v-if="flow.returnDate" class="text-xs text-gray-400">
+                      应归还：{{ formatDate(flow.returnDate) }}
+                    </div>
+                  </ElTimelineItem>
+                </ElTimeline>
+                <ElEmpty v-else :image-size="56" description="暂无流转记录" />
+              </section>
             </div>
           </ElTabPane>
 
-          <ElTabPane :label="`操作日志 ${detail.recentLogs.length}`" name="logs">
-            <div class="ad-tab-content">
-        <section class="ad-section">
-          <ElTable
-            v-if="detail.recentLogs.length"
-            :data="detail.recentLogs"
-            border
-            max-height="480"
-            size="small"
-            stripe
+          <ElTabPane
+            :label="`操作日志 ${detail.recentLogs.length}`"
+            name="logs"
           >
-            <ElTableColumn label="时间" width="170">
-              <template #default="{ row }">
-                {{ formatDateTime(row.occurredAt, { empty: '—', seconds: true }) }}
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="操作人" prop="userName" width="110" />
-            <ElTableColumn label="动作" width="90">
-              <template #default="{ row }">
-                <ElTag
-                  :type="actionTag(row.actionType)"
-                  effect="light"
+            <div class="ad-tab-content">
+              <section class="ad-section">
+                <ElTable
+                  v-if="detail.recentLogs.length"
+                  :data="detail.recentLogs"
+                  border
+                  max-height="480"
                   size="small"
+                  stripe
                 >
-                  {{ actionText(row.actionType) }}
-                </ElTag>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn label="摘要" show-overflow-tooltip>
-              <template #default="{ row }">
-                <span class="ad-log-summary">{{
-                  summaryText(row.summary)
-                }}</span>
-              </template>
-            </ElTableColumn>
-          </ElTable>
-          <ElEmpty v-else :image-size="56" description="暂无操作日志" />
-        </section>
+                  <ElTableColumn label="时间" width="170">
+                    <template #default="{ row }">
+                      {{
+                        formatDateTime(row.occurredAt, {
+                          empty: '—',
+                          seconds: true,
+                        })
+                      }}
+                    </template>
+                  </ElTableColumn>
+                  <ElTableColumn label="操作人" prop="userName" width="110" />
+                  <ElTableColumn label="动作" width="90">
+                    <template #default="{ row }">
+                      <ElTag
+                        :type="actionTag(row.actionType)"
+                        effect="light"
+                        size="small"
+                      >
+                        {{ actionText(row.actionType) }}
+                      </ElTag>
+                    </template>
+                  </ElTableColumn>
+                  <ElTableColumn label="摘要" show-overflow-tooltip>
+                    <template #default="{ row }">
+                      <span class="ad-log-summary">{{
+                        summaryText(row.summary)
+                      }}</span>
+                    </template>
+                  </ElTableColumn>
+                </ElTable>
+                <ElEmpty v-else :image-size="56" description="暂无操作日志" />
+              </section>
             </div>
           </ElTabPane>
         </ElTabs>

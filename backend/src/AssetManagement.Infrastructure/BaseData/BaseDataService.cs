@@ -707,29 +707,43 @@ public class BaseDataService : IBaseDataService
             .Select(x =>
             {
                 var dto = ToCategoryDto(x);
-                return dto with { Children = BuildCategoryTree(x.Id, categories) };
+                return dto with { Children = BuildCategoryTree(x.Id, categories, new HashSet<int> { x.Id }) };
             })
             .ToList();
     }
 
-    private static List<CategoryNodeDto> BuildCategoryTree(int? parentId, List<AssetCategory> categories)
+    private static List<CategoryNodeDto> BuildCategoryTree(
+        int? parentId,
+        List<AssetCategory> categories,
+        IReadOnlySet<int> ancestors)
         => categories
             .Where(x => x.ParentId == parentId)
+            .Where(x => !ancestors.Contains(x.Id))
             .OrderBy(x => x.Code)
             .ThenBy(x => x.Id)
             .Select(x =>
             {
                 var dto = ToCategoryDto(x);
-                return dto with { Children = BuildCategoryTree(x.Id, categories) };
+                var nextAncestors = ancestors.ToHashSet();
+                nextAncestors.Add(x.Id);
+                return dto with { Children = BuildCategoryTree(x.Id, categories, nextAncestors) };
             })
             .ToList();
 
-    private static AssetCategory BuildCategoryEntityTree(AssetCategory node, List<AssetCategory> all)
+    private static AssetCategory BuildCategoryEntityTree(
+        AssetCategory node,
+        List<AssetCategory> all,
+        HashSet<int>? visited = null)
     {
+        visited ??= new HashSet<int>();
+        if (!visited.Add(node.Id))
+        {
+            throw new BizException(4096, "资产分类层级存在循环，请先修复分类数据");
+        }
         node.Children = all.Where(x => x.ParentId == node.Id).ToList();
         foreach (var child in node.Children)
         {
-            BuildCategoryEntityTree(child, all);
+            BuildCategoryEntityTree(child, all, visited);
         }
 
         return node;
@@ -737,12 +751,19 @@ public class BaseDataService : IBaseDataService
 
     private static IEnumerable<int> DescendantCategoryIds(int parentId, List<AssetCategory> all)
     {
-        foreach (var child in all.Where(x => x.ParentId == parentId))
+        var visited = new HashSet<int> { parentId };
+        var pending = new Stack<int>();
+        pending.Push(parentId);
+        while (pending.TryPop(out var current))
         {
-            yield return child.Id;
-            foreach (var id in DescendantCategoryIds(child.Id, all))
+            foreach (var child in all.Where(x => x.ParentId == current))
             {
-                yield return id;
+                if (!visited.Add(child.Id))
+                {
+                    continue;
+                }
+                yield return child.Id;
+                pending.Push(child.Id);
             }
         }
     }
@@ -762,8 +783,13 @@ public class BaseDataService : IBaseDataService
     {
         var depth = 1;
         var parentId = category.ParentId;
+        var visited = new HashSet<int> { category.Id };
         while (parentId.HasValue)
         {
+            if (!visited.Add(parentId.Value))
+            {
+                throw new BizException(4096, "资产分类层级存在循环，请先修复分类数据");
+            }
             var parent = all.SingleOrDefault(x => x.Id == parentId.Value)
                 ?? throw new BizException(4046, "资产分类不存在");
             depth++;
@@ -773,11 +799,19 @@ public class BaseDataService : IBaseDataService
         return depth;
     }
 
-    private static int CategorySubtreeDepth(int categoryId, List<AssetCategory> all)
+    private static int CategorySubtreeDepth(
+        int categoryId,
+        List<AssetCategory> all,
+        HashSet<int>? ancestors = null)
     {
+        ancestors ??= new HashSet<int>();
+        if (!ancestors.Add(categoryId))
+        {
+            throw new BizException(4096, "资产分类层级存在循环，请先修复分类数据");
+        }
         var childDepths = all
             .Where(x => x.ParentId == categoryId)
-            .Select(x => CategorySubtreeDepth(x.Id, all))
+            .Select(x => CategorySubtreeDepth(x.Id, all, new HashSet<int>(ancestors)))
             .ToList();
         return childDepths.Count == 0 ? 1 : childDepths.Max() + 1;
     }

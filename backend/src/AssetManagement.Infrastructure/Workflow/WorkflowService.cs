@@ -129,7 +129,7 @@ public class WorkflowService : IWorkflowService
         if (string.IsNullOrWhiteSpace(workflow.BpmnXml))
             throw new BizException(4051, "流程定义不完整，缺少 BPMN XML");
 
-        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == request.AssetId)
+        var asset = await _db.Assets.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.AssetId)
             ?? throw new BizException(4048, "资产不存在");
         if (asset.IsDeleted)
         {
@@ -144,15 +144,7 @@ public class WorkflowService : IWorkflowService
             ?? throw new BizException(4041, "用户不存在或已停用");
         await EnsureAssetInScopeAsync(asset, applicant);
 
-        if (workflow.BizType == "borrow" && asset.Status != AssetStatus.Available)
-            throw new BizException(4055, "资产当前不可用,无法发起借用流程");
-        if (workflow.BizType == "transfer" && asset.Status is not (AssetStatus.Available or AssetStatus.Borrowed))
-            throw new BizException(4055, "维护或报废状态的资产无法发起转让流程");
-        if (workflow.BizType == "return" &&
-            (asset.Status != AssetStatus.Borrowed || asset.CustodianId != applicantId))
-            throw new BizException(4055, "只有当前借用人可以发起归还流程");
-        if (workflow.BizType == "transfer" && asset.CustodianId != applicantId)
-            throw new BizException(4055, "只有当前保管人可以发起转让流程");
+        ValidateAssetCanStartFlow(asset, workflow.BizType, applicantId);
         if (workflow.BizType == "transfer" && !request.TransfereeId.HasValue)
             throw new BizException(4001, "转让申请必须选择接收人");
         if (workflow.BizType == "transfer" && request.TransfereeId == applicantId)
@@ -168,6 +160,21 @@ public class WorkflowService : IWorkflowService
         var bpmnProcess = BpmnParser.Parse(workflow.BpmnXml);
 
         await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // 与删除路径使用相同的资产行锁，并在获锁后重新读取/校验。
+        // 否则“发起时已读取”与“删除时尚无 pending”可能同时成立。
+        var lockedAsset = await _db.Assets
+            .FromSqlInterpolated($"SELECT * FROM assets WHERE Id = {request.AssetId} FOR UPDATE")
+            .AsNoTracking()
+            .SingleOrDefaultAsync()
+            ?? throw new BizException(4048, "资产不存在");
+        if (lockedAsset.IsDeleted)
+        {
+            throw new BizException(4048, "资产不存在");
+        }
+        await EnsureAssetInScopeAsync(lockedAsset, applicant);
+        ValidateAssetCanStartFlow(lockedAsset, workflow.BizType, applicantId);
+        asset = lockedAsset;
 
         // 防重检查放事务内，防止并发请求同时通过检查后各自插入
         var activeFlow = await _db.ApprovalFlows
@@ -363,6 +370,7 @@ public class WorkflowService : IWorkflowService
 
         // 执行审批
         await using var tx = await _db.Database.BeginTransactionAsync();
+
         BpmnEngine.Approve(flow, bpmnProcess, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion);
 
         if (flow.Status == "pending")
@@ -500,6 +508,19 @@ public class WorkflowService : IWorkflowService
         if (returnDate <= BusinessClock.TodayDateOnly)
             throw new BizException(4001, "归还日期必须晚于今天");
         return returnDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static void ValidateAssetCanStartFlow(Asset asset, string bizType, int applicantId)
+    {
+        if (bizType == "borrow" && asset.Status != AssetStatus.Available)
+            throw new BizException(4055, "资产当前不可用,无法发起借用流程");
+        if (bizType == "transfer" && asset.Status is not (AssetStatus.Available or AssetStatus.Borrowed))
+            throw new BizException(4055, "维护或报废状态的资产无法发起转让流程");
+        if (bizType == "return" &&
+            (asset.Status != AssetStatus.Borrowed || asset.CustodianId != applicantId))
+            throw new BizException(4055, "只有当前借用人可以发起归还流程");
+        if (bizType == "transfer" && asset.CustodianId != applicantId)
+            throw new BizException(4055, "只有当前保管人可以发起转让流程");
     }
 
     public async Task<ApprovalFlowDto> WithdrawAsync(int id, int userId)
@@ -1156,7 +1177,6 @@ public class WorkflowService : IWorkflowService
     private async Task<int[]> ManagedDepartmentIdsAsync(int userId)
     {
         var all = await _db.Departments.AsNoTracking()
-            .Where(x => x.IsActive)
             .Select(x => new { x.Id, x.ParentId, x.ManagerId })
             .ToListAsync();
         var roots = all.Where(x => x.ManagerId == userId).Select(x => x.Id).ToArray();

@@ -23,33 +23,37 @@ public class AuditCleanupWorker : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var (enabled, retentionDays, nextRun) = await LoadScheduleAsync();
-            await DelayUntil(nextRun, stoppingToken);
-            if (stoppingToken.IsCancellationRequested) break;
-            if (!enabled) continue;
-
             try
             {
+                var (enabled, retentionDays, nextRun) = await LoadScheduleAsync(stoppingToken);
+                await DelayUntil(nextRun, stoppingToken);
+                if (!enabled) continue;
+
                 using var scope = _scopeFactory.CreateScope();
                 var service = scope.ServiceProvider.GetRequiredService<IAuditMaintenanceService>();
                 var result = await service.CleanupAsync(retentionDays);
                 _logger.LogInformation("定时清理审计日志完成，保留 {Days} 天，删除 {Count} 条",
                     result.RetentionDays, result.DeletedCount);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "定时清理审计日志异常");
+                _logger.LogError(ex, "定时清理审计日志轮询异常，将在 1 分钟后重试");
+                await DelayAfterFailure(stoppingToken);
             }
         }
     }
 
-    private async Task<(bool Enabled, int RetentionDays, DateTime NextRun)> LoadScheduleAsync()
+    private async Task<(bool Enabled, int RetentionDays, DateTime NextRun)> LoadScheduleAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var settings = await db.SystemSettings.AsNoTracking()
             .Where(x => x.Key.StartsWith("audit_cleanup_") || x.Key == "audit_retention_days")
-            .ToDictionaryAsync(x => x.Key, x => x.Value);
+            .ToDictionaryAsync(x => x.Key, x => x.Value, ct);
 
         var enabled = !settings.TryGetValue("audit_cleanup_enabled", out var enabledValue)
             || enabledValue.Equals("true", StringComparison.OrdinalIgnoreCase);
@@ -76,6 +80,18 @@ public class AuditCleanupWorker : BackgroundService
     {
         var delay = nextRun - BusinessClock.Now;
         if (delay <= TimeSpan.Zero) delay = TimeSpan.FromMinutes(1);
-        await Task.Delay(delay, ct).ContinueWith(_ => { });
+        await Task.Delay(delay, ct);
+    }
+
+    private static async Task DelayAfterFailure(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1), ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 宿主停止时立即结束重试等待。
+        }
     }
 }

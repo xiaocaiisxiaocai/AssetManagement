@@ -47,6 +47,25 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Invalid_model_validation_uses_the_standard_api_result_contract()
+    {
+        await Login();
+
+        var response = await _client.PostAsJsonAsync("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("invalid-email"),
+            Name = "非法邮箱用户",
+            Email = "not-an-email",
+            RoleIds = new[] { await CreateRoleId() }
+        });
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        body!.Code.Should().Be(4001);
+        body.Message.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
     public async Task User_options_returns_only_minimal_fields_for_active_users()
     {
         await Login();
@@ -92,22 +111,86 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Create_role_with_invalid_permission_rolls_back_role_row()
+    public async Task Create_role_cannot_smuggle_permissions_or_menus()
     {
         await Login();
         var code = Unique("rollback-role");
 
-        var response = await _client.PostAsJsonAsync("/api/roles", new RoleDto
+        var permission = (await _client.GetFromJsonAsync<ApiResult<List<PermissionDto>>>("/api/permissions"))!
+            .Data!.First();
+        var response = await _client.PostAsJsonAsync("/api/roles", new
         {
-            Code = code,
-            Name = Unique("事务回滚角色"),
-            PermissionIds = new[] { int.MaxValue }
+            code,
+            name = Unique("授权隔离角色"),
+            isActive = true,
+            permissionIds = new[] { permission.Id },
+            menuIds = new[] { int.MaxValue }
         });
 
-        var error = await response.Content.ReadFromJsonAsync<ApiResult<object?>>();
-        error!.Code.Should().Be(4043);
-        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?page=1&pageSize=200");
-        roles!.Data!.Items.Should().NotContain(x => x.Code == code, "权限关联失败时角色主记录也必须回滚");
+        var created = await response.Content.ReadFromJsonAsync<ApiResult<RoleDto>>();
+        created!.Code.Should().Be(0);
+        created.Data!.PermissionIds.Should().BeEmpty("角色创建接口没有授权权限");
+        created.Data.MenuIds.Should().BeEmpty("角色创建接口没有菜单分配权限");
+    }
+
+    [Fact]
+    public async Task Changing_role_access_invalidates_member_tokens()
+    {
+        await Login();
+        var roleId = await CreateRoleId();
+        var employeeNo = Unique("token-user");
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "权限刷新用户",
+            RoleIds = new[] { roleId }
+        });
+        var permission = (await _client.GetFromJsonAsync<ApiResult<List<PermissionDto>>>("/api/permissions"))!
+            .Data!.First(x => x.Code != "role:assign-permission");
+
+        int before;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            before = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Users
+                .Where(x => x.Id == user.Data!.Id)
+                .Select(x => x.TokenVersion)
+                .SingleAsync();
+        }
+
+        await Put<ApiResult<RoleDto>>($"/api/roles/{roleId}/access", new SetRoleAccessRequest
+        {
+            PermissionIds = new[] { permission.Id },
+            MenuIds = Array.Empty<int>()
+        });
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var after = await verifyScope.ServiceProvider.GetRequiredService<AppDbContext>().Users
+            .Where(x => x.Id == user.Data!.Id)
+            .Select(x => x.TokenVersion)
+            .SingleAsync();
+        after.Should().Be(before + 1);
+    }
+
+    [Fact]
+    public async Task Permission_code_is_immutable_after_creation()
+    {
+        await Login();
+        var permission = await Post<ApiResult<PermissionDto>>("/api/permissions", new PermissionDto
+        {
+            Code = Unique("immutable:permission"),
+            Name = "不可改编码权限",
+            Module = "security"
+        });
+
+        var changed = await Put<ApiResult<PermissionDto>>($"/api/permissions/{permission.Data!.Id}", new PermissionDto
+        {
+            Code = Unique("changed:permission"),
+            Name = "试图改编码",
+            Module = "security"
+        });
+
+        changed.Code.Should().Be(4094);
+        changed.Message.Should().Contain("不能修改");
     }
 
     [Fact]
@@ -366,6 +449,22 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         preview.Data!.Rows.Should().ContainSingle();
         preview.Data.FailedCount.Should().Be(0);
         preview.Data.Rows.Single().RoleName.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task User_import_rejects_abnormal_zip_expansion()
+    {
+        await Login();
+        var file = BuildXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "部门名称", "角色名称" },
+            new[] { new string('A', 1_100_000), "压缩炸弹", "", "", "普通员工" }
+        });
+
+        var preview = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import/validate", file);
+
+        preview.Code.Should().Be(4153);
+        preview.Message.Should().Contain("压缩比");
     }
 
     [Fact]
@@ -1185,6 +1284,46 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
         deleted.Code.Should().Be(4094);
         deleted.Message.Should().Contain("用户已被资产保管人使用");
+    }
+
+    [Fact]
+    public async Task Delete_user_referenced_by_project_followup_is_blocked()
+    {
+        await Login();
+        var roleId = await CreateRoleId();
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("followup-user"),
+            Name = "跟进填报人",
+            RoleIds = new[] { roleId }
+        });
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var project = new TestProject
+            {
+                Name = Unique("用户引用项目"),
+                CreatedAt = DateTime.UtcNow
+            };
+            db.TestProjects.Add(project);
+            await db.SaveChangesAsync();
+            db.TestProjectFollowups.Add(new TestProjectFollowup
+            {
+                ProjectId = project.Id,
+                DueDate = DateTime.UtcNow.Date,
+                Content = "历史跟进",
+                FilledById = user.Data!.Id,
+                FilledAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var deleted = await Delete<ApiResult<object?>>($"/api/users/{user.Data!.Id}");
+
+        deleted.Code.Should().Be(4094);
+        deleted.Message.Should().Contain("项目跟进记录");
     }
 
     [Fact]

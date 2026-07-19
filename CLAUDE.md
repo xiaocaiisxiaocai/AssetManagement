@@ -187,7 +187,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 #### 编号生成器
 
-`Domain/Services/MaterialNoGenerator.cs` 与 `FlowNoGenerator.cs`,纯函数,TDD 覆盖(含跨日重置、三位流水号补零)。格式:`TM-YYYYMMDD-001`、`MF-YYYYMMDD-001`。
+`Domain/Services/MaterialNoGenerator.cs` 与 `FlowNoGenerator.cs`,纯函数,TDD 覆盖(含跨日重置、三位流水号补零)。格式:`TM-YYYYMMDD-001`、`MF-YYYYMMDD-001`。实际分配通过 MySQL `business_sequences` 表原子递增，保证多进程/多连接并发下不重号。
 
 #### 服务与接口
 
@@ -448,7 +448,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通。2026-07-14 审批身份与并行节点一致性加固后，后端 **303 个**测试、前端 **322 个**单元测试及类型检查均通过。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通。2026-07-19 全链路并发、权限、时区和数据完整性加固后，后端 **359 个**测试、前端 **359 个**单元测试及类型检查均通过。
 
 最新里程碑(2026-06-17 ~ 2026-06-30):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)

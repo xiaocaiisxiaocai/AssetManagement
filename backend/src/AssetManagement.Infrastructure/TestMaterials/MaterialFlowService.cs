@@ -6,6 +6,7 @@ using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Notifications;
+using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Workflow;
 using Microsoft.EntityFrameworkCore;
@@ -66,7 +67,7 @@ public class MaterialFlowService : IMaterialFlowService
                     throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
                 var directFlow = new MaterialFlow
                 {
-                    FlowNo = await NextFlowNoAsync(attempt),
+                    FlowNo = await NextFlowNoAsync(),
                     BizType = MaterialBizType,
                     WorkflowId = 0,
                     MaterialId = material.Id,
@@ -124,7 +125,7 @@ public class MaterialFlowService : IMaterialFlowService
                     _logger.LogWarning(ex, "通知发送失败，不影响料件直接转移结果");
                 }
 
-                return await ToDtoAsync(directFlow);
+                return await ToDtoAsync(directFlow, currentUserId: applicantId);
             }
         }
 
@@ -148,7 +149,7 @@ public class MaterialFlowService : IMaterialFlowService
                 throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
             var flow = new MaterialFlow
             {
-                FlowNo = await NextFlowNoAsync(attempt),
+                FlowNo = await NextFlowNoAsync(),
                 BizType = MaterialBizType,
                 WorkflowId = workflow.Id,
                 MaterialId = material.Id,
@@ -200,24 +201,13 @@ public class MaterialFlowService : IMaterialFlowService
                 _logger.LogWarning(ex, "通知发送失败，不影响料件流转发起结果");
             }
 
-            return await ToDtoAsync(flow);
+            return await ToDtoAsync(flow, currentUserId: applicantId);
         }
     }
 
     public async Task<List<MaterialFlowDto>> PendingAsync(int userId, int? projectId = null)
     {
         var user = await LoadUser(userId);
-        var isAdmin = IsAdmin(user);
-
-        // supervisor 只能看到申请人属于其管辖部门（含子部门）的流程
-        int[]? allowedDeptIds = null;
-        if (!isAdmin && IsSupervisor(user) && !user.DepartmentId.HasValue)
-            return new List<MaterialFlowDto>();
-        if (!isAdmin && IsSupervisor(user) && user.DepartmentId.HasValue)
-        {
-            allowedDeptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
-        }
-
         var query = _db.MaterialFlows.Where(x => x.Status == "pending");
         if (projectId.HasValue)
             query = query.Where(x => _db.TestMaterials
@@ -225,20 +215,6 @@ public class MaterialFlowService : IMaterialFlowService
                 .Select(m => m.Id)
                 .Contains(x.MaterialId));
         var flows = await query.OrderByDescending(x => x.Id).ToListAsync();
-
-        if (allowedDeptIds != null)
-        {
-            var applicantIds = flows.Select(f => f.ApplicantId).Distinct().ToArray();
-            var applicantDeptMap = await _db.Users
-                .Where(u => applicantIds.Contains(u.Id))
-                .Select(u => new { u.Id, u.DepartmentId })
-                .ToDictionaryAsync(u => u.Id, u => u.DepartmentId);
-            flows = flows
-                .Where(f => applicantDeptMap.TryGetValue(f.ApplicantId, out var deptId)
-                            && deptId.HasValue
-                            && allowedDeptIds.Contains(deptId.Value))
-                .ToList();
-        }
 
         var workflowIds = flows.SelectMany(f => f.CurrentNodeIds.Count > 0 ? new[] { f.WorkflowId } : Array.Empty<int>())
             .Distinct().Where(id => id > 0).ToArray();
@@ -249,7 +225,7 @@ public class MaterialFlowService : IMaterialFlowService
         foreach (var flow in flows)
         {
             var actionableNodeIds = await GetActionableNodeIdsAsync(flow, user, workflowMap);
-            if (actionableNodeIds.Count > 0) result.Add(await ToDtoAsync(flow, actionableNodeIds));
+            if (actionableNodeIds.Count > 0) result.Add(await ToDtoAsync(flow, actionableNodeIds, userId));
         }
         return result;
     }
@@ -264,7 +240,7 @@ public class MaterialFlowService : IMaterialFlowService
                 .Contains(x.MaterialId));
         var flows = await query.OrderByDescending(x => x.Id).ToListAsync();
         var result = new List<MaterialFlowDto>();
-        foreach (var flow in flows) result.Add(await ToDtoAsync(flow));
+        foreach (var flow in flows) result.Add(await ToDtoAsync(flow, currentUserId: userId));
         return result;
     }
 
@@ -273,7 +249,7 @@ public class MaterialFlowService : IMaterialFlowService
         var flow = await LoadFlow(id);
         var user = await LoadUser(userId);
         await EnsureCanViewFlowAsync(flow, user);
-        return await ToDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
+        return await ToDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user), userId);
     }
 
     public async Task<MaterialFlowDto> ApproveAsync(int id, MaterialApprovalRequest request, int userId)
@@ -339,7 +315,7 @@ public class MaterialFlowService : IMaterialFlowService
             _logger.LogWarning(ex, "通知发送失败，不影响料件流转审批结果");
         }
 
-        return await ToDtoAsync(flow);
+        return await ToDtoAsync(flow, currentUserId: userId);
     }
 
     public async Task<MaterialFlowDto> RejectAsync(int id, MaterialRejectRequest request, int userId)
@@ -382,7 +358,7 @@ public class MaterialFlowService : IMaterialFlowService
             _logger.LogWarning(ex, "通知发送失败，不影响料件流转驳回结果");
         }
 
-        return await ToDtoAsync(flow);
+        return await ToDtoAsync(flow, currentUserId: userId);
     }
 
     public async Task<MaterialFlowDto> WithdrawAsync(int id, int userId)
@@ -408,14 +384,11 @@ public class MaterialFlowService : IMaterialFlowService
         await AddRecord(id, "withdraw", applicant.Name, "申请人主动撤回");
         await tx.CommitAsync();
 
-        return await ToDtoAsync(flow);
+        return await ToDtoAsync(flow, currentUserId: userId);
     }
 
     // ===== 私有辅助 =====
-    // COUNT-then-generate 模式在高并发下存在 TOCTOU 竞态：两个请求同时 COUNT 得到相同值，
-    // 生成同一 FlowNo，FlowNo 唯一索引会让其中一个抛 DbUpdateException。
-    // 每次重试递增 offset 强制生成不同编号，配合调用方的 retry 循环解决。
-    private async Task<string> NextFlowNoAsync(int offset = 0)
+    private async Task<string> NextFlowNoAsync()
     {
         var today = BusinessClock.Today;
         var prefix = $"MF-{today:yyyyMMdd}-";
@@ -427,7 +400,9 @@ public class MaterialFlowService : IMaterialFlowService
             .Select(x => int.TryParse(x[prefix.Length..], out var sequence) ? sequence : 0)
             .DefaultIfEmpty(0)
             .Max();
-        return FlowNoGenerator.Next(today, maxSequence + offset);
+        var sequence = await BusinessSequenceGenerator.NextAsync(
+            _db, $"material-flow:{today:yyyyMMdd}", maxSequence);
+        return $"{prefix}{sequence:D3}";
     }
 
     private async Task<bool> IsApprovalEnabled()
@@ -877,9 +852,13 @@ public class MaterialFlowService : IMaterialFlowService
 
     private async Task<MaterialFlowDto> ToDtoAsync(
         MaterialFlow flow,
-        IEnumerable<string>? actionableNodeIds = null)
+        IEnumerable<string>? actionableNodeIds = null,
+        int? currentUserId = null)
     {
         var dto = ToDto(flow, actionableNodeIds);
+        dto.CanWithdraw = currentUserId.HasValue &&
+                          flow.ApplicantId == currentUserId.Value &&
+                          flow.Status == FlowStatus.Pending;
         var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
         if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return dto;
         var process = BpmnParser.Parse(workflow.BpmnXml);

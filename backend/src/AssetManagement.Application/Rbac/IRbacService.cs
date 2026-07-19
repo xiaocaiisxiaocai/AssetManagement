@@ -18,8 +18,8 @@ public interface IRbacService
 
     Task<PagedResult<RoleDto>> GetRolesAsync(string? keyword, int page, int pageSize);
     Task<RoleDto> GetRoleAsync(int id);
-    Task<RoleDto> CreateRoleAsync(RoleDto request);
-    Task<RoleDto> UpdateRoleAsync(int id, RoleDto request);
+    Task<RoleDto> CreateRoleAsync(CreateRoleRequest request);
+    Task<RoleDto> UpdateRoleAsync(int id, UpdateRoleRequest request);
     Task DeleteRoleAsync(int id);
     Task<RoleDto> SetRolePermissionsAsync(int id, int[] permissionIds);
     Task<RoleDto> SetRoleMenusAsync(int id, int[] menuIds);

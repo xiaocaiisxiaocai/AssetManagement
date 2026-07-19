@@ -23,5 +23,13 @@ public class TestMaterialConfiguration : IEntityTypeConfiguration<TestMaterial>
         b.HasIndex(x => x.IsDeleted);
         b.HasIndex(x => x.Status);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
+        b.Property<string>("ActiveNameKey")
+            .HasMaxLength(191)
+            .HasComputedColumnSql("IF(`IsDeleted` = 0, CONCAT(`ProjectId`, ':', `Name`), NULL)", stored: true);
+        b.HasIndex("ActiveNameKey").IsUnique();
+        b.HasOne<TestProject>()
+            .WithMany()
+            .HasForeignKey(x => x.ProjectId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -223,6 +223,43 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public void Automatic_service_task_cycle_fails_with_controlled_error_instead_of_overflowing_stack()
+    {
+        var process = BpmnParser.Parse(AutomaticCycleBpmn("serviceTask"));
+        var flow = new TestFlow();
+
+        var act = () => BpmnEngine.Start(flow, process);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*自动节点循环*");
+    }
+
+    [Fact]
+    public void Automatic_gateway_cycle_fails_with_controlled_error_instead_of_overflowing_stack()
+    {
+        var process = BpmnParser.Parse(AutomaticCycleBpmn("exclusiveGateway"));
+        var flow = new TestFlow();
+
+        var act = () => BpmnEngine.Start(flow, process);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*自动节点循环*");
+    }
+
+    [Fact]
+    public void Rejecting_one_parallel_branch_skips_every_other_open_branch()
+    {
+        var process = BpmnParser.Parse(ParallelApprovalBpmn);
+        var flow = new TestFlow();
+        BpmnEngine.Start(flow, process);
+
+        BpmnEngine.Reject(flow, "Task_A", "张三", "不同意");
+
+        flow.Status.Should().Be("rejected");
+        flow.CurrentNodeIds.Should().BeEmpty();
+        flow.BpmnTokens["Task_B"].Status.Should().Be(BpmnTokenStatus.Skipped);
+        flow.BpmnTokens["Task_B"].CompletedAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task Supervisor_node_allows_only_applicant_supervisor()
     {
         await Login();
@@ -524,6 +561,39 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
     <bpmn:sequenceFlow id="Flow_5" sourceRef="Gateway_Department" targetRef="Task_DepartmentManager"><bpmn:conditionExpression>${requiresApproval_department} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_6" sourceRef="Gateway_Department" targetRef="End" />
     <bpmn:sequenceFlow id="Flow_7" sourceRef="Task_DepartmentManager" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string AutomaticCycleBpmn(string nodeName) => $$"""
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="Process_AutomaticCycle" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:{{nodeName}} id="Auto_A" />
+    <bpmn:{{nodeName}} id="Auto_B" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Auto_A" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Auto_A" targetRef="Auto_B" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Auto_B" targetRef="Auto_A" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private const string ParallelApprovalBpmn = """
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="Process_ParallelReject" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:parallelGateway id="Fork" />
+    <bpmn:userTask id="Task_A" />
+    <bpmn:userTask id="Task_B" />
+    <bpmn:endEvent id="End_A" />
+    <bpmn:endEvent id="End_B" />
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Fork" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Fork" targetRef="Task_A" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Fork" targetRef="Task_B" />
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_A" targetRef="End_A" />
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Task_B" targetRef="End_B" />
   </bpmn:process>
 </bpmn:definitions>
 """;
