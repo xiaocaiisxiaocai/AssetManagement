@@ -3,7 +3,7 @@ import type { ApprovalWorkItem } from '../approval-work-items';
 import type { MaterialFlowItem } from '#/api/material';
 import type { ApprovalActionPayload, ApprovalFlow } from '#/api/workflow';
 import type { UserOptionDto } from '#/api/user';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useDebounceFn } from '@vueuse/core';
 import { useAccess } from '@vben/access';
@@ -80,7 +80,7 @@ const selectedNodeId = ref('');
 const workflowNodeSelector = ref<InstanceType<
   typeof WorkflowNodeSelectDialog
 > | null>(null);
-const openedNotificationFlowId = ref(0);
+const openedNotificationFlowKey = ref('');
 const query = reactive({
   keyword: '',
   bizType: '',
@@ -136,16 +136,25 @@ async function loadData() {
     }
     users.value = userOptions;
     const notificationFlowId = Number(route.query.flowId || 0);
+    const notificationSource =
+      route.query.source === 'material' ? 'material' : 'asset';
+    const notificationKey = `${notificationSource}:${notificationFlowId}`;
     if (
       notificationFlowId &&
-      notificationFlowId !== openedNotificationFlowId.value
+      notificationKey !== openedNotificationFlowKey.value
     ) {
       const target = flows.value.find(
-        (item) => item.source === 'asset' && item.id === notificationFlowId,
+        (item) =>
+          item.source === notificationSource && item.id === notificationFlowId,
       );
       if (target) {
-        openedNotificationFlowId.value = notificationFlowId;
-        openDetail(target);
+        openedNotificationFlowKey.value = notificationKey;
+        if (target.source === 'asset') {
+          openDetail(target);
+        } else {
+          query.keyword = target.flowNo;
+          query.page = 1;
+        }
       }
     }
   } catch {
@@ -154,6 +163,11 @@ async function loadData() {
     loading.value = false;
   }
 }
+
+watch(
+  () => [route.query.flowId, route.query.source],
+  () => void loadData(),
+);
 
 function openDetail(item: ApprovalWorkItem) {
   if (item.source !== 'asset') return;
@@ -547,8 +561,14 @@ onMounted(async () => {
             label="借用人/接收人"
             width="140"
           />
-          <ElTableColumn class-name="hide-on-mobile" label="申请时间" width="170">
-            <template #default="{ row }">{{ formatDateTime(row.applyTime) }}</template>
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="申请时间"
+            width="170"
+          >
+            <template #default="{ row }">{{
+              formatDateTime(row.applyTime)
+            }}</template>
           </ElTableColumn>
           <ElTableColumn label="审批进度" min-width="320">
             <template #default="{ row }">

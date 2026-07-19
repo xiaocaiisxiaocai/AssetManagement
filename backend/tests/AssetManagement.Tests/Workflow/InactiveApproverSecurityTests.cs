@@ -92,7 +92,7 @@ public class InactiveApproverSecurityTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = Unique("SUP"),
             Name = Unique("停用审批主管"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = department.Data!.Id,
             RoleIds = new[] { supervisorRole.Id }
         });
@@ -108,7 +108,7 @@ public class InactiveApproverSecurityTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = Unique("APP"),
             Name = Unique("停用审批申请人"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = department.Data.Id,
             SupervisorId = supervisor.Data.Id,
             RoleIds = new[] { employeeRole.Id }
@@ -166,8 +166,9 @@ public class InactiveApproverSecurityTests : IClassFixture<TestWebAppFactory>
 
     private static async Task Authenticate(HttpClient client, string employeeNo)
     {
+        var password = employeeNo == "1001" ? "123456" : "TestPass123";
         var login = await Post<ApiResult<LoginResponse>>(client, "/api/auth/login",
-            new { employeeNo, password = "123456" });
+            new { employeeNo, password });
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", login.Data!.Token);
     }

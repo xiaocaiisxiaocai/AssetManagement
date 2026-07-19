@@ -152,7 +152,7 @@ public class SourceConventionTests
         var root = FindRepositoryRoot();
         var seedFile = Path.Combine(root, "backend", "src", "AssetManagement.Infrastructure", "Persistence", "Seed", "DbSeeder.cs");
         var source = File.ReadAllText(seedFile);
-        var seedMethod = ExtractMethod(source, "public static void Seed(AppDbContext db)");
+        var seedMethod = ExtractMethod(source, "public static void Seed(AppDbContext db, string? configuredAdminPassword = null)");
 
         seedMethod.Should().Contain("var originalTrackingBehavior = db.ChangeTracker.QueryTrackingBehavior");
         seedMethod.Should().Contain("finally");
@@ -167,7 +167,7 @@ public class SourceConventionTests
         var source = File.ReadAllText(programFile);
         var migrateIndex = source.IndexOf("db.Database.Migrate();", StringComparison.Ordinal);
         var autoMigrateIndex = source.IndexOf("GetValue<bool>(\"Database:AutoMigrate\")", StringComparison.Ordinal);
-        var seedIndex = source.IndexOf("DbSeeder.Seed(db);", StringComparison.Ordinal);
+        var seedIndex = source.IndexOf("DbSeeder.Seed(db,", StringComparison.Ordinal);
 
         migrateIndex.Should().BeGreaterThan(0);
         autoMigrateIndex.Should().BeInRange(0, migrateIndex - 1, "启动迁移必须由显式配置开关控制，避免每次重启后端都自动迁移数据库");
@@ -180,7 +180,7 @@ public class SourceConventionTests
         var root = FindRepositoryRoot();
         var programFile = Path.Combine(root, "backend", "src", "AssetManagement.Api", "Program.cs");
         var source = File.ReadAllText(programFile);
-        var seedIndex = source.IndexOf("DbSeeder.Seed(db);", StringComparison.Ordinal);
+        var seedIndex = source.IndexOf("DbSeeder.Seed(db,", StringComparison.Ordinal);
         var autoSeedIndex = source.IndexOf("GetValue<bool>(\"Database:AutoSeed\")", StringComparison.Ordinal);
 
         seedIndex.Should().BeGreaterThan(0);
@@ -235,6 +235,7 @@ public class SourceConventionTests
         {
             "AuthController.cs:UserInfo",
             "AuthController.cs:ChangePassword",
+            "AuthController.cs:Logout",
             "MenuController.cs:Routes",
             "NotificationController.cs:List",
             "NotificationController.cs:UnreadCount",

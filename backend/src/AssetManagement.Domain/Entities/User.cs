@@ -12,5 +12,6 @@ public class User
     public string? Phone { get; set; }
     public bool IsActive { get; set; } = true;
     public bool MustChangePassword { get; set; }
+    public int TokenVersion { get; set; }
     public List<UserRole> UserRoles { get; set; } = new();
 }

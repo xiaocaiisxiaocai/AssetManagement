@@ -1,3 +1,4 @@
+using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -38,7 +39,7 @@ public class OverdueNotificationWorker : BackgroundService
 
     private async Task WaitUntilMidnight(CancellationToken ct)
     {
-        var now = DateTime.Now;
+        var now = BusinessClock.Now;
         var nextRun = now.Date.AddDays(1); // 次日 00:00
         var delay = nextRun - now;
         if (delay <= TimeSpan.Zero) delay = TimeSpan.FromMinutes(1);
@@ -50,7 +51,7 @@ public class OverdueNotificationWorker : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var today = DateOnly.FromDateTime(DateTime.Now);
+        var today = BusinessClock.TodayDateOnly;
 
         // 查询所有审批通过、未入库、有归还日期的借用流程（排除已删除资产）
         var flows = await db.ApprovalFlows
@@ -77,7 +78,7 @@ public class OverdueNotificationWorker : BackgroundService
         {
             if (!DateOnly.TryParse(flow.ReturnDate, out var returnDate)) continue;
 
-            var daysLeft = (returnDate.ToDateTime(TimeOnly.MinValue) - DateTime.Now.Date).Days;
+            var daysLeft = (returnDate.ToDateTime(TimeOnly.MinValue) - BusinessClock.Today).Days;
 
             string? type = daysLeft switch
             {

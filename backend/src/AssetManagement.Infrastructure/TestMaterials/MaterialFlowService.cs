@@ -256,7 +256,7 @@ public class MaterialFlowService : IMaterialFlowService
 
     public async Task<List<MaterialFlowDto>> MineAsync(int userId, int? projectId = null)
     {
-        var query = _db.MaterialFlows.Where(x => x.ApplicantId == userId);
+        var query = _db.MaterialFlows.Where(x => x.ApplicantId == userId || x.TransfereeId == userId);
         if (projectId.HasValue)
             query = query.Where(x => _db.TestMaterials
                 .Where(m => m.ProjectId == projectId.Value)
@@ -417,7 +417,7 @@ public class MaterialFlowService : IMaterialFlowService
     // 每次重试递增 offset 强制生成不同编号，配合调用方的 retry 循环解决。
     private async Task<string> NextFlowNoAsync(int offset = 0)
     {
-        var today = DateTime.UtcNow.Date;
+        var today = BusinessClock.Today;
         var prefix = $"MF-{today:yyyyMMdd}-";
         var existing = await _db.MaterialFlows
             .Where(x => x.FlowNo.StartsWith(prefix))
@@ -534,6 +534,7 @@ public class MaterialFlowService : IMaterialFlowService
             {
                 var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
                 if (applicant?.DepartmentId is null) return false;
+                if (user.Id == flow.ApplicantId) return false;
                 var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
                 var isSameDeptAdmin = user.DepartmentId == applicant.DepartmentId &&
                                       user.UserRoles.Any(ur => ur.Role is { Code: "supervisor", IsActive: true });
@@ -570,13 +571,15 @@ public class MaterialFlowService : IMaterialFlowService
     private async Task<int[]> DescendantDepartmentIdsAsync(int rootId)
     {
         var all = await _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToListAsync();
-        var ids = new List<int> { rootId };
+        var ids = new HashSet<int> { rootId };
         void Walk(int parentId)
         {
             foreach (var child in all.Where(x => x.ParentId == parentId))
             {
-                ids.Add(child.Id);
-                Walk(child.Id);
+                if (ids.Add(child.Id))
+                {
+                    Walk(child.Id);
+                }
             }
         }
         Walk(rootId);
@@ -689,7 +692,7 @@ public class MaterialFlowService : IMaterialFlowService
         if (applicant?.DepartmentId is not null)
         {
             var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-            if (department?.ManagerId is int managerId &&
+            if (department?.ManagerId is int managerId && managerId != flow.ApplicantId &&
                 await _db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
             {
                 result.Add(managerId);
@@ -697,12 +700,13 @@ public class MaterialFlowService : IMaterialFlowService
         }
 
         // 兼容旧数据：组织节点未配置负责人时，仍可使用历史维护的直属上级。
-        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId &&
+        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId && supervisorId != flow.ApplicantId &&
             await _db.Users.AsNoTracking().AnyAsync(x => x.Id == supervisorId && x.IsActive))
         {
             result.Add(supervisorId);
         }
 
+        result.RemoveAll(id => id == flow.ApplicantId);
         return result;
     }
 
@@ -810,12 +814,12 @@ public class MaterialFlowService : IMaterialFlowService
                 if (applicant?.DepartmentId is not null)
                 {
                     var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-                    if (dept?.ManagerId is int managerId &&
+                    if (dept?.ManagerId is int managerId && managerId != flow.ApplicantId &&
                         await _db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
                         result.Add(managerId);
                     var deptAdmins = await _db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.IsActive && u.DepartmentId == applicant.DepartmentId &&
+                        .Where(u => u.Id != flow.ApplicantId && u.IsActive && u.DepartmentId == applicant.DepartmentId &&
                                     u.UserRoles.Any(ur => ur.Role != null && ur.Role.IsActive && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id).ToListAsync();
                     foreach (var uid in deptAdmins)

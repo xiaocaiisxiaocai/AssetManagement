@@ -44,7 +44,7 @@ public class DatabaseBackupService : IDatabaseBackupService
         var backupPath = ResolveBackupPath(settings);
         Directory.CreateDirectory(backupPath);
 
-        var timestamp = $"{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid().ToString("N")[..6]}";
+        var timestamp = $"{BusinessClock.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid().ToString("N")[..6]}";
         var filePath = Path.Combine(backupPath, $"assetmgmt_{timestamp}.sql");
         var packagePath = Path.Combine(backupPath, $"assetmgmt_{timestamp}.zip");
         var dumpExe = _configuration["DatabaseBackup:MysqldumpPath"];
@@ -95,7 +95,7 @@ public class DatabaseBackupService : IDatabaseBackupService
         return new DatabaseBackupResultDto
         {
             FilePath = file.FullName,
-            CreatedAt = DateTime.Now,
+            CreatedAt = BusinessClock.Now,
             SizeBytes = file.Exists ? file.Length : 0
         };
         }
@@ -202,7 +202,7 @@ public class DatabaseBackupService : IDatabaseBackupService
         var retentionDays = int.TryParse(retentionText, out var days)
             ? Math.Max(days, 1)
             : 30;
-        var cutoff = DateTime.Now.AddDays(-retentionDays);
+        var cutoff = BusinessClock.Now.AddDays(-retentionDays);
         foreach (var file in Directory.GetFiles(backupPath, "assetmgmt_*.*").Where(path => IsBackupFileName(Path.GetFileName(path))))
         {
             var info = new FileInfo(file);

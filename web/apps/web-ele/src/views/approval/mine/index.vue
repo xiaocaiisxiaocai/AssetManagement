@@ -3,7 +3,8 @@ import type { ApprovalWorkItem } from '../approval-work-items';
 import type { AssetItem } from '#/api/asset';
 import type { UserOptionDto } from '#/api/user';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useAccess } from '@vben/access';
 
 import { getAllAssetsApi } from '#/api/asset';
@@ -49,6 +50,7 @@ import {
 
 defineOptions({ name: 'ApprovalMine' });
 
+const route = useRoute();
 const { hasAccessByCodes } = useAccess();
 const approvalActionAccess = computed(() =>
   buildApprovalActionAccess(hasAccessByCodes),
@@ -123,6 +125,7 @@ async function loadData() {
     if ((query.page - 1) * query.pageSize >= filteredFlows.value.length) {
       query.page = 1;
     }
+    focusNotificationFlow();
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
@@ -256,6 +259,23 @@ function showProgress(row: ApprovalWorkItem) {
   selectedFlow.value = row;
   progressVisible.value = true;
 }
+
+function focusNotificationFlow() {
+  const flowId = Number(route.query.flowId || 0);
+  const source = route.query.source === 'material' ? 'material' : 'asset';
+  if (!flowId) return;
+  const targetIndex = filteredFlows.value.findIndex(
+    (item) => item.id === flowId && item.source === source,
+  );
+  if (targetIndex < 0) return;
+  query.page = Math.floor(targetIndex / query.pageSize) + 1;
+  showProgress(filteredFlows.value[targetIndex]!);
+}
+
+watch(
+  () => [route.query.flowId, route.query.source],
+  () => void loadData(),
+);
 
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();

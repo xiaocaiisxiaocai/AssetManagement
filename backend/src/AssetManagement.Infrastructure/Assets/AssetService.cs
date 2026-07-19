@@ -8,6 +8,7 @@ using AssetManagement.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using MySqlConnector;
 using System.Security.Claims;
 
 namespace AssetManagement.Infrastructure.Assets;
@@ -131,6 +132,8 @@ public class AssetService : IAssetService
     {
         EnsureCanAssignDepartment(request.DepartmentId);
         await EnsureActiveDepartment(request.DepartmentId);
+        await EnsureLocationExistsAsync(request.LocationId);
+        await EnsureActiveCustodianAsync(request.CustodianId, request.DepartmentId);
         var currentCondition = AssetConditionDictionary.NormalizeSelection(
             request.CurrentCondition,
             await LoadConditionOptionsAsync());
@@ -139,9 +142,14 @@ public class AssetService : IAssetService
 
         for (var attempt = 0; ; attempt++)
         {
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            var lockedCategory = await _db.AssetCategories
+                .FromSqlInterpolated($"SELECT * FROM asset_categories WHERE Id = {category.Id} FOR UPDATE")
+                .SingleOrDefaultAsync()
+                ?? throw new BizException(4046, "资产分类不存在");
             var asset = new Asset
             {
-                AssetNo = await NextAssetNo(category),
+                AssetNo = await NextAssetNo(lockedCategory),
                 Name = request.Name.Trim(),
                 CategoryId = request.CategoryId,
                 DepartmentId = request.DepartmentId,
@@ -150,7 +158,7 @@ public class AssetService : IAssetService
                 Quantity = Math.Max(request.Quantity, 1),
                 Status = AssetStatus.Available,
                 PurchaseDate = request.PurchaseDate,
-                RegistrationTime = request.RegistrationTime?.Date ?? DateTime.UtcNow.Date,
+                RegistrationTime = request.RegistrationTime?.Date ?? BusinessClock.Today,
                 CurrentCondition = currentCondition,
                 Remark = request.Remark?.Trim(),
                 ImageUrls = JoinImages(request.Images),
@@ -160,9 +168,10 @@ public class AssetService : IAssetService
             try
             {
                 await _db.SaveChangesAsync();
+                await tx.CommitAsync();
                 return await GetAsync(asset.Id);
             }
-            catch (DbUpdateException) when (attempt < 3)
+            catch (DbUpdateException ex) when (attempt < 3 && IsDuplicateKey(ex))
             {
                 // 资产编号唯一索引冲突（并发取号撞号）：移除失败实体后重新取号重试
                 _db.Entry(asset).State = EntityState.Detached;
@@ -182,6 +191,7 @@ public class AssetService : IAssetService
         {
             throw new BizException(4046, "资产分类不存在");
         }
+        await EnsureLocationExistsAsync(request.LocationId);
 
         asset.Name = request.Name.Trim();
         asset.CategoryId = request.CategoryId;
@@ -323,17 +333,20 @@ public class AssetService : IAssetService
 
         // 整批一个事务,任一失败整体回滚,避免逐条提交产生半残数据
         await using var tx = await _db.Database.BeginTransactionAsync();
+        foreach (var categoryCode in validRows.Select(x => x.CategoryCode).Distinct().OrderBy(x => x))
+        {
+            var lockedCategory = await _db.AssetCategories
+                .FromSqlInterpolated($"SELECT * FROM asset_categories WHERE Code = {categoryCode} AND IsDeleted = 0 FOR UPDATE")
+                .SingleAsync();
+            categoryCache[categoryCode] = lockedCategory;
+        }
         foreach (var row in validRows)
         {
-            if (!categoryCache.TryGetValue(row.CategoryCode, out var category))
-            {
-                category = await _db.AssetCategories.SingleAsync(x => x.Code == row.CategoryCode && !x.IsDeleted);
-                categoryCache[row.CategoryCode] = category;
-            }
+            var category = categoryCache[row.CategoryCode];
             // 同分类多行在内存中递增取号:批量提交前 Count 不变,直接用会撞唯一索引
             if (!seq.TryGetValue(category.Id, out var used))
             {
-                used = await _db.Assets.CountAsync(x => x.CategoryId == category.Id);
+                used = await CurrentMaxSequence(category);
             }
             seq[category.Id] = used + 1;
 
@@ -344,7 +357,7 @@ public class AssetService : IAssetService
                 CategoryId = category.Id,
                 DepartmentId = departmentId,
                 PurchaseDate = row.PurchaseDate,
-                RegistrationTime = row.RegistrationTime?.Date ?? DateTime.UtcNow.Date,
+                RegistrationTime = row.RegistrationTime?.Date ?? BusinessClock.Today,
                 CurrentCondition = row.CurrentCondition,
                 Remark = row.Remark,
                 Quantity = 1,
@@ -427,13 +440,15 @@ public class AssetService : IAssetService
             return _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToList();
         })!;
 
-        var ids = new List<int> { rootId };
+        var ids = new HashSet<int> { rootId };
         void Walk(int parentId)
         {
             foreach (var child in departments.Where(x => x.ParentId == parentId))
             {
-                ids.Add(child.Id);
-                Walk(child.Id);
+                if (ids.Add(child.Id))
+                {
+                    Walk(child.Id);
+                }
             }
         }
 
@@ -499,6 +514,29 @@ public class AssetService : IAssetService
         }
     }
 
+    private async Task EnsureLocationExistsAsync(int? locationId)
+    {
+        if (locationId.HasValue && !await _db.Locations.AnyAsync(x => x.Id == locationId.Value))
+        {
+            throw new BizException(4045, "存放位置不存在");
+        }
+    }
+
+    private async Task EnsureActiveCustodianAsync(int? custodianId, int? departmentId)
+    {
+        if (!custodianId.HasValue)
+        {
+            return;
+        }
+        var custodian = await _db.Users.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == custodianId.Value && x.IsActive)
+            ?? throw new BizException(4041, "保管人不存在或已停用");
+        if (custodian.DepartmentId != departmentId)
+        {
+            throw new BizException(4002, "保管人与归属部门不一致");
+        }
+    }
+
     // 当前用户所属部门(用于导入资产的部门归属)
     private int? CurrentUserDepartmentId()
     {
@@ -507,6 +545,9 @@ public class AssetService : IAssetService
     }
 
     private async Task<string> NextAssetNo(AssetCategory category)
+        => AssetNoGenerator.Next(category.Code, await CurrentMaxSequence(category));
+
+    private async Task<int> CurrentMaxSequence(AssetCategory category)
     {
         var prefix = $"{category.Code}-";
         var existing = await _db.Assets
@@ -517,8 +558,11 @@ public class AssetService : IAssetService
             .Select(x => int.TryParse(x[prefix.Length..], out var sequence) ? sequence : 0)
             .DefaultIfEmpty(0)
             .Max();
-        return AssetNoGenerator.Next(category.Code, maxSequence);
+        return maxSequence;
     }
+
+    private static bool IsDuplicateKey(DbUpdateException ex)
+        => ex.InnerException is MySqlException { Number: 1062 };
 
     private async Task<List<AssetDto>> ToDtos(IEnumerable<Asset> assets)
     {

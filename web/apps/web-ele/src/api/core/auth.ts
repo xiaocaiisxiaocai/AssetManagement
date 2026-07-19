@@ -17,9 +17,9 @@ export namespace AuthApi {
 
   /** 登录接口返回值 */
   export interface LoginResult {
+    mustChangePassword: boolean;
     token: string;
   }
-
 }
 
 /**
@@ -39,9 +39,9 @@ export async function loginApi(data: AuthApi.LoginParams) {
 /**
  * 退出登录
  */
-export async function logoutApi() {
-  return baseRequestClient.post('/auth/logout', {
-    withCredentials: true,
+export async function logoutApi(token: string) {
+  return baseRequestClient.post('/auth/logout', undefined, {
+    headers: { Authorization: `Bearer ${token}` },
   });
 }
 
@@ -54,6 +54,7 @@ export const getUserInfoApi = async () => {
     ApiResult<{
       employeeNo: string;
       id: number;
+      mustChangePassword: boolean;
       name: string;
       permissions: string[];
       roles: string[];
@@ -70,12 +71,16 @@ export const getUserInfoApi = async () => {
     userId: String(data.id),
     username: data.employeeNo,
     permissions: data.permissions,
-  } as UserInfo & { permissions: string[] };
+    mustChangePassword: data.mustChangePassword,
+  } as UserInfo & { mustChangePassword: boolean; permissions: string[] };
 };
 
 /**
  * 修改密码
  */
-export function changePassword(data: { oldPassword: string; newPassword: string }) {
+export function changePassword(data: {
+  oldPassword: string;
+  newPassword: string;
+}) {
   return requestClient.put('/auth/change-password', data);
 }

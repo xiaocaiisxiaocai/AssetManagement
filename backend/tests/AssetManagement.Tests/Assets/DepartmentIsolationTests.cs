@@ -45,7 +45,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = Unique("DA"),
             Name = "研发部经理",
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = dept1.Data!.Id,
             RoleIds = new[] { deptAdminRole.Id }
         });
@@ -53,7 +53,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = Unique("DB"),
             Name = "市场部经理",
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = dept2.Data!.Id,
             RoleIds = new[] { deptAdminRole.Id }
         });
@@ -77,7 +77,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
         // 作为研发部部门管理员登录
         deptAdmin1.Data.Should().NotBeNull();
-        var token1 = await Login(deptAdmin1.Data.EmployeeNo, "123456");
+        var token1 = await Login(deptAdmin1.Data.EmployeeNo, "TestPass123");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token1);
 
         // 查询资产列表,应该只能看到研发部的资产
@@ -87,7 +87,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
         // 作为市场部部门管理员登录
         deptAdmin2.Data.Should().NotBeNull();
-        var token2 = await Login(deptAdmin2.Data.EmployeeNo, "123456");
+        var token2 = await Login(deptAdmin2.Data.EmployeeNo, "TestPass123");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token2);
 
         // 查询资产列表,应该只能看到市场部的资产
@@ -127,7 +127,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = Unique("DX"),
             Name = "研发部经理X",
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = dept1.Data!.Id,
             RoleIds = new[] { deptAdminRole.Id }
         });
@@ -141,7 +141,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         });
 
         // 以研发部管理员登录,尝试越权访问市场部资产
-        var token1 = await Login(deptAdmin1.Data!.EmployeeNo, "123456");
+        var token1 = await Login(deptAdmin1.Data!.EmployeeNo, "TestPass123");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token1);
 
         var detail = await _client.GetFromJsonAsync<ApiResult<AssetDetailDto>>($"/api/assets/{asset2.Data!.Id}/detail");

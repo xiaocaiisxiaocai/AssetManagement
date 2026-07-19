@@ -52,7 +52,7 @@ FLUSH PRIVILEGES;
 
 确认迁移和种子完成后，生产环境建议改回 `false`。
 
-初始化管理员工号为 `1001`。生产环境必须设置 `ASSET_ADMIN_PASSWORD`；未设置时的回退密码 `123456` 仅供本地开发。系统不强制首次登录改密，因此生产部署时不得使用回退密码。
+初始化管理员工号为 `1001`。生产环境必须设置 `ASSET_ADMIN_PASSWORD`；未设置时的回退密码 `123456` 仅供本地开发，使用默认密码登录后必须先修改密码。
 
 ## 3. 运行方式
 
@@ -91,7 +91,7 @@ pnpm --filter @vben/web-ele... run build
 
 托管推荐二选一：
 
-- 同源托管：将 `web/apps/web-ele/dist` 内文件复制到后端发布目录的 `wwwroot`，由 ASP.NET Core 或 IIS 静态文件托管。
+- IIS 同源托管：将 `web/apps/web-ele/dist` 内文件复制到 IIS 站点可访问的静态目录，并由 IIS 托管；当前 API 未启用 ASP.NET Core 静态文件中间件，不能仅复制到 `wwwroot` 后直接由 Kestrel 提供前端页面。
 - 独立站点：IIS/Nginx 单独托管 `dist`，将 `/api` 反向代理到后端。
 
 当前前端使用 hash 路由，独立静态托管不需要额外 history fallback。

@@ -101,17 +101,21 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         await Login();
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
         var employeeRole = roles!.Data!.Items.Single(r => r.Code == "employee");
+        var supervisors = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            "/api/users?keyword=TEST-SUPERVISOR");
+        var seededSupervisor = supervisors!.Data!.Items.Single();
         var borrowerNo = Unique("BOR");
         var borrower = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = borrowerNo,
             Name = "逾期借用人",
-            Password = "123456",
-            SupervisorId = 1,
+            Password = "TestPass123",
+            DepartmentId = seededSupervisor.DepartmentId,
+            SupervisorId = seededSupervisor.Id,
             RoleIds = new[] { employeeRole.Id }
         });
         var category = await CreateCategory();
-        var asset = await CreateAsset(category.Id, null, "逾期资产", AssetStatus.Available);
+        var asset = await CreateAsset(category.Id, seededSupervisor.DepartmentId, "逾期资产", AssetStatus.Available);
         await Put<ApiResult<AssetDto>>($"/api/assets/{asset.Id}", new UpdateAssetRequest
         {
             Name = asset.Name,
@@ -120,7 +124,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             Status = AssetStatus.Available,
             CustodianId = borrower.Data!.Id
         });
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await LoginToken(borrowerNo, "123456"));
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await LoginToken(borrowerNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
@@ -133,11 +137,15 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         flow.Should().NotBeNull();
         flow.Data.Should().NotBeNull();
 
-        await Login();
-        // 审批完成流程
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            await LoginToken("TEST-SUPERVISOR", "123456"));
+        // 由申请人的直属主管完成审批
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve", new ApprovalActionRequest { Opinion = "同意" });
         approved.Data.Should().NotBeNull();
         approved.Data!.Status.Should().Be("approved", "流程应该已完成");
+
+        await Login();
 
         // 逾期是流程经过时间后形成的状态；正式发起接口不允许倒填历史归还日期。
         using (var scope = _factory.Services.CreateScope())
@@ -151,7 +159,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         var overdue = await _client.GetFromJsonAsync<ApiResult<List<OverdueReportRow>>>("/api/reports/overdue");
         await Post<ApiResult<object?>>($"/api/reports/overdue/{asset.Id}/remind", new { });
         var audit = await _client.GetFromJsonAsync<ApiResult<PagedResult<AuditLogDto>>>("/api/audit-logs?actionType=remind");
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await LoginToken(borrowerNo, "123456"));
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await LoginToken(borrowerNo, "TestPass123"));
         var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
 
         overdue!.Data!.Should().Contain(x => x.AssetId == asset.Id && x.OverdueDays > 0);

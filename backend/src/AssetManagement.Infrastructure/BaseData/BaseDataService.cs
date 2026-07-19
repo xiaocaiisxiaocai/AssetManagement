@@ -83,6 +83,7 @@ public class BaseDataService : IBaseDataService
         var name = request.Name.Trim();
         await EnsureDepartmentNameAvailableAsync(name);
         await EnsureDepartmentManagerAvailableAsync(request.ManagerId);
+        await ValidateDepartmentParentAsync(null, request.ParentId);
         var organizationLevel = await ResolveOrganizationLevelAsync(
             request.OrganizationLevelCode ?? "department");
         var department = new Department
@@ -110,6 +111,8 @@ public class BaseDataService : IBaseDataService
             ?? throw new BizException(4045, "部门不存在");
         var name = request.Name.Trim();
         await EnsureDepartmentNameAvailableAsync(name, id);
+        await ValidateDepartmentParentAsync(id, request.ParentId);
+        await EnsureCanDeactivateDepartmentAsync(id, request.IsActive);
         if (request.IsActive)
         {
             await EnsureDepartmentManagerAvailableAsync(request.ManagerId, id);
@@ -178,9 +181,98 @@ public class BaseDataService : IBaseDataService
             return;
         }
 
+        if (!await _db.Users.AnyAsync(x => x.Id == managerId
+            && x.IsActive
+            && (x.UserRoles.Any(ur => ur.Role.Code == "admin" && ur.Role.IsActive)
+                || (x.DepartmentId.HasValue
+                    && _db.Departments.Any(d => d.Id == x.DepartmentId.Value && d.IsActive)
+                    && x.UserRoles.Any(ur => ur.Role.Code == "supervisor" && ur.Role.IsActive)))))
+        {
+            throw new BizException(4041, "部门负责人必须是启用管理员或有效部门的启用主管");
+        }
+
         if (await _db.Departments.AnyAsync(x => x.ManagerId == managerId && x.IsActive && x.Id != selfId))
         {
             throw new BizException(4094, "负责人已负责其他部门");
+        }
+    }
+
+    private async Task ValidateDepartmentParentAsync(int? departmentId, int? parentId)
+    {
+        if (!parentId.HasValue)
+        {
+            return;
+        }
+        if (parentId == departmentId)
+        {
+            throw new BizException(4001, "上级部门不能设置为自身");
+        }
+
+        var departments = await _db.Departments
+            .Select(x => new { x.Id, x.ParentId, x.IsActive })
+            .ToListAsync();
+        var departmentMap = departments.ToDictionary(x => x.Id);
+        if (!departmentMap.TryGetValue(parentId.Value, out var cursor) || !cursor.IsActive)
+        {
+            throw new BizException(4045, "上级部门不存在或已停用");
+        }
+
+        var visited = new HashSet<int>();
+        while (true)
+        {
+            if (!cursor.IsActive)
+            {
+                throw new BizException(4045, "上级部门链中存在已停用部门");
+            }
+            if (!visited.Add(cursor.Id))
+            {
+                throw new BizException(4094, "部门层级存在循环引用");
+            }
+            if (cursor.Id == departmentId)
+            {
+                throw new BizException(4001, "不能将部门移动到自己的子部门下");
+            }
+            if (!cursor.ParentId.HasValue)
+            {
+                break;
+            }
+            if (!departmentMap.TryGetValue(cursor.ParentId.Value, out cursor))
+            {
+                throw new BizException(4094, "部门层级存在无效父级");
+            }
+        }
+    }
+
+    private async Task EnsureCanDeactivateDepartmentAsync(int departmentId, bool nextIsActive)
+    {
+        if (nextIsActive)
+        {
+            return;
+        }
+
+        var departments = await _db.Departments
+            .Select(x => new { x.Id, x.ParentId, x.IsActive })
+            .ToListAsync();
+        var childrenByParent = departments
+            .Where(x => x.ParentId.HasValue)
+            .ToLookup(x => x.ParentId!.Value);
+        var pending = new Stack<int>();
+        pending.Push(departmentId);
+        var visited = new HashSet<int>();
+        while (pending.TryPop(out var current))
+        {
+            if (!visited.Add(current))
+            {
+                throw new BizException(4094, "部门层级存在循环引用");
+            }
+            foreach (var child in childrenByParent[current])
+            {
+                if (child.IsActive)
+                {
+                    throw new BizException(4094, "请先停用所有子部门");
+                }
+                pending.Push(child.Id);
+            }
         }
     }
 
@@ -580,9 +672,13 @@ public class BaseDataService : IBaseDataService
         int? parentId,
         List<Department> departments,
         Dictionary<int, string> managers,
-        Dictionary<int, OrganizationLevelInfo> levels)
-        => departments
+        Dictionary<int, OrganizationLevelInfo> levels,
+        IReadOnlySet<int>? ancestors = null)
+    {
+        ancestors ??= new HashSet<int>();
+        return departments
             .Where(x => x.ParentId == parentId)
+            .Where(x => !ancestors.Contains(x.Id))
             .OrderBy(x => x.Code)
             .ThenBy(x => x.Id)
             .Select(x =>
@@ -594,9 +690,12 @@ public class BaseDataService : IBaseDataService
                     ? value
                     : null;
                 var dto = ToDepartmentDto(x, managerName, level?.Code, level?.Name);
-                return dto with { Children = BuildDepartmentTree(x.Id, departments, managers, levels) };
+                var nextAncestors = ancestors.ToHashSet();
+                nextAncestors.Add(x.Id);
+                return dto with { Children = BuildDepartmentTree(x.Id, departments, managers, levels, nextAncestors) };
             })
             .ToList();
+    }
 
     private static List<CategoryNodeDto> BuildCategoryTreeRoots(List<AssetCategory> categories)
     {

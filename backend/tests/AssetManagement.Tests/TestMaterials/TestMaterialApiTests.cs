@@ -53,15 +53,12 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var project = await CreateProject("停用部门料件项目");
-        var manager = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "停用部门负责人");
         var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = manager.Id,
             Name = "已停用料件部门"
         });
         await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{department.Data!.Id}", new UpdateDepartmentRequest
         {
-            ManagerId = manager.Id,
             Name = department.Data.Name,
             IsActive = false
         });
@@ -556,6 +553,42 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         disabled.Message.Should().Contain("不能停用");
         rekeyed.Code.Should().Be(4094);
         rekeyed.Message.Should().Contain("不能修改类型或编码");
+    }
+
+    [Fact]
+    public async Task Reserved_project_progress_cannot_be_deleted_disabled_or_rekeyed()
+    {
+        await Login();
+        var options = await _client.GetFromJsonAsync<ApiResult<List<TestProjectOptionDto>>>(
+            "/api/test-projects/options?kind=project_progress");
+        var landing = options!.Data!.Single(x => x.Code == "landing");
+
+        var deleted = await _client.DeleteAsync($"/api/test-projects/options/{landing.Id}");
+        var deletedBody = await deleted.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        var disabled = await Put<ApiResult<TestProjectOptionDto>>(
+            $"/api/test-projects/options/{landing.Id}",
+            new SaveTestProjectOptionRequest
+            {
+                Kind = landing.Kind,
+                Code = landing.Code,
+                Label = landing.Label,
+                Sort = landing.Sort,
+                IsActive = false
+            });
+        var rekeyed = await Put<ApiResult<TestProjectOptionDto>>(
+            $"/api/test-projects/options/{landing.Id}",
+            new SaveTestProjectOptionRequest
+            {
+                Kind = landing.Kind,
+                Code = "landing_changed",
+                Label = landing.Label,
+                Sort = landing.Sort,
+                IsActive = true
+            });
+
+        deletedBody!.Code.Should().Be(4094);
+        disabled.Code.Should().Be(4094);
+        rekeyed.Code.Should().Be(4094);
     }
 
     [Fact]

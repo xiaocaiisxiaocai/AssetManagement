@@ -46,6 +46,19 @@ public sealed class AccountSecurityMiddleware
             return;
         }
 
+        if (!int.TryParse(context.User.FindFirstValue("tokenVersion"), out var tokenVersion)
+            || tokenVersion != user.TokenVersion)
+        {
+            await RejectAsync(context, StatusCodes.Status401Unauthorized, 4014, "登录凭据已失效，请重新登录");
+            return;
+        }
+
+        if (user.MustChangePassword && !CanAccessBeforePasswordChange(context.Request.Path))
+        {
+            await RejectAsync(context, StatusCodes.Status403Forbidden, 1006, "首次登录必须先修改密码");
+            return;
+        }
+
         var activeRoles = user.UserRoles
             .Select(x => x.Role)
             .Where(x => x.IsActive)
@@ -66,7 +79,7 @@ public sealed class AccountSecurityMiddleware
             return;
         }
 
-        RefreshPrincipal(context, user.Id, user.EmployeeNo, user.DepartmentId, roleCodes,
+        RefreshPrincipal(context, user.Id, user.EmployeeNo, user.DepartmentId, user.TokenVersion, roleCodes,
             activeRoles.SelectMany(x => x.RolePermissions)
                 .Select(x => x.Permission.Code)
                 .Distinct(StringComparer.Ordinal));
@@ -79,16 +92,18 @@ public sealed class AccountSecurityMiddleware
         int userId,
         string employeeNo,
         int? departmentId,
+        int tokenVersion,
         IEnumerable<string> roles,
         IEnumerable<string> permissions)
     {
         var existingIdentity = context.User.Identity as ClaimsIdentity;
         var claims = context.User.Claims
             .Where(x => x.Type != ClaimTypes.Role && x.Type != "perm" && x.Type != "departmentId"
-                && x.Type != ClaimTypes.NameIdentifier && x.Type != "employeeNo")
+                && x.Type != ClaimTypes.NameIdentifier && x.Type != "employeeNo" && x.Type != "tokenVersion")
             .ToList();
         claims.Add(new Claim(ClaimTypes.NameIdentifier, userId.ToString()));
         claims.Add(new Claim("employeeNo", employeeNo));
+        claims.Add(new Claim("tokenVersion", tokenVersion.ToString()));
         claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x)));
         claims.AddRange(permissions.Select(x => new Claim("perm", x)));
         if (departmentId.HasValue)
@@ -108,4 +123,10 @@ public sealed class AccountSecurityMiddleware
         context.Response.StatusCode = statusCode;
         await context.Response.WriteAsJsonAsync(ApiResult<object?>.Fail(code, message));
     }
+
+    private static bool CanAccessBeforePasswordChange(PathString path)
+        => path.StartsWithSegments("/api/auth/user-info")
+            || path.StartsWithSegments("/api/auth/change-password")
+            || path.StartsWithSegments("/api/auth/logout")
+            || path.StartsWithSegments("/api/menu/routes");
 }

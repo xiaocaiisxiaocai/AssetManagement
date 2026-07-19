@@ -1,4 +1,5 @@
 using AssetManagement.Application.Audit;
+using AssetManagement.Application.Common;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -66,13 +67,14 @@ public class AuditCleanupWorker : BackgroundService
     private static DateTime NextRun(string timeText)
     {
         if (!TimeSpan.TryParse(timeText, out var time)) time = new TimeSpan(2, 10, 0);
-        var next = DateTime.Now.Date.Add(time);
-        return next <= DateTime.Now ? next.AddDays(1) : next;
+        var now = BusinessClock.Now;
+        var next = now.Date.Add(time);
+        return next <= now ? next.AddDays(1) : next;
     }
 
     private static async Task DelayUntil(DateTime nextRun, CancellationToken ct)
     {
-        var delay = nextRun - DateTime.Now;
+        var delay = nextRun - BusinessClock.Now;
         if (delay <= TimeSpan.Zero) delay = TimeSpan.FromMinutes(1);
         await Task.Delay(delay, ct).ContinueWith(_ => { });
     }

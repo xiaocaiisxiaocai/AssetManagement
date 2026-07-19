@@ -51,7 +51,7 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
         });
         flow.Data!.CurrentNodeIds.Should().BeEquivalentTo(NodeA, NodeB);
 
-        Auth(await LoginToken(approverA.EmployeeNo, "123456"));
+        Auth(await LoginToken(approverA.EmployeeNo, "TestPass123"));
         var pending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
         var workItem = pending!.Data.Should().ContainSingle(x => x.Id == flow.Data.Id).Which;
         workItem.CurrentNodeIds.Should().BeEquivalentTo(NodeA, NodeB);
@@ -74,7 +74,7 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
         approvedA.Data!.Status.Should().Be("pending");
         approvedA.Data.CurrentNodeIds.Should().ContainSingle().Which.Should().Be(NodeB);
 
-        Auth(await LoginToken(approverB.EmployeeNo, "123456"));
+        Auth(await LoginToken(approverB.EmployeeNo, "TestPass123"));
         var pendingB = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
         var workItemB = pendingB!.Data.Should().ContainSingle(x => x.Id == flow.Data.Id).Which;
         workItemB.ActionableNodeIds.Should().ContainSingle().Which.Should().Be(NodeB);
@@ -107,7 +107,7 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
             });
             flow.Data!.CurrentNodeIds.Should().BeEquivalentTo(NodeA, NodeB);
 
-            Auth(await LoginToken(approverA.EmployeeNo, "123456"));
+            Auth(await LoginToken(approverA.EmployeeNo, "TestPass123"));
             var pending = await _client.GetFromJsonAsync<ApiResult<List<MaterialFlowDto>>>(
                 "/api/material-flows/pending");
             var workItem = pending!.Data.Should().ContainSingle(x => x.Id == flow.Data.Id).Which;
@@ -131,7 +131,7 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
             approvedA.Data!.Status.Should().Be("pending");
             approvedA.Data.CurrentNodeIds.Should().ContainSingle().Which.Should().Be(NodeB);
 
-            Auth(await LoginToken(approverB.EmployeeNo, "123456"));
+            Auth(await LoginToken(approverB.EmployeeNo, "TestPass123"));
             var pendingB = await _client.GetFromJsonAsync<ApiResult<List<MaterialFlowDto>>>(
                 "/api/material-flows/pending");
             var workItemB = pendingB!.Data.Should().ContainSingle(x => x.Id == flow.Data.Id).Which;
@@ -243,7 +243,7 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = $"{name}{employeeNo[^4..]}",
-            Password = "123456",
+            Password = "TestPass123",
             RoleIds = new[] { (await Role(roleCode)).Id }
         })).Data!;
     }

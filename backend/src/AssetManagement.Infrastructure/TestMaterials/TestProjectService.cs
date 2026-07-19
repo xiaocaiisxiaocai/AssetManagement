@@ -11,6 +11,9 @@ public class TestProjectService : ITestProjectService
     public const string OptionKindProjectType = "project_type";
     public const string OptionKindProgress = "project_progress";
     public const string ProgressLanding = "landing";
+    public const string ProgressClosed = "closed";
+    private static readonly HashSet<string> ReservedProgressCodes =
+        new(StringComparer.OrdinalIgnoreCase) { ProgressLanding, ProgressClosed };
 
     private readonly AppDbContext _db;
 
@@ -143,7 +146,7 @@ public class TestProjectService : ITestProjectService
     {
         ValidateOptionRequest(request);
         var kind = request.Kind.Trim();
-        var code = request.Code.Trim();
+        var code = request.Code.Trim().ToLowerInvariant();
         await EnsureOptionCodeAvailable(kind, code);
         var option = new TestProjectOption
         {
@@ -164,7 +167,7 @@ public class TestProjectService : ITestProjectService
         var option = await _db.TestProjectOptions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "项目配置项不存在");
         var kind = request.Kind.Trim();
-        var code = request.Code.Trim();
+        var code = request.Code.Trim().ToLowerInvariant();
         await EnsureOptionCodeAvailable(kind, code, id);
         await EnsureOptionCanChangeAsync(option, kind, code, request.IsActive);
         option.Kind = kind;
@@ -180,6 +183,10 @@ public class TestProjectService : ITestProjectService
     {
         var option = await _db.TestProjectOptions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "项目配置项不存在");
+        if (option.Kind == OptionKindProgress && ReservedProgressCodes.Contains(option.Code))
+        {
+            throw new BizException(4094, "落地跟进和已结案是系统保留进度，不能删除");
+        }
         if (option.Kind == OptionKindProjectType &&
             await _db.TestProjects.AnyAsync(x => x.ProjectTypeCode == option.Code))
         {
@@ -254,7 +261,7 @@ public class TestProjectService : ITestProjectService
 
     public async Task<TestProjectStatsDto> GetStatsAsync()
     {
-        var year = DateTime.UtcNow.Year;
+        var year = BusinessClock.Now.Year;
         var projects = await _db.TestProjects
             .AsNoTracking()
             .Where(x => !x.IsDeleted)
@@ -264,8 +271,8 @@ public class TestProjectService : ITestProjectService
             .Where(x => x.Kind == OptionKindProjectType && x.IsActive)
             .ToDictionaryAsync(x => x.Code, x => x.Label);
 
-        int closed = projects.Count(x => x.ProgressCode == "closed");
-        int landed = projects.Count(x => x.ProgressCode == "landing");
+        int closed = projects.Count(x => string.Equals(x.ProgressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase));
+        int landed = projects.Count(x => string.Equals(x.ProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase));
         // 进度分布必须互斥：这里表示尚未进入“落地跟进”或“结案”的规划/测试阶段。
         int inProgress = projects.Count - closed - landed;
 
@@ -409,7 +416,7 @@ public class TestProjectService : ITestProjectService
         var startDate = request.StartDate!.Value.Date;
         var plannedFinishDate = request.PlannedFinishDate!.Value.Date;
         var closedDate = request.ClosedDate?.Date;
-        var isClosed = string.Equals(request.ProgressCode?.Trim(), "closed", StringComparison.OrdinalIgnoreCase);
+        var isClosed = string.Equals(request.ProgressCode?.Trim(), ProgressClosed, StringComparison.OrdinalIgnoreCase);
 
         if (plannedFinishDate < startDate)
             throw new BizException(4001, "计划完成时间不能早于开始时间");
@@ -463,7 +470,7 @@ public class TestProjectService : ITestProjectService
     private static string FollowUpStatus(DateTime? dueDate)
     {
         if (!dueDate.HasValue) return "upcoming";
-        var today = DateTime.UtcNow.Date;
+        var today = BusinessClock.Today;
         if (dueDate.Value.Date < today) return "overdue";
         if (dueDate.Value.Date == today) return "due";
         return "upcoming";
@@ -504,6 +511,15 @@ public class TestProjectService : ITestProjectService
         string nextCode,
         bool nextIsActive)
     {
+        if (option.Kind == OptionKindProgress
+            && ReservedProgressCodes.Contains(option.Code)
+            && (nextKind != option.Kind
+                || !string.Equals(nextCode, option.Code, StringComparison.OrdinalIgnoreCase)
+                || !nextIsActive))
+        {
+            throw new BizException(4094, "落地跟进和已结案是系统保留进度，不能改码、改类型或停用");
+        }
+
         var isUsed = option.Kind switch
         {
             OptionKindProjectType => await _db.TestProjects.AnyAsync(x => x.ProjectTypeCode == option.Code),

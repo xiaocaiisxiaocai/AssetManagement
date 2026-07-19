@@ -175,7 +175,7 @@ public class ReportService : IReportService
         var borrowedAssets = await ApplyAssetScope(_db.Assets.AsNoTracking())
             .Where(x => assetIds.Contains(x.Id) && !x.IsDeleted && x.Status == AssetStatus.Borrowed)
             .ToDictionaryAsync(x => x.Id);
-        var today = DateTime.UtcNow.Date;
+        var today = BusinessClock.Today;
         var overdue = flows
             .Where(x => borrowedAssets.ContainsKey(x.AssetId))
             .Select(x => new { Flow = x, Due = ParseDate(x.ReturnDate) })
@@ -228,7 +228,7 @@ public class ReportService : IReportService
             Body = $"您借用的 {row.AssetName}（{row.AssetNo}）预计归还日期为 {row.ReturnDate}，已逾期 {row.OverdueDays} 天，请尽快归还。",
             FlowId = row.FlowId,
             UserId = row.BorrowerId,
-            IdempotencyKey = $"overdue_remind_{row.FlowId}_{DateTime.UtcNow:yyyyMMdd}_{userId ?? 0}"
+            IdempotencyKey = $"overdue_remind_{row.FlowId}_{BusinessClock.Today:yyyyMMdd}_{userId ?? 0}"
         });
     }
 
@@ -379,10 +379,11 @@ public class ReportService : IReportService
     private static Department RootDepartment(Department department, List<Department> departments)
     {
         var current = department;
+        var visited = new HashSet<int> { current.Id };
         while (current.ParentId.HasValue)
         {
             var parent = departments.FirstOrDefault(x => x.Id == current.ParentId.Value);
-            if (parent is null)
+            if (parent is null || !visited.Add(parent.Id))
             {
                 break;
             }

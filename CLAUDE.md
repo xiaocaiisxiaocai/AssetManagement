@@ -117,7 +117,7 @@ $env:ASSET_ADMIN_PASSWORD = '<首次初始化管理员的强密码>' # 可选；
 
 - **配置键**:`ConnectionStrings:Default`、`Jwt:Key`。
 - **生产模板**:`deploy\appsettings.Production.json` 仅含占位符，部署时必须替换或用环境变量覆盖。
-- **初始化账号**:工号 `1001`;未设置 `ASSET_ADMIN_PASSWORD` 时仅在本地回退 `123456`。系统不强制首次登录改密，生产环境必须通过环境变量设置强密码。
+- **初始化账号**:工号 `1001`;未设置 `ASSET_ADMIN_PASSWORD` 时仅在本地回退 `123456`。使用默认密码登录后必须先修改密码，生产环境仍必须通过环境变量设置强密码。
 
 ## 前后端集成约定(关键)
 

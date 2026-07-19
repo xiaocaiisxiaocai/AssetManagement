@@ -24,6 +24,8 @@ public class RbacService : IRbacService
         int? departmentId = null,
         int? roleId = null)
     {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, AppConstants.MaxPageSize);
         var query = _db.Users
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
@@ -123,6 +125,13 @@ public class RbacService : IRbacService
         var password = !string.IsNullOrWhiteSpace(request.Password)
             ? request.Password
             : AppConstants.DefaultUserPassword;
+        var mustChangePassword = string.IsNullOrWhiteSpace(request.Password)
+            || password == AppConstants.DefaultUserPassword;
+        if (!mustChangePassword)
+        {
+            PasswordPolicy.EnsureStrong(password);
+        }
+        await ValidateUserRelationsAsync(request.DepartmentId, request.SupervisorId);
 
         await using var transaction = await _db.Database.BeginTransactionAsync();
         var user = new User
@@ -134,6 +143,7 @@ public class RbacService : IRbacService
             DepartmentId = request.DepartmentId,
             SupervisorId = request.SupervisorId,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+            MustChangePassword = mustChangePassword,
             IsActive = true
         };
         _db.Users.Add(user);
@@ -146,9 +156,12 @@ public class RbacService : IRbacService
     public async Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request, int currentUserId, bool canAssignRole)
     {
         EnsureSingleRole(request.RoleIds);
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        await LockAdminUsersAsync();
         await EnsureUserRoleChangeAllowed(id, request.RoleIds, currentUserId, canAssignRole);
         var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
+        await ValidateUserRelationsAsync(request.DepartmentId, request.SupervisorId, id);
         user.Name = request.Name.Trim();
         user.Email = request.Email;
         user.Phone = request.Phone;
@@ -156,11 +169,15 @@ public class RbacService : IRbacService
         user.SupervisorId = request.SupervisorId;
         await RewriteUserRoles(id, request.RoleIds);
         await _db.SaveChangesAsync();
-        return await LoadUserDto(id);
+        var result = await LoadUserDto(id);
+        await transaction.CommitAsync();
+        return result;
     }
 
     public async Task DeleteUserAsync(int id)
     {
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        await LockAdminUsersAsync();
         var user = await _db.Users
             .AsTracking()
             .Include(x => x.UserRoles)
@@ -168,18 +185,15 @@ public class RbacService : IRbacService
             .SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
 
-        if (user.UserRoles.Any(x => x.Role?.Code == "admin"))
+        if (user.IsActive && user.UserRoles.Any(x => x.Role is { Code: "admin", IsActive: true }))
         {
-            var adminCount = await _db.UserRoles
-                .CountAsync(x => x.Role != null && x.Role.Code == "admin");
-            if (adminCount <= 1)
+            if (!await HasOtherUsableAdminAsync(id))
             {
                 throw new BizException(4094, "至少保留一个系统管理员");
             }
         }
         await EnsureUserNotReferencedAsync(id);
 
-        await using var transaction = await _db.Database.BeginTransactionAsync();
         await _db.AuditLogs
             .Where(x => x.UserId == id)
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.UserId, (int?)null));
@@ -193,15 +207,31 @@ public class RbacService : IRbacService
         var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(AppConstants.DefaultUserPassword);
+        user.MustChangePassword = true;
+        user.TokenVersion++;
         await _db.SaveChangesAsync();
     }
 
     public async Task ToggleUserStatusAsync(int id, bool? isActive = null)
     {
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        await LockAdminUsersAsync();
         var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
-        user.IsActive = isActive ?? !user.IsActive;
+        var nextIsActive = isActive ?? !user.IsActive;
+        if (user.IsActive && !nextIsActive
+            && await IsActiveAdminAsync(id)
+            && !await HasOtherUsableAdminAsync(id))
+        {
+            throw new BizException(4094, "至少保留一个启用状态的系统管理员");
+        }
+        if (user.IsActive != nextIsActive)
+        {
+            user.IsActive = nextIsActive;
+            user.TokenVersion++;
+        }
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
     }
 
     public async Task<byte[]> BuildUserImportTemplateAsync()
@@ -251,6 +281,7 @@ public class RbacService : IRbacService
                 Email = string.IsNullOrWhiteSpace(row.Email) ? null : row.Email,
                 DepartmentId = string.IsNullOrWhiteSpace(row.DepartmentName) ? null : departmentMap[row.DepartmentName],
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(AppConstants.DefaultUserPassword),
+                MustChangePassword = true,
                 IsActive = true
             };
             _db.Users.Add(user);
@@ -326,6 +357,10 @@ public class RbacService : IRbacService
     {
         var role = await _db.Roles.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4042, "角色不存在");
+        if (role.Code == "admin" && !request.IsActive)
+        {
+            throw new BizException(4094, "系统管理员角色不能停用");
+        }
         var name = request.Name.Trim();
         await EnsureRoleNameAvailable(name, id);
         role.Name = name;
@@ -374,10 +409,8 @@ public class RbacService : IRbacService
 
     public async Task<RoleDto> SetRoleAccessAsync(int id, int[] permissionIds, int[] menuIds)
     {
-        if (!await _db.Roles.AnyAsync(x => x.Id == id))
-        {
-            throw new BizException(4042, "角色不存在");
-        }
+        var role = await _db.Roles.SingleOrDefaultAsync(x => x.Id == id)
+            ?? throw new BizException(4042, "角色不存在");
 
         var distinctPermissionIds = permissionIds.Distinct().ToArray();
         if (await _db.Permissions.CountAsync(x => distinctPermissionIds.Contains(x.Id)) != distinctPermissionIds.Length)
@@ -393,6 +426,16 @@ public class RbacService : IRbacService
         }
 
         var expandedMenuIds = ExpandMenuIdsWithAncestors(requestedMenuIds, allMenus);
+        if (role.Code == "admin")
+        {
+            var allPermissionIds = await _db.Permissions.Select(x => x.Id).ToListAsync();
+            var allMenuIds = allMenus.Select(x => x.Id).ToHashSet();
+            if (!allPermissionIds.ToHashSet().SetEquals(distinctPermissionIds)
+                || !allMenuIds.SetEquals(expandedMenuIds))
+            {
+                throw new BizException(4094, "系统管理员角色必须保留全部权限和菜单");
+            }
+        }
         var selectedPermissionCodes = (await _db.Permissions
             .Where(x => distinctPermissionIds.Contains(x.Id))
             .Select(x => x.Code)
@@ -434,9 +477,17 @@ public class RbacService : IRbacService
     {
         var code = request.Code.Trim();
         await EnsurePermissionCodeAvailable(code);
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         var permission = new Permission { Code = code, Name = request.Name.Trim(), Module = request.Module };
         _db.Permissions.Add(permission);
         await _db.SaveChangesAsync();
+        var adminRoleId = await _db.Roles.Where(x => x.Code == "admin").Select(x => (int?)x.Id).SingleOrDefaultAsync();
+        if (adminRoleId.HasValue)
+        {
+            _db.RolePermissions.Add(new RolePermission { RoleId = adminRoleId.Value, PermissionId = permission.Id });
+            await _db.SaveChangesAsync();
+        }
+        await transaction.CommitAsync();
         return ToPermissionDto(permission);
     }
 
@@ -457,13 +508,13 @@ public class RbacService : IRbacService
     {
         var permission = await _db.Permissions.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4043, "权限不存在");
-        if (await _db.RolePermissions.AnyAsync(x => x.PermissionId == id))
-        {
-            throw new BizException(4094, "权限已被角色使用，不能删除");
-        }
         if (await _db.Menus.AnyAsync(x => x.PermissionCode == permission.Code))
         {
             throw new BizException(4094, "权限已被菜单使用，不能删除");
+        }
+        if (await _db.RolePermissions.AnyAsync(x => x.PermissionId == id))
+        {
+            throw new BizException(4094, "权限已被角色使用，不能删除");
         }
         _db.Permissions.Remove(permission);
         await _db.SaveChangesAsync();
@@ -477,6 +528,8 @@ public class RbacService : IRbacService
 
     public async Task<MenuDto> CreateMenuAsync(MenuDto request)
     {
+        await ValidateMenuParentAsync(null, request.ParentId);
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         var menu = new Menu
         {
             ParentId = request.ParentId,
@@ -491,6 +544,13 @@ public class RbacService : IRbacService
         };
         _db.Menus.Add(menu);
         await _db.SaveChangesAsync();
+        var adminRoleId = await _db.Roles.Where(x => x.Code == "admin").Select(x => (int?)x.Id).SingleOrDefaultAsync();
+        if (adminRoleId.HasValue)
+        {
+            _db.RoleMenus.Add(new RoleMenu { RoleId = adminRoleId.Value, MenuId = menu.Id });
+            await _db.SaveChangesAsync();
+        }
+        await transaction.CommitAsync();
         return ToMenuDto(menu);
     }
 
@@ -498,6 +558,7 @@ public class RbacService : IRbacService
     {
         var menu = await _db.Menus.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4044, "菜单不存在");
+        await ValidateMenuParentAsync(id, request.ParentId);
         menu.ParentId = request.ParentId;
         menu.Name = request.Name.Trim();
         menu.Title = request.Title.Trim();
@@ -557,6 +618,63 @@ public class RbacService : IRbacService
         }
 
         EnsureCanAssignUserRole(canAssignRole);
+
+        var removesLastUsableAdmin = await IsActiveAdminAsync(userId)
+            && !await _db.Roles.AnyAsync(x => requested.Contains(x.Id) && x.Code == "admin" && x.IsActive)
+            && !await HasOtherUsableAdminAsync(userId);
+        if (removesLastUsableAdmin)
+        {
+            throw new BizException(4094, "至少保留一个启用状态的系统管理员");
+        }
+    }
+
+    private async Task<bool> IsActiveAdminAsync(int userId)
+        => await _db.Users.AnyAsync(x => x.Id == userId && x.IsActive
+            && x.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "admin" && ur.Role.IsActive));
+
+    private async Task<bool> HasOtherUsableAdminAsync(int excludedUserId)
+        => await _db.Users.AnyAsync(x => x.Id != excludedUserId && x.IsActive
+            && x.UserRoles.Any(ur => ur.Role != null && ur.Role.Code == "admin" && ur.Role.IsActive));
+
+    private async Task ValidateUserRelationsAsync(int? departmentId, int? supervisorId, int? selfId = null)
+    {
+        if (departmentId.HasValue
+            && !await _db.Departments.AnyAsync(x => x.Id == departmentId.Value && x.IsActive))
+        {
+            throw new BizException(4045, "部门不存在或已停用");
+        }
+        if (!supervisorId.HasValue)
+        {
+            return;
+        }
+        if (supervisorId == selfId)
+        {
+            throw new BizException(4001, "直属上级不能设置为用户本人");
+        }
+        if (!await _db.Users.AnyAsync(x => x.Id == supervisorId.Value
+            && x.IsActive
+            && x.DepartmentId.HasValue
+            && _db.Departments.Any(d => d.Id == x.DepartmentId.Value && d.IsActive)
+            && x.UserRoles.Any(ur => ur.Role.Code == "supervisor" && ur.Role.IsActive)))
+        {
+            throw new BizException(4041, "直属上级必须是有效部门的启用主管");
+        }
+    }
+
+    private async Task LockAdminUsersAsync()
+    {
+        await _db.Users.FromSqlRaw("""
+            SELECT u.*
+            FROM users u
+            WHERE EXISTS (
+                SELECT 1
+                FROM user_roles ur
+                INNER JOIN roles r ON r.Id = ur.RoleId
+                WHERE ur.UserId = u.Id AND r.Code = 'admin'
+            )
+            ORDER BY u.Id
+            FOR UPDATE
+            """).LoadAsync();
     }
 
     private static void EnsureCanAssignUserRole(bool canAssignRole)
@@ -756,13 +874,64 @@ public class RbacService : IRbacService
         foreach (var menuId in expanded.ToArray())
         {
             var cursor = menuMap[menuId];
+            var visited = new HashSet<int> { cursor.Id };
             while (cursor.ParentId.HasValue)
             {
+                if (!visited.Add(cursor.ParentId.Value))
+                {
+                    throw new BizException(4094, "菜单层级存在循环引用，请先修复菜单结构");
+                }
+                if (!menuMap.TryGetValue(cursor.ParentId.Value, out var parent))
+                {
+                    throw new BizException(4094, "菜单层级存在无效父级，请先修复菜单结构");
+                }
                 expanded.Add(cursor.ParentId.Value);
-                cursor = menuMap[cursor.ParentId.Value];
+                cursor = parent;
             }
         }
         return expanded;
+    }
+
+    private async Task ValidateMenuParentAsync(int? menuId, int? parentId)
+    {
+        if (!parentId.HasValue)
+        {
+            return;
+        }
+        if (parentId == menuId)
+        {
+            throw new BizException(4001, "上级菜单不能设置为自身");
+        }
+
+        var menus = await _db.Menus
+            .Select(x => new { x.Id, x.ParentId })
+            .ToListAsync();
+        var menuMap = menus.ToDictionary(x => x.Id);
+        if (!menuMap.TryGetValue(parentId.Value, out var cursor))
+        {
+            throw new BizException(4044, "上级菜单不存在");
+        }
+
+        var visited = new HashSet<int>();
+        while (true)
+        {
+            if (!visited.Add(cursor.Id))
+            {
+                throw new BizException(4094, "菜单层级存在循环引用");
+            }
+            if (cursor.Id == menuId)
+            {
+                throw new BizException(4001, "不能将菜单移动到自己的子菜单下");
+            }
+            if (!cursor.ParentId.HasValue)
+            {
+                break;
+            }
+            if (!menuMap.TryGetValue(cursor.ParentId.Value, out cursor))
+            {
+                throw new BizException(4094, "菜单层级存在无效父级");
+            }
+        }
     }
 
     private async Task<UserDto> LoadUserDto(int id)
@@ -851,16 +1020,25 @@ public class RbacService : IRbacService
         PermissionCode = x.PermissionCode
     };
 
-    private static List<MenuDto> BuildMenuTree(int? parentId, List<Menu> menus)
-        => menus
+    private static List<MenuDto> BuildMenuTree(
+        int? parentId,
+        List<Menu> menus,
+        IReadOnlySet<int>? ancestors = null)
+    {
+        ancestors ??= new HashSet<int>();
+        return menus
             .Where(x => x.ParentId == parentId)
+            .Where(x => !ancestors.Contains(x.Id))
             .OrderBy(x => x.Sort)
             .ThenBy(x => x.Id)
             .Select(x =>
             {
                 var dto = ToMenuDto(x);
-                return dto with { Children = BuildMenuTree(x.Id, menus) };
+                var nextAncestors = ancestors.ToHashSet();
+                nextAncestors.Add(x.Id);
+                return dto with { Children = BuildMenuTree(x.Id, menus, nextAncestors) };
             })
             .ToList();
+    }
 }
 

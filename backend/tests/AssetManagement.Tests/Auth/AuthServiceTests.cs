@@ -244,8 +244,14 @@ public class AuthServiceTests
 
     private sealed class FakeJwtTokenService : IJwtTokenService
     {
-        public string Create(int userId, string employeeNo, IEnumerable<string> permissionCodes, IEnumerable<string> roles, int? departmentId = null)
-            => $"token:{userId}:{employeeNo}:{string.Join(",", permissionCodes)}:{string.Join(",", roles)}:{departmentId}";
+        public string Create(
+            int userId,
+            string employeeNo,
+            IEnumerable<string> permissionCodes,
+            IEnumerable<string> roles,
+            int? departmentId = null,
+            int tokenVersion = 0)
+            => $"token:{userId}:{employeeNo}:{string.Join(",", permissionCodes)}:{string.Join(",", roles)}:{departmentId}:{tokenVersion}";
     }
 
     private sealed class FakeHttpContextAccessor : Microsoft.AspNetCore.Http.IHttpContextAccessor

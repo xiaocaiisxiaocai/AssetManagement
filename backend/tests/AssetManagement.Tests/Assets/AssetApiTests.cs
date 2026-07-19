@@ -71,16 +71,12 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var category = await CreateCategory();
-        var parentManager = await CreateUser();
-        var childManager = await CreateUser();
         var parent = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = parentManager.Id,
             Name = "制造中心"
         });
         var child = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = childManager.Id,
             ParentId = parent.Data!.Id,
             Name = "装配组"
         });
@@ -302,6 +298,68 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         confirmed.Data.FailedCount.Should().Be(1);
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?categoryId={category.Id}&name=万用表");
         list!.Data!.Items.Should().ContainSingle(x => x.Name == "万用表");
+    }
+
+    [Fact]
+    public async Task Import_uses_max_sequence_after_middle_asset_is_purged()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var first = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "编号一",
+            CategoryId = category.Id
+        });
+        var middle = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "编号二",
+            CategoryId = category.Id
+        });
+        var third = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "编号三",
+            CategoryId = category.Id
+        });
+        await _client.DeleteAsync($"/api/assets/{middle.Data!.Id}");
+        await _client.DeleteAsync($"/api/assets/{middle.Data.Id}/purge");
+
+        var bytes = BuildXlsx(new[]
+        {
+            new[] { "名称", "分类编码" },
+            new[] { "编号四", category.Code }
+        });
+        var imported = await PostFile<ApiResult<ImportConfirmResult>>("/api/assets/import/confirm", bytes);
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>(
+            $"/api/assets?categoryId={category.Id}&pageSize=20");
+
+        imported.Code.Should().Be(0, imported.Message);
+        imported.Data!.SuccessCount.Should().Be(1);
+        first.Data!.AssetNo.Should().EndWith("-001");
+        third.Data!.AssetNo.Should().EndWith("-003");
+        list!.Data!.Items.Single(x => x.Name == "编号四").AssetNo.Should().EndWith("-004");
+    }
+
+    [Fact]
+    public async Task Create_asset_rejects_invalid_location_and_custodian_before_saving()
+    {
+        await Login();
+        var category = await CreateCategory();
+
+        var invalidLocation = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "无效库位资产",
+            CategoryId = category.Id,
+            LocationId = int.MaxValue
+        });
+        var invalidCustodian = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "无效保管人资产",
+            CategoryId = category.Id,
+            CustodianId = int.MaxValue
+        });
+
+        invalidLocation.Code.Should().Be(4045);
+        invalidCustodian.Code.Should().Be(4041);
     }
 
     [Fact]

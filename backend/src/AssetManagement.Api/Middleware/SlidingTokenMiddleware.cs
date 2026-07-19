@@ -55,7 +55,17 @@ public class SlidingTokenMiddleware
         var perms = user.FindAll("perm").Select(x => x.Value).ToArray();
         var roles = user.FindAll(ClaimTypes.Role).Select(x => x.Value).ToArray();
         int? departmentId = int.TryParse(user.FindFirst("departmentId")?.Value, out var d) ? d : null;
+        if (!int.TryParse(user.FindFirst("tokenVersion")?.Value, out var tokenVersion))
+        {
+            return;
+        }
 
-        ctx.Response.Headers["accesstoken"] = jwt.Create(userId, employeeNo, perms, roles, departmentId);
+        ctx.Response.Headers["accesstoken"] = jwt.Create(
+            userId,
+            employeeNo,
+            perms,
+            roles,
+            departmentId,
+            tokenVersion);
     }
 }

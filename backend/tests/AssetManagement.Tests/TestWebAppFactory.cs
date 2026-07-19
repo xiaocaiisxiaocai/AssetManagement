@@ -56,6 +56,7 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
                 ["Jwt:Key"] = "asset-management-test-only-secret-key-2026",
                 ["Database:AutoMigrate"] = "true",
                 ["Database:AutoSeed"] = "true",
+                ["ASSET_ADMIN_PASSWORD"] = "123456",
                 // TestServer 的所有请求共享同一回环 IP；登录限流由独立测试显式开启验证。
                 ["Security:LoginRateLimitEnabled"] = "false"
             });
@@ -83,6 +84,7 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
         using var scope = host.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var admin = db.Users.AsTracking().Single(x => x.EmployeeNo == "1001");
+        admin.MustChangePassword = false;
         if (!admin.SupervisorId.HasValue)
         {
             var department = new Department

@@ -16,6 +16,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         b.Property(x => x.Email).HasMaxLength(200);
         b.Property(x => x.Phone).HasMaxLength(50);
         b.Property(x => x.MustChangePassword).IsRequired();
+        b.Property(x => x.TokenVersion).IsRequired();
         b.HasIndex(x => x.EmployeeNo).IsUnique();
     }
 }

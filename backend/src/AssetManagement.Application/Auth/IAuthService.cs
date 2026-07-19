@@ -6,4 +6,5 @@ public interface IAuthService
     Task<UserInfoDto> GetUserInfoAsync(int userId);
     Task<List<RouteDto>> GetRoutesAsync(int userId);
     Task ChangePasswordAsync(int userId, ChangePasswordRequest request);
+    Task LogoutAsync(int userId);
 }

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { NotificationItem } from '@vben/layouts';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
@@ -46,7 +46,16 @@ const notifications = computed<NotificationItem[]>(() =>
 );
 
 function typeIcon(type: string): string {
-  const emoji = type === 'overdue' ? '⚠' : type.startsWith('due_soon') ? '⏰' : type.includes('rejected') ? '✗' : type.includes('approved') ? '✓' : '●';
+  const emoji =
+    type === 'overdue'
+      ? '⚠'
+      : type.startsWith('due_soon')
+        ? '⏰'
+        : type.includes('rejected')
+          ? '✗'
+          : type.includes('approved')
+            ? '✓'
+            : '●';
   return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" rx="20" fill="#e5e7eb"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="18">${emoji}</text></svg>`)}`;
 }
 
@@ -61,6 +70,7 @@ function formatDate(iso: string): string {
 }
 
 async function loadNotifications() {
+  if (mustChangePassword.value) return;
   try {
     rawNotifications.value = await getNotificationsApi();
   } catch {
@@ -71,7 +81,7 @@ async function loadNotifications() {
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(() => {
-  loadNotifications();
+  if (!mustChangePassword.value) loadNotifications();
   pollTimer = setInterval(loadNotifications, 5 * 60 * 1000); // 5 分钟轮询
 });
 
@@ -82,10 +92,27 @@ onUnmounted(() => {
 const userStore = useUserStore();
 const authStore = useAuthStore();
 const accessStore = useAccessStore();
+const mustChangePassword = computed(() =>
+  Boolean(userStore.userInfo?.mustChangePassword),
+);
 const { destroyWatermark, updateWatermark } = useWatermark();
 const showDot = computed(() =>
   rawNotifications.value.some((item) => !item.isRead),
 );
+
+watch(
+  () => Boolean(userStore.userInfo?.mustChangePassword),
+  async (mustChangePassword) => {
+    if (!mustChangePassword) return;
+    await nextTick();
+    passwordRef.value?.showPasswordPopup(true);
+  },
+  { immediate: true, flush: 'post' },
+);
+
+async function handlePasswordChanged() {
+  await authStore.logout(false);
+}
 
 const menus = computed(() => [
   {
@@ -136,11 +163,43 @@ async function handleNoticeRead(item: NotificationItem) {
       // 已读状态失败不阻止用户进入业务页面
     }
   }
-  await router.push(resolveNotificationRoute(item.type || '', item.flowId));
+  const target = resolveNotificationRoute(item.type || '', item.flowId);
+  const isMaterial = (item.type || '').startsWith('material_');
+  if (
+    target.path === '/approval/pending' &&
+    !accessStore.accessCodes.includes('approval:handle')
+  ) {
+    await router.push(
+      isMaterial && accessStore.accessCodes.includes('project:view')
+        ? '/material/projects'
+        : '/home',
+    );
+    return;
+  }
+  if (
+    target.path === '/approval/mine' &&
+    !accessStore.accessCodes.includes('approval:view')
+  ) {
+    await router.push(
+      isMaterial && accessStore.accessCodes.includes('project:view')
+        ? '/material/projects'
+        : '/home',
+    );
+    return;
+  }
+  await router.push(target);
 }
 
 function handleNoticeViewAll() {
-  router.push('/approval/pending');
+  if (accessStore.accessCodes.includes('approval:handle')) {
+    void router.push('/approval/pending');
+  } else if (accessStore.accessCodes.includes('approval:view')) {
+    void router.push('/approval/mine');
+  } else if (accessStore.accessCodes.includes('project:view')) {
+    void router.push('/material/projects');
+  } else {
+    void router.push('/home');
+  }
 }
 watch(
   () => preferences.app.watermark,
@@ -160,7 +219,10 @@ watch(
 </script>
 
 <template>
-  <BasicLayout @clear-preferences-and-logout="handleLogout">
+  <BasicLayout
+    v-if="!mustChangePassword"
+    @clear-preferences-and-logout="handleLogout"
+  >
     <template #user-dropdown>
       <UserDropdown
         :avatar="avatar"
@@ -192,5 +254,5 @@ watch(
       <LockScreen :avatar="avatar" @to-login="handleLogout" />
     </template>
   </BasicLayout>
-  <Password ref="passwordRef" />
+  <Password ref="passwordRef" @changed="handlePasswordChanged" />
 </template>

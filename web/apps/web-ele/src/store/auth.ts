@@ -65,9 +65,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout(redirect: boolean = true) {
-    void logoutApi().catch(() => {
+    try {
+      await logoutApi(accessStore.accessToken || '');
+    } catch {
       // JWT 模式下退出以清理本地状态为准，后端通知失败不阻塞界面跳转。
-    });
+    }
     resetAllStores();
     accessStore.setLoginExpired(false);
 

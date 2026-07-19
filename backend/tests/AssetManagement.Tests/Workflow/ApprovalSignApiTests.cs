@@ -7,16 +7,21 @@ using AssetManagement.Application.Common;
 using AssetManagement.Application.Notifications;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Workflow;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Workflow;
 
 public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
+    private readonly TestWebAppFactory _factory;
 
     public ApprovalSignApiTests(TestWebAppFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -40,7 +45,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         flow.Data!.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_CounterSign");
         flow.Data.BpmnTokens["Task_CounterSign"].SignStates.Should().ContainKeys(userA.Id.ToString(), userB.Id.ToString());
 
-        Auth(await LoginToken(userA.EmployeeNo, "123456"));
+        Auth(await LoginToken(userA.EmployeeNo, "TestPass123"));
         var first = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "甲同意" });
 
@@ -49,7 +54,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         first.Data.BpmnTokens["Task_CounterSign"].SignStates![userA.Id.ToString()].Should().BeTrue();
         first.Data.BpmnTokens["Task_CounterSign"].SignStates![userB.Id.ToString()].Should().BeFalse();
 
-        Auth(await LoginToken(userB.EmployeeNo, "123456"));
+        Auth(await LoginToken(userB.EmployeeNo, "TestPass123"));
         var second = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "乙同意" });
 
@@ -72,10 +77,10 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
             Reason = "验证会签驳回人展示"
         });
 
-        Auth(await LoginToken(userA.EmployeeNo, "123456"));
+        Auth(await LoginToken(userA.EmployeeNo, "TestPass123"));
         await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
             new ApprovalActionRequest { Opinion = "先签人同意" });
-        Auth(await LoginToken(userB.EmployeeNo, "123456"));
+        Auth(await LoginToken(userB.EmployeeNo, "TestPass123"));
         var rejected = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/reject",
             new RejectRequest { Reason = "资料不完整" });
 
@@ -102,11 +107,14 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         });
 
         flow.Code.Should().Be(0, flow.Message);
-        Auth(await LoginToken(userA.EmployeeNo, "123456"));
-        var addSign = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/add-sign",
+        var rowVersionBeforeAddSign = await LoadRowVersion(flow.Data!.Id);
+        Auth(await LoginToken(userA.EmployeeNo, "TestPass123"));
+        var addSign = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/add-sign",
             new AddSignRequest { Who = userB.Id.ToString() });
 
         addSign.Data!.BpmnTokens["Task_Approve"].SignStates.Should().ContainKeys(userA.Id.ToString(), userB.Id.ToString());
+        (await LoadRowVersion(flow.Data.Id)).Should().Be(rowVersionBeforeAddSign + 1u,
+            "加签必须推进乐观并发版本，避免并发请求覆盖 BPMN token");
 
         var first = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "主审同意" });
@@ -114,7 +122,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         first.Data!.Status.Should().Be("pending");
         first.Data.CurrentNodeIds.Should().Contain("Task_Approve");
 
-        Auth(await LoginToken(userB.EmployeeNo, "123456"));
+        Auth(await LoginToken(userB.EmployeeNo, "TestPass123"));
         var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
         notifications!.Data.Should().Contain(x =>
             x.Type == "approval_pending" && x.FlowId == flow.Data.Id && x.Title.Contains("加签"));
@@ -142,7 +150,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
             Reason = "测试取消加签"
         });
 
-        Auth(await LoginToken(userA.EmployeeNo, "123456"));
+        Auth(await LoginToken(userA.EmployeeNo, "TestPass123"));
         var added = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/add-sign",
             new AddSignRequest { Who = userB.Id.ToString() });
         added.Data!.BpmnTokens["Task_Approve"].AddedSigners![userB.Id.ToString()].Should().Be(userA.Id);
@@ -172,17 +180,17 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
             Reason = "管理员不能取消别人发起的加签"
         });
 
-        Auth(await LoginToken(userA.EmployeeNo, "123456"));
+        Auth(await LoginToken(userA.EmployeeNo, "TestPass123"));
         await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/add-sign",
             new AddSignRequest { Who = userB.Id.ToString() });
 
-        Auth(await LoginToken(userB.EmployeeNo, "123456"));
+        Auth(await LoginToken(userB.EmployeeNo, "TestPass123"));
         var denied = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data.Id}/cancel-add-sign",
             new CancelAddSignRequest { Who = userB.Id.ToString() });
         var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         deniedBody!.Code.Should().Be(4031);
 
-        Auth(await LoginToken(userA.EmployeeNo, "123456"));
+        Auth(await LoginToken(userA.EmployeeNo, "TestPass123"));
         var cancelled = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/cancel-add-sign",
             new CancelAddSignRequest { Who = userB.Id.ToString() });
         cancelled.Data!.BpmnTokens["Task_Approve"].SignStates.Should().NotContainKey(userB.Id.ToString());
@@ -203,7 +211,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
             Reason = "普通员工不能被加签"
         });
 
-        Auth(await LoginToken(approver.EmployeeNo, "123456"));
+        Auth(await LoginToken(approver.EmployeeNo, "TestPass123"));
         var options = await _client.GetFromJsonAsync<ApiResult<List<UserOptionDto>>>("/api/users/approver-options");
         options!.Data.Should().Contain(x => x.Id == approver.Id);
         options.Data.Should().NotContain(x => x.Id == employee.Id);
@@ -229,7 +237,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = $"{name}{employeeNo}",
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = department.Data!.Id,
             RoleIds = new[] { supervisorRole.Id }
         });
@@ -246,7 +254,7 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = $"{name}{employeeNo}",
-            Password = "123456",
+            Password = "TestPass123",
             RoleIds = new[] { employeeRole.Id }
         })).Data!;
     }
@@ -288,6 +296,16 @@ public class ApprovalSignApiTests : IClassFixture<TestWebAppFactory>
     {
         var body = await Post<ApiResult<LoginResponse>>("/api/auth/login", new { employeeNo, password });
         return body.Data!.Token;
+    }
+
+    private async Task<uint> LoadRowVersion(int flowId)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.ApprovalFlows
+            .Where(x => x.Id == flowId)
+            .Select(x => x.RowVersion)
+            .SingleAsync();
     }
 
     private async Task<T> Post<T>(string url, object body)

@@ -42,7 +42,7 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = empNo,
             Name = "独立主管",
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = department.Data!.Id,
             RoleIds = new[] { supervisorRole.Id }
         });
@@ -62,7 +62,7 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         flow!.Data.Should().NotBeNull();
 
         // 以非审批人(独立主管)登录,尝试处理该工单
-        Auth(await LoginToken(empNo, "123456"));
+        Auth(await LoginToken(empNo, "TestPass123"));
         var res = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/approve",
             new ApprovalActionRequest { Opinion = "越权同意" });
         var body = await res.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();

@@ -359,7 +359,7 @@ public class TestMaterialService : ITestMaterialService
         var custodian = await _db.Users.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == custodianId.Value && x.IsActive)
             ?? throw new BizException(4041, "保管人不存在或已停用");
-        if (departmentId.HasValue && custodian.DepartmentId != departmentId)
+        if (custodian.DepartmentId != departmentId)
             throw new BizException(4002, "保管人与归属部门不一致");
     }
 
@@ -400,7 +400,7 @@ public class TestMaterialService : ITestMaterialService
 
     private async Task<string> NextMaterialNo()
     {
-        var today = DateTime.UtcNow.Date;
+        var today = BusinessClock.Today;
         var prefix = $"TM-{today:yyyyMMdd}-";
         var existing = await _db.TestMaterials
             .Where(x => x.MaterialNo.StartsWith(prefix))

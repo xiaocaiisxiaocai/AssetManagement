@@ -236,11 +236,11 @@ using (var scope = app.Services.CreateScope())
         // 种子会同步角色权限、菜单等基础数据；需要初始化/修复时显式开启 Database:AutoSeed。
         if (!builder.Environment.IsDevelopment()
             && !db.Users.Any()
-            && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASSET_ADMIN_PASSWORD")))
+            && string.IsNullOrWhiteSpace(builder.Configuration["ASSET_ADMIN_PASSWORD"]))
         {
             throw new InvalidOperationException("生产环境初始化空库时必须通过 ASSET_ADMIN_PASSWORD 配置初始管理员密码");
         }
-        DbSeeder.Seed(db);
+        DbSeeder.Seed(db, builder.Configuration["ASSET_ADMIN_PASSWORD"]);
     }
     if (!builder.Environment.IsDevelopment())
     {

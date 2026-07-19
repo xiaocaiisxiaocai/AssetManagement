@@ -50,7 +50,7 @@ public class AuditMaintenanceService : IAuditMaintenanceService
             TargetType = "AuditLog",
             Summary = $"清理审计日志：保留 {retentionDays} 天，删除 {deletedCount} 条",
             Detail = $"{{\"retentionDays\":{retentionDays},\"cutoffTime\":\"{cutoff:O}\",\"deletedCount\":{deletedCount}}}",
-            OccurredAt = DateTime.Now
+            OccurredAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
 
@@ -63,7 +63,7 @@ public class AuditMaintenanceService : IAuditMaintenanceService
     }
 
     private static DateTime CutoffTime(int retentionDays)
-        => DateTime.Now.Date.AddDays(-retentionDays);
+        => BusinessClock.Today.AddDays(-retentionDays);
 
     private static void ValidateRetentionDays(int retentionDays)
     {

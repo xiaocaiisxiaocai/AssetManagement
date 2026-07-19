@@ -5,7 +5,6 @@ using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Http;
-using System.Text.RegularExpressions;
 
 namespace AssetManagement.Infrastructure.Auth;
 
@@ -104,7 +103,14 @@ public class AuthService : IAuthService
 
         return new LoginResponse
         {
-            Token = _jwt.Create(user.Id, user.EmployeeNo, permissionCodes, roleCodes, user.DepartmentId)
+            Token = _jwt.Create(
+                user.Id,
+                user.EmployeeNo,
+                permissionCodes,
+                roleCodes,
+                user.DepartmentId,
+                user.TokenVersion),
+            MustChangePassword = user.MustChangePassword
         };
     }
 
@@ -157,7 +163,8 @@ public class AuthService : IAuthService
                 .Select(x => x.Permission.Code)
                 .Distinct()
                 .OrderBy(x => x)
-                .ToArray()
+                .ToArray(),
+            MustChangePassword = user.MustChangePassword
         };
     }
 
@@ -213,19 +220,23 @@ public class AuthService : IAuthService
         {
             throw new BizException(1003, "新密码不能使用系统默认密码");
         }
-        if (request.NewPassword.Length < 8
-            || request.NewPassword.Length > 128
-            || !Regex.IsMatch(request.NewPassword, "[A-Za-z]")
-            || !Regex.IsMatch(request.NewPassword, "[0-9]"))
-        {
-            throw new BizException(1004, "新密码须为 8-128 位，并同时包含字母和数字");
-        }
+        PasswordPolicy.EnsureStrong(request.NewPassword);
         if (BCrypt.Net.BCrypt.Verify(request.NewPassword, user.PasswordHash))
         {
             throw new BizException(1005, "新密码不能与旧密码相同");
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        user.MustChangePassword = false;
+        user.TokenVersion++;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task LogoutAsync(int userId)
+    {
+        var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == userId && x.IsActive)
+            ?? throw new BizException(4041, "用户不存在或已停用");
+        user.TokenVersion++;
         await _db.SaveChangesAsync();
     }
 

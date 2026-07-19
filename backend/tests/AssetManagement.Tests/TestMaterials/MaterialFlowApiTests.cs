@@ -153,7 +153,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
                 department.Data.Id,
                 supervisor.Id);
 
-            Auth(await LoginToken(supervisor.EmployeeNo, "123456"));
+            Auth(await LoginToken(supervisor.EmployeeNo, "TestPass123"));
             var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
             {
                 MaterialId = material.Id,
@@ -175,7 +175,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             var approvedBody = await approved.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
             approvedBody!.Code.Should().Be(4016);
 
-            Auth(await LoginToken(supervisor.EmployeeNo, "123456"));
+            Auth(await LoginToken(supervisor.EmployeeNo, "TestPass123"));
             var supervisorPending = await _client.GetFromJsonAsync<ApiResult<List<MaterialFlowDto>>>(
                 "/api/material-flows/pending");
             supervisorPending!.Data.Should().Contain(x => x.Id == flow.Data.Id);
@@ -294,7 +294,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var project = await CreateProject("负责人流转项目", owner.Id);
         var material = await CreateMaterial(project.Id, "负责人审批样品");
 
-        Auth(await LoginToken(owner.EmployeeNo, "123456"));
+        Auth(await LoginToken(owner.EmployeeNo, "TestPass123"));
         var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
         {
             MaterialId = material.Id,
@@ -329,7 +329,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var project = await CreateProject("无关流转项目");
         var material = await CreateMaterial(project.Id, "非本人料件");
 
-        Auth(await LoginToken(employee.EmployeeNo, "123456"));
+        Auth(await LoginToken(employee.EmployeeNo, "TestPass123"));
         var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
         {
             MaterialId = material.Id,
@@ -374,7 +374,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var project = await CreateProject("负责人通知项目", owner.Id);
         var material = await CreateMaterial(project.Id, "负责人通知样品");
 
-        Auth(await LoginToken(owner.EmployeeNo, "123456"));
+        Auth(await LoginToken(owner.EmployeeNo, "TestPass123"));
         var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
         {
             MaterialId = material.Id,
@@ -536,7 +536,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = name,
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = departmentId,
             RoleIds = new[] { (await Role(roleCode)).Id }
         })).Data!;

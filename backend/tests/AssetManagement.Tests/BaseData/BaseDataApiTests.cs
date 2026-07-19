@@ -80,6 +80,33 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Department_cannot_be_moved_under_its_descendant()
+    {
+        await Login();
+        var parent = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("循环父部门")
+        });
+        var child = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ParentId = parent.Data!.Id,
+            Name = Unique("循环子部门")
+        });
+
+        var result = await Put<ApiResult<DepartmentNodeDto>>(
+            $"/api/departments/{parent.Data.Id}",
+            new UpdateDepartmentRequest
+            {
+                ParentId = child.Data!.Id,
+                Name = parent.Data.Name,
+                IsActive = true
+            });
+
+        result.Code.Should().Be(4001);
+        result.Message.Should().Contain("子部门");
+    }
+
+    [Fact]
     public async Task Department_tree_does_not_return_code()
     {
         await Login();
@@ -114,12 +141,13 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = "员工选项测试",
+            Password = "TestPass123",
             RoleIds = new[] { employeeRole.Id }
         });
         var employeeLogin = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
             employeeNo,
-            password = "123456"
+            password = "TestPass123"
         });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", employeeLogin.Data!.Token);
 
@@ -849,11 +877,17 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
 
     private async Task<UserDto> CreateUser()
     {
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100");
+        var supervisorRole = roles!.Data!.Items.Single(x => x.Code == "supervisor");
+        var seededSupervisor = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            "/api/users?keyword=TEST-SUPERVISOR");
         var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = Unique("u"),
             Name = "部门负责人",
-            RoleIds = new[] { await CreateRoleId() }
+            DepartmentId = seededSupervisor!.Data!.Items.Single().DepartmentId,
+            Password = "TestPass123",
+            RoleIds = new[] { supervisorRole.Id }
         });
         return user.Data!;
     }

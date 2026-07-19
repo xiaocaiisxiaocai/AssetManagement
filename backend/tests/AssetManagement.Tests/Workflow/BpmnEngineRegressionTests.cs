@@ -163,7 +163,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         var workflow = await CreateWorkflow("role_branch", ApplicantRoleWorkflowBpmn("supervisor", "deptManager", "supervisor"));
         var asset = await CreateAsset(dept.Data.Id);
 
-        Auth(await LoginToken(applicant.Data!.EmployeeNo, "123456"));
+        Auth(await LoginToken(applicant.Data!.EmployeeNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = workflow.Data!.BizType,
@@ -173,7 +173,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
 
         flow.Data!.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_SupervisorRole");
 
-        Auth(await LoginToken(deptAdmin.Data!.EmployeeNo, "123456"));
+        Auth(await LoginToken(deptAdmin.Data!.EmployeeNo, "TestPass123"));
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "同意" });
 
@@ -193,7 +193,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         var workflow = await CreateWorkflow("admin_branch", ApplicantRoleToRoleWorkflowBpmn("admin", "supervisor", "supervisor"));
         var asset = await CreateAsset(dept.Data.Id);
 
-        Auth(await LoginToken(applicant.Data!.EmployeeNo, "123456"));
+        Auth(await LoginToken(applicant.Data!.EmployeeNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = workflow.Data!.BizType,
@@ -203,7 +203,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
 
         flow.Data!.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_SupervisorRole");
 
-        Auth(await LoginToken(warehouse.Data!.EmployeeNo, "123456"));
+        Auth(await LoginToken(warehouse.Data!.EmployeeNo, "TestPass123"));
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "同意" });
 
@@ -241,7 +241,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         var workflow = await CreateWorkflow("supervisor", SupervisorBpmn());
         var asset = await CreateAsset(dept.Data.Id);
 
-        Auth(await LoginToken(applicant.Data!.EmployeeNo, "123456"));
+        Auth(await LoginToken(applicant.Data!.EmployeeNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = workflow.Data!.BizType,
@@ -249,13 +249,13 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
             Reason = "测试直属主管解析"
         });
 
-        Auth(await LoginToken(otherSupervisor.Data!.EmployeeNo, "123456"));
+        Auth(await LoginToken(otherSupervisor.Data!.EmployeeNo, "TestPass123"));
         var denied = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/approve",
             new ApprovalActionRequest { Opinion = "不应通过" });
         var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         deniedBody!.Code.Should().NotBe(0);
 
-        Auth(await LoginToken(supervisor.Data.EmployeeNo, "123456"));
+        Auth(await LoginToken(supervisor.Data.EmployeeNo, "TestPass123"));
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "同意" });
         approved.Data!.Status.Should().Be("approved");
@@ -310,7 +310,7 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = $"{name}{employeeNo}",
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = departmentId,
             SupervisorId = supervisorId,
             RoleIds = new[] { roleId }

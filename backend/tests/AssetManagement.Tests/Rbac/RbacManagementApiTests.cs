@@ -173,7 +173,6 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         });
         var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = manager.Data!.Id,
             Name = Unique("用户部门")
         });
 
@@ -308,6 +307,37 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
         login.Code.Should().Be(0);
         login.Data!.Token.Should().NotBeNullOrWhiteSpace();
+        login.Data.MustChangePassword.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Create_user_rejects_weak_custom_password_and_flags_explicit_default_password()
+    {
+        await Login();
+        var roleId = await CreateRoleId();
+        var weak = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("weak"),
+            Name = "弱密码用户",
+            Password = "1",
+            RoleIds = new[] { roleId }
+        });
+        weak.Code.Should().Be(1004);
+
+        var employeeNo = Unique("default");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "显式默认密码用户",
+            Password = "123456",
+            RoleIds = new[] { roleId }
+        });
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "123456"
+        });
+        login.Data!.MustChangePassword.Should().BeTrue();
     }
 
     [Fact]
@@ -389,14 +419,15 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         });
         var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
-            ManagerId = await CreateDepartmentManagerId(role.Data!.Id),
             Name = Unique("导入部门")
         });
         var employeeNo = Unique("u");
+        var roleData = role.Data!;
+        var departmentData = department.Data!;
         var file = BuildXlsx(new[]
         {
             new[] { "工号", "姓名", "邮箱", "部门名称", "角色名称" },
-            new[] { employeeNo, "部门导入用户", $"{employeeNo}@example.local", department.Data!.Name, role.Data.Name }
+            new[] { employeeNo, "部门导入用户", $"{employeeNo}@example.local", departmentData.Name, roleData.Name }
         });
 
         var imported = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import", file);
@@ -404,11 +435,11 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             $"/api/users?keyword={employeeNo}");
 
         imported.Code.Should().Be(0);
-        imported.Data!.Rows.Single().DepartmentName.Should().Be(department.Data.Name);
+        imported.Data!.Rows.Single().DepartmentName.Should().Be(departmentData.Name);
         list!.Data!.Items.Should().ContainSingle(x =>
             x.EmployeeNo == employeeNo &&
-            x.DepartmentId == department.Data.Id &&
-            x.DepartmentName == department.Data.Name);
+            x.DepartmentId == departmentData.Id &&
+            x.DepartmentName == departmentData.Name);
     }
 
     [Fact]
@@ -1050,7 +1081,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = "重置密码用户",
-            Password = "old-password",
+            Password = "OldPassword123",
             RoleIds = new[] { roleId }
         });
 
@@ -1283,6 +1314,83 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Last_admin_and_builtin_admin_role_cannot_be_disabled_or_stripped()
+    {
+        await Login();
+        var admin = (await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>("/api/users?keyword=1001"))!
+            .Data!.Items.Single(x => x.EmployeeNo == "1001");
+        var adminRole = (await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100"))!
+            .Data!.Items.Single(x => x.Code == "admin");
+
+        var disabledUser = await Post<ApiResult<object?>>($"/api/users/{admin.Id}/toggle-status", new
+        {
+            isActive = false
+        });
+        var disabledRole = await Put<ApiResult<RoleDto>>($"/api/roles/{adminRole.Id}", adminRole with
+        {
+            IsActive = false
+        });
+        var strippedRole = await Put<ApiResult<RoleDto>>($"/api/roles/{adminRole.Id}/access", new
+        {
+            permissionIds = Array.Empty<int>(),
+            menuIds = Array.Empty<int>()
+        });
+
+        disabledUser.Code.Should().Be(4094);
+        disabledRole.Code.Should().Be(4094);
+        strippedRole.Code.Should().Be(4094);
+    }
+
+    [Fact]
+    public async Task User_paging_is_clamped_to_safe_bounds()
+    {
+        await Login();
+
+        var result = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            "/api/users?page=-5&pageSize=99999");
+
+        result!.Data!.Page.Should().Be(1);
+        result.Data.PageSize.Should().Be(AppConstants.MaxPageSize);
+        result.Data.Items.Count.Should().BeLessThanOrEqualTo(AppConstants.MaxPageSize);
+    }
+
+    [Fact]
+    public async Task Menu_cannot_be_moved_under_its_descendant()
+    {
+        await Login();
+        var parent = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = Unique("CycleParent"),
+            Title = "循环父菜单",
+            Path = "/cycle-parent",
+            Component = "/test/parent",
+            Type = "menu"
+        });
+        var child = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            ParentId = parent.Data!.Id,
+            Name = Unique("CycleChild"),
+            Title = "循环子菜单",
+            Path = "/cycle-child",
+            Component = "/test/child",
+            Type = "menu"
+        });
+
+        var result = await Put<ApiResult<MenuDto>>($"/api/menus/{parent.Data.Id}", new MenuDto
+        {
+            ParentId = child.Data!.Id,
+            Name = parent.Data.Name,
+            Title = parent.Data.Title,
+            Path = parent.Data.Path,
+            Component = parent.Data.Component,
+            Type = parent.Data.Type
+        });
+
+        result.Code.Should().Be(4001);
+        result.Message.Should().Contain("子菜单");
+    }
+
+    [Fact]
     public async Task User_cannot_change_own_role_even_with_user_edit_permission()
     {
         await Login();
@@ -1304,7 +1412,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = "自改角色用户",
-            Password = "123456",
+            Password = "TestPass123",
             RoleIds = new[] { editorRole.Data.Id }
         });
         var adminRole = (await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100"))!
@@ -1315,7 +1423,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
             employeeNo,
-            password = "123456"
+            password = "TestPass123"
         });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
         var updated = await Put<ApiResult<UserDto>>($"/api/users/{user.Data!.Id}", new UpdateUserRequest
@@ -1360,7 +1468,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = editorEmployeeNo,
             Name = "用户编辑员",
-            Password = "123456",
+            Password = "TestPass123",
             RoleIds = new[] { editorRole.Data.Id }
         });
         var target = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -1377,7 +1485,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
             employeeNo = editorEmployeeNo,
-            password = "123456"
+            password = "TestPass123"
         });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
         var updated = await Put<ApiResult<UserDto>>($"/api/users/{target.Data!.Id}", new UpdateUserRequest
@@ -1423,7 +1531,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = editorEmployeeNo,
             Name = "资料编辑员",
-            Password = "123456",
+            Password = "TestPass123",
             RoleIds = new[] { editorRole.Data.Id }
         });
         var target = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -1436,7 +1544,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
             employeeNo = editorEmployeeNo,
-            password = "123456"
+            password = "TestPass123"
         });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
         var updated = await Put<ApiResult<UserDto>>($"/api/users/{target.Data!.Id}", new UpdateUserRequest

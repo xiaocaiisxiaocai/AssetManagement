@@ -195,12 +195,12 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = Unique("无主管员工"),
-            Password = "123456",
+            Password = "TestPass123",
             RoleIds = new[] { employeeRole.Id }
         });
         var asset = await CreateAsset(null, applicant.Data!.Id);
 
-        Auth(await LoginToken(employeeNo, "123456"));
+        Auth(await LoginToken(employeeNo, "TestPass123"));
         var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
@@ -337,7 +337,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = supervisorNo,
             Name = Unique("主管"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = sourceDept.Data!.Id,
             RoleIds = new[] { supervisorRole.Id }
         });
@@ -352,7 +352,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = receiverAdminNo,
             Name = Unique("接收管理员"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = targetDept.Data!.Id,
             RoleIds = new[] { deptAdminRole.Id }
         });
@@ -368,7 +368,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = applicantNo,
             Name = Unique("申请人"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = sourceDept.Data.Id,
             SupervisorId = supervisor.Data!.Id,
             RoleIds = new[] { employeeRole.Id }
@@ -378,7 +378,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = receiverNo,
             Name = Unique("接收人"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = targetDept.Data.Id,
             SupervisorId = receiverAdmin.Data.Id,
             RoleIds = new[] { employeeRole.Id }
@@ -394,7 +394,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             await db.SaveChangesAsync();
         }
 
-        Auth(await LoginToken(applicantNo, "123456"));
+        Auth(await LoginToken(applicantNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = "transfer",
@@ -404,12 +404,12 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         });
         flow.Code.Should().Be(0, flow.Message);
 
-        Auth(await LoginToken(supervisorNo, "123456"));
+        Auth(await LoginToken(supervisorNo, "TestPass123"));
         var step1 = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
             new ApprovalActionRequest { NodeId = "Task_supervisorRole", Opinion = "同意" });
         step1.Data!.CurrentNodeIds.Should().Contain("Task_receiver");
 
-        Auth(await LoginToken(receiverAdminNo, "123456"));
+        Auth(await LoginToken(receiverAdminNo, "TestPass123"));
         var pending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
         pending!.Data.Should().Contain(x => x.Id == flow.Data.Id,
             "转让第二节点的 deptManager 应按接收人部门解析，而不是申请人部门");
@@ -426,7 +426,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             "借出资产转让后仍应保持借出状态");
         transferredAsset.Data.CustodianId.Should().Be(receiver.Data.Id);
 
-        Auth(await LoginToken(receiverNo, "123456"));
+        Auth(await LoginToken(receiverNo, "TestPass123"));
         var receiverNotifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
         receiverNotifications!.Data.Should().Contain(x =>
             x.Type == "transfer_received"
@@ -446,14 +446,14 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = Unique("CST"),
             Name = Unique("保管人"),
-            Password = "123456",
+            Password = "TestPass123",
             RoleIds = new[] { employeeRole.Id }
         });
         var receiver = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = Unique("RCV"),
             Name = Unique("接收人"),
-            Password = "123456",
+            Password = "TestPass123",
             RoleIds = new[] { employeeRole.Id }
         });
         var asset = await CreateAsset(null, custodian.Data!.Id);
@@ -493,11 +493,11 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = otherEmployeeNo,
             Name = Unique("其他员工"),
-            Password = "123456",
+            Password = "TestPass123",
             RoleIds = new[] { employeeRole.Id }
         });
 
-        Auth(await LoginToken(otherEmployeeNo, "123456"));
+        Auth(await LoginToken(otherEmployeeNo, "TestPass123"));
         var forbiddenResponse = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/withdraw", new { });
         forbiddenResponse.EnsureSuccessStatusCode();
         var forbidden = await forbiddenResponse.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
@@ -538,7 +538,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = managerNo,
             Name = Unique("课级主管"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = dept.Data!.Id,
             RoleIds = new[] { supervisorRole.Id }
         });
@@ -554,13 +554,13 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = applicantNo,
             Name = Unique("申请人"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = dept.Data.Id,
             RoleIds = new[] { employeeRole.Id }
         });
 
         var asset = await CreateAsset(dept.Data.Id, applicant.Data!.Id);
-        Auth(await LoginToken(applicantNo, "123456"));
+        Auth(await LoginToken(applicantNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
@@ -569,7 +569,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
-        Auth(await LoginToken(managerNo, "123456"));
+        Auth(await LoginToken(managerNo, "TestPass123"));
         var pending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
         pending!.Data.Should().Contain(x => x.Id == flow.Data!.Id,
             "直属主管节点应优先按申请人所属组织节点负责人解析");
@@ -594,7 +594,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = managerNo,
             Name = Unique("归还负责人"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = dept.Data!.Id,
             RoleIds = new[] { supervisorRole.Id }
         });
@@ -609,13 +609,13 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = applicantNo,
             Name = Unique("归还申请人"),
-            Password = "123456",
+            Password = "TestPass123",
             DepartmentId = dept.Data.Id,
             RoleIds = new[] { employeeRole.Id }
         });
         var asset = await CreateAsset(dept.Data.Id, null);
 
-        Auth(await LoginToken(applicantNo, "123456"));
+        Auth(await LoginToken(applicantNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
@@ -623,7 +623,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             Reason = "归还权限测试",
             ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
-        Auth(await LoginToken(managerNo, "123456"));
+        Auth(await LoginToken(managerNo, "TestPass123"));
         var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
             new ApprovalActionRequest { Opinion = "同意" });
         approved.Data!.Status.Should().Be("approved");
@@ -637,7 +637,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         denied.Code.Should().Be(4030);
         denied.Message.Should().Contain("资产所属组织负责人");
 
-        Auth(await LoginToken(managerNo, "123456"));
+        Auth(await LoginToken(managerNo, "TestPass123"));
         var managerPending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>(
             "/api/approvals/pending-return");
         managerPending!.Data.Should().Contain(x => x.Id == flow.Data.Id);

@@ -10,8 +10,9 @@ namespace AssetManagement.Infrastructure.Persistence.Seed;
 public static class DbSeeder
 {
     private const string CoreRoleDefaultsInitializedKey = "rbac_core_role_defaults_initialized_v1";
+    private const string DefaultPasswordBackfillKey = "security_default_password_backfill_v1";
 
-    public static void Seed(AppDbContext db)
+    public static void Seed(AppDbContext db, string? configuredAdminPassword = null)
     {
         var originalTrackingBehavior = db.ChangeTracker.QueryTrackingBehavior;
         // 启动时的 DbContext 全局 NoTracking，种子需要更新已有行，必须显式开启跟踪。
@@ -22,6 +23,7 @@ public static class DbSeeder
             EnsureOrganizationLevels(db);
             if (db.Users.Any())
             {
+                EnsureDefaultPasswordUsersRequireChange(db);
                 SeedIncremental(db);
                 SeedTestMaterialModule(db);
                 MarkCoreRoleDefaultsInitialized(db);
@@ -117,7 +119,9 @@ public static class DbSeeder
         }
 
         // 初始管理员密码:优先取环境变量 ASSET_ADMIN_PASSWORD(生产部署应设置强密码),未设置时回退默认(仅供本地开发)
-        var adminPassword = Environment.GetEnvironmentVariable("ASSET_ADMIN_PASSWORD");
+        var adminPassword = configuredAdminPassword;
+        var usesDefaultAdminPassword = string.IsNullOrWhiteSpace(adminPassword)
+            || adminPassword == AppConstants.DefaultUserPassword;
         if (string.IsNullOrWhiteSpace(adminPassword))
         {
             adminPassword = "123456";
@@ -127,6 +131,7 @@ public static class DbSeeder
             EmployeeNo = "1001",
             Name = "系统管理员",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
+            MustChangePassword = usesDefaultAdminPassword,
             IsActive = true
         };
         db.Users.Add(admin);
@@ -154,7 +159,8 @@ public static class DbSeeder
             new SystemSetting { Key = "category_code_level2_length", Value = "2-6", Description = "资产分类二级编码段位数" },
             new SystemSetting { Key = "category_code_level2_regex", Value = "^[A-Za-z0-9]+$", Description = "资产分类二级编码段正则" },
             new SystemSetting { Key = "category_code_level3_length", Value = "2-6", Description = "资产分类三级编码段位数" },
-            new SystemSetting { Key = "category_code_level3_regex", Value = "^[A-Za-z0-9]+$", Description = "资产分类三级编码段正则" }
+            new SystemSetting { Key = "category_code_level3_regex", Value = "^[A-Za-z0-9]+$", Description = "资产分类三级编码段正则" },
+            new SystemSetting { Key = DefaultPasswordBackfillKey, Value = "true", Description = "默认密码账号强制改密治理已完成" }
         );
         db.Workflows.AddRange(DefaultWorkflows());
         db.SaveChanges();
@@ -435,6 +441,32 @@ public static class DbSeeder
         }
 
         SyncMenuPermissionCodes(db);
+        db.SaveChanges();
+    }
+
+    private static void EnsureDefaultPasswordUsersRequireChange(AppDbContext db)
+    {
+        if (db.SystemSettings.Any(x => x.Key == DefaultPasswordBackfillKey))
+        {
+            return;
+        }
+
+        foreach (var user in db.Users.AsTracking().Where(x => !x.MustChangePassword).ToList())
+        {
+            if (!BCrypt.Net.BCrypt.Verify(AppConstants.DefaultUserPassword, user.PasswordHash))
+            {
+                continue;
+            }
+            user.MustChangePassword = true;
+            user.TokenVersion++;
+        }
+
+        db.SystemSettings.Add(new SystemSetting
+        {
+            Key = DefaultPasswordBackfillKey,
+            Value = "true",
+            Description = "默认密码账号强制改密治理已完成"
+        });
         db.SaveChanges();
     }
 

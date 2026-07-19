@@ -178,7 +178,7 @@ public class WorkflowService : IWorkflowService
 
         var flow = new ApprovalFlow
         {
-            FlowNo = $"APV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
+            FlowNo = $"APV-{BusinessClock.Today:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
             BizType = workflow.BizType,
             WorkflowId = workflow.Id,
             AssetId = asset.Id,
@@ -497,7 +497,7 @@ public class WorkflowService : IWorkflowService
         if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture,
                 DateTimeStyles.None, out var returnDate))
             throw new BizException(4001, "归还日期格式必须为 yyyy-MM-dd");
-        if (returnDate <= DateOnly.FromDateTime(DateTime.Now))
+        if (returnDate <= BusinessClock.TodayDateOnly)
             throw new BizException(4001, "归还日期必须晚于今天");
         return returnDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
@@ -576,8 +576,18 @@ public class WorkflowService : IWorkflowService
         token.AddedSigners[signUser.Id.ToString()] = user.Id;
         var addSignNotificationVersion = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync();
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
+        }
         await AddRecord(id, "add_sign", user.Name, $"节点 {nodeId}: 加签 {signUser.Name}");
+        await tx.CommitAsync();
         try
         {
             await _notifications.CreateAsync(new CreateNotificationRequest
@@ -632,8 +642,18 @@ public class WorkflowService : IWorkflowService
         var signUser = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == signUserId);
         token.SignStates.Remove(signKey);
         token.AddedSigners.Remove(signKey);
-        await _db.SaveChangesAsync();
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
+        }
         await AddRecord(id, "cancel_add_sign", user.Name, $"节点 {nodeId}: 取消加签 {signUser?.Name ?? signKey}");
+        await tx.CommitAsync();
         return await ToFlowDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
@@ -888,6 +908,7 @@ public class WorkflowService : IWorkflowService
                 }
 
                 var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetDeptId.Value);
+                if (user.Id == flow.ApplicantId) return false;
                 var isSameDeptAdmin = user.DepartmentId == targetDeptId &&
                                       user.UserRoles.Any(ur => ur.Role is { Code: "supervisor", IsActive: true });
                 var isDepartmentManager = department?.ManagerId == user.Id;
@@ -1066,12 +1087,12 @@ public class WorkflowService : IWorkflowService
                 if (targetDeptId is not null)
                 {
                     var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetDeptId.Value);
-                    if (dept?.ManagerId is int managerId &&
+                    if (dept?.ManagerId is int managerId && managerId != flow.ApplicantId &&
                         await _db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
                         result.Add(managerId);
                     var deptAdmins = await _db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.IsActive && u.DepartmentId == targetDeptId &&
+                        .Where(u => u.Id != flow.ApplicantId && u.IsActive && u.DepartmentId == targetDeptId &&
                                     u.UserRoles.Any(ur => ur.Role != null && ur.Role.IsActive && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id)
                         .ToListAsync();
@@ -1117,13 +1138,15 @@ public class WorkflowService : IWorkflowService
     private async Task<int[]> DescendantDepartmentIdsAsync(int rootId)
     {
         var all = await _db.Departments.AsNoTracking().Select(x => new { x.Id, x.ParentId }).ToListAsync();
-        var ids = new List<int> { rootId };
+        var ids = new HashSet<int> { rootId };
         void Walk(int parentId)
         {
             foreach (var child in all.Where(x => x.ParentId == parentId))
             {
-                ids.Add(child.Id);
-                Walk(child.Id);
+                if (ids.Add(child.Id))
+                {
+                    Walk(child.Id);
+                }
             }
         }
         Walk(rootId);
@@ -1158,7 +1181,7 @@ public class WorkflowService : IWorkflowService
         if (applicant?.DepartmentId is not null)
         {
             var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-            if (department?.ManagerId is int managerId &&
+            if (department?.ManagerId is int managerId && managerId != flow.ApplicantId &&
                 await _db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
             {
                 result.Add(managerId);
@@ -1166,12 +1189,13 @@ public class WorkflowService : IWorkflowService
         }
 
         // 兼容旧数据：组织节点未配置负责人时，仍可使用历史维护的直属上级。
-        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId &&
+        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId && supervisorId != flow.ApplicantId &&
             await _db.Users.AsNoTracking().AnyAsync(x => x.Id == supervisorId && x.IsActive))
         {
             result.Add(supervisorId);
         }
 
+        result.RemoveAll(id => id == flow.ApplicantId);
         return result;
     }
 

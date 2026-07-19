@@ -158,7 +158,7 @@ public static partial class OrganizationApprovalResolver
         var target = await ResolveTargetAsync(db, applicantId, levelCode, cancellationToken);
         if (!target.ManagerId.HasValue) return [];
         return await db.Users.AsNoTracking()
-            .Where(x => x.Id == target.ManagerId.Value && x.IsActive)
+            .Where(x => x.Id == target.ManagerId.Value && x.Id != applicantId && x.IsActive)
             .Select(x => x.Id)
             .ToListAsync(cancellationToken);
     }

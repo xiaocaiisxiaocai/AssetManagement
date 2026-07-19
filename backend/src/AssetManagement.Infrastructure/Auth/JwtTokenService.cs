@@ -16,7 +16,13 @@ public class JwtTokenService : IJwtTokenService
         _configuration = configuration;
     }
 
-    public string Create(int userId, string employeeNo, IEnumerable<string> permissionCodes, IEnumerable<string> roles, int? departmentId = null)
+    public string Create(
+        int userId,
+        string employeeNo,
+        IEnumerable<string> permissionCodes,
+        IEnumerable<string> roles,
+        int? departmentId = null,
+        int tokenVersion = 0)
     {
         var key = _configuration["Jwt:Key"]
             ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
@@ -29,7 +35,8 @@ public class JwtTokenService : IJwtTokenService
         {
             new(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new(ClaimTypes.NameIdentifier, userId.ToString()),
-            new("employeeNo", employeeNo)
+            new("employeeNo", employeeNo),
+            new("tokenVersion", tokenVersion.ToString())
         };
         claims.AddRange(permissionCodes.Select(x => new Claim("perm", x)));
         claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x)));

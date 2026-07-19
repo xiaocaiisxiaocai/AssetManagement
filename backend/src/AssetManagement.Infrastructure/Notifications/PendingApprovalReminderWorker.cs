@@ -1,3 +1,4 @@
+using AssetManagement.Application.Common;
 using AssetManagement.Application.Notifications;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
@@ -46,7 +47,7 @@ public class PendingApprovalReminderWorker : BackgroundService
 
     private async Task WaitUntilNineAm(CancellationToken ct)
     {
-        var now = DateTime.Now;
+        var now = BusinessClock.Now;
         var nextRun = now.Date.AddHours(9);
         if (nextRun <= now) nextRun = nextRun.AddDays(1);
         var delay = nextRun - now;
@@ -60,7 +61,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         var notificationSvc = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
         var threshold = DateTime.UtcNow.AddDays(-1);
-        var todayStr = DateTime.Now.Date.ToString("yyyyMMdd");
+        var todayStr = BusinessClock.Today.ToString("yyyyMMdd");
 
         var requests = new List<CreateNotificationRequest>();
 
@@ -234,12 +235,12 @@ public class PendingApprovalReminderWorker : BackgroundService
                 if (applicant?.DepartmentId is not null)
                 {
                     var dept = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-                    if (dept?.ManagerId is int managerId &&
+                    if (dept?.ManagerId is int managerId && managerId != applicantId &&
                         await db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
                         result.Add(managerId);
                     var deptAdmins = await db.Users
                         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.IsActive && u.DepartmentId == applicant.DepartmentId &&
+                        .Where(u => u.Id != applicantId && u.IsActive && u.DepartmentId == applicant.DepartmentId &&
                                     u.UserRoles.Any(ur => ur.Role != null && ur.Role.IsActive && ur.Role.Code == "supervisor"))
                         .Select(u => u.Id).ToListAsync();
                     foreach (var uid in deptAdmins)
@@ -323,7 +324,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         if (applicant?.DepartmentId is not null)
         {
             var department = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-            if (department?.ManagerId is int managerId &&
+            if (department?.ManagerId is int managerId && managerId != applicantId &&
                 await db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
             {
                 result.Add(managerId);
@@ -331,7 +332,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         }
 
         // 与正式审批权限解析保持一致：组织负责人优先，旧库未配置负责人时再兼容直属上级字段。
-        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId &&
+        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId && supervisorId != applicantId &&
             await db.Users.AsNoTracking().AnyAsync(x => x.Id == supervisorId && x.IsActive))
         {
             result.Add(supervisorId);
