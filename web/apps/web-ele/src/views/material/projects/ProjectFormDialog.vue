@@ -15,7 +15,7 @@ import {
   ElSelect,
 } from 'element-plus';
 
-defineProps<{
+const props = defineProps<{
   editing: boolean;
   form: ProjectFormState;
   progressOptions: TestProjectOption[];
@@ -26,6 +26,10 @@ defineProps<{
 
 const emit = defineEmits<{ save: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
+
+function onProgressChange(value: string) {
+  if (value !== 'closed') props.form.closedDate = '';
+}
 </script>
 
 <template>
@@ -57,7 +61,12 @@ const visible = defineModel<boolean>('visible', { default: false });
           </ElSelect>
         </ElFormItem>
         <ElFormItem label="进度" required>
-          <ElSelect v-model="form.progressCode" clearable placeholder="请选择">
+          <ElSelect
+            v-model="form.progressCode"
+            clearable
+            placeholder="请选择"
+            @change="onProgressChange"
+          >
             <ElOption
               v-for="item in progressOptions"
               :key="item.id"
@@ -108,9 +117,10 @@ const visible = defineModel<boolean>('visible', { default: false });
             value-format="YYYY-MM-DD"
           />
         </ElFormItem>
-        <ElFormItem label="结案时间">
+        <ElFormItem label="结案时间" :required="form.progressCode === 'closed'">
           <ElDatePicker
             v-model="form.closedDate"
+            :disabled="form.progressCode !== 'closed'"
             placeholder="选择日期"
             style="width: 100%"
             type="date"

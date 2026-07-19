@@ -33,7 +33,16 @@ public class UserController : ControllerBase
     public async Task<ApiResult<List<UserOptionDto>>> Options(string? keyword = null)
     {
         var permissions = User.FindAll("perm").Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
-        if (!permissions.Contains("approval:create") && !permissions.Contains("material-flow:transfer"))
+        var allowedPermissions = new[]
+        {
+            "approval:create",
+            "material-flow:transfer",
+            "project:create",
+            "project:edit",
+            "material:create",
+            "material:edit"
+        };
+        if (!allowedPermissions.Any(permissions.Contains))
         {
             throw new BizException(4030, "无权读取用户选项");
         }

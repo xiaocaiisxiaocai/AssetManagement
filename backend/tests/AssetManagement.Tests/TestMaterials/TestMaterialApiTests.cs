@@ -120,6 +120,35 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Material_update_cannot_change_its_project()
+    {
+        await Login();
+        var project = await CreateProject("料件原项目");
+        var otherProject = await CreateProject("料件目标项目");
+        var created = await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "项目不可变料件",
+            ProjectId = project.Id
+        });
+
+        var response = await _client.PutAsJsonAsync(
+            $"/api/test-materials/{created.Data!.Id}",
+            new SaveTestMaterialRequest
+            {
+                Name = created.Data.Name,
+                ProjectId = otherProject.Id,
+                Quantity = created.Data.Quantity
+            });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
+
+        body!.Code.Should().Be(4095);
+        body.Message.Should().Be("料件所属项目不能修改");
+        var current = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>(
+            $"/api/test-materials/{created.Data.Id}");
+        current!.Data!.ProjectId.Should().Be(project.Id);
+    }
+
+    [Fact]
     public async Task Soft_delete_keeps_in_all_list_and_restore_brings_back_active()
     {
         await Login();
@@ -315,7 +344,6 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             OwnerId = owner.Id,
             StartDate = new DateTime(2026, 6, 1),
             PlannedFinishDate = new DateTime(2026, 7, 1),
-            ClosedDate = new DateTime(2026, 7, 15),
             FollowUpIntervalDays = 14,
             TestStatus = "样机测试中"
         });
@@ -410,6 +438,34 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_rejects_invalid_timeline_and_closed_state()
+    {
+        await Login();
+
+        var reversedRequest = NewProjectRequest("时间倒置项目");
+        reversedRequest.StartDate = new DateTime(2026, 7, 2);
+        reversedRequest.PlannedFinishDate = new DateTime(2026, 7, 1);
+        var reversed = await Post<ApiResult<TestProjectDto>>(
+            "/api/test-projects",
+            reversedRequest);
+        var closedWithoutDate = await Post<ApiResult<TestProjectDto>>(
+            "/api/test-projects",
+            NewProjectRequest("无结案日期项目", progressCode: "closed"));
+        var testingWithClosedDateRequest = NewProjectRequest("测试中误填结案日期");
+        testingWithClosedDateRequest.ClosedDate = new DateTime(2026, 7, 1);
+        var testingWithClosedDate = await Post<ApiResult<TestProjectDto>>(
+            "/api/test-projects",
+            testingWithClosedDateRequest);
+
+        reversed.Code.Should().Be(4001);
+        reversed.Message.Should().Contain("计划完成时间不能早于开始时间");
+        closedWithoutDate.Code.Should().Be(4001);
+        closedWithoutDate.Message.Should().Contain("必须填写结案时间");
+        testingWithClosedDate.Code.Should().Be(4001);
+        testingWithClosedDate.Message.Should().Contain("只有已结案项目");
+    }
+
+    [Fact]
     public async Task Project_option_rejects_duplicate_kind_code_with_business_message()
     {
         await Login();
@@ -457,6 +513,49 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
 
         body!.Code.Should().Be(4094);
         body.Message.Should().Contain("配置项已被项目使用");
+    }
+
+    [Fact]
+    public async Task Project_option_used_by_project_cannot_be_disabled_or_rekeyed()
+    {
+        await Login();
+        var option = await Post<ApiResult<TestProjectOptionDto>>("/api/test-projects/options", new SaveTestProjectOptionRequest
+        {
+            Kind = "project_type",
+            Code = $"used_{Guid.NewGuid():N}"[..20],
+            Label = "使用中的配置",
+            Sort = 10,
+            IsActive = true
+        });
+        await Post<ApiResult<TestProjectDto>>(
+            "/api/test-projects",
+            NewProjectRequest("配置保护项目", projectTypeCode: option.Data!.Code));
+
+        var disabled = await Put<ApiResult<TestProjectOptionDto>>(
+            $"/api/test-projects/options/{option.Data.Id}",
+            new SaveTestProjectOptionRequest
+            {
+                Kind = option.Data.Kind,
+                Code = option.Data.Code,
+                Label = option.Data.Label,
+                Sort = option.Data.Sort,
+                IsActive = false
+            });
+        var rekeyed = await Put<ApiResult<TestProjectOptionDto>>(
+            $"/api/test-projects/options/{option.Data.Id}",
+            new SaveTestProjectOptionRequest
+            {
+                Kind = option.Data.Kind,
+                Code = $"new_{Guid.NewGuid():N}"[..20],
+                Label = option.Data.Label,
+                Sort = option.Data.Sort,
+                IsActive = true
+            });
+
+        disabled.Code.Should().Be(4094);
+        disabled.Message.Should().Contain("不能停用");
+        rekeyed.Code.Should().Be(4094);
+        rekeyed.Message.Should().Contain("不能修改类型或编码");
     }
 
     [Fact]
@@ -618,7 +717,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         updated.Data.DueDate.Should().Be(new DateTime(2026, 7, 17));
         list!.Data!.Should().ContainSingle(x => x.Id == created.Data.Id && x.Content == "第二轮落地情况");
         projectSummary.LatestFollowUpContent.Should().Be("第二轮落地情况");
-        projectSummary.NextFollowUpDueDate.Should().Be(DateTime.UtcNow.Date.AddDays(7));
+        projectSummary.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 24));
 
         var deleted = await _client.DeleteAsync($"/api/test-projects/{landing.Data.Id}/followups/{created.Data.Id}");
         var afterDelete = await _client.GetFromJsonAsync<ApiResult<List<TestProjectFollowupDto>>>(
@@ -626,6 +725,75 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
 
         deleted.StatusCode.Should().Be(HttpStatusCode.OK);
         afterDelete!.Data!.Should().NotContain(x => x.Id == created.Data.Id);
+    }
+
+    [Fact]
+    public async Task Editing_old_followup_preserves_author_and_does_not_change_latest_cycle()
+    {
+        await Login();
+        var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "历史跟进负责人");
+        var landing = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
+        {
+            Code = NewProjectCode(),
+            Name = $"历史跟进-{Guid.NewGuid():N}"[..20],
+            ProjectTypeCode = "prototype",
+            ProgressCode = "landing",
+            OwnerId = owner.Id,
+            StartDate = new DateTime(2026, 7, 1),
+            PlannedFinishDate = new DateTime(2026, 8, 1),
+            FollowUpIntervalDays = 7
+        });
+
+        await Login(owner.EmployeeNo, "123456");
+        var oldFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{landing.Data!.Id}/followups",
+            new SaveTestProjectFollowupRequest { Content = "较早周期", DueDate = new DateTime(2026, 7, 10) });
+        await Post<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{landing.Data.Id}/followups",
+            new SaveTestProjectFollowupRequest { Content = "最新周期", DueDate = new DateTime(2026, 7, 20) });
+
+        await Login();
+        var edited = await Put<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{landing.Data.Id}/followups/{oldFollowup.Data!.Id}",
+            new SaveTestProjectFollowupRequest { Content = "修正较早周期", DueDate = new DateTime(2026, 7, 10) });
+        var projects = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>("/api/test-projects");
+        var summary = projects!.Data!.Single(x => x.Id == landing.Data.Id);
+
+        edited.Data!.FilledById.Should().Be(owner.Id);
+        edited.Data.FilledByName.Should().Be("历史跟进负责人");
+        summary.LatestFollowUpContent.Should().Be("最新周期");
+        summary.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 27));
+    }
+
+    [Fact]
+    public async Task Project_stats_keep_progress_buckets_exclusive_and_count_followup_records()
+    {
+        await Login();
+        var baseline = await _client.GetFromJsonAsync<ApiResult<TestProjectStatsDto>>("/api/test-projects/stats");
+        var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "统计项目负责人");
+        await Post<ApiResult<TestProjectDto>>("/api/test-projects", NewProjectRequest("统计测试中项目", owner.Id));
+        var landing = await Post<ApiResult<TestProjectDto>>(
+            "/api/test-projects",
+            NewProjectRequest("统计落地跟进项目", owner.Id, progressCode: "landing"));
+        var closedRequest = NewProjectRequest("统计结案项目", owner.Id, progressCode: "closed");
+        closedRequest.ClosedDate = DateTime.UtcNow.Date;
+        await Post<ApiResult<TestProjectDto>>("/api/test-projects", closedRequest);
+
+        await Login(owner.EmployeeNo, "123456");
+        await Post<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{landing.Data!.Id}/followups",
+            new SaveTestProjectFollowupRequest { Content = "统计本月跟进", DueDate = DateTime.UtcNow.Date });
+        var after = await _client.GetFromJsonAsync<ApiResult<TestProjectStatsDto>>("/api/test-projects/stats");
+        var month = DateTime.UtcNow.Month;
+
+        after!.Data!.Total.Should().Be(baseline!.Data!.Total + 3);
+        after.Data.Closed.Should().Be(baseline.Data.Closed + 1);
+        after.Data.Landed.Should().Be(baseline.Data.Landed + 1);
+        after.Data.InProgress.Should().Be(baseline.Data.InProgress + 1);
+        after.Data.MonthlyStat.Single(x => x.Month == month).ClosedCount.Should()
+            .Be(baseline.Data.MonthlyStat.Single(x => x.Month == month).ClosedCount + 1);
+        after.Data.MonthlyStat.Single(x => x.Month == month).FollowUpCount.Should()
+            .Be(baseline.Data.MonthlyStat.Single(x => x.Month == month).FollowUpCount + 1);
     }
 
     // ===== 辅助方法 =====
@@ -659,7 +827,6 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     {
         Brand = "SAA",
         DepartmentId = departmentId,
-        CustodianId = 3,
         LocationId = locationId,
         Model = "TM-Model",
         Name = name,

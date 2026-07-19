@@ -43,6 +43,7 @@ import {
   rejectFlowApi,
   restoreMaterialApi,
   returnMaterialApi,
+  withdrawMaterialFlowApi,
 } from '#/api/material';
 import {
   createTestProjectApi,
@@ -303,6 +304,12 @@ async function loadData() {
   loading.value = true;
   try {
     projects.value = await listTestProjectsApi(deleteStatus.value);
+    if (currentProject.value) {
+      const refreshed = projects.value.find(
+        (project) => project.id === currentProject.value?.id,
+      );
+      if (refreshed) currentProject.value = refreshed;
+    }
     normalizeProjectPage();
   } finally {
     loading.value = false;
@@ -341,7 +348,11 @@ async function loadUsers() {
   if (users.value.length > 0) return;
   if (
     hasAccessByCodes(['approval:create']) ||
-    hasAccessByCodes(['material-flow:transfer'])
+    hasAccessByCodes(['material-flow:transfer']) ||
+    hasAccessByCodes(['project:create']) ||
+    hasAccessByCodes(['project:edit']) ||
+    hasAccessByCodes(['material:create']) ||
+    hasAccessByCodes(['material:edit'])
   ) {
     users.value = await getUserOptionsApi();
     return;
@@ -565,7 +576,7 @@ async function saveOption() {
 async function removeOption(row: TestProjectOption) {
   try {
     await ElMessageBox.confirm(
-      `确认删除配置「${row.label}」？已使用的项目会保留编码但不再显示名称。`,
+      `确认删除配置「${row.label}」？正在使用的配置不能删除。`,
       '删除确认',
       { type: 'warning' },
     );
@@ -660,9 +671,8 @@ async function saveFollowup() {
         )
       : createTestProjectFollowupApi(project.id, payload));
     ElMessage.success('跟进已保存');
+    await Promise.all([loadFollowups(project.id), loadData()]);
     cancelFollowupEdit();
-    await loadFollowups(project.id);
-    await loadData();
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
@@ -683,8 +693,8 @@ async function deleteFollowup(row: TestProjectFollowup) {
   try {
     await deleteTestProjectFollowupApi(project.id, row.id);
     ElMessage.success('已删除');
+    await Promise.all([loadFollowups(project.id), loadData()]);
     if (editingFollowupId.value === row.id) cancelFollowupEdit();
-    await loadFollowups(project.id);
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
   }
@@ -963,6 +973,25 @@ async function rejectFlow(row: MaterialFlowItem) {
   }
 }
 
+async function withdrawFlow(row: MaterialFlowItem) {
+  try {
+    await ElMessageBox.confirm(
+      `确认撤回料件「${row.materialName}」的流转申请？`,
+      '撤回确认',
+      { type: 'warning' },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await withdrawMaterialFlowApi(row.id);
+    ElMessage.success('已撤回');
+    await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  }
+}
+
 function onProjectTabChange(name: number | string) {
   if (name === 'materials') {
     void loadProjectMaterials();
@@ -1142,10 +1171,10 @@ onMounted(async () => {
               @pending-page-size-change="onPendingFlowPageSizeChange"
               @reject="rejectFlow"
               @tab-change="onFlowTabChange"
+              @withdraw="withdrawFlow"
             />
 
             <ProjectFollowupsTab
-              :can-manage="projectActionAccess.canFollowup"
               :editing-id="editingFollowupId"
               :followups="followups"
               :form="followupForm"

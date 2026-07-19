@@ -90,9 +90,14 @@ export const listTestProjectsApi = (deleteStatus?: string) =>
   );
 
 export const createTestProjectApi = (data: SaveTestProjectPayload) =>
-  unwrap(requestClient.post<ApiResult<TestProjectItem>>('/test-projects', data));
+  unwrap(
+    requestClient.post<ApiResult<TestProjectItem>>('/test-projects', data),
+  );
 
-export const updateTestProjectApi = (id: number, data: SaveTestProjectPayload) =>
+export const updateTestProjectApi = (
+  id: number,
+  data: SaveTestProjectPayload,
+) =>
   unwrap(
     requestClient.put<ApiResult<TestProjectItem>>(`/test-projects/${id}`, data),
   );
@@ -108,9 +113,12 @@ export const purgeTestProjectApi = (id: number) =>
 
 export const listTestProjectOptionsApi = (kind?: string) =>
   unwrap(
-    requestClient.get<ApiResult<TestProjectOption[]>>('/test-projects/options', {
-      params: { kind },
-    }),
+    requestClient.get<ApiResult<TestProjectOption[]>>(
+      '/test-projects/options',
+      {
+        params: { kind },
+      },
+    ),
   );
 
 export const createTestProjectOptionApi = (
@@ -183,8 +191,10 @@ export interface TestProjectStats {
   inProgress: number;
   landed: number;
   typeDist: { label: string; count: number }[];
-  monthlyStat: { month: number; closedCount: number; landedCount: number }[];
+  monthlyStat: { month: number; closedCount: number; followUpCount: number }[];
 }
 
 export const getTestProjectStatsApi = () =>
-  unwrap(requestClient.get<ApiResult<TestProjectStats>>('/test-projects/stats'));
+  unwrap(
+    requestClient.get<ApiResult<TestProjectStats>>('/test-projects/stats'),
+  );

@@ -39,5 +39,5 @@ public class MonthlyStatItem
 {
     public int Month { get; set; }
     public int ClosedCount { get; set; }
-    public int LandedCount { get; set; }
+    public int FollowUpCount { get; set; }
 }

@@ -47,3 +47,6 @@ web/approval-flow-test.js
 web/check-label-alignment.js
 web/check-styles-direct.js
 web/e2e-interaction-test.js
+
+# 本机开发私密配置文档，禁止提交
+docs/本地开发配置.local.md

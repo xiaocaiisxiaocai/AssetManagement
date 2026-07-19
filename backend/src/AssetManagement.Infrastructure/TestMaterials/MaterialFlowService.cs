@@ -51,6 +51,7 @@ public class MaterialFlowService : IMaterialFlowService
         var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId && x.IsActive)
             ?? throw new BizException(4041, "受让人不存在或已停用");
         if (transferee.Id == applicant.Id) throw new BizException(4001, "接收人不能与申请人相同");
+        if (transferee.Id == material.CustodianId) throw new BizException(4001, "接收人不能是当前保管人");
 
         var approvalEnabled = await IsApprovalEnabled();
 
@@ -622,8 +623,9 @@ public class MaterialFlowService : IMaterialFlowService
         if (!flow.TransfereeId.HasValue)
             throw new BizException(4001, "流转单缺少接收人");
         material.CustodianId = flow.TransfereeId.Value;
-        var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.TransfereeId.Value)
-            ?? throw new BizException(4041, "接收人不存在");
+        var transferee = await _db.Users.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == flow.TransfereeId.Value && x.IsActive)
+            ?? throw new BizException(4041, "接收人不存在或已停用");
         material.DepartmentId = transferee.DepartmentId;
         material.RowVersion++;
     }

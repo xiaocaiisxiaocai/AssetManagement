@@ -43,6 +43,7 @@ public class TestProjectService : ITestProjectService
         var code = (request.Code ?? "").Trim();
         if (string.IsNullOrWhiteSpace(code)) throw new BizException(4001, "项目编号不能为空");
         ValidateProjectRequiredFields(request);
+        ValidateProjectTimeline(request);
         await EnsureProjectUnique(code, name);
         await ValidateProjectReferences(request);
         var project = new TestProject
@@ -74,6 +75,7 @@ public class TestProjectService : ITestProjectService
         var code = (request.Code ?? "").Trim();
         if (string.IsNullOrWhiteSpace(code)) throw new BizException(4001, "项目编号不能为空");
         ValidateProjectRequiredFields(request);
+        ValidateProjectTimeline(request);
         await EnsureProjectUnique(code, name, id);
         await ValidateProjectReferences(request);
         project.Name = name;
@@ -164,6 +166,7 @@ public class TestProjectService : ITestProjectService
         var kind = request.Kind.Trim();
         var code = request.Code.Trim();
         await EnsureOptionCodeAvailable(kind, code, id);
+        await EnsureOptionCanChangeAsync(option, kind, code, request.IsActive);
         option.Kind = kind;
         option.Code = code;
         option.Label = request.Label.Trim();
@@ -234,8 +237,6 @@ public class TestProjectService : ITestProjectService
         if (string.IsNullOrWhiteSpace(content)) throw new BizException(4001, "请填写落地情况");
         followup.DueDate = request.DueDate?.Date ?? followup.DueDate;
         followup.Content = content;
-        followup.FilledById = currentUserId;
-        followup.FilledAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         return (await ToFollowupDtos(new[] { followup })).Single();
     }
@@ -265,7 +266,15 @@ public class TestProjectService : ITestProjectService
 
         int closed = projects.Count(x => x.ProgressCode == "closed");
         int landed = projects.Count(x => x.ProgressCode == "landing");
+        // 进度分布必须互斥：这里表示尚未进入“落地跟进”或“结案”的规划/测试阶段。
         int inProgress = projects.Count - closed - landed;
+
+        var projectIds = projects.Select(x => x.Id).ToArray();
+        var followups = await _db.TestProjectFollowups
+            .AsNoTracking()
+            .Where(x => projectIds.Contains(x.ProjectId) && x.FilledAt.Year == year)
+            .Select(x => x.FilledAt)
+            .ToListAsync();
 
         var typeDist = projects
             .Where(x => !string.IsNullOrEmpty(x.ProjectTypeCode))
@@ -280,12 +289,12 @@ public class TestProjectService : ITestProjectService
         if (unknownCount > 0)
             typeDist.Add(new TypeDistItem { Label = "未分类", Count = unknownCount });
 
-        // 当年各月：结案数（ClosedDate 在该月）和落地数（ProgressCode=landing 且 ClosedDate 在该月作为落地参考）
+        // 当年各月：结案项目数与实际填写的落地跟进记录数。
         var monthlyStat = Enumerable.Range(1, 12).Select(m => new MonthlyStatItem
         {
             Month = m,
             ClosedCount = projects.Count(x => x.ClosedDate?.Year == year && x.ClosedDate?.Month == m),
-            LandedCount = projects.Count(x => x.ProgressCode == "landing" && x.ClosedDate?.Year == year && x.ClosedDate?.Month == m)
+            FollowUpCount = followups.Count(x => x.Month == m)
         }).ToList();
 
         return new TestProjectStatsDto
@@ -311,7 +320,7 @@ public class TestProjectService : ITestProjectService
         var projectIds = list.Select(x => x.Id).ToArray();
         var followups = await _db.TestProjectFollowups.AsNoTracking()
             .Where(x => projectIds.Contains(x.ProjectId))
-            .OrderByDescending(x => x.FilledAt)
+            .OrderByDescending(x => x.DueDate)
             .ThenByDescending(x => x.Id)
             .ToListAsync();
         var latestByProject = followups
@@ -395,6 +404,23 @@ public class TestProjectService : ITestProjectService
         if (request.FollowUpIntervalDays < 1) throw new BizException(4001, "跟进间隔必须大于 0");
     }
 
+    private static void ValidateProjectTimeline(SaveTestProjectRequest request)
+    {
+        var startDate = request.StartDate!.Value.Date;
+        var plannedFinishDate = request.PlannedFinishDate!.Value.Date;
+        var closedDate = request.ClosedDate?.Date;
+        var isClosed = string.Equals(request.ProgressCode?.Trim(), "closed", StringComparison.OrdinalIgnoreCase);
+
+        if (plannedFinishDate < startDate)
+            throw new BizException(4001, "计划完成时间不能早于开始时间");
+        if (closedDate.HasValue && closedDate.Value < startDate)
+            throw new BizException(4001, "结案时间不能早于开始时间");
+        if (isClosed && !closedDate.HasValue)
+            throw new BizException(4001, "已结案项目必须填写结案时间");
+        if (!isClosed && closedDate.HasValue)
+            throw new BizException(4001, "只有已结案项目才能填写结案时间");
+    }
+
     private async Task<TestProject> LoadProject(int projectId)
         => await _db.TestProjects.SingleOrDefaultAsync(x => x.Id == projectId && !x.IsDeleted)
            ?? throw new BizException(4046, "测试项目不存在");
@@ -422,13 +448,13 @@ public class TestProjectService : ITestProjectService
     private async Task<TestProjectFollowup?> LatestFollowup(int projectId)
         => await _db.TestProjectFollowups
             .Where(x => x.ProjectId == projectId)
-            .OrderByDescending(x => x.FilledAt)
+            .OrderByDescending(x => x.DueDate)
             .ThenByDescending(x => x.Id)
             .FirstOrDefaultAsync();
 
     private static DateTime NextFollowUpDueDate(TestProject project, TestProjectFollowup? latest)
     {
-        var baseDate = latest?.FilledAt.Date
+        var baseDate = latest?.DueDate.Date
             ?? project.StartDate?.Date
             ?? project.CreatedAt.Date;
         return baseDate.AddDays(NormalizeInterval(project.FollowUpIntervalDays));
@@ -470,6 +496,25 @@ public class TestProjectService : ITestProjectService
         {
             throw new BizException(4094, "配置编码已存在");
         }
+    }
+
+    private async Task EnsureOptionCanChangeAsync(
+        TestProjectOption option,
+        string nextKind,
+        string nextCode,
+        bool nextIsActive)
+    {
+        var isUsed = option.Kind switch
+        {
+            OptionKindProjectType => await _db.TestProjects.AnyAsync(x => x.ProjectTypeCode == option.Code),
+            OptionKindProgress => await _db.TestProjects.AnyAsync(x => x.ProgressCode == option.Code),
+            _ => false
+        };
+        if (!isUsed) return;
+        if (option.Kind != nextKind || option.Code != nextCode)
+            throw new BizException(4094, "配置项已被项目使用，不能修改类型或编码");
+        if (!nextIsActive)
+            throw new BizException(4094, "配置项已被项目使用，不能停用");
     }
 
     private async Task EnsureProjectUnique(string code, string name, int? selfId = null)

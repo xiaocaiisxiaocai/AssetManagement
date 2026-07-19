@@ -26,7 +26,10 @@ import {
 import { loadAssetImageObjectUrl, uploadAssetImageApi } from '#/api/asset';
 import { createMaterialApi, updateMaterialApi } from '#/api/material';
 import { getRuntimeSettings } from '#/utils/runtime-settings';
-import { getDefaultCustodianId, validateMaterialForm } from './material-form-rules';
+import {
+  getDefaultCustodianId,
+  validateMaterialForm,
+} from './material-form-rules';
 
 type FlatOption = { id: number; label: string };
 
@@ -80,7 +83,8 @@ function revokeImageObjectUrls() {
   imageFileList.value.forEach((file) => {
     if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
     const responseUrl = (file.response as { url?: string } | undefined)?.url;
-    if (responseUrl?.startsWith('blob:') && responseUrl !== file.url) URL.revokeObjectURL(responseUrl);
+    if (responseUrl?.startsWith('blob:') && responseUrl !== file.url)
+      URL.revokeObjectURL(responseUrl);
   });
 }
 
@@ -89,7 +93,8 @@ onBeforeUnmount(revokeImageObjectUrls);
 function onImageRemove(file: AuthenticatedUploadFile) {
   if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
   const responseUrl = (file.response as { url?: string } | undefined)?.url;
-  if (responseUrl?.startsWith('blob:') && responseUrl !== file.url) URL.revokeObjectURL(responseUrl);
+  if (responseUrl?.startsWith('blob:') && responseUrl !== file.url)
+    URL.revokeObjectURL(responseUrl);
 }
 
 watch(visible, async (opened) => {
@@ -99,9 +104,11 @@ watch(visible, async (opened) => {
     imageFileList.value = [];
     return;
   }
-  void getRuntimeSettings().then((settings) => {
-    attachmentMaxMb.value = settings.attachmentMaxMb;
-  }).catch(() => {});
+  void getRuntimeSettings()
+    .then((settings) => {
+      attachmentMaxMb.value = settings.attachmentMaxMb;
+    })
+    .catch(() => {});
   if (props.material) {
     Object.assign(form, {
       brand: props.material.brand ?? '',
@@ -116,13 +123,15 @@ watch(visible, async (opened) => {
       remark: props.material.remark ?? '',
       vendorName: props.material.vendorName ?? '',
     });
-    const files = await Promise.all((props.material.images ?? []).map(async (rawUrl, index) => ({
-      name: rawUrl.split('/').pop() ?? rawUrl,
-      rawUrl,
-      status: 'success' as const,
-      uid: -(index + 1),
-      url: await loadAssetImageObjectUrl(rawUrl),
-    })));
+    const files = await Promise.all(
+      (props.material.images ?? []).map(async (rawUrl, index) => ({
+        name: rawUrl.split('/').pop() ?? rawUrl,
+        rawUrl,
+        status: 'success' as const,
+        uid: -(index + 1),
+        url: await loadAssetImageObjectUrl(rawUrl),
+      })),
+    );
     if (generation !== imageLoadGeneration || !visible.value) {
       files.forEach((file) => URL.revokeObjectURL(file.url));
       return;
@@ -153,7 +162,10 @@ function buildPayload(): SaveMaterialPayload {
     custodianId: form.custodianId,
     departmentId: form.departmentId,
     images: imageFileList.value
-      .map((f) => f.rawUrl ?? (f.response as { rawUrl?: string } | undefined)?.rawUrl)
+      .map(
+        (f) =>
+          f.rawUrl ?? (f.response as { rawUrl?: string } | undefined)?.rawUrl,
+      )
       .filter((u): u is string => !!u),
     locationId: form.locationId,
     model: form.model,
@@ -187,13 +199,16 @@ function customImageUpload(options: UploadRequestOptions) {
   }));
   pendingUploads.add(request);
   uploading.value = true;
-  void request.then(() => {
-    pendingUploads.delete(request);
-    uploading.value = pendingUploads.size > 0;
-  }, () => {
-    pendingUploads.delete(request);
-    uploading.value = pendingUploads.size > 0;
-  });
+  void request.then(
+    () => {
+      pendingUploads.delete(request);
+      uploading.value = pendingUploads.size > 0;
+    },
+    () => {
+      pendingUploads.delete(request);
+      uploading.value = pendingUploads.size > 0;
+    },
+  );
   return request;
 }
 
@@ -254,10 +269,10 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="厂商/来源" required>
+      <ElFormItem label="厂商/来源">
         <ElInput v-model="form.vendorName" placeholder="请输入寄件厂商名称" />
       </ElFormItem>
-      <ElFormItem label="型号品牌" required>
+      <ElFormItem label="型号品牌">
         <div class="grid w-full grid-cols-2 gap-2">
           <ElInput v-model="form.model" placeholder="请输入型号" />
           <ElInput v-model="form.brand" placeholder="请输入品牌" />
@@ -266,10 +281,11 @@ const debouncedSave = useDebounceFn(save, 300);
       <ElFormItem label="数量" required>
         <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
       </ElFormItem>
-      <ElFormItem label="归属部门" required>
+      <ElFormItem label="归属部门">
         <ElSelect
           v-model="form.departmentId"
           clearable
+          :disabled="isEdit"
           filterable
           placeholder="选择部门"
           style="width: 100%"
@@ -282,7 +298,7 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="存放位置" required>
+      <ElFormItem label="存放位置">
         <ElSelect
           v-model="form.locationId"
           clearable
@@ -298,10 +314,11 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="保管人" required>
+      <ElFormItem label="保管人">
         <ElSelect
           v-model="form.custodianId"
           clearable
+          :disabled="isEdit"
           filterable
           placeholder="选择保管人"
           style="width: 100%"
@@ -314,7 +331,7 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="接收日期" required>
+      <ElFormItem label="接收日期">
         <ElDatePicker
           v-model="form.receivedDate"
           placeholder="选择接收日期"
@@ -350,7 +367,11 @@ const debouncedSave = useDebounceFn(save, 300);
     </ElForm>
     <template #footer>
       <ElButton @click="visible = false">取消</ElButton>
-      <ElButton :loading="saving || uploading" type="primary" @click="debouncedSave">
+      <ElButton
+        :loading="saving || uploading"
+        type="primary"
+        @click="debouncedSave"
+      >
         保存
       </ElButton>
     </template>

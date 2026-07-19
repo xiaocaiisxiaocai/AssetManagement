@@ -51,6 +51,27 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Transfer_rejects_current_custodian_as_transferee()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var project = await CreateProject("禁止原地转移项目");
+        var custodian = await CreateUser("0999", "当前保管人");
+        var material = await CreateMaterial(project.Id, "禁止原地转移样品", custodianId: custodian.Id);
+
+        var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = custodian.Id,
+            Reason = "不应产生无意义流转"
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        body!.Code.Should().Be(4001);
+        body.Message.Should().Be("接收人不能是当前保管人");
+    }
+
+    [Fact]
     public async Task Direct_transfer_writes_detail_flow_and_operation_record()
     {
         await Login();

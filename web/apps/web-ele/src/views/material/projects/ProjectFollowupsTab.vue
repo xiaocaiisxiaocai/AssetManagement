@@ -17,7 +17,6 @@ import {
 } from 'element-plus';
 
 defineProps<{
-  canManage: boolean;
   editingId: null | number;
   followups: TestProjectFollowup[];
   form: { content: string; dueDate: string };
@@ -32,7 +31,6 @@ const emit = defineEmits<{
   remove: [followup: TestProjectFollowup];
   save: [];
 }>();
-
 </script>
 
 <template>
@@ -76,13 +74,9 @@ const emit = defineEmits<{
             <ElButton v-if="editingId" @click="emit('cancelEdit')"
               >取消编辑</ElButton
             >
-            <ElButton
-              v-if="canManage"
-              :loading="saving"
-              type="primary"
-              @click="emit('save')"
-              >{{ editingId ? '保存修改' : '新增跟进' }}</ElButton
-            >
+            <ElButton :loading="saving" type="primary" @click="emit('save')">{{
+              editingId ? '保存修改' : '新增跟进'
+            }}</ElButton>
           </div>
         </template>
         <div v-else class="readonly-note">
@@ -123,7 +117,6 @@ const emit = defineEmits<{
                   >编辑</ElButton
                 >
                 <ElButton
-                  v-if="canManage"
                   link
                   size="small"
                   type="danger"

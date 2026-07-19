@@ -116,9 +116,25 @@ public class AuthServiceTests
 
     private sealed class AuthFixture : IAsyncDisposable
     {
-        private const string BaseConnStr = "Server=localhost;Port=3306;User=root;Password=abc+123;CharSet=utf8mb4;";
+        private static readonly string BaseConnStr = BuildBaseConnectionString();
         private readonly string _dbName;
         private int _userId;
+
+        private static string BuildBaseConnectionString()
+        {
+            var password = Environment.GetEnvironmentVariable("ASSETMGMT_TEST_MYSQL_PASSWORD");
+            if (string.IsNullOrWhiteSpace(password))
+                throw new InvalidOperationException("请先设置 ASSETMGMT_TEST_MYSQL_PASSWORD 环境变量");
+            return new MySqlConnectionStringBuilder
+            {
+                Server = "localhost",
+                Port = 3306,
+                UserID = "root",
+                Password = password,
+                CharacterSet = "utf8mb4",
+                SslMode = MySqlSslMode.None
+            }.ConnectionString + ";";
+        }
 
         private AuthFixture(string dbName, AppDbContext db)
         {

@@ -84,6 +84,7 @@ const actionText: Record<string, string> = {
   direct_transfer: '直接转移',
   reject: '驳回',
   start: '发起流转',
+  withdraw: '撤回申请',
 };
 </script>
 

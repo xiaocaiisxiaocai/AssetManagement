@@ -102,6 +102,8 @@ public class TestMaterialService : ITestMaterialService
     {
         await EnsureCanAssignDepartmentAsync(request.DepartmentId);
         await EnsureActiveDepartmentAsync(request.DepartmentId);
+        await EnsureLocationExistsAsync(request.LocationId);
+        await EnsureActiveCustodianAsync(request.CustodianId, request.DepartmentId);
         var project = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ProjectId && !x.IsDeleted)
             ?? throw new BizException(4046, "测试项目不存在");
         await EnsureCanWriteMaterialAsync(project, "material:create");
@@ -152,15 +154,14 @@ public class TestMaterialService : ITestMaterialService
         EnsureInUse(m, "已退回厂商的料件不能编辑");
         if (request.DepartmentId != m.DepartmentId || request.CustodianId != m.CustodianId)
             throw new BizException(4095, "料件保管人和归属部门只能通过流转变更");
+        if (request.ProjectId != m.ProjectId)
+            throw new BizException(4095, "料件所属项目不能修改");
+        await EnsureLocationExistsAsync(request.LocationId);
         var originalProject = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == m.ProjectId && !x.IsDeleted)
             ?? throw new BizException(4046, "测试项目不存在");
         await EnsureCanWriteMaterialAsync(originalProject, "material:edit");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能编辑");
-        var project = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.ProjectId && !x.IsDeleted)
-            ?? throw new BizException(4046, "测试项目不存在");
-        if (project.Id != originalProject.Id)
-            await EnsureCanWriteMaterialAsync(project, "material:edit");
         var name = request.Name.Trim();
         if (string.IsNullOrWhiteSpace(name))
             throw new BizException(4001, "请填写料件名称");
@@ -244,6 +245,8 @@ public class TestMaterialService : ITestMaterialService
         await EnsureCanAccessAsync(m);
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能退回厂商");
+        if (m.Status == MaterialStatus.ReturnedToVendor)
+            throw new BizException(4099, "料件已退回厂商,无需重复操作");
         m.Status = MaterialStatus.ReturnedToVendor;
         m.RowVersion++;
         await _db.SaveChangesAsync();
@@ -341,6 +344,23 @@ public class TestMaterialService : ITestMaterialService
         if (!departmentId.HasValue) return;
         if (!await _db.Departments.AnyAsync(x => x.Id == departmentId.Value && x.IsActive))
             throw new BizException(4045, "部门不存在或已停用");
+    }
+
+    private async Task EnsureLocationExistsAsync(int? locationId)
+    {
+        if (!locationId.HasValue) return;
+        if (!await _db.Locations.AnyAsync(x => x.Id == locationId.Value))
+            throw new BizException(4045, "存放位置不存在");
+    }
+
+    private async Task EnsureActiveCustodianAsync(int? custodianId, int? departmentId)
+    {
+        if (!custodianId.HasValue) return;
+        var custodian = await _db.Users.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == custodianId.Value && x.IsActive)
+            ?? throw new BizException(4041, "保管人不存在或已停用");
+        if (departmentId.HasValue && custodian.DepartmentId != departmentId)
+            throw new BizException(4002, "保管人与归属部门不一致");
     }
 
     private async Task EnsureMaterialNameAvailableAsync(int projectId, string name, int? selfId = null)

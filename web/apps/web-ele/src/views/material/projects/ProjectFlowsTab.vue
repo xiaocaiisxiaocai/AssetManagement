@@ -34,6 +34,7 @@ const emit = defineEmits<{
   pendingPageSizeChange: [];
   reject: [flow: MaterialFlowItem];
   tabChange: [];
+  withdraw: [flow: MaterialFlowItem];
 }>();
 const activeTab = defineModel<string>('activeTab', { required: true });
 
@@ -44,6 +45,7 @@ const flowStatusMeta: Record<
   approved: { label: '已通过', tag: 'success' },
   pending: { label: '审批中', tag: 'warning' },
   rejected: { label: '已驳回', tag: 'info' },
+  withdrawn: { label: '已撤回', tag: 'info' },
 };
 
 function flowMetaOf(status: string) {
@@ -185,6 +187,18 @@ function flowMetaOf(status: string) {
                   :next-steps="row.nextSteps"
                   :status="row.status"
                 />
+              </template>
+            </ElTableColumn>
+            <ElTableColumn align="center" fixed="right" label="操作" width="90">
+              <template #default="{ row }">
+                <ElButton
+                  v-if="row.status === 'pending'"
+                  link
+                  size="small"
+                  type="danger"
+                  @click="emit('withdraw', row)"
+                  >撤回</ElButton
+                >
               </template>
             </ElTableColumn>
           </ElTable>
