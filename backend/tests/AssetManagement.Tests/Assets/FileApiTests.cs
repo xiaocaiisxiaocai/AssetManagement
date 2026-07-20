@@ -8,6 +8,7 @@ using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Infrastructure.Files;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Domain.Entities;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -33,6 +34,41 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
         var url = await UploadImage(bytes, "photo.png", "image/png");
 
         url.Should().StartWith("/api/files/");
+        var fetched = await _client.GetAsync(url);
+        fetched.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await fetched.Content.ReadAsByteArrayAsync()).Should().Equal(bytes);
+    }
+
+    [Fact]
+    public async Task Employee_can_upload_and_fetch_test_material_image()
+    {
+        var employeeNo = $"FILE-{Guid.NewGuid():N}"[..20];
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var employeeRole = db.Roles.Single(x => x.Code == "employee");
+            var employee = new User
+            {
+                EmployeeNo = employeeNo,
+                Name = "测试料件图片上传员工",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
+                IsActive = true
+            };
+            db.Users.Add(employee);
+            db.SaveChanges();
+            db.UserRoles.Add(new UserRole
+            {
+                UserId = employee.Id,
+                RoleId = employeeRole.Id
+            });
+            db.SaveChanges();
+        }
+
+        await Login(employeeNo, "123456");
+        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 5, 6, 7, 8 };
+
+        var url = await UploadImage(bytes, "material-photo.png", "image/png");
+
         var fetched = await _client.GetAsync(url);
         fetched.StatusCode.Should().Be(HttpStatusCode.OK);
         (await fetched.Content.ReadAsByteArrayAsync()).Should().Equal(bytes);
@@ -202,12 +238,14 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
         return body!.Data.GetProperty("url").GetString()!;
     }
 
-    private async Task Login()
+    private Task Login() => Login("1001", "123456");
+
+    private async Task Login(string employeeNo, string password)
     {
         var res = await _client.PostAsJsonAsync("/api/auth/login", new
         {
-            employeeNo = "1001",
-            password = "123456"
+            employeeNo,
+            password
         });
         res.EnsureSuccessStatusCode();
         var body = await res.Content.ReadFromJsonAsync<ApiResult<LoginResponse>>();

@@ -144,6 +144,41 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
     }
 
     [Fact]
+    public void Incremental_seed_grants_employee_file_upload_once_and_then_preserves_customization()
+    {
+        SeedLegacyDatabaseState();
+        _db.SystemSettings.Add(new SystemSetting
+        {
+            Key = "rbac_core_role_defaults_initialized_v1",
+            Value = "true",
+            Description = "模拟已完成旧版基础角色初始化"
+        });
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        var employee = _db.Roles.Single(x => x.Code == "employee");
+        var fileUpload = _db.Permissions.Single(x => x.Code == "file:upload");
+        _db.RolePermissions.Should().Contain(x =>
+            x.RoleId == employee.Id && x.PermissionId == fileUpload.Id,
+            "已有数据库升级后普通员工也必须能上传测试料件图片");
+        _db.SystemSettings.Should().Contain(x =>
+            x.Key == "rbac_employee_file_upload_initialized_v1");
+
+        _db.RolePermissions.RemoveRange(_db.RolePermissions.Where(x =>
+            x.RoleId == employee.Id && x.PermissionId == fileUpload.Id));
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        _db.RolePermissions.Should().NotContain(x =>
+            x.RoleId == employee.Id && x.PermissionId == fileUpload.Id,
+            "一次性升级完成后应继续保留管理员对角色授权的后续调整");
+    }
+
+    [Fact]
     public void Incremental_seed_repairs_admin_menu_order_for_existing_database()
     {
         SeedLegacyDatabaseState();

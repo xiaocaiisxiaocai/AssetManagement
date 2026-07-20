@@ -12,6 +12,7 @@ namespace AssetManagement.Infrastructure.Persistence.Seed;
 public static class DbSeeder
 {
     private const string CoreRoleDefaultsInitializedKey = "rbac_core_role_defaults_initialized_v1";
+    private const string EmployeeFileUploadInitializedKey = "rbac_employee_file_upload_initialized_v1";
 
     public static void Seed(AppDbContext db, string? configuredAdminPassword = null)
     {
@@ -26,6 +27,7 @@ public static class DbSeeder
             {
                 SeedIncremental(db);
                 SeedTestMaterialModule(db);
+                EnsureEmployeeFileUploadPermission(db);
                 MarkCoreRoleDefaultsInitialized(db);
                 return;
             }
@@ -163,6 +165,7 @@ public static class DbSeeder
         tx.Commit();
 
             SeedTestMaterialModule(db);
+            EnsureEmployeeFileUploadPermission(db);
             MarkCoreRoleDefaultsInitialized(db);
         }
         finally
@@ -731,11 +734,37 @@ public static class DbSeeder
         },
         ["employee"] = new[]
         {
-            "asset:view", "category:view", "location:view", "file:view",
+            "asset:view", "category:view", "location:view", "file:upload", "file:view",
             "approval:create", "approval:view",
             "project:view", "material:view", "material-flow:view", "material-flow:transfer"
         }
     };
+
+    private static void EnsureEmployeeFileUploadPermission(AppDbContext db)
+    {
+        if (db.SystemSettings.Any(x => x.Key == EmployeeFileUploadInitializedKey)) return;
+
+        var employeeRole = db.Roles.SingleOrDefault(x => x.Code == "employee");
+        var fileUploadPermission = db.Permissions.SingleOrDefault(x => x.Code == "file:upload");
+        if (employeeRole is not null && fileUploadPermission is not null
+            && !db.RolePermissions.Any(x => x.RoleId == employeeRole.Id
+                                            && x.PermissionId == fileUploadPermission.Id))
+        {
+            db.RolePermissions.Add(new RolePermission
+            {
+                RoleId = employeeRole.Id,
+                PermissionId = fileUploadPermission.Id
+            });
+        }
+
+        db.SystemSettings.Add(new SystemSetting
+        {
+            Key = EmployeeFileUploadInitializedKey,
+            Value = "true",
+            Description = "普通员工测试料件图片上传权限已初始化"
+        });
+        db.SaveChanges();
+    }
 
     private static void EnsureCoreRolePermissions(AppDbContext db)
     {

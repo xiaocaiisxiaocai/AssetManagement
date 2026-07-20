@@ -206,6 +206,8 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **`material:`**(9):`view`/`create`/`edit`/`delete`/`restore`/`purge`/`return`(退回厂商)/`transfer`/`approve`。
 - **`material-flow:`**(3):`view`/`transfer`/`approve`(流转单据维度)。
 
+普通员工默认同时拥有 `file:upload` 与 `file:view`,用于测试料件新增/编辑时上传并预览照片。已有数据库通过一次性增量种子补齐 `file:upload`;补齐完成后仍保留管理员后续调整角色授权的能力。
+
 菜单结构:一级入口界面名 **"新产品新技术"**(根菜单 `Name=Material`、`Path=/material`、`Component=BasicLayout`、图标 `lucide:flask-conical`)→ 两个子页面:**项目总览**(`/material/home` → `/material/home/index`)、**测试项目**(`/material/projects` → `/material/projects/index`),二者均以 `project:view` 控权。`DbSeeder.SeedTestMaterialModule`(幂等增量种子)确保权限/菜单/工作流模板/系统参数(`material.transfer.approval.enabled`,默认 `false`)齐全。**旧的 `/material/list`、`/material/transfers` 独立路由已废弃**,料件清单与流转审批现内嵌为「测试项目」页的 Tab。
 
 #### 前端页面
