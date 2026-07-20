@@ -29,10 +29,13 @@ export async function getDefaultPageSize() {
 }
 
 export function createPageSizeOptions(pageSize: number) {
-  return [...new Set([...DEFAULT_PAGE_SIZE_OPTIONS, normalizePageSize(pageSize)])]
-    .sort((a, b) => a - b);
+  return [
+    ...new Set([normalizePageSize(pageSize), ...DEFAULT_PAGE_SIZE_OPTIONS]),
+  ].sort((a, b) => a - b);
 }
 
 function normalizePageSize(value: number) {
-  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : FALLBACK_PAGE_SIZE;
+  return Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : FALLBACK_PAGE_SIZE;
 }

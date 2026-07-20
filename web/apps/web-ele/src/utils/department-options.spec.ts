@@ -45,4 +45,27 @@ describe('flattenActiveDepartments', () => {
       },
     ]);
   });
+
+  it('保留部门负责人信息供用户表单联动', () => {
+    expect(
+      flattenActiveDepartments([
+        {
+          children: [],
+          id: 10,
+          isActive: true,
+          managerId: 21,
+          managerName: '主管甲',
+          name: '工令课',
+        },
+      ]),
+    ).toEqual([
+      {
+        id: 10,
+        isActive: true,
+        label: '工令课',
+        managerId: 21,
+        managerName: '主管甲',
+      },
+    ]);
+  });
 });

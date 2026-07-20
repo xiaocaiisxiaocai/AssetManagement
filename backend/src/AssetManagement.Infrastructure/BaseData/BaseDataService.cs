@@ -8,6 +8,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using System.Text.RegularExpressions;
+using MySqlConnector;
 
 namespace AssetManagement.Infrastructure.BaseData;
 
@@ -96,7 +97,14 @@ public class BaseDataService : IBaseDataService
             IsActive = true
         };
         _db.Departments.Add(department);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "部门名称已存在");
+        }
 
         // 清除部门树缓存
         _cache.Remove("department_tree");
@@ -135,7 +143,14 @@ public class BaseDataService : IBaseDataService
         department.Name = name;
         department.ManagerId = request.ManagerId;
         department.IsActive = request.IsActive;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "部门名称已存在");
+        }
 
         // 清除部门树缓存
         _cache.Remove("department_tree");
@@ -163,6 +178,10 @@ public class BaseDataService : IBaseDataService
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new BizException(4001, "部门名称不能为空");
+        }
+        if (name.Trim().Length > 100)
+        {
+            throw new BizException(4001, "部门名称不能超过 100 个字符");
         }
     }
 
@@ -473,6 +492,7 @@ public class BaseDataService : IBaseDataService
 
     public async Task<LocationNodeDto> CreateLocationAsync(CreateLocationRequest request)
     {
+        ValidateLocationName(request.Name);
         var name = request.Name.Trim();
         await EnsureLocationNameAvailableAsync(name);
         var location = new Location
@@ -480,18 +500,33 @@ public class BaseDataService : IBaseDataService
             Name = name
         };
         _db.Locations.Add(location);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "存放位置已存在");
+        }
         return ToLocationDto(location);
     }
 
     public async Task<LocationNodeDto> UpdateLocationAsync(int id, UpdateLocationRequest request)
     {
+        ValidateLocationName(request.Name);
         var location = await _db.Locations.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4047, "位置不存在");
         var name = request.Name.Trim();
         await EnsureLocationNameAvailableAsync(name, id);
         location.Name = name;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "存放位置已存在");
+        }
         return ToLocationDto(location);
     }
 
@@ -556,7 +591,13 @@ public class BaseDataService : IBaseDataService
 
             var setting = await _db.SystemSettings.AsTracking().SingleOrDefaultAsync(x => x.Key == key)
                 ?? throw new BizException(4001, $"系统参数「{key}」不存在，不能新增");
-            setting.Value = NormalizeSettingValue(key, request.Value);
+            var normalizedValue = NormalizeSettingValue(key, request.Value);
+            if (normalizedValue.Length > 500)
+            {
+                throw new BizException(4001, $"系统参数「{key}」的值不能超过 500 个字符");
+            }
+
+            setting.Value = normalizedValue;
         }
 
         await _db.SaveChangesAsync();
@@ -996,6 +1037,17 @@ public class BaseDataService : IBaseDataService
         }
     }
 
+    private static void ValidateLocationName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new BizException(4001, "存放位置名称不能为空");
+        if (name.Trim().Length > 100)
+            throw new BizException(4001, "存放位置名称不能超过 100 个字符");
+    }
+
+    private static bool IsDuplicateKey(DbUpdateException ex)
+        => ex.InnerException is MySqlException { Number: 1062 };
+
     private static DepartmentNodeDto ToDepartmentDto(
         Department x,
         string? managerName,
@@ -1032,7 +1084,15 @@ public class BaseDataService : IBaseDataService
     }
 
     private static string? CategoryRemark(int? parentId, string? remark)
-        => parentId.HasValue ? EmptyToNull(remark) : null;
+    {
+        var normalized = parentId.HasValue ? EmptyToNull(remark) : null;
+        if (normalized?.Length > 500)
+        {
+            throw new BizException(4001, "分类备注不能超过 500 个字符");
+        }
+
+        return normalized;
+    }
 
     private static string? EmptyToNull(string? value)
     {

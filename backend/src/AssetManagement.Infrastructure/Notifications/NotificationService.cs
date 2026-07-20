@@ -45,24 +45,30 @@ public class NotificationService : INotificationService
             .ExecuteDeleteAsync();
     }
 
-    public async Task CreateAsync(CreateNotificationRequest request)
+    public async Task<bool> CreateAsync(CreateNotificationRequest request, CancellationToken cancellationToken = default)
     {
+        ValidateRequest(request);
         if (!string.IsNullOrEmpty(request.IdempotencyKey))
         {
-            if (await _db.Notifications.AnyAsync(n => n.IdempotencyKey == request.IdempotencyKey))
-                return;
+            if (await _db.Notifications.AnyAsync(n => n.IdempotencyKey == request.IdempotencyKey, cancellationToken))
+                return false;
         }
         _db.Notifications.Add(ToEntity(request));
-        try { await _db.SaveChangesAsync(); }
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
         catch (DbUpdateException ex) when (IsDuplicateKey(ex))
         {
             DetachAddedNotifications();
+            return false;
         } // 唯一索引冲突静默忽略（并发重复）
     }
 
-    public async Task CreateBatchAsync(IEnumerable<CreateNotificationRequest> requests)
+    public async Task<int> CreateBatchAsync(IEnumerable<CreateNotificationRequest> requests, CancellationToken cancellationToken = default)
     {
-        var requestList = DeduplicateInMemory(requests);
+        var requestList = DeduplicateInMemory(requests.Select(ValidateRequest));
         var keys = requestList
             .Where(r => !string.IsNullOrEmpty(r.IdempotencyKey))
             .Select(r => r.IdempotencyKey!)
@@ -72,7 +78,7 @@ public class NotificationService : INotificationService
             ? (await _db.Notifications
                 .Where(n => n.IdempotencyKey != null && keys.Contains(n.IdempotencyKey))
                 .Select(n => n.IdempotencyKey!)
-                .ToListAsync())
+                .ToListAsync(cancellationToken))
                 .ToHashSet()
             : new HashSet<string>();
 
@@ -83,17 +89,20 @@ public class NotificationService : INotificationService
 
         if (toAdd.Count > 0)
         {
-            await SaveBatchIgnoringDuplicateKeysAsync(toAdd);
+            return await SaveBatchIgnoringDuplicateKeysAsync(toAdd, cancellationToken);
         }
+        return 0;
     }
 
-    private async Task SaveBatchIgnoringDuplicateKeysAsync(List<Domain.Entities.Notification> notifications)
+    private async Task<int> SaveBatchIgnoringDuplicateKeysAsync(
+        List<Domain.Entities.Notification> notifications,
+        CancellationToken cancellationToken)
     {
         _db.Notifications.AddRange(notifications);
         try
         {
-            await _db.SaveChangesAsync();
-            return;
+            await _db.SaveChangesAsync(cancellationToken);
+            return notifications.Count;
         }
         catch (DbUpdateException ex) when (IsDuplicateKey(ex))
         {
@@ -109,7 +118,7 @@ public class NotificationService : INotificationService
             ? (await _db.Notifications
                 .Where(n => n.IdempotencyKey != null && remainingKeys.Contains(n.IdempotencyKey))
                 .Select(n => n.IdempotencyKey!)
-                .ToListAsync())
+                .ToListAsync(cancellationToken))
                 .ToHashSet()
             : new HashSet<string>();
 
@@ -117,23 +126,31 @@ public class NotificationService : INotificationService
             .Where(n => string.IsNullOrEmpty(n.IdempotencyKey) || !existingKeys.Contains(n.IdempotencyKey))
             .ToList();
 
-        if (remaining.Count == 0) return;
+        if (remaining.Count == 0) return 0;
 
         _db.Notifications.AddRange(remaining);
-        try { await _db.SaveChangesAsync(); }
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            return remaining.Count;
+        }
         catch (DbUpdateException ex) when (IsDuplicateKey(ex))
         {
             DetachAddedNotifications();
-            await SaveIndividuallyIgnoringDuplicateKeysAsync(remaining);
+            return await SaveIndividuallyIgnoringDuplicateKeysAsync(remaining, cancellationToken);
         }
     }
 
-    private async Task SaveIndividuallyIgnoringDuplicateKeysAsync(IEnumerable<Domain.Entities.Notification> notifications)
+    private async Task<int> SaveIndividuallyIgnoringDuplicateKeysAsync(
+        IEnumerable<Domain.Entities.Notification> notifications,
+        CancellationToken cancellationToken)
     {
+        var inserted = 0;
         foreach (var notification in notifications)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!string.IsNullOrEmpty(notification.IdempotencyKey) &&
-                await _db.Notifications.AnyAsync(n => n.IdempotencyKey == notification.IdempotencyKey))
+                await _db.Notifications.AnyAsync(n => n.IdempotencyKey == notification.IdempotencyKey, cancellationToken))
             {
                 continue;
             }
@@ -141,13 +158,15 @@ public class NotificationService : INotificationService
             _db.Notifications.Add(notification);
             try
             {
-                await _db.SaveChangesAsync();
+                await _db.SaveChangesAsync(cancellationToken);
+                inserted++;
             }
             catch (DbUpdateException ex) when (IsDuplicateKey(ex))
             {
                 DetachAddedNotifications();
             }
         }
+        return inserted;
     }
 
     private static List<CreateNotificationRequest> DeduplicateInMemory(IEnumerable<CreateNotificationRequest> requests)
@@ -184,11 +203,25 @@ public class NotificationService : INotificationService
     private static bool IsDuplicateKey(DbUpdateException ex)
         => ex.InnerException is MySqlException { Number: 1062 };
 
+    private static CreateNotificationRequest ValidateRequest(CreateNotificationRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Type) || request.Type.Length > 30)
+            throw new BizException(4001, "通知类型不能为空且不能超过 30 个字符");
+        if (string.IsNullOrWhiteSpace(request.Title))
+            throw new BizException(4001, "通知标题不能为空");
+        if (request.IdempotencyKey?.Length > 100)
+            throw new BizException(4001, "通知幂等键不能超过 100 个字符");
+        return request;
+    }
+
+    private static string Truncate(string value, int maxLength)
+        => value.Length <= maxLength ? value : value[..maxLength];
+
     private static Domain.Entities.Notification ToEntity(CreateNotificationRequest r) => new()
     {
         Type = r.Type,
-        Title = r.Title,
-        Body = r.Body,
+        Title = Truncate(r.Title, 200),
+        Body = Truncate(r.Body, 500),
         FlowId = r.FlowId,
         UserId = r.UserId,
         IdempotencyKey = r.IdempotencyKey,

@@ -3,12 +3,14 @@ import type { AssetSummary } from '#/api/report';
 
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+
 import { useAccess } from '@vben/access';
+
+import { ElButton, ElTable, ElTableColumn } from 'element-plus';
 
 import { exportAssetSummaryApi, getAssetSummaryApi } from '#/api/report';
 import { downloadBlob } from '#/utils/download';
-
-import { ElButton, ElTable, ElTableColumn } from 'element-plus';
+import { runHandled } from '#/utils/handled-promise';
 
 defineOptions({ name: 'ReportSummary' });
 
@@ -35,10 +37,12 @@ async function loadData() {
 
 function goCategoryAssets(categoryCode: string) {
   if (!categoryCode) return;
-  router.push({
-    path: '/asset/list',
-    query: { categoryCode },
-  });
+  runHandled(
+    router.push({
+      path: '/asset/list',
+      query: { categoryCode },
+    }),
+  );
 }
 
 async function exportReport() {
@@ -54,7 +58,9 @@ onMounted(loadData);
     <div class="page-container">
       <div class="page-header">
         <h2 class="page-title">资产汇总</h2>
-        <ElButton v-if="canExport" type="primary" @click="exportReport">导出 Excel</ElButton>
+        <ElButton v-if="canExport" type="primary" @click="exportReport">
+          导出 Excel
+        </ElButton>
       </div>
       <div class="stat-cards">
         <div class="stat-card">
@@ -63,29 +69,63 @@ onMounted(loadData);
         </div>
         <div class="stat-card">
           <div class="stat-label">在库资产</div>
-          <div class="stat-value stat-value-success">{{ summary.available }}</div>
+          <div class="stat-value stat-value-success">
+            {{ summary.available }}
+          </div>
         </div>
         <div class="stat-card">
           <div class="stat-label">借出资产</div>
-          <div class="stat-value stat-value-warning">{{ summary.borrowed }}</div>
+          <div class="stat-value stat-value-warning">
+            {{ summary.borrowed }}
+          </div>
         </div>
       </div>
 
       <div class="summary-tables">
         <div class="summary-table-panel">
           <div class="summary-table-title">按分类统计</div>
-          <ElTable v-loading="loading" :data="summary.byCategory" border height="100%">
+          <ElTable
+            :data="summary.byCategory"
+            border
+            height="100%"
+            v-loading="loading"
+          >
             <ElTableColumn label="分类" min-width="180">
               <template #default="{ row }">
-                <button class="category-code-link" type="button" @click="goCategoryAssets(row.categoryCode)">
+                <button
+                  class="category-code-link"
+                  type="button"
+                  @click="goCategoryAssets(row.categoryCode)"
+                >
                   {{ row.categoryCode }}
                 </button>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="总数" prop="total" width="100" align="right" />
-            <ElTableColumn label="在库" prop="available" width="100" align="right" />
-            <ElTableColumn class-name="hide-on-mobile" label="借出" prop="borrowed" width="100" align="right" />
-            <ElTableColumn class-name="hide-on-mobile" label="占比" width="100" align="right">
+            <ElTableColumn
+              align="right"
+              label="总数"
+              prop="total"
+              width="100"
+            />
+            <ElTableColumn
+              align="right"
+              label="在库"
+              prop="available"
+              width="100"
+            />
+            <ElTableColumn
+              align="right"
+              class-name="hide-on-mobile"
+              label="借出"
+              prop="borrowed"
+              width="100"
+            />
+            <ElTableColumn
+              align="right"
+              class-name="hide-on-mobile"
+              label="占比"
+              width="100"
+            >
               <template #default="{ row }">{{ row.percent }}%</template>
             </ElTableColumn>
           </ElTable>
@@ -93,16 +133,42 @@ onMounted(loadData);
 
         <div class="summary-table-panel">
           <div class="summary-table-title">按部门统计</div>
-          <ElTable v-loading="loading" :data="summary.byDept" border height="100%">
+          <ElTable
+            :data="summary.byDept"
+            border
+            height="100%"
+            v-loading="loading"
+          >
             <ElTableColumn label="部门" min-width="180">
               <template #default="{ row }">
                 <div>{{ row.departmentName }}</div>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="总数" prop="total" width="100" align="right" />
-            <ElTableColumn label="在库" prop="available" width="100" align="right" />
-            <ElTableColumn class-name="hide-on-mobile" label="借出" prop="borrowed" width="100" align="right" />
-            <ElTableColumn class-name="hide-on-mobile" label="占比" width="100" align="right">
+            <ElTableColumn
+              align="right"
+              label="总数"
+              prop="total"
+              width="100"
+            />
+            <ElTableColumn
+              align="right"
+              label="在库"
+              prop="available"
+              width="100"
+            />
+            <ElTableColumn
+              align="right"
+              class-name="hide-on-mobile"
+              label="借出"
+              prop="borrowed"
+              width="100"
+            />
+            <ElTableColumn
+              align="right"
+              class-name="hide-on-mobile"
+              label="占比"
+              width="100"
+            >
               <template #default="{ row }">{{ row.percent }}%</template>
             </ElTableColumn>
           </ElTable>

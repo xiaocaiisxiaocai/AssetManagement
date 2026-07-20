@@ -17,5 +17,6 @@ public class TestProjectFollowupConfiguration : IEntityTypeConfiguration<TestPro
             .WithMany()
             .HasForeignKey(x => x.ProjectId)
             .OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.FilledById).OnDelete(DeleteBehavior.Restrict);
     }
 }

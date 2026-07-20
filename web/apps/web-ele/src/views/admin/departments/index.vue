@@ -11,20 +11,6 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useAccess } from '@vben/access';
 
 import {
-  createDepartmentApi,
-  deleteDepartmentApi,
-  getDepartmentTreeApi,
-  getOrganizationLevelsApi,
-  updateDepartmentApi,
-} from '#/api/base-data';
-import { getUserListApi, getUserOptionsApi } from '#/api/user';
-import {
-  createPageSizeOptions,
-  getDefaultPageSize,
-} from '#/utils/runtime-settings';
-import { buildDepartmentActionAccess } from '#/views/permissions/action-access';
-
-import {
   ElButton,
   ElDialog,
   ElForm,
@@ -41,6 +27,22 @@ import {
   ElTag,
 } from 'element-plus';
 
+import {
+  createDepartmentApi,
+  deleteDepartmentApi,
+  getDepartmentTreeApi,
+  getOrganizationLevelsApi,
+  updateDepartmentApi,
+} from '#/api/base-data';
+import { getUserListApi, getUserOptionsPageApi } from '#/api/user';
+import { createLatestRequestGuard } from '#/utils/latest-request';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
+import { mergeUserOptions } from '#/utils/user-options';
+import { buildDepartmentActionAccess } from '#/views/permissions/action-access';
+
 defineOptions({ name: 'AdminDepartments' });
 
 const { hasAccessByCodes } = useAccess();
@@ -54,12 +56,14 @@ const editingId = ref<null | number>(null);
 const departments = ref<DepartmentNode[]>([]);
 const organizationLevels = ref<OrganizationLevel[]>([]);
 const userOptions = ref<UserOptionDto[]>([]);
+const userOptionsLoading = ref(false);
+const userOptionsRequestGuard = createLatestRequestGuard();
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const page = ref(1);
 const pageSize = ref(20);
-type DepartmentForm = Omit<DepartmentPayload, 'managerId'> & {
+type DepartmentForm = {
   managerId?: number;
-};
+} & Omit<DepartmentPayload, 'managerId'>;
 
 const form = reactive<DepartmentForm>({
   isActive: true,
@@ -75,15 +79,34 @@ const pagedDepartments = computed(() => {
 });
 
 async function loadUsers() {
-  if (
-    hasAccessByCodes(['approval:create']) ||
-    hasAccessByCodes(['material-flow:transfer'])
-  ) {
-    userOptions.value = await getUserOptionsApi();
-    return;
+  await searchUsers('');
+}
+
+async function searchUsers(keyword = '') {
+  const requestGeneration = userOptionsRequestGuard.next();
+  userOptionsLoading.value = true;
+  try {
+    const canLoadUserOptions =
+      hasAccessByCodes(['approval:create']) ||
+      hasAccessByCodes(['material-flow:transfer']) ||
+      hasAccessByCodes(['department:create']) ||
+      hasAccessByCodes(['department:edit']);
+    let incoming: UserOptionDto[];
+    if (canLoadUserOptions) {
+      const response = await getUserOptionsPageApi(keyword, 1, 50);
+      incoming = response.items;
+    } else {
+      const response = await getUserListApi(keyword, 1, 50);
+      incoming = response.items.filter((user) => user.isActive);
+    }
+    if (!userOptionsRequestGuard.isLatest(requestGeneration)) return;
+    userOptions.value = mergeUserOptions(userOptions.value, incoming);
+  } catch {
+    // 请求层已提示，保留已回填选项。
+  } finally {
+    if (userOptionsRequestGuard.isLatest(requestGeneration))
+      userOptionsLoading.value = false;
   }
-  const result = await getUserListApi('', 1, 500);
-  userOptions.value = result.items.filter((user) => user.isActive);
 }
 
 async function loadData() {
@@ -141,11 +164,9 @@ async function save() {
       ...form,
       managerId: form.managerId ?? null,
     };
-    if (editingId.value) {
-      await updateDepartmentApi(editingId.value, payload);
-    } else {
-      await createDepartmentApi(payload);
-    }
+    await (editingId.value
+      ? updateDepartmentApi(editingId.value, payload)
+      : createDepartmentApi(payload));
     ElMessage.success('保存成功');
     dialogVisible.value = false;
     await loadData();
@@ -189,20 +210,21 @@ onMounted(async () => {
           v-if="departmentActionAccess.canCreate"
           type="primary"
           @click="openCreate()"
-          >新增部门</ElButton
         >
+          新增部门
+        </ElButton>
       </div>
 
       <div class="table-panel">
         <ElTable
-          v-loading="loading"
           :data="pagedDepartments"
-          row-key="id"
           border
           default-expand-all
           height="100%"
+          row-key="id"
+          v-loading="loading"
         >
-          <ElTableColumn label="ID" prop="id" width="90" align="center" />
+          <ElTableColumn align="center" label="ID" prop="id" width="90" />
           <ElTableColumn label="部门名称" min-width="200" prop="name" />
           <ElTableColumn label="组织层级" min-width="120">
             <template #default="{ row }">
@@ -217,20 +239,20 @@ onMounted(async () => {
             min-width="140"
             prop="managerName"
           />
-          <ElTableColumn label="状态" min-width="100" align="center">
+          <ElTableColumn align="center" label="状态" min-width="100">
             <template #default="{ row }">
               <ElTag :type="row.isActive ? 'success' : 'info'" size="small">
                 {{ row.isActive ? '启用' : '停用' }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn fixed="right" label="操作" width="240" align="center">
+          <ElTableColumn align="center" fixed="right" label="操作" width="240">
             <template #default="{ row }">
               <ElButton
                 v-if="departmentActionAccess.canCreate"
                 link
-                type="primary"
                 size="small"
+                type="primary"
                 @click="openCreate(row)"
               >
                 新增下级
@@ -238,19 +260,21 @@ onMounted(async () => {
               <ElButton
                 v-if="departmentActionAccess.canEdit"
                 link
-                type="primary"
                 size="small"
+                type="primary"
                 @click="openEdit(row)"
-                >编辑</ElButton
               >
+                编辑
+              </ElButton>
               <ElButton
                 v-if="departmentActionAccess.canDelete"
                 link
-                type="danger"
                 size="small"
+                type="danger"
                 @click="remove(row)"
-                >删除</ElButton
               >
+                删除
+              </ElButton>
             </template>
           </ElTableColumn>
         </ElTable>
@@ -290,9 +314,9 @@ onMounted(async () => {
         <ElForm label-width="100px">
           <ElFormItem label="上级 ID">
             <ElInput
-              v-model.number="form.parentId"
               clearable
               placeholder="留空为事业部/顶级组织"
+              v-model.number="form.parentId"
             />
           </ElFormItem>
           <ElFormItem label="部门名称" required>
@@ -315,9 +339,12 @@ onMounted(async () => {
           <ElFormItem label="负责人">
             <ElSelect
               v-model="form.managerId"
+              :loading="userOptionsLoading"
+              :remote-method="searchUsers"
               clearable
               filterable
               placeholder="可选，选择该组织节点负责人"
+              remote
               style="width: 100%"
             >
               <ElOption
@@ -334,9 +361,9 @@ onMounted(async () => {
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save"
-            >保存</ElButton
-          >
+          <ElButton :loading="saving" type="primary" @click="save">
+            保存
+          </ElButton>
         </template>
       </ElDialog>
     </div>

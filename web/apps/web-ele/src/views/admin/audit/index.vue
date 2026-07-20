@@ -1,20 +1,13 @@
 <script lang="ts" setup>
-import type { AuditCleanupPreview, AuditLogQuery, AuditLogRow } from '#/api/report';
+import type {
+  AuditCleanupPreview,
+  AuditLogQuery,
+  AuditLogRow,
+} from '#/api/report';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
-
-import {
-  cleanupAuditLogsApi,
-  exportAuditLogsApi,
-  getAuditCleanupPreviewApi,
-  getAuditLogsApi,
-} from '#/api/report';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
-import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
-import { downloadBlob } from '#/utils/download';
-import { formatDateTime } from '#/utils/date-format';
 
 import {
   ElButton,
@@ -38,7 +31,25 @@ import {
   ElTooltip,
 } from 'element-plus';
 
+import {
+  cleanupAuditLogsApi,
+  exportAuditLogsApi,
+  getAuditCleanupPreviewApi,
+  getAuditLogsApi,
+} from '#/api/report';
+import { formatDateTime } from '#/utils/date-format';
+import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
+import { downloadBlob } from '#/utils/download';
+import { runHandled } from '#/utils/handled-promise';
+import { createLatestRequestGuard } from '#/utils/latest-request';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
+
 defineOptions({ name: 'AdminAudit' });
+
+const listRequestGuard = createLatestRequestGuard();
 
 type TagType = 'danger' | 'info' | 'success' | 'warning';
 
@@ -64,13 +75,15 @@ const query = reactive({
 });
 
 async function loadData() {
+  const requestGeneration = listRequestGuard.next();
   loading.value = true;
   try {
     const result = await getAuditLogsApi(buildQuery());
+    if (!listRequestGuard.isLatest(requestGeneration)) return;
     rows.value = result.items;
     total.value = result.total;
   } finally {
-    loading.value = false;
+    if (listRequestGuard.isLatest(requestGeneration)) loading.value = false;
   }
 }
 
@@ -88,7 +101,7 @@ function buildQuery(): AuditLogQuery {
 
 function search() {
   query.page = 1;
-  void loadData();
+  runHandled(loadData());
 }
 
 function resetQuery() {
@@ -99,7 +112,7 @@ function resetQuery() {
     page: 1,
     userId: undefined,
   });
-  void loadData();
+  runHandled(loadData());
 }
 
 async function openCleanupDialog() {
@@ -110,14 +123,18 @@ async function openCleanupDialog() {
 async function loadCleanupPreview() {
   cleanupPreviewLoading.value = true;
   try {
-    cleanupPreview.value = await getAuditCleanupPreviewApi(cleanupRetentionDays.value);
+    cleanupPreview.value = await getAuditCleanupPreviewApi(
+      cleanupRetentionDays.value,
+    );
   } finally {
     cleanupPreviewLoading.value = false;
   }
 }
 
 async function confirmCleanup() {
-  const preview = cleanupPreview.value ?? await getAuditCleanupPreviewApi(cleanupRetentionDays.value);
+  const preview =
+    cleanupPreview.value ??
+    (await getAuditCleanupPreviewApi(cleanupRetentionDays.value));
   try {
     await ElMessageBox.confirm(
       `确认清理 ${formatDateTime(preview.cutoffTime, { seconds: true })} 之前的审计日志？预计删除 ${preview.deleteCount} 条。`,
@@ -249,7 +266,6 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-
 onMounted(async () => {
   query.pageSize = await getDefaultPageSize();
   pageSizeOptions.value = createPageSizeOptions(query.pageSize);
@@ -265,8 +281,16 @@ onMounted(async () => {
           <h2 class="page-title">审计日志</h2>
         </div>
         <div class="header-actions">
-          <ElButton v-if="canExportAudit" type="primary" @click="exportLogs">导出 Excel</ElButton>
-          <ElButton v-if="canCleanupAudit" type="warning" @click="openCleanupDialog">清理日志</ElButton>
+          <ElButton v-if="canExportAudit" type="primary" @click="exportLogs">
+            导出 Excel
+          </ElButton>
+          <ElButton
+            v-if="canCleanupAudit"
+            type="warning"
+            @click="openCleanupDialog"
+          >
+            清理日志
+          </ElButton>
         </div>
       </div>
 
@@ -279,9 +303,9 @@ onMounted(async () => {
               format="YYYY-MM-DD"
               range-separator="至"
               start-placeholder="开始日期"
+              style="width: 240px"
               type="daterange"
               value-format="YYYY-MM-DD"
-              style="width: 240px"
             />
           </ElFormItem>
           <ElFormItem label="操作">
@@ -301,10 +325,20 @@ onMounted(async () => {
             </ElSelect>
           </ElFormItem>
           <ElFormItem label="模块">
-            <ElInput v-model="query.module" clearable placeholder="模块/摘要关键字" style="width: 180px" />
+            <ElInput
+              v-model="query.module"
+              clearable
+              placeholder="模块/摘要关键字"
+              style="width: 180px"
+            />
           </ElFormItem>
           <ElFormItem label="用户ID">
-            <ElInput v-model.number="query.userId" clearable placeholder="用户ID" style="width: 120px" />
+            <ElInput
+              clearable
+              placeholder="用户ID"
+              style="width: 120px"
+              v-model.number="query.userId"
+            />
           </ElFormItem>
           <ElFormItem>
             <ElButton type="primary" @click="search">查询</ElButton>
@@ -314,14 +348,16 @@ onMounted(async () => {
       </div>
 
       <div class="table-panel-with-toolbar">
-        <ElTable v-loading="loading" :data="rows" border height="100%">
+        <ElTable :data="rows" border height="100%" v-loading="loading">
           <ElTableColumn type="expand">
             <template #default="{ row }">
               <div class="audit-detail">
                 <ElDescriptions :column="3" border size="small">
                   <ElDescriptionsItem label="结果">
                     <ElTag
-                      :type="parseDetail(row.detail).success ? 'success' : 'danger'"
+                      :type="
+                        parseDetail(row.detail).success ? 'success' : 'danger'
+                      "
                       size="small"
                     >
                       {{ parseDetail(row.detail).success ? '成功' : '失败' }}
@@ -336,7 +372,9 @@ onMounted(async () => {
                   <ElDescriptionsItem :span="2" label="请求">
                     {{ row.summary }}
                   </ElDescriptionsItem>
-                  <ElDescriptionsItem label="IP">{{ row.ip || '-' }}</ElDescriptionsItem>
+                  <ElDescriptionsItem label="IP">
+                    {{ row.ip || '-' }}
+                  </ElDescriptionsItem>
                   <ElDescriptionsItem :span="3" label="客户端">
                     {{ row.userAgent || '-' }}
                   </ElDescriptionsItem>
@@ -349,7 +387,7 @@ onMounted(async () => {
                 <div class="audit-changes">
                   <div class="audit-changes-title">字段变更</div>
                   <ElTable
-                    v-if="parseDetail(row.detail).changes.length"
+                    v-if="parseDetail(row.detail).changes.length > 0"
                     :data="parseDetail(row.detail).changes"
                     border
                     size="small"
@@ -357,12 +395,16 @@ onMounted(async () => {
                     <ElTableColumn label="字段" min-width="160" prop="field" />
                     <ElTableColumn label="原值" min-width="220">
                       <template #default="{ row: change }">
-                        <span class="audit-value-before">{{ formatValue(change.before) }}</span>
+                        <span class="audit-value-before">{{
+                          formatValue(change.before)
+                        }}</span>
                       </template>
                     </ElTableColumn>
                     <ElTableColumn label="新值" min-width="220">
                       <template #default="{ row: change }">
-                        <span class="audit-value-after">{{ formatValue(change.after) }}</span>
+                        <span class="audit-value-after">{{
+                          formatValue(change.after)
+                        }}</span>
                       </template>
                     </ElTableColumn>
                   </ElTable>
@@ -374,17 +416,27 @@ onMounted(async () => {
             </template>
           </ElTableColumn>
           <ElTableColumn label="时间" min-width="170">
-            <template #default="{ row }">{{ formatDateTime(row.occurredAt, { seconds: true }) }}</template>
-          </ElTableColumn>
-          <ElTableColumn label="操作人" min-width="120">
-            <template #default="{ row }">{{ row.userName || row.userId || '-' }}</template>
-          </ElTableColumn>
-          <ElTableColumn label="操作" width="100" align="center">
             <template #default="{ row }">
-              <ElTag :type="actionType(row.actionType)" size="small">{{ actionTypeLabel(row.actionType) }}</ElTag>
+              {{ formatDateTime(row.occurredAt, { seconds: true }) }}
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="模块" min-width="120">
+          <ElTableColumn label="操作人" min-width="120">
+            <template #default="{ row }">
+              {{ row.userName || row.userId || '-' }}
+            </template>
+          </ElTableColumn>
+          <ElTableColumn align="center" label="操作" width="100">
+            <template #default="{ row }">
+              <ElTag :type="actionType(row.actionType)" size="small">
+                {{ actionTypeLabel(row.actionType) }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="模块"
+            min-width="120"
+          >
             <template #default="{ row }">
               <ElTooltip
                 v-if="row.targetType"
@@ -396,11 +448,33 @@ onMounted(async () => {
               <span v-else>-</span>
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="目标ID" min-width="90" prop="targetId" />
-          <ElTableColumn label="摘要" min-width="240" prop="summary" show-overflow-tooltip />
-          <ElTableColumn class-name="hide-on-mobile" label="IP" min-width="130" prop="ip" />
-          <ElTableColumn class-name="hide-on-mobile" label="耗时" width="96" align="right">
-            <template #default="{ row }">{{ formatDuration(row.durationMs) }}</template>
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="目标ID"
+            min-width="90"
+            prop="targetId"
+          />
+          <ElTableColumn
+            label="摘要"
+            min-width="240"
+            prop="summary"
+            show-overflow-tooltip
+          />
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="IP"
+            min-width="130"
+            prop="ip"
+          />
+          <ElTableColumn
+            align="right"
+            class-name="hide-on-mobile"
+            label="耗时"
+            width="96"
+          >
+            <template #default="{ row }">
+              {{ formatDuration(row.durationMs) }}
+            </template>
           </ElTableColumn>
         </ElTable>
 
@@ -436,23 +510,30 @@ onMounted(async () => {
 
       <ElDialog
         v-model="cleanupDialogVisible"
+        :close-on-click-modal="false"
         title="清理审计日志"
         width="460px"
-        :close-on-click-modal="false"
       >
         <ElForm label-position="top">
           <ElFormItem label="保留周期">
-            <ElRadioGroup v-model="cleanupRetentionDays" @change="loadCleanupPreview">
+            <ElRadioGroup
+              v-model="cleanupRetentionDays"
+              @change="loadCleanupPreview"
+            >
               <ElRadioButton :value="7">7 天</ElRadioButton>
               <ElRadioButton :value="14">14 天</ElRadioButton>
               <ElRadioButton :value="30">30 天</ElRadioButton>
             </ElRadioGroup>
           </ElFormItem>
 
-          <div v-loading="cleanupPreviewLoading" class="cleanup-preview">
+          <div class="cleanup-preview" v-loading="cleanupPreviewLoading">
             <div class="preview-row">
               <span>截止时间</span>
-              <strong>{{ cleanupPreview ? formatDateTime(cleanupPreview.cutoffTime, { seconds: true }) : '-' }}</strong>
+              <strong>{{
+                cleanupPreview
+                  ? formatDateTime(cleanupPreview.cutoffTime, { seconds: true })
+                  : '-'
+              }}</strong>
             </div>
             <div class="preview-row">
               <span>预计删除</span>
@@ -467,9 +548,9 @@ onMounted(async () => {
         <template #footer>
           <ElButton @click="cleanupDialogVisible = false">取消</ElButton>
           <ElButton
-            type="danger"
-            :loading="cleanupLoading"
             :disabled="cleanupPreviewLoading"
+            :loading="cleanupLoading"
+            type="danger"
             @click="confirmCleanup"
           >
             确认清理

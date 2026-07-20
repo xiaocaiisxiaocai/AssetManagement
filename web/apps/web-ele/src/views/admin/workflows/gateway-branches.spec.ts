@@ -12,6 +12,10 @@ import {
   resolveDiagramElement,
 } from './gateway-branches';
 
+function condition(field: string, value: string) {
+  return `\${${field}} == "${value}"`;
+}
+
 describe('流程设计器网关分支展示', () => {
   it('保留已配置的连线名称', () => {
     expect(
@@ -24,24 +28,24 @@ describe('流程设计器网关分支展示', () => {
   });
 
   it('把项目负责人条件转换为可读标签', () => {
-    expect(getConditionSummary('${isProjectOwner} == "true"')).toBe(
+    expect(getConditionSummary(condition('isProjectOwner', 'true'))).toBe(
       '是项目负责人',
     );
-    expect(getConditionSummary('${isProjectOwner} == "false"')).toBe(
+    expect(getConditionSummary(condition('isProjectOwner', 'false'))).toBe(
       '非项目负责人',
     );
   });
 
   it('把通用组织审批条件转换为可读标签', () => {
-    expect(getConditionSummary('${requiresSectionApproval} == "true"')).toBe(
-      '需要课级审批',
-    );
     expect(
-      getConditionSummary('${requiresDepartmentApproval} == "false"'),
+      getConditionSummary(condition('requiresSectionApproval', 'true')),
+    ).toBe('需要课级审批');
+    expect(
+      getConditionSummary(condition('requiresDepartmentApproval', 'false')),
     ).toBe('跳过部门级审批');
-    expect(getConditionSummary('${requiresApproval_division} == "true"')).toBe(
-      '需要 division 层级审批',
-    );
+    expect(
+      getConditionSummary(condition('requiresApproval_division', 'true')),
+    ).toBe('需要 division 层级审批');
   });
 
   it('把旧流程的无条件出线识别为默认分支', () => {
@@ -60,7 +64,7 @@ describe('流程设计器网关分支展示', () => {
   it('带条件的显式默认引用不能冒充后端要求的无条件分支', () => {
     expect(
       isDefaultGatewayBranch({
-        conditionExpression: '${applicantRole} == "employee"',
+        conditionExpression: condition('applicantRole', 'employee'),
         gatewayType: 'bpmn:ExclusiveGateway',
         index: 0,
         isExplicitDefault: true,
@@ -172,8 +176,8 @@ describe('流程设计器网关分支展示', () => {
     expect(
       getGatewayValidationError({
         expressions: [
-          '${isProjectOwner} == "true"',
-          '${isProjectOwner} == "false"',
+          condition('isProjectOwner', 'true'),
+          condition('isProjectOwner', 'false'),
         ],
         gatewayName: '是否项目负责人',
         gatewayType: 'bpmn:ExclusiveGateway',
@@ -184,7 +188,7 @@ describe('流程设计器网关分支展示', () => {
   it('保存前拦截配置了条件的并行网关', () => {
     expect(
       getGatewayValidationError({
-        expressions: ['${applicantDept} == "技术部"', ''],
+        expressions: [condition('applicantDept', '技术部'), ''],
         gatewayName: '并行评审',
         gatewayType: 'bpmn:ParallelGateway',
       }),

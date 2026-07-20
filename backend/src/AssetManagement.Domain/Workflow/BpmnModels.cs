@@ -129,4 +129,18 @@ public class BpmnToken
     /// 动态加签关系（加签人用户 ID -> 执行加签的用户 ID），用于安全撤销误加签。
     /// </summary>
     public Dictionary<string, int>? AddedSigners { get; set; }
+
+    /// <summary>
+    /// 同一人工节点因合法循环被再次激活时，保留此前每次执行的快照。
+    /// </summary>
+    public List<BpmnTokenExecution> History { get; set; } = new();
+}
+
+public class BpmnTokenExecution
+{
+    public DateTime? StartedAt { get; set; }
+    public string? Approver { get; set; }
+    public string? Opinion { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public Dictionary<string, bool>? SignStates { get; set; }
 }

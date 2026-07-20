@@ -171,6 +171,7 @@ builder.Services.AddHostedService<OverdueNotificationWorker>();
 builder.Services.AddHostedService<PendingApprovalReminderWorker>();
 builder.Services.AddHostedService<DatabaseBackupWorker>();
 builder.Services.AddHostedService<AuditCleanupWorker>();
+builder.Services.AddHostedService<OrphanImageCleanupWorker>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
@@ -292,6 +293,12 @@ foreach (var proxyText in builder.Configuration.GetSection("ForwardedHeaders:Kno
 }
 app.UseForwardedHeaders(forwardedHeadersOptions);
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
+
 if (corsOrigins is { Length: > 0 })
 {
     app.UseCors();
@@ -302,6 +309,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseMiddleware<AccountSecurityMiddleware>();
 app.UseMiddleware<SlidingTokenMiddleware>();
+app.UseMiddleware<AuthorizationFailureAuditMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();

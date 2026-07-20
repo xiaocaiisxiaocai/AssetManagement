@@ -55,6 +55,8 @@ public class DepartmentController : ControllerBase
         {
             Id = x.Id,
             Name = x.Name,
+            ManagerId = x.ManagerId,
+            ManagerName = x.ManagerName,
             IsActive = x.IsActive,
             Children = ToOptions(x.Children)
         }).ToList();

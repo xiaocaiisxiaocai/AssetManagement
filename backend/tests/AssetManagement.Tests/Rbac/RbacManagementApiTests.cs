@@ -8,6 +8,7 @@ using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -80,15 +81,100 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             RoleIds = new[] { roleId }
         });
 
-        var options = await _client.GetFromJsonAsync<ApiResult<List<UserOptionDto>>>($"/api/users/options?keyword={employeeNo}");
+        var options = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserOptionDto>>>($"/api/users/options?keyword={employeeNo}&page=1&pageSize=10");
 
-        options!.Data.Should().ContainSingle(x => x.Id == created.Data!.Id && x.EmployeeNo == employeeNo && x.Name == "选项用户");
+        options!.Data!.Items.Should().ContainSingle(x => x.Id == created.Data!.Id && x.EmployeeNo == employeeNo && x.Name == "选项用户");
+        options.Data.Total.Should().Be(1);
         typeof(UserOptionDto).GetProperties().Select(x => x.Name)
             .Should().BeEquivalentTo("Id", "EmployeeNo", "Name", "DepartmentName");
 
         await Post<ApiResult<object?>>($"/api/users/{created.Data!.Id}/toggle-status", new SetUserStatusRequest { IsActive = false });
-        var afterDisable = await _client.GetFromJsonAsync<ApiResult<List<UserOptionDto>>>($"/api/users/options?keyword={employeeNo}");
-        afterDisable!.Data.Should().BeEmpty();
+        var afterDisable = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserOptionDto>>>($"/api/users/options?keyword={employeeNo}");
+        afterDisable!.Data!.Items.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task User_options_applies_keyword_and_real_pagination()
+    {
+        await Login();
+        var prefix = Unique("paged-option");
+        var roleId = await CreateRoleId();
+        for (var index = 0; index < 3; index++)
+        {
+            await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+            {
+                EmployeeNo = $"{prefix}-{index}",
+                Name = $"分页选项{index}",
+                RoleIds = new[] { roleId },
+            });
+        }
+
+        var first = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserOptionDto>>>(
+            $"/api/users/options?keyword={prefix}&page=1&pageSize=2");
+        var second = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserOptionDto>>>(
+            $"/api/users/options?keyword={prefix}&page=2&pageSize=2");
+
+        first!.Data!.Total.Should().Be(3);
+        first.Data.Items.Should().HaveCount(2);
+        second!.Data!.Items.Should().ContainSingle();
+        first.Data.Items.Select(x => x.Id).Should().NotContain(second.Data.Items[0].Id);
+    }
+
+    [Fact]
+    public async Task Workflow_designer_options_returns_minimal_authorized_reference_data()
+    {
+        await Login();
+
+        var result = await _client.GetFromJsonAsync<ApiResult<WorkflowDesignerOptionsDto>>(
+            "/api/workflow-designer/options?keyword=1001&page=1&pageSize=1");
+
+        result!.Code.Should().Be(0);
+        result.Data!.Users.PageSize.Should().Be(1);
+        result.Data.Users.Items.Should().OnlyContain(x => x.EmployeeNo.Contains("1001") || x.Name.Contains("1001"));
+        result.Data.Roles.Should().NotBeEmpty();
+        result.Data.Departments.Should().NotBeNull();
+        result.Data.OrganizationLevels.Should().NotBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("asset:create")]
+    [InlineData("asset:edit")]
+    [InlineData("department:create")]
+    [InlineData("department:edit")]
+    [InlineData("report:view")]
+    public async Task Business_editor_can_read_minimal_user_options_without_user_view(string permissionCode)
+    {
+        await Login();
+        var permission = (await _client.GetFromJsonAsync<ApiResult<List<PermissionDto>>>("/api/permissions"))!
+            .Data!.Single(x => x.Code == permissionCode);
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("option-access"), Name = Unique("选项访问角色"), IsActive = true,
+        });
+        await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data!.Id}/permissions", new
+        {
+            permissionIds = new[] { permission.Id },
+        });
+        var password = "OptionAccess123!";
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("optuser"), Name = "选项访问用户", Password = password,
+            RoleIds = new[] { role.Data.Id },
+        });
+        user.Code.Should().Be(0, user.Message);
+        user.Data.Should().NotBeNull();
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo = user.Data!.EmployeeNo, password,
+        });
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.Data!.Token);
+
+        var result = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserOptionDto>>>(
+            "/api/users/options?page=1&pageSize=1");
+
+        result!.Code.Should().Be(0);
+        result.Data.Should().NotBeNull();
     }
 
     [Fact]
@@ -273,6 +359,43 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task User_list_returns_supervisor_name_for_edit_form_round_trip()
+    {
+        await Login();
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>(
+            "/api/roles?keyword=supervisor&pageSize=20");
+        var supervisorRoleId = roles!.Data!.Items.Single(x => x.Code == "supervisor").Id;
+        var employeeRoleId = await CreateRoleId();
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("主管回填部门")
+        });
+        var supervisor = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("supervisor"),
+            Name = "不在首屏的直属主管",
+            DepartmentId = department.Data!.Id,
+            RoleIds = new[] { supervisorRoleId }
+        });
+        var employeeNo = Unique("employee");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "需要回填主管的用户",
+            DepartmentId = department.Data.Id,
+            SupervisorId = supervisor.Data!.Id,
+            RoleIds = new[] { employeeRoleId }
+        });
+
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>(
+            $"/api/users?keyword={employeeNo}");
+
+        var user = list!.Data!.Items.Single();
+        user.SupervisorId.Should().Be(supervisor.Data.Id);
+        user.SupervisorName.Should().Be(supervisor.Data.Name);
+    }
+
+    [Fact]
     public async Task User_list_can_filter_by_department()
     {
         await Login();
@@ -390,11 +513,10 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
         login.Code.Should().Be(0);
         login.Data!.Token.Should().NotBeNullOrWhiteSpace();
-        login.Data.MustChangePassword.Should().BeTrue();
     }
 
     [Fact]
-    public async Task Create_user_rejects_weak_custom_password_and_flags_explicit_default_password()
+    public async Task Create_user_enforces_password_length_without_composition_requirement()
     {
         await Login();
         var roleId = await CreateRoleId();
@@ -406,6 +528,21 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             RoleIds = new[] { roleId }
         });
         weak.Code.Should().Be(1004);
+
+        var lettersOnlyEmployeeNo = Unique("letters");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = lettersOnlyEmployeeNo,
+            Name = "纯字母密码用户",
+            Password = "abcdef",
+            RoleIds = new[] { roleId }
+        });
+        var lettersOnlyLogin = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo = lettersOnlyEmployeeNo,
+            password = "abcdef"
+        });
+        lettersOnlyLogin.Code.Should().Be(0);
 
         var employeeNo = Unique("default");
         await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
@@ -420,7 +557,8 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             employeeNo,
             password = "123456"
         });
-        login.Data!.MustChangePassword.Should().BeTrue();
+        login.Code.Should().Be(0);
+        login.Data!.Token.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -539,6 +677,51 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             x.EmployeeNo == employeeNo &&
             x.DepartmentId == departmentData.Id &&
             x.DepartmentName == departmentData.Name);
+    }
+
+    [Fact]
+    public async Task User_import_matches_role_and_department_names_case_insensitively()
+    {
+        await Login();
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        {
+            Code = Unique("case-role"), Name = Unique("CaseRole"), IsActive = true,
+        });
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("CaseDepartment"),
+        });
+        var employeeNo = Unique("case-user");
+        var file = BuildXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "部门名称", "角色名称" },
+            new[] { employeeNo, "大小写导入用户", "", department.Data!.Name.ToLowerInvariant(), role.Data!.Name.ToLowerInvariant() },
+        });
+
+        var imported = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import", file);
+
+        imported.Code.Should().Be(0);
+        imported.Data!.SuccessCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task User_import_validates_database_field_lengths_before_execution()
+    {
+        await Login();
+        var roleId = await CreateRoleId();
+        using var scope = _factory.Services.CreateScope();
+        var roleName = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Roles
+            .Where(x => x.Id == roleId).Select(x => x.Name).SingleAsync();
+        var file = BuildXlsx(new[]
+        {
+            new[] { "工号", "姓名", "邮箱", "角色名称" },
+            new[] { new string('E', 51), new string('姓', 101), new string('a', 190) + "@example.local", roleName },
+        });
+
+        var preview = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import/validate", file);
+
+        preview.Data!.FailedCount.Should().Be(1);
+        preview.Data.Rows.Single().Error.Should().MatchRegex("工号.*50|姓名.*100|邮箱.*200");
     }
 
     [Fact]
@@ -922,6 +1105,24 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Menu_rejects_unknown_type_and_unknown_permission_code()
+    {
+        await Login();
+        var invalidType = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = Unique("BadType"), Title = "非法菜单类型", Type = "link",
+        });
+        var invalidPermission = await Post<ApiResult<MenuDto>>("/api/menus", new MenuDto
+        {
+            Name = Unique("BadPermission"), Title = "非法权限码", Type = "menu",
+            PermissionCode = Unique("missing:permission"),
+        });
+
+        invalidType.Code.Should().Be(4001);
+        invalidPermission.Code.Should().Be(4043);
+    }
+
+    [Fact]
     public async Task Set_role_access_saves_permissions_and_menus_together_and_adds_parent_menu()
     {
         await Login();
@@ -1080,6 +1281,153 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Disabling_pending_borrower_transferee_or_unsigned_approver_is_rejected()
+    {
+        await Login();
+        var roleId = await CreateRoleId();
+        var transferee = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("pending-receiver"), Name = "在途受让人", RoleIds = new[] { roleId },
+        });
+        var signer = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("pending-signer"), Name = "未签审批人", RoleIds = new[] { roleId },
+        });
+        var borrower = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("pending-borrower"), Name = "在途借用人", RoleIds = new[] { roleId },
+        });
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var adminId = await db.Users.Where(x => x.EmployeeNo == "1001").Select(x => x.Id).SingleAsync();
+            var workflowId = await db.Workflows.Select(x => x.Id).FirstAsync();
+            var category = new AssetCategory
+            {
+                CodeSeg = Guid.NewGuid().ToString("N")[..8], Code = Guid.NewGuid().ToString("N"),
+            };
+            db.AssetCategories.Add(category);
+            await db.SaveChangesAsync();
+            var asset = new Asset
+            {
+                AssetNo = Guid.NewGuid().ToString("N"), Name = "停用校验资产", CategoryId = category.Id,
+                CreatedAt = DateTime.UtcNow,
+            };
+            db.Assets.Add(asset);
+            await db.SaveChangesAsync();
+            db.ApprovalFlows.AddRange(
+                new ApprovalFlow
+                {
+                    FlowNo = Unique("receiver-flow"), BizType = "transfer", WorkflowId = workflowId,
+                    AssetId = asset.Id, AssetNo = asset.AssetNo, AssetName = asset.Name,
+                    ApplicantId = adminId, Applicant = "系统管理员", TransfereeId = transferee.Data!.Id,
+                    Transferee = transferee.Data.Name, Status = "pending", ApplyTime = DateTime.UtcNow,
+                    Deadline = DateTime.UtcNow.AddDays(1), ActiveScopeKey = Unique("receiver-scope"),
+                },
+                new ApprovalFlow
+                {
+                    FlowNo = Unique("sign-flow"), BizType = "borrow", WorkflowId = workflowId,
+                    AssetId = asset.Id, AssetNo = asset.AssetNo, AssetName = asset.Name,
+                    ApplicantId = adminId, Applicant = "系统管理员", Status = "pending",
+                    ApplyTime = DateTime.UtcNow, Deadline = DateTime.UtcNow.AddDays(1),
+                    ActiveScopeKey = Unique("sign-scope"), CurrentNodeIds = new List<string> { "Task_sign" },
+                    BpmnTokens = new Dictionary<string, BpmnToken>
+                    {
+                        ["Task_sign"] = new()
+                        {
+                            Status = BpmnTokenStatus.Active,
+                            SignStates = new Dictionary<string, bool> { [signer.Data!.Id.ToString()] = false },
+                        },
+                    },
+                },
+                new ApprovalFlow
+                {
+                    FlowNo = Unique("borrower-flow"), BizType = "borrow", WorkflowId = workflowId,
+                    AssetId = asset.Id, AssetNo = asset.AssetNo, AssetName = asset.Name,
+                    ApplicantId = borrower.Data!.Id, Applicant = borrower.Data.Name, Status = "pending",
+                    ApplyTime = DateTime.UtcNow, Deadline = DateTime.UtcNow.AddDays(1),
+                    ActiveScopeKey = Unique("borrower-scope"),
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var receiverResult = await Post<ApiResult<object?>>($"/api/users/{transferee.Data!.Id}/toggle-status", new { isActive = false });
+        var signerResult = await Post<ApiResult<object?>>($"/api/users/{signer.Data!.Id}/toggle-status", new { isActive = false });
+        var borrowerResult = await Post<ApiResult<object?>>($"/api/users/{borrower.Data!.Id}/toggle-status", new { isActive = false });
+
+        receiverResult.Code.Should().Be(4092);
+        receiverResult.Message.Should().Contain("受让人");
+        signerResult.Code.Should().Be(4092);
+        signerResult.Message.Should().Contain("未签");
+        borrowerResult.Code.Should().Be(4092);
+        borrowerResult.Message.Should().Contain("借用申请");
+    }
+
+    [Fact]
+    public async Task Disabling_active_asset_or_material_custodian_is_rejected()
+    {
+        await Login();
+        var roleId = await CreateRoleId();
+        var assetCustodian = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("asset-custodian"), Name = "借出资产保管人", RoleIds = new[] { roleId },
+        });
+        var materialCustodian = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("mat-custodian"), Name = "在用料件保管人", RoleIds = new[] { roleId },
+        });
+
+        assetCustodian.Code.Should().Be(0, assetCustodian.Message);
+        materialCustodian.Code.Should().Be(0, materialCustodian.Message);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var adminId = await db.Users.Where(x => x.EmployeeNo == "1001").Select(x => x.Id).SingleAsync();
+            var category = new AssetCategory { CodeSeg = Unique("c"), Code = Unique("cat") };
+            var project = new TestProject
+            {
+                Name = Unique("custodian-project"),
+                Code = Unique("CP"),
+                OwnerId = adminId,
+                CreatedAt = DateTime.UtcNow,
+            };
+            db.AddRange(category, project);
+            await db.SaveChangesAsync();
+            db.Assets.Add(new Asset
+            {
+                AssetNo = Unique("borrowed-asset"),
+                Name = "借出资产",
+                CategoryId = category.Id,
+                CustodianId = assetCustodian.Data!.Id,
+                Status = AssetStatus.Borrowed,
+                CreatedAt = DateTime.UtcNow,
+            });
+            db.TestMaterials.Add(new TestMaterial
+            {
+                MaterialNo = Unique("in-use-material"),
+                Name = "在用料件",
+                ProjectId = project.Id,
+                CustodianId = materialCustodian.Data!.Id,
+                Status = MaterialStatus.InUse,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var assetResult = await Post<ApiResult<object?>>(
+            $"/api/users/{assetCustodian.Data!.Id}/toggle-status", new { isActive = false });
+        var materialResult = await Post<ApiResult<object?>>(
+            $"/api/users/{materialCustodian.Data!.Id}/toggle-status", new { isActive = false });
+
+        assetResult.Code.Should().Be(4092);
+        assetResult.Message.Should().Contain("借出");
+        materialResult.Code.Should().Be(4092);
+        materialResult.Message.Should().Contain("在用料件");
+    }
+
+    [Fact]
     public async Task Disabled_user_cannot_login()
     {
         await Login();
@@ -1100,7 +1448,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         });
 
         login.Code.Should().Be(4011);
-        login.Message.Should().Be("账号已禁用，请联系系统管理员");
+        login.Message.Should().Be("工号或密码错误");
         login.Data.Should().BeNull();
     }
 

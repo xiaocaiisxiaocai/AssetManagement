@@ -7,7 +7,7 @@ export interface WorkflowTerminalProgress {
 
 export function getTerminalProgress(
   status: string,
-): WorkflowTerminalProgress | undefined {
+): undefined | WorkflowTerminalProgress {
   return {
     approved: { text: '审批已完成', tone: 'success' as const },
     rejected: { text: '审批已驳回', tone: 'danger' as const },

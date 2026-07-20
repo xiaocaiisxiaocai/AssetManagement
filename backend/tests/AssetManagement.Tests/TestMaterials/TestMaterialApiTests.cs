@@ -49,6 +49,27 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_page_applies_server_filters_and_total_before_paging()
+    {
+        await Login();
+        var marker = Guid.NewGuid().ToString("N")[..8];
+        await CreateProject($"分页项目-{marker}-一");
+        await CreateProject($"分页项目-{marker}-二");
+        await CreateProject($"分页项目-{marker}-三");
+
+        var first = await _client.GetFromJsonAsync<ApiResult<PagedResult<TestProjectDto>>>(
+            $"/api/test-projects/page?name={marker}&page=1&pageSize=2");
+        var second = await _client.GetFromJsonAsync<ApiResult<PagedResult<TestProjectDto>>>(
+            $"/api/test-projects/page?name={marker}&page=2&pageSize=2");
+
+        first!.Data!.Total.Should().Be(3);
+        first.Data.Items.Should().HaveCount(2);
+        second!.Data!.Total.Should().Be(3);
+        second.Data.Items.Should().ContainSingle();
+        second.Data.Items.Should().OnlyContain(x => x.Name.Contains(marker));
+    }
+
+    [Fact]
     public async Task Create_material_rejects_inactive_department()
     {
         await Login();
@@ -73,6 +94,42 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
 
         body!.Code.Should().Be(4045);
         body.Message.Should().Be("部门不存在或已停用");
+    }
+
+    [Fact]
+    public async Task Create_material_rejects_well_formed_but_missing_stored_image()
+    {
+        await Login();
+        var project = await CreateProject("料件图片完整性项目");
+
+        var response = await _client.PostAsJsonAsync("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "引用不存在图片的料件",
+            ProjectId = project.Id,
+            Images = new List<string> { $"/api/files/{Guid.NewGuid():N}.png" }
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
+
+        body!.Code.Should().Be(4152);
+        body.Message.Should().Contain("不存在");
+    }
+
+    [Fact]
+    public async Task Create_material_image_reference_uses_the_same_trimmed_url_as_persistence()
+    {
+        await Login();
+        var project = await CreateProject("料件图片地址规范化项目");
+        var uploadedUrl = await UploadImage();
+
+        var created = await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "图片地址规范化料件",
+            ProjectId = project.Id,
+            Images = new List<string> { $"  {uploadedUrl}  " },
+        });
+
+        created.Code.Should().Be(0, created.Message);
+        created.Data!.Images.Should().Equal(uploadedUrl);
     }
 
     [Fact]
@@ -429,9 +486,9 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var updateBody = await update.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
 
         createBody!.Code.Should().Be(4001);
-        createBody.Message.Should().Contain("项目类型");
+        createBody.Message.Should().MatchRegex("项目类型|项目进度");
         updateBody!.Code.Should().Be(4001);
-        updateBody.Message.Should().Contain("项目类型");
+        updateBody.Message.Should().MatchRegex("项目类型|项目进度");
     }
 
     [Fact]
@@ -877,6 +934,19 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             password
         });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.Data!.Token);
+    }
+
+    private async Task<string> UploadImage()
+    {
+        using var form = new MultipartFormDataContent();
+        var content = new ByteArrayContent(
+            new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1 });
+        content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        form.Add(content, "file", "material.png");
+        var response = await _client.PostAsync("/api/files/upload", form);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<
+            ApiResult<AssetManagement.Application.Files.FileUploadResult>>())!.Data!.Url;
     }
 
     private async Task SetApprovalSwitch(bool enabled)

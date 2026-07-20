@@ -14,5 +14,6 @@ public class MaterialFlowRecordConfiguration : IEntityTypeConfiguration<Material
         b.Property(x => x.Operator).HasMaxLength(100);
         b.Property(x => x.Comment).HasMaxLength(500);
         b.HasIndex(x => x.FlowId);
+        b.HasOne<MaterialFlow>().WithMany().HasForeignKey(x => x.FlowId).OnDelete(DeleteBehavior.Restrict);
     }
 }

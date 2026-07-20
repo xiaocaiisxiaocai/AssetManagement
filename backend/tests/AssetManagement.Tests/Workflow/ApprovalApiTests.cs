@@ -112,6 +112,91 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         flow.Data.CurrentNodeIds.Should().NotBeEmpty();
     }
 
+    [Fact]
+    public async Task Approval_page_endpoints_filter_before_count_and_support_flow_id()
+    {
+        await Login();
+        var pageKeyword = Unique("分页批量");
+        async Task<ApprovalFlowDto> StartBorrow()
+        {
+            var asset = await CreateAsset();
+            using (var scope = _factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var entity = await db.Assets.AsTracking().SingleAsync(item => item.Id == asset.Id);
+                entity.Name = pageKeyword;
+                await db.SaveChangesAsync();
+            }
+            var response = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+            {
+                BizType = "borrow", AssetId = asset.Id, Reason = "分页筛选",
+                ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
+            });
+            return response.Data!;
+        }
+        var target = await StartBorrow();
+        await StartBorrow();
+
+        var mine = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/mine-page?page=1&pageSize=1&flowId={target.Id}&keyword={target.FlowNo}&bizType=borrow&status=pending");
+        var approverNo = target.CurrentSteps.SelectMany(step => step.Assignees).First().EmployeeNo;
+        Auth(await LoginToken(approverNo, "123456"));
+        var pending = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/pending-page?page=1&pageSize=1&flowId={target.Id}&keyword={target.AssetNo}&bizType=borrow&status=pending");
+        var invalidDate = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            "/api/approvals/pending-return-page?returnDate=2026-2-30");
+
+        mine!.Data!.Total.Should().Be(1);
+        mine.Data.Items.Should().ContainSingle().Which.Id.Should().Be(target.Id);
+        pending!.Data!.Total.Should().Be(1);
+        pending.Data.Items.Should().ContainSingle().Which.Id.Should().Be(target.Id);
+        invalidDate!.Code.Should().Be(4001);
+
+        _factory.CommandCounter.Reset();
+        var onePending = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/pending-page?page=1&pageSize=1&flowId={target.Id}&keyword={pageKeyword}");
+        var onePendingQueries = _factory.CommandCounter.ReaderCount;
+        _factory.CommandCounter.Reset();
+        var twoPending = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/pending-page?page=1&pageSize=2&keyword={pageKeyword}");
+        var twoPendingQueries = _factory.CommandCounter.ReaderCount;
+        onePending!.Data!.Total.Should().Be(1);
+        twoPending!.Data!.Total.Should().Be(2);
+        twoPendingQueries.Should().BeLessThanOrEqualTo(onePendingQueries + 1,
+            "待办扫描应跨同模板同上下文流程复用审批人解析，SQL 数不能随流程数线性增长");
+
+        var extremePending = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/pending-page?page={int.MaxValue}&pageSize=100&keyword={pageKeyword}");
+        extremePending!.Code.Should().Be(0);
+        extremePending.Data!.Total.Should().Be(2);
+        extremePending.Data.Items.Should().BeEmpty();
+
+        await Login();
+        _factory.CommandCounter.Reset();
+        var oneItem = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/mine-page?page=1&pageSize=1&keyword={pageKeyword}");
+        var oneItemQueries = _factory.CommandCounter.ReaderCount;
+        _factory.CommandCounter.Reset();
+        var twoItems = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/mine-page?page=1&pageSize=2&keyword={pageKeyword}");
+        var twoItemQueries = _factory.CommandCounter.ReaderCount;
+        oneItem!.Data!.Total.Should().Be(2);
+        twoItems!.Data!.Items.Should().HaveCount(2);
+        twoItemQueries.Should().BeLessThanOrEqualTo(oneItemQueries + 1,
+            "相同模板和申请人的流程应复用定义、审批人解析和用户批量查询，SQL 数不能随条目线性增长");
+
+        var extremeMine = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/mine-page?page={int.MaxValue}&pageSize=100&keyword={pageKeyword}");
+        extremeMine!.Code.Should().Be(0);
+        extremeMine.Data!.Total.Should().Be(2);
+        extremeMine.Data.Items.Should().BeEmpty();
+
+        var extremeReturn = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/pending-return-page?page={int.MaxValue}&pageSize=100");
+        extremeReturn!.Code.Should().Be(0);
+        extremeReturn.Data!.Items.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -151,6 +236,93 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             result.Code.Should().Be(4001);
             result.Message.Should().Be("归还日期必须晚于今天");
         }
+    }
+
+    [Fact]
+    public async Task Extension_flow_updates_active_borrow_return_date_only_after_approval()
+    {
+        await Login();
+        var originalReturnDate = DateTime.Today.AddDays(5).ToString("yyyy-MM-dd");
+        var newReturnDate = DateTime.Today.AddDays(12).ToString("yyyy-MM-dd");
+        var (asset, originalBorrowId) = await CreateBorrowedAsset(originalReturnDate);
+
+        var started = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "extension",
+            AssetId = asset.Id,
+            Reason = "项目周期延长",
+            ReturnDate = newReturnDate
+        });
+
+        started.Code.Should().Be(0, started.Message);
+        started.Data!.BizType.Should().Be("extension");
+        started.Data.OriginalReturnDate.Should().Be(originalReturnDate,
+            "延期单必须保留申请时的原期限用于审批和审计");
+        started.Data.ReturnDate.Should().Be(newReturnDate);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var beforeApproval = await db.ApprovalFlows.AsNoTracking()
+                .SingleAsync(flow => flow.Id == originalBorrowId);
+            beforeApproval.ReturnDate.Should().Be(originalReturnDate,
+                "延期审批通过前不能提前修改原借用期限");
+        }
+
+        Auth(await LoginToken("TEST-SUPERVISOR", "123456"));
+        var approved = await Post<ApiResult<ApprovalFlowDto>>(
+            $"/api/approvals/{started.Data.Id}/approve",
+            new ApprovalActionRequest
+            {
+                NodeId = started.Data.CurrentNodeIds.Single(),
+                Opinion = "同意延期"
+            });
+
+        approved.Code.Should().Be(0, approved.Message);
+        approved.Data!.Status.Should().Be("approved");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var afterApproval = await db.ApprovalFlows.AsNoTracking()
+                .SingleAsync(flow => flow.Id == originalBorrowId);
+            afterApproval.ReturnDate.Should().Be(newReturnDate,
+                "延期审批通过后应更新当前有效的原借用记录");
+        }
+
+        await Login();
+        var assetResult = await _client.GetFromJsonAsync<ApiResult<AssetDto>>($"/api/assets/{asset.Id}");
+        assetResult!.Data!.ReturnDate.Should().Be(newReturnDate,
+            "资产查询应立即返回审批后的新归还期限");
+    }
+
+    [Fact]
+    public async Task Extension_flow_requires_current_custodian_and_a_later_return_date()
+    {
+        await Login();
+        var originalReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd");
+        var (asset, _) = await CreateBorrowedAsset(originalReturnDate);
+
+        var sameDate = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "extension",
+            AssetId = asset.Id,
+            Reason = "日期没有延后",
+            ReturnDate = originalReturnDate
+        });
+        sameDate.Code.Should().Be(4001);
+        sameDate.Message.Should().Contain("晚于原应归还日期");
+
+        var availableAsset = await CreateAsset();
+        var notBorrowed = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "extension",
+            AssetId = availableAsset.Id,
+            Reason = "在库资产不能延期",
+            ReturnDate = DateTime.Today.AddDays(14).ToString("yyyy-MM-dd")
+        });
+        notBorrowed.Code.Should().Be(4055);
+        notBorrowed.Message.Should().Contain("当前借用人");
     }
 
     [Fact]
@@ -385,13 +557,37 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         });
 
         var asset = await CreateAsset(sourceDept.Data.Id, applicant.Data!.Id);
+        var expectedReturnDate = DateOnly.FromDateTime(DateTime.Today.AddDays(7)).ToString("yyyy-MM-dd");
+        var originalBorrowFlowId = 0;
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var borrowedAsset = await db.Assets.AsTracking().SingleAsync(x => x.Id == asset.Id);
             borrowedAsset.Status = AssetStatus.Borrowed;
             borrowedAsset.RowVersion++;
+            var borrowWorkflowId = await db.Workflows
+                .Where(x => x.BizType == "borrow" && x.IsActive)
+                .Select(x => x.Id)
+                .SingleAsync();
+            var originalBorrow = new ApprovalFlow
+            {
+                FlowNo = Unique("BOR"),
+                BizType = "borrow",
+                WorkflowId = borrowWorkflowId,
+                AssetId = asset.Id,
+                AssetNo = asset.AssetNo,
+                AssetName = asset.Name,
+                ApplicantId = applicant.Data.Id,
+                Applicant = applicant.Data.Name,
+                ApplicantDept = sourceDept.Data.Name,
+                ReturnDate = expectedReturnDate,
+                Status = "approved",
+                ApplyTime = DateTime.UtcNow.AddDays(-2),
+                Deadline = DateTime.UtcNow.AddDays(1)
+            };
+            db.ApprovalFlows.Add(originalBorrow);
             await db.SaveChangesAsync();
+            originalBorrowFlowId = originalBorrow.Id;
         }
 
         Auth(await LoginToken(applicantNo, "TestPass123"));
@@ -403,6 +599,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             Reason = "转让到接收部门"
         });
         flow.Code.Should().Be(0, flow.Message);
+        flow.Data!.ReturnDate.Should().Be(expectedReturnDate,
+            "借出资产转让时必须继承原借用申请的应归还日期");
 
         Auth(await LoginToken(supervisorNo, "TestPass123"));
         var step1 = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
@@ -425,6 +623,14 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         transferredAsset!.Data!.Status.Should().Be(AssetStatus.Borrowed,
             "借出资产转让后仍应保持借出状态");
         transferredAsset.Data.CustodianId.Should().Be(receiver.Data.Id);
+        transferredAsset.Data.ReturnDate.Should().Be(expectedReturnDate);
+
+        var pendingReturns = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            "/api/approvals/pending-return-page?page=1&pageSize=20");
+        var transferredBorrow = pendingReturns!.Data!.Items.Single(x => x.Id == originalBorrowFlowId);
+        transferredBorrow.Applicant.Should().Be(receiver.Data.Name,
+            "待确认归还列表必须显示转让后的当前借用人");
+        transferredBorrow.ReturnDate.Should().Be(expectedReturnDate);
 
         Auth(await LoginToken(receiverNo, "TestPass123"));
         var receiverNotifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
@@ -746,6 +952,40 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             CustodianId = custodianId
         });
         return asset.Data!;
+    }
+
+    private async Task<(AssetDto Asset, int BorrowFlowId)> CreateBorrowedAsset(string returnDate)
+    {
+        var asset = await CreateAsset();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var admin = await db.Users.AsNoTracking().SingleAsync(user => user.EmployeeNo == "1001");
+        var borrowedAsset = await db.Assets.AsTracking().SingleAsync(item => item.Id == asset.Id);
+        borrowedAsset.Status = AssetStatus.Borrowed;
+        borrowedAsset.CustodianId = admin.Id;
+        borrowedAsset.RowVersion++;
+        var borrowWorkflowId = await db.Workflows.AsNoTracking()
+            .Where(workflow => workflow.BizType == "borrow" && workflow.IsActive)
+            .Select(workflow => workflow.Id)
+            .SingleAsync();
+        var borrowFlow = new ApprovalFlow
+        {
+            FlowNo = Unique("BOR"),
+            BizType = "borrow",
+            WorkflowId = borrowWorkflowId,
+            AssetId = asset.Id,
+            AssetNo = asset.AssetNo,
+            AssetName = asset.Name,
+            ApplicantId = admin.Id,
+            Applicant = admin.Name,
+            ReturnDate = returnDate,
+            Status = "approved",
+            ApplyTime = DateTime.UtcNow.AddDays(-1),
+            Deadline = DateTime.UtcNow.AddDays(1)
+        };
+        db.ApprovalFlows.Add(borrowFlow);
+        await db.SaveChangesAsync();
+        return (asset, borrowFlow.Id);
     }
 
     private async Task<T> Post<T>(string url, object body)

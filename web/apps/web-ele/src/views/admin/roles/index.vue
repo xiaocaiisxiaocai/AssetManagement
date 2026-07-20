@@ -6,31 +6,8 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useAccess } from '@vben/access';
 
 import {
-  createRoleApi,
-  deleteRoleApi,
-  getMenusApi,
-  getPermissionsApi,
-  getRoleListApi,
-  setRoleAccessApi,
-  updateRoleApi,
-} from '#/api/role';
-import {
-  createPageSizeOptions,
-  getDefaultPageSize,
-} from '#/utils/runtime-settings';
-import { sortBuiltInMenus } from '#/utils/menu-order';
-import { buildRoleActionAccess } from '#/views/permissions/action-access';
-
-import {
-  collectRequiredPermissionIds,
-  filterPageMenuTree,
-  mergeMenuTreeSelection,
-} from './menu-tree-selection';
-import { buildPermissionGroups } from './permission-groups';
-
-import {
-  ElButton,
   ElAlert,
+  ElButton,
   ElCheckbox,
   ElCheckboxGroup,
   ElDialog,
@@ -50,7 +27,34 @@ import {
   ElTree,
 } from 'element-plus';
 
+import {
+  createRoleApi,
+  deleteRoleApi,
+  getMenusApi,
+  getPermissionsApi,
+  getRoleListApi,
+  setRoleAccessApi,
+  updateRoleApi,
+} from '#/api/role';
+import { runHandled } from '#/utils/handled-promise';
+import { createLatestRequestGuard } from '#/utils/latest-request';
+import { sortBuiltInMenus } from '#/utils/menu-order';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
+import { buildRoleActionAccess } from '#/views/permissions/action-access';
+
+import {
+  collectRequiredPermissionIds,
+  filterPageMenuTree,
+  mergeMenuTreeSelection,
+} from './menu-tree-selection';
+import { buildPermissionGroups } from './permission-groups';
+
 defineOptions({ name: 'AdminRoles' });
+
+const listRequestGuard = createLatestRequestGuard();
 
 const { hasAccessByCodes } = useAccess();
 const roleActionAccess = computed(() =>
@@ -211,6 +215,7 @@ function clearCurrentModulePermissions() {
 }
 
 async function loadData() {
+  const requestGeneration = listRequestGuard.next();
   loading.value = true;
   try {
     const result = await getRoleListApi(
@@ -218,10 +223,11 @@ async function loadData() {
       query.page,
       query.pageSize,
     );
+    if (!listRequestGuard.isLatest(requestGeneration)) return;
     roles.value = result.items;
     total.value = result.total;
   } finally {
-    loading.value = false;
+    if (listRequestGuard.isLatest(requestGeneration)) loading.value = false;
   }
 }
 
@@ -380,13 +386,13 @@ async function remove(row: RoleDto) {
 
 function search() {
   query.page = 1;
-  void loadData();
+  runHandled(loadData());
 }
 
 function reset() {
   query.keyword = '';
   query.page = 1;
-  void loadData();
+  runHandled(loadData());
 }
 
 onMounted(async () => {
@@ -408,8 +414,9 @@ onMounted(async () => {
           v-if="roleActionAccess.canCreate"
           type="primary"
           @click="openCreate"
-          >新增角色</ElButton
         >
+          新增角色
+        </ElButton>
       </div>
 
       <div class="role-filter-panel">
@@ -431,57 +438,60 @@ onMounted(async () => {
       </div>
 
       <div class="role-table-panel">
-        <ElTable v-loading="loading" :data="roles" border height="100%">
+        <ElTable :data="roles" border height="100%" v-loading="loading">
           <ElTableColumn label="角色编码" min-width="130" prop="code" />
           <ElTableColumn label="角色名称" min-width="160" prop="name" />
-          <ElTableColumn label="权限数" width="100" align="center">
+          <ElTableColumn align="center" label="权限数" width="100">
             <template #default="{ row }">
               {{ row.permissionIds?.length ?? 0 }}
             </template>
           </ElTableColumn>
           <ElTableColumn
+            align="center"
             class-name="hide-on-mobile"
             label="菜单数"
             width="100"
-            align="center"
           >
             <template #default="{ row }">
               {{ row.menuIds?.length ?? 0 }}
             </template>
           </ElTableColumn>
-          <ElTableColumn label="状态" width="100" align="center">
+          <ElTableColumn align="center" label="状态" width="100">
             <template #default="{ row }">
               <ElTag :type="row.isActive ? 'success' : 'danger'" size="small">
                 {{ row.isActive ? '启用' : '禁用' }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn fixed="right" label="操作" width="250" align="center">
+          <ElTableColumn align="center" fixed="right" label="操作" width="250">
             <template #default="{ row }">
               <ElButton
                 v-if="roleActionAccess.canEdit"
                 link
-                type="primary"
                 size="small"
+                type="primary"
                 @click="openEdit(row)"
-                >编辑</ElButton
               >
+                编辑
+              </ElButton>
               <ElButton
                 v-if="canConfigureAccess"
                 link
-                type="primary"
                 size="small"
+                type="primary"
                 @click="openAccessDialog(row)"
-                >授权配置</ElButton
               >
+                授权配置
+              </ElButton>
               <ElButton
                 v-if="roleActionAccess.canDelete"
                 link
-                type="danger"
                 size="small"
+                type="danger"
                 @click="remove(row)"
-                >删除</ElButton
               >
+                删除
+              </ElButton>
             </template>
           </ElTableColumn>
         </ElTable>
@@ -539,9 +549,9 @@ onMounted(async () => {
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save"
-            >保存</ElButton
-          >
+          <ElButton :loading="saving" type="primary" @click="save">
+            保存
+          </ElButton>
         </template>
       </ElDialog>
 
@@ -552,8 +562,8 @@ onMounted(async () => {
         width="1180px"
       >
         <ElAlert
-          class="role-access-alert"
           :closable="false"
+          class="role-access-alert"
           show-icon
           title="菜单决定用户能看到哪些入口；功能权限决定进入后能执行哪些操作。勾选菜单时会自动补齐该页面的最低访问权限。"
           type="info"
@@ -585,17 +595,17 @@ onMounted(async () => {
                   v-for="item in permissionGroups"
                   :key="item.key"
                   :class="[
-                    'role-module-item',
                     { 'is-active': activePermissionGroupKeyValue === item.key },
                   ]"
                   :style="{ paddingLeft: `${10 + item.level * 16}px` }"
+                  class="role-module-item"
                   type="button"
                   @click="selectPermissionGroup(item.key)"
                 >
                   <span class="role-module-name">{{ item.label }}</span>
-                  <span class="role-module-count"
-                    >{{ item.selected }}/{{ item.total }}</span
-                  >
+                  <span class="role-module-count">
+                    {{ item.selected }}/{{ item.total }}
+                  </span>
                 </button>
               </aside>
 
@@ -608,21 +618,21 @@ onMounted(async () => {
                   />
                   <div class="role-permission-tool-actions">
                     <ElCheckbox v-model="showSelectedOnly">只看已选</ElCheckbox>
-                    <ElButton @click="selectCurrentModulePermissions"
-                      >全选当前模块</ElButton
-                    >
-                    <ElButton @click="clearCurrentModulePermissions"
-                      >清空当前模块</ElButton
-                    >
+                    <ElButton @click="selectCurrentModulePermissions">
+                      全选当前模块
+                    </ElButton>
+                    <ElButton @click="clearCurrentModulePermissions">
+                      清空当前模块
+                    </ElButton>
                   </div>
                 </div>
 
                 <div class="role-permission-summary">
                   <span>{{ activePermissionGroupLabel }}</span>
-                  <span
-                    >已选 {{ selectedPermissionCount }} /
-                    {{ permissions.length }}</span
-                  >
+                  <span>
+                    已选 {{ selectedPermissionCount }} /
+                    {{ permissions.length }}
+                  </span>
                 </div>
 
                 <ElCheckboxGroup v-model="accessForm.selectedPermissions">
@@ -635,8 +645,8 @@ onMounted(async () => {
                       :key="perm.id"
                       :disabled="requiredPermissionIdSet.has(perm.id)"
                       :label="perm.id"
-                      class="role-permission-card"
                       border
+                      class="role-permission-card"
                     >
                       <span class="role-permission-name">{{ perm.name }}</span>
                       <span class="role-permission-action">
@@ -657,9 +667,9 @@ onMounted(async () => {
         </div>
         <template #footer>
           <ElButton @click="accessDialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="saveAccess"
-            >保存授权</ElButton
-          >
+          <ElButton :loading="saving" type="primary" @click="saveAccess">
+            保存授权
+          </ElButton>
         </template>
       </ElDialog>
     </div>

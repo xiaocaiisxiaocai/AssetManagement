@@ -1,4 +1,5 @@
 using AssetManagement.Domain.Workflow;
+using System.ComponentModel.DataAnnotations;
 
 namespace AssetManagement.Application.Workflow;
 
@@ -17,9 +18,35 @@ public record WorkflowDto
 
 public record SaveWorkflowRequest
 {
+    [Required, MaxLength(100)]
     public string Name { get; init; } = "";
+    [Required, MaxLength(50)]
     public string BizType { get; init; } = "";
     public string? BpmnXml { get; init; }
+}
+
+public record UpdateWorkflowMetadataRequest
+{
+    [Required, MaxLength(100)]
+    public string Name { get; init; } = "";
+    [Required, MaxLength(50)]
+    public string BizType { get; init; } = "";
+}
+
+public record DesignWorkflowRequest
+{
+    public string? BpmnXml { get; init; }
+}
+
+public record ApprovalFlowPageQuery
+{
+    public int Page { get; init; } = 1;
+    public int PageSize { get; init; } = 20;
+    public string? Keyword { get; init; }
+    public string? BizType { get; init; }
+    public string? Status { get; init; }
+    public int? FlowId { get; init; }
+    public string? ReturnDate { get; init; }
 }
 
 public record SetWorkflowStatusRequest
@@ -40,6 +67,7 @@ public record ApprovalFlowDto
     public string? Transferee { get; init; }
     public string? TransfereeDept { get; init; }
     public string? Reason { get; init; }
+    public string? OriginalReturnDate { get; init; }
     public string? ReturnDate { get; init; }
     public string Status { get; init; } = "";
     public List<string> CurrentNodeIds { get; init; } = new();
@@ -79,38 +107,50 @@ public record WorkflowAssigneeDto
 
 public record StartApprovalRequest
 {
+    [Required, StringLength(50)]
     public string BizType { get; init; } = "";
     public int AssetId { get; init; }
     public int? TransfereeId { get; init; }
+    [StringLength(500)]
     public string? Reason { get; init; }
+    [StringLength(50)]
     public string? ReturnDate { get; init; }
 }
 
 public record ApprovalActionRequest
 {
+    [StringLength(100)]
     public string? NodeId { get; init; }  // BPMN 模式下需要指定节点 ID
+    [StringLength(380)]
     public string Opinion { get; init; } = "";
 }
 
 public record RejectRequest
 {
+    [StringLength(100)]
     public string? NodeId { get; init; }  // BPMN 模式下需要指定节点 ID
+    [Required, StringLength(500)]
     public string Reason { get; init; } = "";
 }
 
 public record AddSignRequest
 {
+    [StringLength(100)]
     public string? NodeId { get; init; }
+    [Required, StringLength(100)]
     public string Who { get; init; } = "";
 }
 
 public record CancelAddSignRequest
 {
+    [StringLength(100)]
     public string? NodeId { get; init; }
+    [Required, StringLength(100)]
     public string Who { get; init; } = "";
 }
 
 public record TransferSignRequest
 {
+    [Required, StringLength(100)]
     public string Who { get; init; } = "";
 }

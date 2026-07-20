@@ -30,7 +30,10 @@ public class TestProjectService : ITestProjectService
             "deleted" => q.Where(x => x.IsDeleted),
             _ => q.Where(x => !x.IsDeleted)
         };
-        var projects = await q.OrderByDescending(x => x.Id).ToListAsync();
+        // 兼容旧客户端的无分页端点，但必须有硬上限；正式列表使用 ListPageAsync。
+        var projects = await q.OrderByDescending(x => x.Id)
+            .Take(AppConstants.MaxPageSize)
+            .ToListAsync();
         var ids = projects.Select(x => x.Id).ToArray();
         var counts = await _db.TestMaterials
             .Where(x => !x.IsDeleted && ids.Contains(x.ProjectId))
@@ -40,6 +43,63 @@ public class TestProjectService : ITestProjectService
         return await ToDtos(projects, counts, currentUserId);
     }
 
+    public async Task<PagedResult<TestProjectDto>> ListPageAsync(TestProjectPageQuery query, int currentUserId)
+    {
+        var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
+        var status = query.DeleteStatus?.Trim().ToLowerInvariant();
+        IQueryable<TestProject> projectsQuery = _db.TestProjects.AsNoTracking();
+        projectsQuery = status switch
+        {
+            "all" => projectsQuery,
+            "deleted" => projectsQuery.Where(x => x.IsDeleted),
+            _ => projectsQuery.Where(x => !x.IsDeleted)
+        };
+        if (!string.IsNullOrWhiteSpace(query.Code))
+        {
+            var code = query.Code.Trim();
+            projectsQuery = projectsQuery.Where(x => x.Code != null && x.Code.Contains(code));
+        }
+        if (!string.IsNullOrWhiteSpace(query.Name))
+        {
+            var name = query.Name.Trim();
+            projectsQuery = projectsQuery.Where(x => x.Name.Contains(name));
+        }
+        if (query.OwnerId.HasValue)
+            projectsQuery = projectsQuery.Where(x => x.OwnerId == query.OwnerId.Value);
+        if (!string.IsNullOrWhiteSpace(query.ProgressCode))
+        {
+            var progressCode = query.ProgressCode.Trim();
+            projectsQuery = projectsQuery.Where(x => x.ProgressCode == progressCode);
+        }
+        if (!string.IsNullOrWhiteSpace(query.ProjectTypeCode))
+        {
+            var projectTypeCode = query.ProjectTypeCode.Trim();
+            projectsQuery = projectsQuery.Where(x => x.ProjectTypeCode == projectTypeCode);
+        }
+
+        var total = await projectsQuery.CountAsync();
+        var offset = Pagination.GetOffset(page, pageSize, total);
+        var projects = offset.HasValue
+            ? await projectsQuery.OrderByDescending(x => x.Id)
+                .Skip(offset.Value)
+                .Take(pageSize)
+                .ToListAsync()
+            : [];
+        var ids = projects.Select(x => x.Id).ToArray();
+        var counts = await _db.TestMaterials.AsNoTracking()
+            .Where(x => !x.IsDeleted && ids.Contains(x.ProjectId))
+            .GroupBy(x => x.ProjectId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+        return new PagedResult<TestProjectDto>
+        {
+            Items = await ToDtos(projects, counts, currentUserId),
+            Page = page,
+            PageSize = pageSize,
+            Total = total
+        };
+    }
+
     public async Task<TestProjectDto> CreateAsync(SaveTestProjectRequest request)
     {
         NormalizeProjectCodes(request);
@@ -47,6 +107,7 @@ public class TestProjectService : ITestProjectService
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
         var code = (request.Code ?? "").Trim();
         if (string.IsNullOrWhiteSpace(code)) throw new BizException(4001, "项目编号不能为空");
+        ValidateProjectTextLengths(name, code, request);
         ValidateProjectRequiredFields(request);
         ValidateProjectTimeline(request);
         await EnsureProjectUnique(code, name);
@@ -87,6 +148,7 @@ public class TestProjectService : ITestProjectService
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
         var code = (request.Code ?? "").Trim();
         if (string.IsNullOrWhiteSpace(code)) throw new BizException(4001, "项目编号不能为空");
+        ValidateProjectTextLengths(name, code, request);
         ValidateProjectRequiredFields(request);
         ValidateProjectTimeline(request);
         await EnsureProjectUnique(code, name, id);
@@ -101,9 +163,14 @@ public class TestProjectService : ITestProjectService
         project.OwnerId = request.OwnerId;
         project.TestStatus = request.TestStatus?.Trim();
         project.FollowUpIntervalDays = NormalizeInterval(request.FollowUpIntervalDays);
+        project.RowVersion++;
         try
         {
             await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该项目已被他人修改，请刷新后重试");
         }
         catch (DbUpdateException ex) when (IsDuplicateKey(ex))
         {
@@ -126,7 +193,15 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4092, "该项目下仍有测试料件,不能删除");
         project.IsDeleted = true;
         project.DeletedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        project.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该项目已被他人修改，请刷新后重试");
+        }
         await transaction.CommitAsync();
     }
 
@@ -137,12 +212,24 @@ public class TestProjectService : ITestProjectService
         if (!project.IsDeleted) throw new BizException(4099, "项目未删除,无需恢复");
         project.IsDeleted = false;
         project.DeletedAt = null;
-        await _db.SaveChangesAsync();
+        project.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该项目已被他人修改，请刷新后重试");
+        }
     }
 
     public async Task PurgeAsync(int id)
     {
-        var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4046, "测试项目不存在");
         if (!project.IsDeleted) throw new BizException(4097, "请先删除项目后再彻底删除");
         if (await _db.TestMaterials.AnyAsync(x => x.ProjectId == id))
@@ -150,7 +237,19 @@ public class TestProjectService : ITestProjectService
         if (await _db.TestProjectFollowups.AnyAsync(x => x.ProjectId == id))
             throw new BizException(4092, "该项目仍有跟进历史,不能彻底删除");
         _db.TestProjects.Remove(project);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该项目已被他人修改，请刷新后重试");
+        }
+        catch (DbUpdateException ex) when (IsForeignKeyViolation(ex))
+        {
+            throw new BizException(4092, "该项目已被其他数据使用，不能彻底删除");
+        }
+        await transaction.CommitAsync();
     }
 
     public async Task<List<TestProjectOptionDto>> ListOptionsAsync(string? kind)
@@ -181,7 +280,14 @@ public class TestProjectService : ITestProjectService
             IsActive = request.IsActive
         };
         _db.TestProjectOptions.Add(option);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "同类项目配置编码已存在");
+        }
         return ToOptionDto(option);
     }
 
@@ -199,7 +305,14 @@ public class TestProjectService : ITestProjectService
         option.Label = request.Label.Trim();
         option.Sort = request.Sort;
         option.IsActive = request.IsActive;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "同类项目配置编码已存在");
+        }
         return ToOptionDto(option);
     }
 
@@ -243,6 +356,7 @@ public class TestProjectService : ITestProjectService
         await EnsureCanWriteFollowup(project, currentUserId);
         var content = (request.Content ?? "").Trim();
         if (string.IsNullOrWhiteSpace(content)) throw new BizException(4001, "请填写落地情况");
+        EnsureMaxLength(content, 2000, "落地情况");
         var latest = await LatestFollowup(projectId);
         var followup = new TestProjectFollowup
         {
@@ -270,6 +384,7 @@ public class TestProjectService : ITestProjectService
             ?? throw new BizException(4046, "跟进记录不存在");
         var content = (request.Content ?? "").Trim();
         if (string.IsNullOrWhiteSpace(content)) throw new BizException(4001, "请填写落地情况");
+        EnsureMaxLength(content, 2000, "落地情况");
         followup.DueDate = request.DueDate?.Date ?? followup.DueDate;
         followup.Content = content;
         await _db.SaveChangesAsync();
@@ -549,6 +664,27 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4001, "配置类型不正确");
         if (string.IsNullOrWhiteSpace(request.Code)) throw new BizException(4001, "配置编码不能为空");
         if (string.IsNullOrWhiteSpace(request.Label)) throw new BizException(4001, "配置名称不能为空");
+        EnsureMaxLength(request.Kind.Trim(), 50, "配置类型");
+        EnsureMaxLength(request.Code.Trim(), 50, "配置编码");
+        EnsureMaxLength(request.Label.Trim(), 100, "配置名称");
+    }
+
+    private static void ValidateProjectTextLengths(
+        string name,
+        string code,
+        SaveTestProjectRequest request)
+    {
+        EnsureMaxLength(name, 100, "项目名称");
+        EnsureMaxLength(code, 50, "项目编号");
+        EnsureMaxLength(request.ProjectTypeCode, 50, "项目类型");
+        EnsureMaxLength(request.ProgressCode, 50, "项目进度");
+        EnsureMaxLength(request.TestStatus, 1000, "测试状态");
+    }
+
+    private static void EnsureMaxLength(string? value, int maxLength, string field)
+    {
+        if (value?.Trim().Length > maxLength)
+            throw new BizException(4001, $"{field}不能超过 {maxLength} 个字符");
     }
 
     private async Task EnsureOptionCodeAvailable(string kind, string code, int? selfId = null)
@@ -611,6 +747,9 @@ public class TestProjectService : ITestProjectService
 
     private static bool IsDuplicateKey(DbUpdateException ex)
         => ex.InnerException is MySqlException { Number: 1062 };
+
+    private static bool IsForeignKeyViolation(DbUpdateException ex)
+        => ex.InnerException is MySqlException { Number: 1451 or 1452 };
 
     private static int NormalizeInterval(int days)
         => Math.Clamp(days <= 0 ? 14 : days, 1, 365);

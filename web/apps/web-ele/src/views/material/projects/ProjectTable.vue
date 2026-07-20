@@ -1,10 +1,8 @@
 <script lang="ts" setup>
-import type { TestProjectItem, TestProjectOption } from '#/api/test-project';
 import type { ProjectFilter } from './project-filter';
 import type { DeleteStatus } from './project-workspace-types';
 
-import { formatDate } from '#/utils/date-format';
-import { projectFollowUpStatusMeta } from './project-workspace-rules';
+import type { TestProjectItem, TestProjectOption } from '#/api/test-project';
 
 import {
   ElButton,
@@ -17,6 +15,10 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { formatDate } from '#/utils/date-format';
+
+import { projectFollowUpStatusMeta } from './project-workspace-rules';
+
 type ProjectActionAccess = {
   canCreate: boolean;
   canDelete: boolean;
@@ -28,15 +30,14 @@ type ProjectActionAccess = {
 
 defineProps<{
   access: ProjectActionAccess;
-  filter: ProjectFilter;
   filteredTotal: number;
   loading: boolean;
   ownerOptions: { id: number; name: string }[];
-  pageSizeOptions: number[];
   pagedProjects: TestProjectItem[];
+  pageSizeOptions: number[];
   progressOptions: TestProjectOption[];
   projectTypeOptions: TestProjectOption[];
-  query: { page: number; pageSize: number };
+  userOptionsLoading?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -44,6 +45,7 @@ const emit = defineEmits<{
   edit: [project: TestProjectItem];
   open: [project: TestProjectItem];
   options: [];
+  pageChange: [];
   pageSizeChange: [];
   purge: [project: TestProjectItem];
   remove: [project: TestProjectItem];
@@ -51,7 +53,12 @@ const emit = defineEmits<{
   restore: [project: TestProjectItem];
   search: [];
   statusChange: [];
+  userSearch: [keyword: string];
 }>();
+const filter = defineModel<ProjectFilter>('filter', { required: true });
+const query = defineModel<{ page: number; pageSize: number }>('query', {
+  required: true,
+});
 const deleteStatus = defineModel<DeleteStatus>('deleteStatus', {
   required: true,
 });
@@ -100,10 +107,13 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       </ElSelect>
       <ElSelect
         v-model="filter.ownerId"
+        :loading="userOptionsLoading"
+        :remote-method="(keyword: string) => emit('userSearch', keyword)"
         aria-label="负责人"
         clearable
         filterable
         placeholder="负责人"
+        remote
         style="width: 150px"
       >
         <ElOption
@@ -143,21 +153,21 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
     </div>
     <div class="project-toolbar-right">
       <ElButton v-if="access.canOption" @click="emit('options')">配置</ElButton>
-      <ElButton v-if="access.canCreate" type="primary" @click="emit('create')"
-        >新增项目</ElButton
-      >
+      <ElButton v-if="access.canCreate" type="primary" @click="emit('create')">
+        新增项目
+      </ElButton>
     </div>
   </div>
 
   <div class="project-table-panel">
     <ElTable
-      v-loading="loading"
       :data="pagedProjects"
       :row-class-name="tableRowClassName"
       border
       height="100%"
       scrollbar-always-on
       stripe
+      v-loading="loading"
     >
       <ElTableColumn
         fixed
@@ -167,60 +177,60 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
         show-overflow-tooltip
       />
       <ElTableColumn label="项目名称" min-width="150" show-overflow-tooltip>
-        <template #default="{ row }"
-          ><ElButton link type="primary" @click="emit('open', row)">{{
-            row.name
-          }}</ElButton></template
-        >
+        <template #default="{ row }">
+          <ElButton link type="primary" @click="emit('open', row)">
+            {{ row.name }}
+          </ElButton>
+        </template>
       </ElTableColumn>
       <ElTableColumn label="项目类型" min-width="120">
-        <template #default="{ row }">{{
-          row.projectTypeLabel || row.projectTypeCode || '-'
-        }}</template>
+        <template #default="{ row }">
+          {{ row.projectTypeLabel || row.projectTypeCode || '-' }}
+        </template>
       </ElTableColumn>
       <ElTableColumn label="负责人" min-width="110">
         <template #default="{ row }">{{ row.ownerName || '-' }}</template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="开始时间" width="110"
-        ><template #default="{ row }">{{
-          formatDate(row.startDate)
-        }}</template></ElTableColumn
-      >
-      <ElTableColumn align="center" label="计划完成" width="110"
-        ><template #default="{ row }">{{
-          formatDate(row.plannedFinishDate)
-        }}</template></ElTableColumn
-      >
-      <ElTableColumn align="center" label="结案时间" width="110"
-        ><template #default="{ row }">{{
-          formatDate(row.closedDate)
-        }}</template></ElTableColumn
-      >
-      <ElTableColumn label="进度" min-width="110"
-        ><template #default="{ row }"
-          ><ElTag size="small" type="info">{{
-            row.progressLabel || row.progressCode || '-'
-          }}</ElTag></template
-        ></ElTableColumn
-      >
-      <ElTableColumn label="测试情况" min-width="120" show-overflow-tooltip
-        ><template #default="{ row }">{{
-          optionalText(row.testStatus)
-        }}</template></ElTableColumn
-      >
-      <ElTableColumn align="center" label="下次跟进" width="130">
-        <template #default="{ row }"
-          ><div>{{ formatDate(row.nextFollowUpDueDate) }}</div>
-          <ElTag :type="projectFollowUpStatusMeta(row).type" size="small">{{
-            projectFollowUpStatusMeta(row).label
-          }}</ElTag></template
-        >
+      <ElTableColumn align="center" label="开始时间" width="110">
+        <template #default="{ row }">
+          {{ formatDate(row.startDate) }}
+        </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="间隔" width="80"
-        ><template #default="{ row }"
-          >{{ row.followUpIntervalDays }}天</template
-        ></ElTableColumn
-      >
+      <ElTableColumn align="center" label="计划完成" width="110">
+        <template #default="{ row }">
+          {{ formatDate(row.plannedFinishDate) }}
+        </template>
+      </ElTableColumn>
+      <ElTableColumn align="center" label="结案时间" width="110">
+        <template #default="{ row }">
+          {{ formatDate(row.closedDate) }}
+        </template>
+      </ElTableColumn>
+      <ElTableColumn label="进度" min-width="110">
+        <template #default="{ row }">
+          <ElTag size="small" type="info">
+            {{ row.progressLabel || row.progressCode || '-' }}
+          </ElTag>
+        </template>
+      </ElTableColumn>
+      <ElTableColumn label="测试情况" min-width="120" show-overflow-tooltip>
+        <template #default="{ row }">
+          {{ optionalText(row.testStatus) }}
+        </template>
+      </ElTableColumn>
+      <ElTableColumn align="center" label="下次跟进" width="130">
+        <template #default="{ row }">
+          <div>{{ formatDate(row.nextFollowUpDueDate) }}</div>
+          <ElTag :type="projectFollowUpStatusMeta(row).type" size="small">
+            {{ projectFollowUpStatusMeta(row).label }}
+          </ElTag>
+        </template>
+      </ElTableColumn>
+      <ElTableColumn align="center" label="间隔" width="80">
+        <template #default="{ row }">
+          {{ row.followUpIntervalDays }}天
+        </template>
+      </ElTableColumn>
       <ElTableColumn
         align="center"
         label="料件数"
@@ -228,10 +238,12 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
         width="80"
       />
       <ElTableColumn align="center" label="状态" width="90">
-        <template #default="{ row }"
-          ><ElTag v-if="row.isDeleted" size="small" type="danger">已删除</ElTag
-          ><ElTag v-else size="small" type="success">正常</ElTag></template
-        >
+        <template #default="{ row }">
+          <ElTag v-if="row.isDeleted" size="small" type="danger">
+            已删除
+          </ElTag>
+          <ElTag v-else size="small" type="success">正常</ElTag>
+        </template>
       </ElTableColumn>
       <ElTableColumn align="center" fixed="right" label="操作" width="160">
         <template #default="{ row }">
@@ -242,16 +254,18 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
               size="small"
               type="primary"
               @click="emit('edit', row)"
-              >编辑</ElButton
             >
+              编辑
+            </ElButton>
             <ElButton
               v-if="access.canDelete"
               link
               size="small"
               type="danger"
               @click="emit('remove', row)"
-              >删除</ElButton
             >
+              删除
+            </ElButton>
           </template>
           <template v-else>
             <ElButton
@@ -260,24 +274,27 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
               size="small"
               type="success"
               @click="emit('restore', row)"
-              >撤销删除</ElButton
             >
+              撤销删除
+            </ElButton>
             <ElButton
               v-if="access.canPurge"
               link
               size="small"
               type="danger"
               @click="emit('purge', row)"
-              >彻底删除</ElButton
             >
+              彻底删除
+            </ElButton>
           </template>
         </template>
       </ElTableColumn>
     </ElTable>
     <div class="table-bottom-pager">
       <div class="table-bottom-pager-left">
-        <span>共 {{ filteredTotal }} 条记录</span
-        ><span class="table-bottom-pager-divider">|</span><span>每页</span>
+        <span>共 {{ filteredTotal }} 条记录</span>
+        <span class="table-bottom-pager-divider">|</span>
+        <span>每页</span>
         <ElSelect
           v-model="query.pageSize"
           aria-label="项目列表每页条数"
@@ -298,6 +315,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
         :total="filteredTotal"
         background
         layout="prev, pager, next"
+        @current-change="emit('pageChange')"
       />
     </div>
   </div>

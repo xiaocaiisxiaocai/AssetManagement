@@ -176,10 +176,21 @@ public class ReportServiceTests : MySqlFixtureBase
         _db.AssetCategories.Add(category);
         await _db.SaveChangesAsync();
 
-        var borrowedAsset = new Asset { AssetNo = "PC-001", Name = "逾期电脑", CategoryId = category.Id, Status = AssetStatus.Borrowed, CreatedAt = DateTime.UtcNow };
+        var currentCustodian = new User
+        {
+            EmployeeNo = $"CURRENT-{Guid.NewGuid():N}"[..20],
+            Name = "转让后的当前借用人",
+            PasswordHash = "not-used",
+            IsActive = true
+        };
+        _db.Users.Add(currentCustodian);
+        await _db.SaveChangesAsync();
+
+        var borrowedAsset = new Asset { AssetNo = "PC-001", Name = "逾期电脑", CategoryId = category.Id, Status = AssetStatus.Borrowed, CustodianId = currentCustodian.Id, CreatedAt = DateTime.UtcNow };
         var normalAsset = new Asset { AssetNo = "PC-002", Name = "正常电脑", CategoryId = category.Id, Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow };
         _db.Assets.AddRange(borrowedAsset, normalAsset);
         await _db.SaveChangesAsync();
+        var (applicantId, workflowId) = await CreateFlowReferencesAsync("overdue");
 
         // 创建逾期流程（预计归还日期是昨天）
         var overdueFlow = new ApprovalFlow
@@ -190,7 +201,8 @@ public class ReportServiceTests : MySqlFixtureBase
             AssetId = borrowedAsset.Id,
             AssetNo = borrowedAsset.AssetNo,
             AssetName = borrowedAsset.Name,
-            ApplicantId = 1,
+            ApplicantId = applicantId,
+            WorkflowId = workflowId,
             Applicant = "张三",
             ApplicantDept = "IT部",
             ReturnDate = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd"),
@@ -207,8 +219,50 @@ public class ReportServiceTests : MySqlFixtureBase
         // Assert
         overdueList.Should().HaveCount(1);
         overdueList[0].AssetNo.Should().Be("PC-001");
-        overdueList[0].Borrower.Should().Be("张三");
+        overdueList[0].Borrower.Should().Be(currentCustodian.Name,
+            "转让后的逾期责任人应为资产当前保管人");
+        overdueList[0].BorrowerId.Should().Be(currentCustodian.Id);
         overdueList[0].OverdueDays.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task QueryOverdue_does_not_apply_export_limit_before_due_date_filtering()
+    {
+        var category = new AssetCategory { CodeSeg = "CAP", Code = "CAP" };
+        _db.AssetCategories.Add(category);
+        await _db.SaveChangesAsync();
+        var asset = new Asset
+        {
+            AssetNo = "CAP-001",
+            Name = "未来到期资产",
+            CategoryId = category.Id,
+            Status = AssetStatus.Borrowed,
+            CreatedAt = DateTime.UtcNow,
+        };
+        _db.Assets.Add(asset);
+        await _db.SaveChangesAsync();
+        var (applicantId, workflowId) = await CreateFlowReferencesAsync("overdue-cap");
+        var futureDate = DateTime.UtcNow.AddDays(30).ToString("yyyy-MM-dd");
+        _db.ApprovalFlows.AddRange(Enumerable.Range(1, 10_001).Select(index => new ApprovalFlow
+        {
+            FlowNo = $"CAP-{index:00000}",
+            BizType = "borrow",
+            Status = "approved",
+            AssetId = asset.Id,
+            AssetNo = asset.AssetNo,
+            AssetName = asset.Name,
+            ApplicantId = applicantId,
+            WorkflowId = workflowId,
+            Applicant = "未来借用人",
+            ReturnDate = futureDate,
+            ApplyTime = DateTime.UtcNow,
+            Deadline = DateTime.UtcNow.AddDays(1),
+        }));
+        await _db.SaveChangesAsync();
+
+        var overdue = await _service.QueryOverdueAsync();
+
+        overdue.Should().BeEmpty();
     }
 
     [Fact]
@@ -227,6 +281,7 @@ public class ReportServiceTests : MySqlFixtureBase
         };
         _db.Assets.Add(asset);
         await _db.SaveChangesAsync();
+        var (applicantId, workflowId) = await CreateFlowReferencesAsync("batch");
         _db.ApprovalFlows.Add(new ApprovalFlow
         {
             FlowNo = "BAT-FLOW-001",
@@ -235,7 +290,8 @@ public class ReportServiceTests : MySqlFixtureBase
             AssetId = asset.Id,
             AssetNo = asset.AssetNo,
             AssetName = asset.Name,
-            ApplicantId = 88,
+            ApplicantId = applicantId,
+            WorkflowId = workflowId,
             Applicant = "借用人",
             ReturnDate = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd"),
             ApplyTime = DateTime.UtcNow.AddDays(-5),
@@ -275,6 +331,7 @@ public class ReportServiceTests : MySqlFixtureBase
         var asset = new Asset { AssetNo = "PC-001", Name = "严重逾期电脑", CategoryId = category.Id, Status = AssetStatus.Borrowed, CreatedAt = DateTime.UtcNow };
         _db.Assets.Add(asset);
         await _db.SaveChangesAsync();
+        var (applicantId, workflowId) = await CreateFlowReferencesAsync("serious");
 
         // 创建严重逾期流程（预计归还日期是15天前）
         var seriousOverdueFlow = new ApprovalFlow
@@ -285,7 +342,8 @@ public class ReportServiceTests : MySqlFixtureBase
             AssetId = asset.Id,
             AssetNo = asset.AssetNo,
             AssetName = asset.Name,
-            ApplicantId = 1,
+            ApplicantId = applicantId,
+            WorkflowId = workflowId,
             Applicant = "李四",
             ReturnDate = DateTime.UtcNow.AddDays(-15).ToString("yyyy-MM-dd"),
             ApplyTime = DateTime.UtcNow.AddDays(-20),
@@ -316,6 +374,7 @@ public class ReportServiceTests : MySqlFixtureBase
         var returnedAsset = new Asset { AssetNo = "PC-002", Name = "已归还电脑", CategoryId = category.Id, Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow };
         _db.Assets.AddRange(borrowedAsset, returnedAsset);
         await _db.SaveChangesAsync();
+        var (applicantId, workflowId) = await CreateFlowReferencesAsync("borrowed");
 
         _db.ApprovalFlows.AddRange(
             new ApprovalFlow
@@ -326,7 +385,8 @@ public class ReportServiceTests : MySqlFixtureBase
                 AssetId = borrowedAsset.Id,
                 AssetNo = borrowedAsset.AssetNo,
                 AssetName = borrowedAsset.Name,
-                ApplicantId = 1,
+                ApplicantId = applicantId,
+                WorkflowId = workflowId,
                 Applicant = "张三",
                 ReturnDate = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd"),
                 ApplyTime = DateTime.UtcNow.AddDays(-1),
@@ -341,10 +401,12 @@ public class ReportServiceTests : MySqlFixtureBase
                 AssetId = returnedAsset.Id,
                 AssetNo = returnedAsset.AssetNo,
                 AssetName = returnedAsset.Name,
-                ApplicantId = 2,
+                ApplicantId = applicantId,
+                WorkflowId = workflowId,
                 Applicant = "李四",
                 ReturnDate = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd"),
                 ApplyTime = DateTime.UtcNow.AddDays(-2),
+                ConfirmedAt = DateTime.UtcNow.AddDays(-1),
                 CurrentNodeIds = new List<string>(),
                 BpmnTokens = new Dictionary<string, BpmnToken>()
             }
@@ -359,6 +421,74 @@ public class ReportServiceTests : MySqlFixtureBase
         result.Items.Should().HaveCount(1);
         result.Items[0].AssetNo.Should().Be("PC-001");
         result.Items[0].Status.Should().Be("borrowed");
+    }
+
+    [Fact]
+    public async Task Borrow_history_status_comes_from_each_flow_not_current_asset_status()
+    {
+        var category = new AssetCategory { CodeSeg = "HIS", Code = $"HIS-{Guid.NewGuid():N}" };
+        _db.AssetCategories.Add(category);
+        await _db.SaveChangesAsync();
+        var asset = new Asset
+        {
+            AssetNo = $"HIS-{Guid.NewGuid():N}", Name = "重复借用资产", CategoryId = category.Id,
+            Status = AssetStatus.Borrowed, CreatedAt = DateTime.UtcNow,
+        };
+        _db.Assets.Add(asset);
+        await _db.SaveChangesAsync();
+        var (applicantId, workflowId) = await CreateFlowReferencesAsync("history");
+        _db.ApprovalFlows.AddRange(
+            new ApprovalFlow
+            {
+                FlowNo = $"HIS-OLD-{Guid.NewGuid():N}", BizType = "borrow", Status = "approved",
+                WorkflowId = workflowId, AssetId = asset.Id, AssetNo = asset.AssetNo, AssetName = asset.Name,
+                ApplicantId = applicantId, Applicant = "借用人", ApplyTime = DateTime.UtcNow.AddDays(-20),
+                Deadline = DateTime.UtcNow.AddDays(-19), ConfirmedAt = DateTime.UtcNow.AddDays(-10),
+            },
+            new ApprovalFlow
+            {
+                FlowNo = $"HIS-NOW-{Guid.NewGuid():N}", BizType = "borrow", Status = "approved",
+                WorkflowId = workflowId, AssetId = asset.Id, AssetNo = asset.AssetNo, AssetName = asset.Name,
+                ApplicantId = applicantId, Applicant = "借用人", ApplyTime = DateTime.UtcNow.AddDays(-2),
+                Deadline = DateTime.UtcNow.AddDays(-1), ConfirmedAt = null,
+            });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.QueryBorrowedAsync(new BorrowReportQuery { Page = 1, PageSize = 10 });
+
+        result.Items.Should().Contain(x => x.FlowNo.StartsWith("HIS-OLD") && x.Status == "returned");
+        result.Items.Should().Contain(x => x.FlowNo.StartsWith("HIS-NOW") && x.Status == "borrowed");
+    }
+
+    [Fact]
+    public async Task Repeated_overdue_reminder_returns_actual_insert_count()
+    {
+        var category = new AssetCategory { CodeSeg = "REM", Code = $"REM-{Guid.NewGuid():N}" };
+        _db.AssetCategories.Add(category);
+        await _db.SaveChangesAsync();
+        var asset = new Asset
+        {
+            AssetNo = $"REM-{Guid.NewGuid():N}", Name = "催办计数资产", CategoryId = category.Id,
+            Status = AssetStatus.Borrowed, CreatedAt = DateTime.UtcNow,
+        };
+        _db.Assets.Add(asset);
+        await _db.SaveChangesAsync();
+        var (applicantId, workflowId) = await CreateFlowReferencesAsync("reminder-count");
+        _db.ApprovalFlows.Add(new ApprovalFlow
+        {
+            FlowNo = $"REM-{Guid.NewGuid():N}", BizType = "borrow", Status = "approved",
+            WorkflowId = workflowId, AssetId = asset.Id, AssetNo = asset.AssetNo, AssetName = asset.Name,
+            ApplicantId = applicantId, Applicant = "借用人", ApplyTime = DateTime.UtcNow.AddDays(-5),
+            Deadline = DateTime.UtcNow.AddDays(-4), ReturnDate = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd"),
+        });
+        await _db.SaveChangesAsync();
+
+        var first = await _service.RemindOverdueAsync(asset.Id, null);
+        var second = await _service.RemindOverdueAsync(asset.Id, null);
+
+        first.Should().Be(1);
+        second.Should().Be(0);
+        (await _db.Notifications.CountAsync(x => x.UserId == applicantId)).Should().Be(1);
     }
 
     [Fact]
@@ -380,5 +510,26 @@ public class ReportServiceTests : MySqlFixtureBase
         // XLSX 文件签名：PK (0x50 0x4B)
         bytes[0].Should().Be(0x50);
         bytes[1].Should().Be(0x4B);
+    }
+
+    private async Task<(int UserId, int WorkflowId)> CreateFlowReferencesAsync(string suffix)
+    {
+        var unique = Guid.NewGuid().ToString("N");
+        var user = new User
+        {
+            EmployeeNo = $"report-{suffix}-{unique}"[..Math.Min(50, $"report-{suffix}-{unique}".Length)],
+            Name = $"报表用户-{suffix}",
+            PasswordHash = "not-used",
+            IsActive = true,
+        };
+        var workflow = new AssetManagement.Domain.Entities.Workflow
+        {
+            Name = $"报表流程-{suffix}-{unique}",
+            BizType = "borrow",
+            IsActive = true,
+        };
+        _db.AddRange(user, workflow);
+        await _db.SaveChangesAsync();
+        return (user.Id, workflow.Id);
     }
 }

@@ -29,12 +29,17 @@ export function buildRoleActionAccess(hasAccess: HasAccess) {
 }
 
 export function buildUserActionAccess(hasAccess: HasAccess) {
+  const canAssignRole = hasAccess(['user:assign-role']);
+  const canViewRoles = hasAccess(['role:view']);
   return {
-    canCreate: hasAccess(['user:create']),
+    canAssignRole,
+    canCreate: hasAccess(['user:create']) && canAssignRole && canViewRoles,
+    canImport: hasAccess(['user:create']) && canAssignRole,
     canDelete: hasAccess(['user:delete']),
     canEdit: hasAccess(['user:edit']),
     canResetPassword: hasAccess(['user:reset-password']),
     canToggleStatus: hasAccess(['user:toggle-status']),
+    canViewRoles,
   };
 }
 
@@ -75,7 +80,7 @@ export function buildWorkflowActionAccess(hasAccess: HasAccess) {
   return {
     canCreate: hasAccess(['workflow:create']),
     canDelete: hasAccess(['workflow:delete']),
-    canDesign: hasAccess(['workflow:design']) || hasAccess(['workflow:edit']),
+    canDesign: hasAccess(['workflow:design']),
     canEdit: hasAccess(['workflow:edit']),
   };
 }
@@ -90,5 +95,11 @@ export function buildReportActionAccess(hasAccess: HasAccess) {
 export function buildApprovalActionAccess(hasAccess: HasAccess) {
   return {
     canCreate: hasAccess(['approval:create']),
+  };
+}
+
+export function buildFileActionAccess(hasAccess: HasAccess) {
+  return {
+    canUploadAndPreview: hasAccess(['file:upload']) && hasAccess(['file:view']),
   };
 }

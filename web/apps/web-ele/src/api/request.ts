@@ -79,14 +79,14 @@ function createRequestClient(baseURL: string) {
       if (headers.accesstoken) {
         accessStore.setAccessToken(response.headers.accesstoken);
       }
-      if (config.responseType == 'blob') {
+      if (config.responseType === 'blob') {
         return response;
       }
-      if (status == HttpStatusCode.NoContent) {
+      if (status === HttpStatusCode.NoContent) {
         ElMessage.success('操作成功');
         return;
       }
-      if (status == HttpStatusCode.Ok) {
+      if (status === HttpStatusCode.Ok) {
         // 导入类接口需要拿到后端返回的行级错误明细，由调用方显式跳过业务错误拦截。
         if ((config as { skipBusinessError?: boolean }).skipBusinessError) {
           return data;
@@ -118,7 +118,7 @@ function createRequestClient(baseURL: string) {
       const responseMessage = (data: any) =>
         data?.message || data?.error?.message || msg;
       const { code } = error;
-      if (code == 'ECONNABORTED' || code == 'ERR_NETWORK') {
+      if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') {
         ElMessage.warning(msg);
         return;
       }
@@ -133,12 +133,7 @@ function createRequestClient(baseURL: string) {
       } = error;
       const { validationErrors } = error;
       switch (status) {
-        case HttpStatusCode.Unauthorized: {
-          const authStore = useAuthStore();
-          authStore.logout();
-          break;
-        }
-        case HttpStatusCode.BadRequest:
+        case HttpStatusCode.BadRequest: {
           if (Array.isArray(validationErrors)) {
             validationErrors.forEach((element) => {
               ElMessage.warning(element.message);
@@ -147,12 +142,22 @@ function createRequestClient(baseURL: string) {
             ElMessage.warning(responseMessage(data));
           }
           break;
-        case HttpStatusCode.Forbidden:
+        }
+        case HttpStatusCode.Forbidden: {
           ElMessage.warning(responseMessage(data));
           break;
-        default:
+        }
+        case HttpStatusCode.Unauthorized: {
+          const authStore = useAuthStore();
+          void authStore.logout().catch(() => {
+            // 本地状态已在 logout 中清理，路由跳转失败不应形成未处理 Promise。
+          });
+          break;
+        }
+        default: {
           ElMessage.error(responseMessage(data));
           break;
+        }
       }
       throw error;
     }),

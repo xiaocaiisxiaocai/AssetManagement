@@ -6,15 +6,6 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useAccess } from '@vben/access';
 
 import {
-  createLocationApi,
-  deleteLocationApi,
-  getLocationTreeApi,
-  updateLocationApi,
-} from '#/api/base-data';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
-import { buildLocationActionAccess } from '#/views/permissions/action-access';
-
-import {
   ElButton,
   ElDialog,
   ElForm,
@@ -29,10 +20,24 @@ import {
   ElTableColumn,
 } from 'element-plus';
 
+import {
+  createLocationApi,
+  deleteLocationApi,
+  getLocationTreeApi,
+  updateLocationApi,
+} from '#/api/base-data';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
+import { buildLocationActionAccess } from '#/views/permissions/action-access';
+
 defineOptions({ name: 'AssetLocations' });
 
 const { hasAccessByCodes } = useAccess();
-const locationActionAccess = computed(() => buildLocationActionAccess(hasAccessByCodes));
+const locationActionAccess = computed(() =>
+  buildLocationActionAccess(hasAccessByCodes),
+);
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -87,11 +92,9 @@ async function save() {
   }
   saving.value = true;
   try {
-    if (editingId.value) {
-      await updateLocationApi(editingId.value, form);
-    } else {
-      await createLocationApi(form);
-    }
+    await (editingId.value
+      ? updateLocationApi(editingId.value, form)
+      : createLocationApi(form));
     ElMessage.success('保存成功');
     dialogVisible.value = false;
     await loadData();
@@ -131,22 +134,52 @@ onMounted(async () => {
         <div>
           <h2 class="page-title">存放位置管理</h2>
         </div>
-        <ElButton v-if="locationActionAccess.canCreate" type="primary" @click="openCreate()">新增位置</ElButton>
+        <ElButton
+          v-if="locationActionAccess.canCreate"
+          type="primary"
+          @click="openCreate()"
+        >
+          新增位置
+        </ElButton>
       </div>
 
       <div class="table-panel">
         <ElTable
-          v-loading="loading"
           :data="pagedLocations"
-          row-key="id"
           border
           height="100%"
+          row-key="id"
+          v-loading="loading"
         >
           <ElTableColumn label="位置名称" min-width="240" prop="name" />
-          <ElTableColumn v-if="locationActionAccess.canEdit || locationActionAccess.canDelete" fixed="right" label="操作" width="200" align="center">
+          <ElTableColumn
+            v-if="
+              locationActionAccess.canEdit || locationActionAccess.canDelete
+            "
+            align="center"
+            fixed="right"
+            label="操作"
+            width="200"
+          >
             <template #default="{ row }">
-              <ElButton v-if="locationActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-              <ElButton v-if="locationActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
+              <ElButton
+                v-if="locationActionAccess.canEdit"
+                link
+                size="small"
+                type="primary"
+                @click="openEdit(row)"
+              >
+                编辑
+              </ElButton>
+              <ElButton
+                v-if="locationActionAccess.canDelete"
+                link
+                size="small"
+                type="danger"
+                @click="remove(row)"
+              >
+                删除
+              </ElButton>
             </template>
           </ElTableColumn>
         </ElTable>
@@ -155,7 +188,11 @@ onMounted(async () => {
             <span>共 {{ locations.length }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
-            <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
+            <ElSelect
+              v-model="query.pageSize"
+              style="width: 92px"
+              @change="onPageSizeChange"
+            >
               <ElOption
                 v-for="size in pageSizeOptions"
                 :key="size"
@@ -186,7 +223,9 @@ onMounted(async () => {
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
+          <ElButton :loading="saving" type="primary" @click="save">
+            保存
+          </ElButton>
         </template>
       </ElDialog>
     </div>

@@ -1,12 +1,14 @@
 <script lang="ts" setup>
-import type { AssetItem, AssetPayload, AssetStatus } from '#/api/asset';
 import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
+
+import type { AssetItem, AssetPayload, AssetStatus } from '#/api/asset';
 import type { UserDto, UserOptionDto } from '#/api/user';
 
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { useDebounceFn } from '@vueuse/core';
+
 import { useAccess } from '@vben/access';
 
+import { useDebounceFn } from '@vueuse/core';
 import {
   ElButton,
   ElDatePicker,
@@ -27,7 +29,11 @@ import {
   updateAssetApi,
   uploadAssetImageApi,
 } from '#/api/asset';
+import { createAsyncSessionTracker } from '#/utils/async-session-tracker';
+import { businessDateText } from '#/utils/business-date';
+import { createObjectUrlLifecycle } from '#/utils/object-url-lifecycle';
 import { getRuntimeSettings } from '#/utils/runtime-settings';
+import { buildFileActionAccess } from '#/views/permissions/action-access';
 
 import { validateAssetForm } from './asset-form-rules';
 
@@ -39,12 +45,16 @@ const props = defineProps<{
   defaultCategoryId: number;
   departmentOptions: FlatOption[];
   locationOptions: FlatOption[];
+  searchUsers?: (keyword: string) => Promise<void>;
+  userOptionsLoading?: boolean;
   users: (UserDto | UserOptionDto)[];
 }>();
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 const { hasAccessByCodes } = useAccess();
-const canUploadImages = computed(() => hasAccessByCodes(['file:upload']));
+const canUploadImages = computed(
+  () => buildFileActionAccess(hasAccessByCodes).canUploadAndPreview,
+);
 
 const statusOptions: Array<{
   label: string;
@@ -64,11 +74,12 @@ const conditionOptions = ref([
   '维修中',
   '停用',
 ]);
-const pendingUploads = new Set<Promise<unknown>>();
+const pendingUploads = createAsyncSessionTracker();
 const uploading = ref(false);
-type AuthenticatedUploadFile = UploadUserFile & { rawUrl?: string };
+type AuthenticatedUploadFile = { rawUrl?: string } & UploadUserFile;
 const imageFileList = ref<AuthenticatedUploadFile[]>([]);
 let imageLoadGeneration = 0;
+const uploadedImageUrls = createObjectUrlLifecycle();
 const form = reactive({
   categoryId: 0,
   custodianId: undefined as number | undefined,
@@ -116,7 +127,10 @@ function revokeImageObjectUrls() {
   });
 }
 
-onBeforeUnmount(revokeImageObjectUrls);
+onBeforeUnmount(() => {
+  uploadedImageUrls.close();
+  revokeImageObjectUrls();
+});
 
 function onImageRemove(file: AuthenticatedUploadFile) {
   if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
@@ -128,10 +142,15 @@ function onImageRemove(file: AuthenticatedUploadFile) {
 watch(visible, async (opened) => {
   const generation = ++imageLoadGeneration;
   if (!opened) {
+    pendingUploads.close();
+    uploading.value = false;
+    uploadedImageUrls.close();
     revokeImageObjectUrls();
     imageFileList.value = [];
     return;
   }
+  pendingUploads.start();
+  uploadedImageUrls.open();
   void getRuntimeSettings()
     .then((settings) => {
       attachmentMaxMb.value = settings.attachmentMaxMb;
@@ -226,9 +245,7 @@ function buildPayload(): AssetPayload {
 }
 
 function nowLocalDate() {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
+  return businessDateText();
 }
 
 function beforeImageUpload(file: File) {
@@ -245,21 +262,29 @@ function beforeImageUpload(file: File) {
 }
 
 function customImageUpload(options: UploadRequestOptions) {
-  const request = uploadAssetImageApi(options.file).then(async (uploaded) => ({
-    ...uploaded,
-    rawUrl: uploaded.url,
-    url: await loadAssetImageObjectUrl(uploaded.url),
-  }));
-  pendingUploads.add(request);
+  const sessionToken = pendingUploads.token();
+  const uploadGeneration = uploadedImageUrls.token();
+  const request = uploadAssetImageApi(options.file).then(async (uploaded) => {
+    const url = await loadAssetImageObjectUrl(uploaded.url);
+    if (!uploadedImageUrls.adopt(url, uploadGeneration)) {
+      throw new DOMException('上传会话已关闭', 'AbortError');
+    }
+    return {
+      ...uploaded,
+      rawUrl: uploaded.url,
+      url,
+    };
+  });
+  pendingUploads.track(request, sessionToken);
   uploading.value = true;
   void request.then(
     () => {
-      pendingUploads.delete(request);
-      uploading.value = pendingUploads.size > 0;
+      if (pendingUploads.isCurrent(sessionToken))
+        uploading.value = pendingUploads.hasPending(sessionToken);
     },
     () => {
-      pendingUploads.delete(request);
-      uploading.value = pendingUploads.size > 0;
+      if (pendingUploads.isCurrent(sessionToken))
+        uploading.value = pendingUploads.hasPending(sessionToken);
     },
   );
   return request;
@@ -276,17 +301,20 @@ async function save() {
     return;
   }
   saving.value = true;
+  const sessionToken = pendingUploads.token();
   try {
-    await Promise.all([...pendingUploads]);
+    await Promise.all(pendingUploads.pending(sessionToken));
+    if (!pendingUploads.isCurrent(sessionToken) || !visible.value) return;
     await nextTick();
-    if (props.asset) {
-      await updateAssetApi(props.asset.id, buildPayload());
-    } else {
-      await createAssetApi(buildPayload());
-    }
+    await (props.asset
+      ? updateAssetApi(props.asset.id, buildPayload())
+      : createAssetApi(buildPayload()));
+    if (!pendingUploads.isCurrent(sessionToken) || !visible.value) return;
     ElMessage.success('保存成功');
     visible.value = false;
     emit('saved');
+  } catch {
+    // 请求错误已由统一请求层提示；关闭会话产生的 AbortError 无需额外提示。
   } finally {
     saving.value = false;
   }
@@ -359,9 +387,12 @@ const debouncedSave = useDebounceFn(save, 300);
       <ElFormItem label="保管人" required>
         <ElSelect
           v-model="form.custodianId"
+          :loading="userOptionsLoading"
+          :remote-method="searchUsers"
           clearable
           filterable
           placeholder="选择保管人"
+          remote
           style="width: 100%"
         >
           <ElOption
@@ -454,8 +485,9 @@ const debouncedSave = useDebounceFn(save, 300);
         :loading="saving || uploading"
         type="primary"
         @click="debouncedSave"
-        >保存</ElButton
       >
+        保存
+      </ElButton>
     </template>
   </ElDialog>
 </template>

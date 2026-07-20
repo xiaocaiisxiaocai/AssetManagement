@@ -20,7 +20,9 @@ describe('资产分类编码规则', () => {
 
   it('按层级校验长度和正则', () => {
     expect(validateCategoryCodeSeg('', 1, rules)).toBe('请填写编码段');
-    expect(validateCategoryCodeSeg('A', 1, rules)).toBe('一级分类编码段必须是 2-4 位');
+    expect(validateCategoryCodeSeg('A', 1, rules)).toBe(
+      '一级分类编码段必须是 2-4 位',
+    );
     expect(validateCategoryCodeSeg('ABCDE', 1, rules)).toBe(
       '一级分类编码段必须是 2-4 位',
     );

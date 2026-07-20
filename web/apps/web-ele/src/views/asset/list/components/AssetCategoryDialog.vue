@@ -67,11 +67,9 @@ async function save() {
   };
   saving.value = true;
   try {
-    if (props.category) {
-      await updateCategoryApi(props.category.id, payload);
-    } else {
-      await createCategoryApi(payload);
-    }
+    await (props.category
+      ? updateCategoryApi(props.category.id, payload)
+      : createCategoryApi(payload));
     ElMessage.success('分类已保存');
     visible.value = false;
     emit('saved');
@@ -90,9 +88,9 @@ async function save() {
     <ElForm label-width="88px">
       <ElFormItem label="上级 ID">
         <ElInput
-          v-model.number="form.parentId"
           clearable
           placeholder="留空为顶级"
+          v-model.number="form.parentId"
         />
       </ElFormItem>
       <ElFormItem label="编码段">

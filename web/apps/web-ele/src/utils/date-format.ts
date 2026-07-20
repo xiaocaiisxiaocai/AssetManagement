@@ -1,5 +1,5 @@
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})/;
-const HAS_TIME_ZONE = /(Z|[+-]\d{2}:?\d{2})$/i;
+const HAS_TIME_ZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 const DEFAULT_TIME_ZONE = 'Asia/Shanghai';
 
 function dateTimeParts(value: Date) {
@@ -38,7 +38,11 @@ export function formatDateTime(
   const { empty = '-', seconds = false } = options;
   if (!value) return empty;
   let normalized = value;
-  if (typeof value === 'string' && /[T ]\d{2}:\d{2}/.test(value) && !HAS_TIME_ZONE.test(value)) {
+  if (
+    typeof value === 'string' &&
+    /[T ]\d{2}:\d{2}/.test(value) &&
+    !HAS_TIME_ZONE.test(value)
+  ) {
     normalized = `${value.replace(' ', 'T')}Z`;
   }
   const date = normalized instanceof Date ? normalized : new Date(normalized);

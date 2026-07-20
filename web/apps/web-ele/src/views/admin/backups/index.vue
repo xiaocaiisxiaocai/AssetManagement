@@ -6,14 +6,6 @@ import { computed, onMounted, ref } from 'vue';
 import { useAccess } from '@vben/access';
 
 import {
-  backupDatabaseApi,
-  downloadDatabaseBackupApi,
-  getDatabaseBackupsApi,
-} from '#/api/report';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
-import { formatDateTime } from '#/utils/date-format';
-
-import {
   ElButton,
   ElMessage,
   ElMessageBox,
@@ -24,6 +16,17 @@ import {
   ElTableColumn,
   ElTag,
 } from 'element-plus';
+
+import {
+  backupDatabaseApi,
+  downloadDatabaseBackupApi,
+  getDatabaseBackupsApi,
+} from '#/api/report';
+import { formatDateTime } from '#/utils/date-format';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
 
 defineOptions({ name: 'AdminBackups' });
 
@@ -71,7 +74,7 @@ async function backupDatabase() {
   backupLoading.value = true;
   try {
     const result = await backupDatabaseApi();
-    ElMessage.success(`备份完成：${result.filePath}`);
+    ElMessage.success(`备份完成：${result.fileName}`);
     await loadData();
   } finally {
     backupLoading.value = false;
@@ -112,9 +115,9 @@ function downloadBlob(blob: Blob, filename: string) {
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
-  document.body.appendChild(link);
+  document.body.append(link);
   link.click();
-  document.body.removeChild(link);
+  link.remove();
   URL.revokeObjectURL(url);
 }
 
@@ -133,37 +136,60 @@ onMounted(async () => {
           <h2 class="backup-title">数据库备份</h2>
         </div>
         <div class="backup-actions">
-          <ElButton v-if="canManageBackup" :loading="backupLoading" type="primary" @click="backupDatabase">
+          <ElButton
+            v-if="canManageBackup"
+            :loading="backupLoading"
+            type="primary"
+            @click="backupDatabase"
+          >
             生成完整备份包
           </ElButton>
         </div>
       </div>
 
       <div class="backup-table-panel">
-        <ElTable v-loading="loading" :data="pagedRows" border height="100%">
+        <ElTable :data="pagedRows" border height="100%" v-loading="loading">
           <ElTableColumn label="文件名" min-width="260">
             <template #default="{ row }">
               <div class="file-name-cell">
-                <ElTag size="small" :type="fileTypeTag(row.fileType)">
+                <ElTag :type="fileTypeTag(row.fileType)" size="small">
                   {{ fileTypeLabel(row.fileType) }}
                 </ElTag>
                 <span>{{ row.fileName }}</span>
               </div>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="类型" width="110" align="center">
-            <template #default="{ row }">{{ fileTypeLabel(row.fileType) }}</template>
+          <ElTableColumn align="center" label="类型" width="110">
+            <template #default="{ row }">
+              {{ fileTypeLabel(row.fileType) }}
+            </template>
           </ElTableColumn>
-          <ElTableColumn label="大小" width="120" align="right">
-            <template #default="{ row }">{{ formatSize(row.sizeBytes) }}</template>
+          <ElTableColumn align="right" label="大小" width="120">
+            <template #default="{ row }">
+              {{ formatSize(row.sizeBytes) }}
+            </template>
           </ElTableColumn>
           <ElTableColumn label="创建时间" width="180">
-            <template #default="{ row }">{{ formatDateTime(row.createdAt, { seconds: true }) }}</template>
-          </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="完整路径" min-width="360" prop="filePath" />
-          <ElTableColumn v-if="canManageBackup" fixed="right" label="操作" width="100" align="center">
             <template #default="{ row }">
-              <ElButton link type="primary" size="small" @click="downloadBackup(row)">下载</ElButton>
+              {{ formatDateTime(row.createdAt, { seconds: true }) }}
+            </template>
+          </ElTableColumn>
+          <ElTableColumn
+            v-if="canManageBackup"
+            align="center"
+            fixed="right"
+            label="操作"
+            width="100"
+          >
+            <template #default="{ row }">
+              <ElButton
+                link
+                size="small"
+                type="primary"
+                @click="downloadBackup(row)"
+              >
+                下载
+              </ElButton>
             </template>
           </ElTableColumn>
         </ElTable>
@@ -172,7 +198,11 @@ onMounted(async () => {
             <span>共 {{ rows.length }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
-            <ElSelect v-model="pageSize" style="width: 92px" @change="onPageSizeChange">
+            <ElSelect
+              v-model="pageSize"
+              style="width: 92px"
+              @change="onPageSizeChange"
+            >
               <ElOption
                 v-for="size in pageSizeOptions"
                 :key="size"
@@ -282,6 +312,5 @@ onMounted(async () => {
     flex-direction: column;
     gap: 12px;
   }
-
 }
 </style>

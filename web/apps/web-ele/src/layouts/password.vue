@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
 import type { VxeFormItemProps, VxeFormPropTypes } from 'vxe-pc-ui';
+
+import { computed, ref } from 'vue';
+
 import { ElMessage } from 'element-plus';
+
 import { changePassword } from '#/api/core/auth';
+import {
+  PASSWORD_RULE_MESSAGE,
+  PASSWORD_RULE_PATTERN,
+} from '#/utils/password-policy';
 
 const emit = defineEmits<{ changed: [] }>();
 interface FormDataVO {
@@ -20,15 +27,15 @@ const formRules = ref<VxeFormPropTypes.Rules<FormDataVO>>({
   newPassword: [
     {
       required: true,
-      pattern: '^(?=.*[A-Za-z])(?=.*\\d).{8,128}$',
-      message: '请输入 8-128 位且同时包含字母和数字的密码',
+      pattern: PASSWORD_RULE_PATTERN,
+      message: PASSWORD_RULE_MESSAGE,
     },
   ],
   confirmPassword: [
     {
       required: true,
-      pattern: '^(?=.*[A-Za-z])(?=.*\\d).{8,128}$',
-      message: '请输入 8-128 位且同时包含字母和数字的密码',
+      pattern: PASSWORD_RULE_PATTERN,
+      message: PASSWORD_RULE_MESSAGE,
     },
     {
       validator({ itemValue }) {
@@ -39,7 +46,6 @@ const formRules = ref<VxeFormPropTypes.Rules<FormDataVO>>({
     },
   ],
 });
-const requiredChange = ref(false);
 const fromItems = computed<VxeFormItemProps<any>[]>(() => [
   {
     field: 'oldPassword',
@@ -75,7 +81,7 @@ const fromItems = computed<VxeFormItemProps<any>[]>(() => [
       name: 'VxeButtonGroup',
       options: [
         { type: 'submit', content: '提交', status: 'primary' },
-        ...(requiredChange.value ? [] : [{ type: 'reset', content: '取消' }]),
+        { type: 'reset', content: '取消' },
       ],
     },
   },
@@ -88,13 +94,12 @@ const handleSubmit = async () => {
   ElMessage.success('密码修改成功，请重新登录');
   emit('changed');
 };
-const showPasswordPopup = (required = false) => {
+const showPasswordPopup = () => {
   fromData.value = {
     oldPassword: '',
     newPassword: '',
     confirmPassword: '',
   };
-  requiredChange.value = required;
   showPopup.value = true;
 };
 defineExpose({ showPasswordPopup });
@@ -102,15 +107,7 @@ defineExpose({ showPasswordPopup });
 
 <template>
   <div>
-    <vxe-modal
-      v-model="showPopup"
-      :esc-closable="!requiredChange"
-      :height="300"
-      :mask-closable="!requiredChange"
-      :show-close="!requiredChange"
-      :title="requiredChange ? '首次登录，请修改密码' : '修改密码'"
-      :width="500"
-    >
+    <vxe-modal v-model="showPopup" :height="300" :width="500" title="修改密码">
       <template #default>
         <vxe-form
           :data="fromData"
@@ -120,8 +117,7 @@ defineExpose({ showPasswordPopup });
           title-width="100"
           @reset="showPopup = false"
           @submit="handleSubmit"
-        >
-        </vxe-form>
+        />
       </template>
     </vxe-modal>
   </div>

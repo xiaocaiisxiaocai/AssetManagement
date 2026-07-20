@@ -17,5 +17,6 @@ public class AssetCategoryConfiguration : IEntityTypeConfiguration<AssetCategory
         b.HasIndex(x => x.IsDeleted);
         b.HasIndex(x => x.ParentId);
         b.Ignore(x => x.Children);
+        b.HasOne<AssetCategory>().WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
     }
 }

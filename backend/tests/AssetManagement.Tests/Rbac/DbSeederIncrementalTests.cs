@@ -3,11 +3,23 @@ using AssetManagement.Infrastructure.Persistence.Seed;
 using AssetManagement.Tests;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Tests.Rbac;
 
 public class DbSeederIncrementalTests : MySqlFixtureBase
 {
+    [Fact]
+    public void Historical_workflow_name_respects_database_length_at_boundary()
+    {
+        var workflow = new WorkflowEntity { Id = int.MaxValue, Name = new string('长', 100) };
+
+        var name = DbSeeder.HistoricalWorkflowName(workflow);
+
+        name.Should().HaveLength(100);
+        name.Should().EndWith($"（历史版本 {int.MaxValue}）");
+    }
+
     [Fact]
     public void Seed_contains_every_controller_permission_code()
     {
@@ -218,6 +230,126 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         var materialXml = _db.Workflows.Single(x => x.BizType == "material_transfer").BpmnXml;
         materialXml.Should().Contain($"camunda:assignee=\"user:{adminId}\"");
         materialXml.Should().NotContain("camunda:assignee=\"1001\"");
+    }
+
+    [Fact]
+    public void Incremental_seed_replenishes_missing_default_workflow_without_overwriting_custom_workflows()
+    {
+        SeedLegacyDatabaseState();
+        DbSeeder.Seed(_db);
+        var custom = new WorkflowEntity { Name = "自定义流程", BizType = "custom_seed", BpmnXml = "<custom />", IsActive = false };
+        _db.Workflows.Add(custom);
+        _db.Workflows.Remove(_db.Workflows.Single(x => x.BizType == "return"));
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        _db.Workflows.Should().ContainSingle(x => x.BizType == "return");
+        _db.Workflows.Single(x => x.BizType == "custom_seed").BpmnXml.Should().Be("<custom />");
+    }
+
+    [Fact]
+    public void Repeated_seed_supports_multiple_material_workflow_versions()
+    {
+        SeedLegacyDatabaseState();
+        DbSeeder.Seed(_db);
+        var active = _db.Workflows.Single(x => x.BizType == "material_transfer" && x.IsActive);
+        _db.Workflows.Add(new WorkflowEntity
+        {
+            Name = "料件流转历史版本",
+            BizType = "material_transfer",
+            BpmnXml = active.BpmnXml,
+            IsActive = false
+        });
+        _db.SaveChanges();
+
+        var action = () => DbSeeder.Seed(_db);
+
+        action.Should().NotThrow();
+        _db.Workflows.Count(x => x.BizType == "material_transfer").Should().Be(2);
+        _db.Workflows.Should().ContainSingle(x => x.BizType == "material_transfer" && x.IsActive);
+    }
+
+    [Fact]
+    public void Incremental_seed_does_not_rewrite_definition_used_by_pending_instance()
+    {
+        SeedLegacyDatabaseState();
+        var xml = """
+                  <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+                    <bpmn:process id="custom"><bpmn:userTask id="Task" camunda:candidateGroups="warehouse" /></bpmn:process>
+                  </bpmn:definitions>
+                  """;
+        var workflow = new WorkflowEntity { Name = "待办历史流程", BizType = "pending_seed", BpmnXml = xml, IsActive = false };
+        var category = new AssetCategory { CodeSeg = "SEED", Code = "SEED" };
+        _db.Workflows.Add(workflow);
+        _db.AssetCategories.Add(category);
+        _db.SaveChanges();
+        var asset = new Asset
+        {
+            AssetNo = "SEED-ASSET",
+            Name = "种子测试资产",
+            CategoryId = category.Id,
+            Status = AssetStatus.Available,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.Assets.Add(asset);
+        _db.SaveChanges();
+        _db.ApprovalFlows.Add(new ApprovalFlow
+        {
+            FlowNo = "SEED-PENDING-001",
+            BizType = workflow.BizType,
+            WorkflowId = workflow.Id,
+            AssetId = asset.Id,
+            AssetNo = asset.AssetNo,
+            AssetName = asset.Name,
+            ApplicantId = _db.Users.First().Id,
+            Applicant = "申请人",
+            Status = "pending",
+            ActiveScopeKey = $"asset:{asset.Id}",
+            ApplyTime = DateTime.UtcNow,
+            Deadline = DateTime.UtcNow.AddDays(1)
+        });
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        _db.Workflows.Single(x => x.Id == workflow.Id).BpmnXml.Should().Be(xml);
+    }
+
+    [Fact]
+    public void Incremental_seed_does_not_fill_blank_borrow_definition_used_by_pending_instance()
+    {
+        SeedLegacyDatabaseState();
+        DbSeeder.Seed(_db);
+        var workflow = _db.Workflows.Single(x => x.BizType == "borrow" && x.IsActive);
+        workflow.BpmnXml = null;
+        var category = new AssetCategory { CodeSeg = "BRW", Code = $"BRW-{Guid.NewGuid():N}" };
+        _db.AssetCategories.Add(category);
+        _db.SaveChanges();
+        var asset = new Asset
+        {
+            AssetNo = $"BRW-{Guid.NewGuid():N}", Name = "空定义借用资产", CategoryId = category.Id,
+            Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow
+        };
+        _db.Assets.Add(asset);
+        _db.SaveChanges();
+        var applicant = _db.Users.First();
+        _db.ApprovalFlows.Add(new ApprovalFlow
+        {
+            FlowNo = $"BRW-{Guid.NewGuid():N}", BizType = "borrow", WorkflowId = workflow.Id,
+            AssetId = asset.Id, AssetNo = asset.AssetNo, AssetName = asset.Name,
+            ApplicantId = applicant.Id, Applicant = applicant.Name, Status = "pending",
+            ActiveScopeKey = $"asset:{asset.Id}", ApplyTime = DateTime.UtcNow,
+            Deadline = DateTime.UtcNow.AddDays(1)
+        });
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        _db.Workflows.Single(x => x.Id == workflow.Id).BpmnXml.Should().BeNull();
     }
 
     private void SeedLegacyDatabaseState()

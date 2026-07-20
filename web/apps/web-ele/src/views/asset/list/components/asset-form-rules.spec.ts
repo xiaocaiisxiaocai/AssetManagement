@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { cwd } from 'node:process';
 
 import { describe, expect, it } from 'vitest';
 
@@ -18,10 +19,18 @@ const baseForm = {
 describe('固定资产表单规则', () => {
   it('新增资产仅校验业务必填项', () => {
     expect(validateAssetForm({ ...baseForm, name: '' })).toBe('请填写资产名称');
-    expect(validateAssetForm({ ...baseForm, categoryId: 0 })).toBe('请选择资产分类');
-    expect(validateAssetForm({ ...baseForm, departmentId: undefined })).toBe('请选择归属部门');
-    expect(validateAssetForm({ ...baseForm, locationId: undefined })).toBe('请选择存放位置');
-    expect(validateAssetForm({ ...baseForm, custodianId: undefined })).toBe('请选择保管人');
+    expect(validateAssetForm({ ...baseForm, categoryId: 0 })).toBe(
+      '请选择资产分类',
+    );
+    expect(validateAssetForm({ ...baseForm, departmentId: undefined })).toBe(
+      '请选择归属部门',
+    );
+    expect(validateAssetForm({ ...baseForm, locationId: undefined })).toBe(
+      '请选择存放位置',
+    );
+    expect(validateAssetForm({ ...baseForm, custodianId: undefined })).toBe(
+      '请选择保管人',
+    );
     expect(validateAssetForm({ ...baseForm, quantity: 0 })).toBe('请填写数量');
   });
 
@@ -31,7 +40,7 @@ describe('固定资产表单规则', () => {
 
   it('必填项在界面上显示星号', () => {
     const componentPath = join(
-      process.cwd(),
+      cwd(),
       'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
     );
     const source = readFileSync(componentPath, 'utf8');
@@ -48,7 +57,9 @@ describe('固定资产表单规则', () => {
     for (const label of requiredLabels) {
       expect(source).toContain(`<ElFormItem label="${label}" required>`);
     }
-    expect(source).not.toContain('<ElFormItem v-if="isEdit" label="状态" required>');
+    expect(source).not.toContain(
+      '<ElFormItem v-if="isEdit" label="状态" required>',
+    );
     expect(source).toContain('<ElFormItem label="资产照片">');
     expect(source).not.toContain('label="型号品牌"');
     expect(source).not.toContain('label="首次登记"');
@@ -56,7 +67,7 @@ describe('固定资产表单规则', () => {
 
   it('资产登记字段仅选择日期', () => {
     const componentPath = join(
-      process.cwd(),
+      cwd(),
       'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
     );
     const source = readFileSync(componentPath, 'utf8');
@@ -69,7 +80,7 @@ describe('固定资产表单规则', () => {
 
   it('目前状况使用数据字典下拉选择', () => {
     const componentPath = join(
-      process.cwd(),
+      cwd(),
       'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
     );
     const source = readFileSync(componentPath, 'utf8');

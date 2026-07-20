@@ -6,7 +6,7 @@ interface ApiResult<T> {
   message: string;
 }
 
-interface PagedResult<T> {
+export interface PagedResult<T> {
   items: T[];
   total: number;
   page: number;
@@ -17,13 +17,15 @@ export interface UserDto {
   id: number;
   employeeNo: string;
   name: string;
-  email?: string | null;
+  phone?: null | string;
+  email?: null | string;
   isActive: boolean;
   departmentId?: null | number;
   departmentName?: null | string;
   roleIds: number[];
   roleNames?: string[];
   supervisorId?: null | number;
+  supervisorName?: null | string;
 }
 
 export interface UserOptionDto {
@@ -51,11 +53,13 @@ export interface UserImportResult {
 }
 
 export type UserPayload = {
+  departmentId?: null | number;
+  email?: null | string;
   employeeNo?: string;
   name: string;
-  email?: string | null;
-  departmentId?: null | number;
+  phone?: null | string;
   roleIds: number[];
+  supervisorId?: null | number;
 };
 
 async function unwrap<T>(request: Promise<ApiResult<T>>) {
@@ -82,12 +86,18 @@ export const getUserListApi = (
   );
 
 /** 业务人员选择器；仅返回活动用户，不要求用户管理权限。 */
-export const getUserOptionsApi = (keyword?: string) =>
-  unwrap(
-    requestClient.get<ApiResult<UserOptionDto[]>>('/users/options', {
-      params: { keyword },
+export const getUserOptionsPageApi = (keyword = '', page = 1, pageSize = 50) =>
+  unwrapPaged(
+    requestClient.get<ApiResult<PagedResult<UserOptionDto>>>('/users/options', {
+      params: { keyword, page, pageSize },
     }),
   );
+
+/** 保留列表式调用的兼容层；新选择器应使用分页接口做远程搜索。 */
+export const getUserOptionsApi = async (keyword = '') => {
+  const result = await getUserOptionsPageApi(keyword);
+  return result.items;
+};
 
 /** 加签人员选择器；仅返回有效部门中的启用部门主管。 */
 export const getApproverOptionsApi = (keyword?: string) =>
@@ -107,10 +117,16 @@ export const deleteUserApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<null>>(`/users/${id}`));
 
 export const resetUserPasswordApi = (id: number) =>
-  unwrap(requestClient.post<ApiResult<null>>(`/users/${id}/reset-password`, {}));
+  unwrap(
+    requestClient.post<ApiResult<null>>(`/users/${id}/reset-password`, {}),
+  );
 
 export const toggleUserStatusApi = (id: number, isActive: boolean) =>
-  unwrap(requestClient.post<ApiResult<null>>(`/users/${id}/toggle-status`, { isActive }));
+  unwrap(
+    requestClient.post<ApiResult<null>>(`/users/${id}/toggle-status`, {
+      isActive,
+    }),
+  );
 
 export const downloadUserImportTemplateApi = () =>
   requestClient.get('/users/import/template', { responseType: 'blob' });
@@ -120,11 +136,15 @@ export const importUsersApi = (file: File) => {
   form.append('file', file);
   const config = {
     skipBusinessError: true,
-  } as NonNullable<Parameters<typeof requestClient.post>[2]> & {
+  } as {
     skipBusinessError: boolean;
-  };
+  } & NonNullable<Parameters<typeof requestClient.post>[2]>;
   return unwrap(
-    requestClient.post<ApiResult<UserImportResult>>('/users/import', form, config),
+    requestClient.post<ApiResult<UserImportResult>>(
+      '/users/import',
+      form,
+      config,
+    ),
   );
 };
 
@@ -132,6 +152,9 @@ export const validateUserImportApi = (file: File) => {
   const form = new FormData();
   form.append('file', file);
   return unwrap(
-    requestClient.post<ApiResult<UserImportResult>>('/users/import/validate', form),
+    requestClient.post<ApiResult<UserImportResult>>(
+      '/users/import/validate',
+      form,
+    ),
   );
 };

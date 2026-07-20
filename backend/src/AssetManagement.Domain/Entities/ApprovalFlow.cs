@@ -18,6 +18,8 @@ public class ApprovalFlow : IBpmnFlowInstance
     public string? Transferee { get; set; }
     public string? TransfereeDept { get; set; }
     public string? Reason { get; set; }
+    /// <summary>延期申请发起时的原应归还日期；其他业务类型为空。</summary>
+    public string? OriginalReturnDate { get; set; }
     public string? ReturnDate { get; set; }
     public string Status { get; set; } = "pending";
 

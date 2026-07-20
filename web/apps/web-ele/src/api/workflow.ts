@@ -6,6 +6,40 @@ interface ApiResult<T> {
   message: string;
 }
 
+export interface PagedResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface ApprovalPageQuery {
+  bizType?: string;
+  flowId?: number;
+  keyword?: string;
+  page: number;
+  pageSize: number;
+  returnDate?: string;
+  status?: string;
+}
+
+export interface WorkflowDesignerOptions {
+  departments: Array<{
+    id: number;
+    name: string;
+    organizationLevelCode?: null | string;
+    parentId?: null | number;
+  }>;
+  organizationLevels: Array<{ code: string; id: number; name: string }>;
+  roles: Array<{ code: string; id: number; name: string }>;
+  users: PagedResult<{
+    departmentName?: null | string;
+    employeeNo: string;
+    id: number;
+    name: string;
+  }>;
+}
+
 // BPMN Token 状态
 export enum BpmnTokenStatus {
   Active = 0,
@@ -21,8 +55,8 @@ export interface BpmnToken {
   status: BpmnTokenStatus;
   createdAt?: string;
   completedAt?: string;
-  signStates?: Record<string, boolean> | null;
-  addedSigners?: Record<string, number> | null;
+  signStates?: null | Record<string, boolean>;
+  addedSigners?: null | Record<string, number>;
 }
 
 export interface WorkflowAssignee {
@@ -51,7 +85,7 @@ export interface WorkflowItem {
   id: number;
   isActive: boolean;
   name: string;
-  bpmnXml?: string | null; // BPMN 2.0 XML
+  bpmnXml?: null | string; // BPMN 2.0 XML
   bpmnStatus: 'configured' | 'empty' | 'invalid';
   bpmnValidationErrors: string[];
 }
@@ -80,6 +114,7 @@ export interface ApprovalFlow {
   flowNo: string;
   id: number;
   nextSteps?: WorkflowProgressStep[];
+  originalReturnDate?: null | string;
   progressSteps?: WorkflowProgressStep[];
   reason?: null | string;
   returnDate?: null | string;
@@ -128,6 +163,13 @@ export const createWorkflowApi = (data: SaveWorkflowPayload) =>
 export const saveWorkflowApi = (id: number, data: SaveWorkflowPayload) =>
   unwrap(requestClient.put<ApiResult<WorkflowItem>>(`/workflows/${id}`, data));
 
+export const saveWorkflowDesignApi = (id: number, bpmnXml: null | string) =>
+  unwrap(
+    requestClient.put<ApiResult<WorkflowItem>>(`/workflows/${id}/design`, {
+      bpmnXml,
+    }),
+  );
+
 export const setWorkflowStatusApi = (id: number, isActive: boolean) =>
   unwrap(
     requestClient.post<ApiResult<WorkflowItem>>(`/workflows/${id}/status`, {
@@ -138,6 +180,18 @@ export const setWorkflowStatusApi = (id: number, isActive: boolean) =>
 export const deleteWorkflowApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<boolean>>(`/workflows/${id}`));
 
+export const getWorkflowDesignerOptionsApi = (
+  keyword = '',
+  page = 1,
+  pageSize = 50,
+) =>
+  unwrap(
+    requestClient.get<ApiResult<WorkflowDesignerOptions>>(
+      '/workflow-designer/options',
+      { params: { keyword, page, pageSize } },
+    ),
+  );
+
 export const startApprovalApi = (data: StartApprovalPayload) =>
   unwrap(requestClient.post<ApiResult<ApprovalFlow>>('/approvals', data));
 
@@ -147,10 +201,39 @@ export const getPendingApprovalsApi = () =>
 export const getMineApprovalsApi = () =>
   unwrap(requestClient.get<ApiResult<ApprovalFlow[]>>('/approvals/mine'));
 
+export const getPendingApprovalsPageApi = (params: ApprovalPageQuery) =>
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<ApprovalFlow>>>(
+      '/approvals/pending-page',
+      { params },
+    ),
+  );
+
+export const getMineApprovalsPageApi = (params: ApprovalPageQuery) =>
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<ApprovalFlow>>>(
+      '/approvals/mine-page',
+      { params },
+    ),
+  );
+
 // 待接收确认:已审批通过、尚未确认接收归还的借用单
 export const getPendingReturnsApi = () =>
   unwrap(
     requestClient.get<ApiResult<ApprovalFlow[]>>('/approvals/pending-return'),
+  );
+
+export const getPendingReturnsPageApi = (
+  params: Pick<
+    ApprovalPageQuery,
+    'keyword' | 'page' | 'pageSize' | 'returnDate'
+  >,
+) =>
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<ApprovalFlow>>>(
+      '/approvals/pending-return-page',
+      { params },
+    ),
   );
 
 export const getFlowDetailApi = (id: number) =>

@@ -14,17 +14,25 @@ public class OrganizationApprovalResolverTests : MySqlFixtureBase
             new OrganizationLevel { Id = 792, Code = "division", Name = "事业部", Sort = 20 },
             new OrganizationLevel { Id = 793, Code = "department", Name = "部门", Sort = 30 },
             new OrganizationLevel { Id = 794, Code = "section", Name = "课别", Sort = 40 });
-        _db.Departments.AddRange(
+        var departments = new[]
+        {
             new Department { Id = 801, Code = "group", Name = "某集团", OrganizationLevelId = 791 },
-            new Department { Id = 802, ParentId = 801, Code = "division", Name = "某事业群", OrganizationLevelId = 792, ManagerId = 815 },
-            new Department { Id = 803, ParentId = 802, Code = "mechanical", Name = "机械工程部", OrganizationLevelId = 793, ManagerId = 811 },
-            new Department { Id = 804, ParentId = 803, Code = "design", Name = "设计课", OrganizationLevelId = 794, ManagerId = 812 });
+            new Department { Id = 802, ParentId = 801, Code = "division", Name = "某事业群", OrganizationLevelId = 792 },
+            new Department { Id = 803, ParentId = 802, Code = "mechanical", Name = "机械工程部", OrganizationLevelId = 793 },
+            new Department { Id = 804, ParentId = 803, Code = "design", Name = "设计课", OrganizationLevelId = 794 }
+        };
+        _db.Departments.AddRange(departments);
+        await _db.SaveChangesAsync();
         _db.Users.AddRange(
             User(811, "部门负责人", 803),
             User(812, "课级负责人", 804),
             User(813, "普通课员", 804),
             User(814, "部门普通员工", 803),
             User(815, "事业部负责人", 802));
+        await _db.SaveChangesAsync();
+        departments.Single(x => x.Id == 802).ManagerId = 815;
+        departments.Single(x => x.Id == 803).ManagerId = 811;
+        departments.Single(x => x.Id == 804).ManagerId = 812;
         await _db.SaveChangesAsync();
 
         var employee = await OrganizationApprovalResolver.ResolvePlanAsync(_db, 813);

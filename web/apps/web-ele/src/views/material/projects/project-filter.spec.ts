@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-
 import type { TestProjectItem } from '#/api/test-project';
+
+import { describe, expect, it } from 'vitest';
 
 import { filterProjects, type ProjectFilter } from './project-filter';
 
@@ -37,8 +37,12 @@ describe('测试项目筛选', () => {
       { ...baseProject, code: 'CODX-NT-002', id: 2, name: '量产验证项目' },
     ];
 
-    expect(filterProjects(projects, { ...emptyFilter, code: 'nt-001' })).toEqual([baseProject]);
-    expect(filterProjects(projects, { ...emptyFilter, name: '量产' })).toEqual([projects[1]]);
+    expect(
+      filterProjects(projects, { ...emptyFilter, code: 'nt-001' }),
+    ).toEqual([baseProject]);
+    expect(filterProjects(projects, { ...emptyFilter, name: '量产' })).toEqual([
+      projects[1],
+    ]);
   });
 
   it('按项目类型、负责人和进度精确匹配', () => {

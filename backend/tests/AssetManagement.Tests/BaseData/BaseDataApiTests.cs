@@ -127,11 +127,13 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Department_options_allows_employee_without_department_view_and_exposes_only_selection_fields()
+    public async Task Department_options_allows_employee_without_department_view_and_exposes_manager_selection_fields()
     {
         await Login();
-        await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        var manager = await CreateUser();
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
         {
+            ManagerId = manager.Id,
             Name = Unique("选项部门")
         });
         var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?page=1&pageSize=100");
@@ -155,9 +157,12 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
 
         response.EnsureSuccessStatusCode();
         using var body = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
-        var first = body.RootElement.GetProperty("data").EnumerateArray().First();
-        first.EnumerateObject().Select(x => x.Name)
-            .Should().BeEquivalentTo("id", "name", "isActive", "children");
+        var option = body.RootElement.GetProperty("data").EnumerateArray()
+            .Single(x => x.GetProperty("id").GetInt32() == department.Data!.Id);
+        option.EnumerateObject().Select(x => x.Name)
+            .Should().BeEquivalentTo("id", "name", "managerId", "managerName", "isActive", "children");
+        option.GetProperty("managerId").GetInt32().Should().Be(manager.Id);
+        option.GetProperty("managerName").GetString().Should().Be(manager.Name);
     }
 
     [Fact]
@@ -381,6 +386,25 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Category_create_rejects_child_remark_longer_than_database_limit()
+    {
+        await Login();
+        var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            CodeSeg = UniqueCodeSeg()
+        });
+
+        var result = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            ParentId = root.Data!.Id,
+            CodeSeg = UniqueCodeSeg(),
+            Remark = new string('备', 501)
+        });
+
+        result.Code.Should().Be(4001);
+    }
+
+    [Fact]
     public async Task Category_tree_uses_code_and_optional_child_remark_without_name()
     {
         await Login();
@@ -552,6 +576,20 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
 
         duplicated.Code.Should().Be(4094);
         duplicated.Message.Should().Be("存放位置已存在");
+    }
+
+    [Fact]
+    public async Task Location_create_rejects_blank_name()
+    {
+        await Login();
+
+        var result = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        {
+            Name = "   ",
+        });
+
+        result.Code.Should().Be(4001);
+        result.Message.Should().Contain("位置名称");
     }
 
     [Fact]
@@ -765,6 +803,41 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
 
         body!.Code.Should().Be(4001);
         body.Message.Should().Contain(message);
+    }
+
+    [Fact]
+    public async Task Settings_save_rejects_normalized_value_longer_than_database_limit()
+    {
+        await Login();
+
+        var response = await _client.PutAsJsonAsync("/api/settings", new[]
+        {
+            new SaveSystemSettingRequest
+            {
+                Key = "database_backup_path",
+                Value = new string('路', 501)
+            }
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<List<SystemSettingDto>>>();
+
+        var longOptions = Enumerable.Range(1, 20)
+            .Select(index => $"{index:D2}{new string('状', 24)}")
+            .ToList();
+        var dictionaryResponse = await _client.PutAsJsonAsync("/api/settings", new[]
+        {
+            new SaveSystemSettingRequest
+            {
+                Key = "asset_condition_options",
+                Value = JsonSerializer.Serialize(longOptions)
+            }
+        });
+        var dictionaryBody = await dictionaryResponse.Content
+            .ReadFromJsonAsync<ApiResult<List<SystemSettingDto>>>();
+
+        body!.Code.Should().Be(4001);
+        body.Message.Should().Contain("500");
+        dictionaryBody!.Code.Should().Be(4001);
+        dictionaryBody.Message.Should().Contain("500");
     }
 
     [Fact]

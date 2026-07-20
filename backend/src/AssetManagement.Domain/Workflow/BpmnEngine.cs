@@ -323,7 +323,7 @@ public static class BpmnEngine
         // 活跃 Token，因此不会错误地阻塞包容汇聚。
         var hasOtherActiveBranch = flow.CurrentNodeIds.Any(nodeId =>
             !string.Equals(nodeId, gatewayId, StringComparison.Ordinal) &&
-            CanReach(process, nodeId, gatewayId));
+            CanReach(flow, process, nodeId, gatewayId));
         if (hasOtherActiveBranch)
         {
             flow.BpmnTokens[gatewayId] = new BpmnToken
@@ -346,7 +346,7 @@ public static class BpmnEngine
         MoveToken(flow, process, outgoingFlow.TargetRef, traversal);
     }
 
-    private static bool CanReach(BpmnProcess process, string sourceId, string targetId)
+    private static bool CanReach(IBpmnFlowInstance flow, BpmnProcess process, string sourceId, string targetId)
     {
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var pending = new Stack<string>();
@@ -355,13 +355,40 @@ public static class BpmnEngine
         {
             var current = pending.Pop();
             if (!visited.Add(current)) continue;
-            foreach (var edge in process.GetOutgoingFlows(current))
+            foreach (var edge in ExecutableOutgoingFlows(flow, process, current))
             {
                 if (edge.TargetRef == targetId) return true;
                 pending.Push(edge.TargetRef);
             }
         }
         return false;
+    }
+
+    private static IEnumerable<BpmnFlow> ExecutableOutgoingFlows(
+        IBpmnFlowInstance flow,
+        BpmnProcess process,
+        string nodeId)
+    {
+        var node = process.FindNode(nodeId);
+        var outgoing = process.GetOutgoingFlows(nodeId);
+        if (node?.Type == BpmnNodeType.ExclusiveGateway && outgoing.Count > 1)
+        {
+            var matched = outgoing.FirstOrDefault(edge =>
+                !string.IsNullOrWhiteSpace(edge.ConditionExpression) &&
+                EvaluateCondition(flow, edge.ConditionExpression));
+            return matched is null
+                ? outgoing.Where(edge => string.IsNullOrWhiteSpace(edge.ConditionExpression)).Take(1)
+                : [matched];
+        }
+
+        if (node?.Type == BpmnNodeType.InclusiveGateway && outgoing.Count > 1)
+        {
+            return outgoing.Where(edge =>
+                string.IsNullOrWhiteSpace(edge.ConditionExpression) ||
+                EvaluateCondition(flow, edge.ConditionExpression));
+        }
+
+        return outgoing;
     }
 
     /// <summary>
@@ -376,13 +403,32 @@ public static class BpmnEngine
         {
             case BpmnNodeType.UserTask:
                 // 用户任务：激活并等待审批
+                var history = new List<BpmnTokenExecution>();
+                if (flow.BpmnTokens.TryGetValue(toNodeId, out var previous))
+                {
+                    history.AddRange(previous.History);
+                    if (previous.Status == BpmnTokenStatus.Completed)
+                    {
+                        history.Add(new BpmnTokenExecution
+                        {
+                            StartedAt = previous.StartedAt,
+                            Approver = previous.Approver,
+                            Opinion = previous.Opinion,
+                            CompletedAt = previous.CompletedAt,
+                            SignStates = previous.SignStates is null
+                                ? null
+                                : new Dictionary<string, bool>(previous.SignStates)
+                        });
+                    }
+                }
                 flow.BpmnTokens[toNodeId] = new BpmnToken
                 {
                     NodeId = toNodeId,
                     NodeName = toNode.Name,
                     Status = BpmnTokenStatus.Active,
                     StartedAt = DateTime.UtcNow,
-                    SignStates = BuildSignStates(toNode)
+                    SignStates = BuildSignStates(toNode),
+                    History = history
                 };
                 if (!flow.CurrentNodeIds.Contains(toNodeId))
                     flow.CurrentNodeIds.Add(toNodeId);
@@ -452,11 +498,13 @@ public static class BpmnEngine
 
         condition = condition.Trim();
 
-        var deptMatch = Regex.Match(condition, @"^\$\{applicantDept\}\s*==\s*['""](.+?)['""]$");
+        var deptMatch = Regex.Match(condition, @"^\$\{applicantDept\}\s*(==|!=)\s*['""](.+?)['""]$");
         if (deptMatch.Success)
         {
-            var right = deptMatch.Groups[1].Value;
-            return string.Equals(flow.ApplicantDept, right, StringComparison.Ordinal);
+            var op = deptMatch.Groups[1].Value;
+            var right = deptMatch.Groups[2].Value;
+            var equals = string.Equals(flow.ApplicantDept, right, StringComparison.Ordinal);
+            return op == "==" ? equals : !equals;
         }
 
         var stringMatch = Regex.Match(condition, @"^\$\{(\w+)\}\s*(==|!=)\s*['""](.+?)['""]$");
@@ -465,6 +513,13 @@ public static class BpmnEngine
             var varName = stringMatch.Groups[1].Value;
             var op = stringMatch.Groups[2].Value;
             var right = stringMatch.Groups[3].Value;
+            if (varName == "applicantRole" && flow.Context?.TryGetValue("applicantRoles", out var applicantRoles) == true)
+            {
+                var contains = applicantRoles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Contains(right, StringComparer.Ordinal);
+                return op == "==" ? contains : !contains;
+            }
+
             if (flow.Context is null || !flow.Context.TryGetValue(varName, out var left))
             {
                 throw new InvalidOperationException($"无法识别的条件表达式: {condition}");

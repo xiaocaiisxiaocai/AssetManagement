@@ -48,12 +48,12 @@ async function handleLogin(values: any) {
   <AuthenticationLogin
     :form-schema="formSchema"
     :loading="authStore.loginLoading"
-    title="资产管理系统"
     :show-code-login="false"
     :show-qrcode-login="false"
+    :show-register="false"
     :show-remember-me="false"
     :show-third-party-login="false"
-    :show-register="false"
+    title="资产管理系统"
     @submit="handleLogin"
   />
 </template>

@@ -44,13 +44,14 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
         };
         _db.Workflows.Add(workflow);
         await _db.SaveChangesAsync();
+        var asset = await CreateAssetAsync("A001", "测试资产");
 
         _db.ApprovalFlows.Add(new ApprovalFlow
         {
             FlowNo = "APV-TEST-001",
             BizType = "borrow",
             WorkflowId = workflow.Id,
-            AssetId = 1,
+            AssetId = asset.Id,
             AssetNo = "A001",
             AssetName = "测试资产",
             ApplicantId = applicant.Id,
@@ -104,13 +105,14 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
         };
         _db.Workflows.Add(workflow);
         await _db.SaveChangesAsync();
+        var asset = await CreateAssetAsync("A002", "加签测试资产");
 
         _db.ApprovalFlows.Add(new ApprovalFlow
         {
             FlowNo = "APV-SIGN-001",
             BizType = "borrow",
             WorkflowId = workflow.Id,
-            AssetId = 2,
+            AssetId = asset.Id,
             AssetNo = "A002",
             AssetName = "加签测试资产",
             ApplicantId = signed.Id,
@@ -168,13 +170,14 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
         };
         _db.Workflows.Add(workflow);
         await _db.SaveChangesAsync();
+        var asset = await CreateAssetAsync("A003", "并行催办资产");
 
         _db.ApprovalFlows.Add(new ApprovalFlow
         {
             FlowNo = "APV-PARALLEL-REMIND",
             BizType = "borrow",
             WorkflowId = workflow.Id,
-            AssetId = 3,
+            AssetId = asset.Id,
             AssetNo = "A003",
             AssetName = "并行催办资产",
             ApplicantId = overdueApprover.Id,
@@ -234,7 +237,9 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
         };
         _db.Workflows.Add(workflow);
         await _db.SaveChangesAsync();
-        _db.ApprovalFlows.Add(PendingFlow(workflow.Id, applicant, "Task_Org", "APV-ORG-REMIND"));
+        var orgFlow = PendingFlow(workflow.Id, applicant, "Task_Org", "APV-ORG-REMIND");
+        orgFlow.AssetId = (await CreateAssetAsync(orgFlow.AssetNo, orgFlow.AssetName)).Id;
+        _db.ApprovalFlows.Add(orgFlow);
         await _db.SaveChangesAsync();
 
         await InvokeScanAndRemindAsync(worker);
@@ -268,6 +273,7 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
         _db.Workflows.Add(workflow);
         await _db.SaveChangesAsync();
         var flow = PendingFlow(workflow.Id, applicant, "Task_receiver", "APV-RECEIVER-REMIND");
+        flow.AssetId = (await CreateAssetAsync(flow.AssetNo, flow.AssetName)).Id;
         flow.BizType = "transfer";
         flow.TransfereeId = transferee.Id;
         flow.Transferee = transferee.Name;
@@ -279,6 +285,18 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
         var notification = await _db.Notifications.SingleAsync();
         notification.UserId.Should().Be(receiverManager.Id);
         notification.UserId.Should().NotBe(applicantManager.Id);
+    }
+
+    [Fact]
+    public async Task ScanAndRemindAsync_honors_pre_cancelled_token()
+    {
+        var worker = CreateWorker();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var action = () => worker.ScanAndRemindAsync(cts.Token);
+
+        await action.Should().ThrowAsync<OperationCanceledException>();
     }
 
     private static string SupervisorBpmn() => """
@@ -351,6 +369,27 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
         Deadline = DateTime.UtcNow.AddDays(1)
     };
 
+    private async Task<Asset> CreateAssetAsync(string assetNo, string name)
+    {
+        var category = new AssetCategory
+        {
+            CodeSeg = Guid.NewGuid().ToString("N")[..8],
+            Code = Guid.NewGuid().ToString("N"),
+        };
+        _db.AssetCategories.Add(category);
+        await _db.SaveChangesAsync();
+        var asset = new Asset
+        {
+            AssetNo = assetNo,
+            Name = name,
+            CategoryId = category.Id,
+            CreatedAt = DateTime.UtcNow,
+        };
+        _db.Assets.Add(asset);
+        await _db.SaveChangesAsync();
+        return asset;
+    }
+
     private static string SingleTaskBpmn(string nodeId, string assignee) => $$"""
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -366,11 +405,5 @@ public class PendingApprovalReminderWorkerTests : MySqlFixtureBase
 """;
 
     private static async Task InvokeScanAndRemindAsync(PendingApprovalReminderWorker worker)
-    {
-        var method = typeof(PendingApprovalReminderWorker).GetMethod(
-            "ScanAndRemindAsync",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        method.Should().NotBeNull();
-        await (Task)method!.Invoke(worker, Array.Empty<object>())!;
-    }
+        => await worker.ScanAndRemindAsync();
 }

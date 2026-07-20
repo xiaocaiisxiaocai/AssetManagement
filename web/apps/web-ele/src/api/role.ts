@@ -17,7 +17,7 @@ export interface RoleDto {
   id: number;
   code: string;
   name: string;
-  description?: string | null;
+  description?: null | string;
   isActive: boolean;
   permissionIds: number[];
   menuIds: number[];
@@ -35,12 +35,12 @@ export interface PermissionDto {
 export interface MenuDto {
   id: number;
   name: string;
-  title?: string | null;
-  path?: string | null;
-  component?: string | null;
-  icon?: string | null;
-  parentId?: number | null;
-  permissionCode?: string | null;
+  title?: null | string;
+  path?: null | string;
+  component?: null | string;
+  icon?: null | string;
+  parentId?: null | number;
+  permissionCode?: null | string;
   sort: number;
   type: string;
   children?: MenuDto[];
@@ -48,9 +48,9 @@ export interface MenuDto {
 
 export type RolePayload = {
   code?: string;
-  name: string;
-  description?: string | null;
+  description?: null | string;
   isActive?: boolean;
+  name: string;
 };
 
 async function unwrap<T>(request: Promise<ApiResult<T>>) {

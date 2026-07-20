@@ -1,9 +1,13 @@
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Common;
+using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Infrastructure.Workflow;
 using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace AssetManagement.Infrastructure.Rbac;
 
@@ -24,8 +28,7 @@ public class RbacService : IRbacService
         int? departmentId = null,
         int? roleId = null)
     {
-        page = Math.Max(page, 1);
-        pageSize = Math.Clamp(pageSize, 1, AppConstants.MaxPageSize);
+        (page, pageSize) = Pagination.Normalize(page, pageSize);
         var query = _db.Users
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
@@ -45,23 +48,31 @@ public class RbacService : IRbacService
         }
 
         var total = await query.CountAsync();
-        var users = await query
-            // 工号是 varchar，直接字符串排序会把 2571 排在 434 前面；按长度再按文本实现数字工号自然升序。
-            .OrderBy(x => x.EmployeeNo.Length)
-            .ThenBy(x => x.EmployeeNo)
-            .ThenBy(x => x.Name)
-            .ThenBy(x => x.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
+        var offset = Pagination.GetOffset(page, pageSize, total);
+        var users = offset.HasValue
+            ? await query
+                // 工号是 varchar，直接字符串排序会把 2571 排在 434 前面；按长度再按文本实现数字工号自然升序。
+                .OrderBy(x => x.EmployeeNo.Length)
+                .ThenBy(x => x.EmployeeNo)
+                .ThenBy(x => x.Name)
+                .ThenBy(x => x.Id)
+                .Skip(offset.Value)
+                .Take(pageSize)
+                .ToListAsync()
+            : [];
         var departmentMap = await BuildDepartmentMapAsync(users.Select(x => x.DepartmentId));
-        var items = users.Select(x => ToUserDto(x, departmentMap)).ToList();
+        var supervisorMap = await BuildUserNameMapAsync(users.Select(x => x.SupervisorId));
+        var items = users.Select(x => ToUserDto(x, departmentMap, supervisorMap)).ToList();
 
         return new PagedResult<UserDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
 
-    public async Task<List<UserOptionDto>> GetActiveUserOptionsAsync(string? keyword = null)
+    public async Task<PagedResult<UserOptionDto>> GetActiveUserOptionsAsync(
+        string? keyword = null,
+        int page = 1,
+        int pageSize = 50)
     {
+        (page, pageSize) = Pagination.Normalize(page, pageSize);
         var query = _db.Users.Where(x => x.IsActive);
         if (!string.IsNullOrWhiteSpace(keyword))
         {
@@ -69,21 +80,80 @@ public class RbacService : IRbacService
             query = query.Where(x => x.EmployeeNo.Contains(value) || x.Name.Contains(value));
         }
 
-        return await query
-            .OrderBy(x => x.EmployeeNo.Length)
-            .ThenBy(x => x.EmployeeNo)
-            // 与现有人员选择器的容量保持一致，同时仍只投影轻量字段。
-            .Take(500)
-            .Select(x => new UserOptionDto
+        var total = await query.CountAsync();
+        var offset = Pagination.GetOffset(page, pageSize, total);
+        var items = offset.HasValue
+            ? await query
+                .OrderBy(x => x.EmployeeNo.Length)
+                .ThenBy(x => x.EmployeeNo)
+                .ThenBy(x => x.Id)
+                .Skip(offset.Value)
+                .Take(pageSize)
+                .Select(x => new UserOptionDto
+                {
+                    Id = x.Id,
+                    EmployeeNo = x.EmployeeNo,
+                    Name = x.Name,
+                    DepartmentName = x.DepartmentId.HasValue
+                        ? _db.Departments.Where(d => d.Id == x.DepartmentId.Value).Select(d => d.Name).FirstOrDefault()
+                        : null
+                })
+                .ToListAsync()
+            : [];
+        return new PagedResult<UserOptionDto>
+        {
+            Items = items,
+            Total = total,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
+
+    public async Task<WorkflowDesignerOptionsDto> GetWorkflowDesignerOptionsAsync(
+        string? keyword = null,
+        int page = 1,
+        int pageSize = 50)
+    {
+        var users = await GetActiveUserOptionsAsync(keyword, page, pageSize);
+        var roles = await _db.Roles.AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Name)
+            .ThenBy(x => x.Id)
+            .Select(x => new WorkflowDesignerRoleOptionDto { Id = x.Id, Code = x.Code, Name = x.Name })
+            .ToListAsync();
+        var departments = await _db.Departments.AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Code)
+            .ThenBy(x => x.Id)
+            .Select(x => new WorkflowDesignerDepartmentOptionDto
             {
                 Id = x.Id,
-                EmployeeNo = x.EmployeeNo,
+                ParentId = x.ParentId,
                 Name = x.Name,
-                DepartmentName = x.DepartmentId.HasValue
-                    ? _db.Departments.Where(d => d.Id == x.DepartmentId.Value).Select(d => d.Name).FirstOrDefault()
+                OrganizationLevelCode = x.OrganizationLevelId.HasValue
+                    ? _db.OrganizationLevels.Where(level => level.Id == x.OrganizationLevelId.Value)
+                        .Select(level => level.Code).FirstOrDefault()
                     : null
             })
             .ToListAsync();
+        var organizationLevels = await _db.OrganizationLevels.AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Sort)
+            .ThenBy(x => x.Id)
+            .Select(x => new WorkflowDesignerOrganizationLevelOptionDto
+            {
+                Id = x.Id,
+                Code = x.Code,
+                Name = x.Name
+            })
+            .ToListAsync();
+        return new WorkflowDesignerOptionsDto
+        {
+            Users = users,
+            Roles = roles,
+            Departments = departments,
+            OrganizationLevels = organizationLevels
+        };
     }
 
     public async Task<List<UserOptionDto>> GetActiveSupervisorOptionsAsync(string? keyword = null)
@@ -127,9 +197,7 @@ public class RbacService : IRbacService
         var password = !string.IsNullOrWhiteSpace(request.Password)
             ? request.Password
             : AppConstants.DefaultUserPassword;
-        var mustChangePassword = string.IsNullOrWhiteSpace(request.Password)
-            || password == AppConstants.DefaultUserPassword;
-        if (!mustChangePassword)
+        if (password != AppConstants.DefaultUserPassword)
         {
             PasswordPolicy.EnsureStrong(password);
         }
@@ -144,12 +212,18 @@ public class RbacService : IRbacService
             Phone = request.Phone,
             DepartmentId = request.DepartmentId,
             SupervisorId = request.SupervisorId,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
-            MustChangePassword = mustChangePassword,
+            PasswordHash = PasswordHashing.Hash(password),
             IsActive = true
         };
         _db.Users.Add(user);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "工号已存在");
+        }
         await RewriteUserRoles(user.Id, request.RoleIds);
         await transaction.CommitAsync();
         return await LoadUserDto(user.Id);
@@ -162,7 +236,12 @@ public class RbacService : IRbacService
         await using var transaction = await _db.Database.BeginTransactionAsync();
         await LockAdminUsersAsync();
         await EnsureUserRoleChangeAllowed(id, request.RoleIds, currentUserId, canAssignRole);
-        var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        // 所有停用路径先按统一顺序锁管理员集合，再锁目标用户；业务流创建在持有相关用户锁后
+        // 会重新校验活跃状态，从而关闭“检查通过后又新增在途引用”的窗口。
+        var user = await _db.Users
+            .FromSqlInterpolated($"SELECT * FROM users WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4041, "用户不存在");
         await ValidateUserRelationsAsync(request.DepartmentId, request.SupervisorId, id);
         user.Name = request.Name.Trim();
@@ -209,8 +288,7 @@ public class RbacService : IRbacService
     {
         var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(AppConstants.DefaultUserPassword);
-        user.MustChangePassword = true;
+        user.PasswordHash = PasswordHashing.Hash(AppConstants.DefaultUserPassword);
         user.TokenVersion++;
         await _db.SaveChangesAsync();
     }
@@ -219,7 +297,10 @@ public class RbacService : IRbacService
     {
         await using var transaction = await _db.Database.BeginTransactionAsync();
         await LockAdminUsersAsync();
-        var user = await _db.Users.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        var user = await _db.Users
+            .FromSqlInterpolated($"SELECT * FROM users WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4041, "用户不存在");
         var nextIsActive = isActive ?? !user.IsActive;
         if (user.IsActive && !nextIsActive
@@ -227,6 +308,10 @@ public class RbacService : IRbacService
             && !await HasOtherUsableAdminAsync(id))
         {
             throw new BizException(4094, "至少保留一个启用状态的系统管理员");
+        }
+        if (user.IsActive && !nextIsActive)
+        {
+            await EnsureUserCanBeDisabledAsync(id);
         }
         if (user.IsActive != nextIsActive)
         {
@@ -267,12 +352,14 @@ public class RbacService : IRbacService
             return preview with { SuccessCount = 0 };
         }
 
-        var roleMap = await _db.Roles
+        var roleMap = (await _db.Roles
             .Where(x => x.IsActive)
-            .ToDictionaryAsync(x => x.Name, x => x.Id);
-        var departmentMap = await _db.Departments
+            .Select(x => new { x.Name, x.Id })
+            .ToListAsync()).ToDictionary(x => x.Name, x => x.Id, StringComparer.OrdinalIgnoreCase);
+        var departmentMap = (await _db.Departments
             .Where(x => x.IsActive)
-            .ToDictionaryAsync(x => x.Name, x => x.Id);
+            .Select(x => new { x.Name, x.Id })
+            .ToListAsync()).ToDictionary(x => x.Name, x => x.Id, StringComparer.OrdinalIgnoreCase);
 
         await using var tx = await _db.Database.BeginTransactionAsync();
         foreach (var row in rows)
@@ -283,8 +370,7 @@ public class RbacService : IRbacService
                 Name = row.Name,
                 Email = string.IsNullOrWhiteSpace(row.Email) ? null : row.Email,
                 DepartmentId = string.IsNullOrWhiteSpace(row.DepartmentName) ? null : departmentMap[row.DepartmentName],
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(AppConstants.DefaultUserPassword),
-                MustChangePassword = true,
+                PasswordHash = PasswordHashing.Hash(AppConstants.DefaultUserPassword),
                 IsActive = true
             };
             _db.Users.Add(user);
@@ -320,8 +406,7 @@ public class RbacService : IRbacService
 
     public async Task<PagedResult<RoleDto>> GetRolesAsync(string? keyword, int page, int pageSize)
     {
-        page = Math.Max(page, 1);
-        pageSize = Math.Clamp(pageSize, 1, AppConstants.MaxPageSize);
+        (page, pageSize) = Pagination.Normalize(page, pageSize);
         var query = _db.Roles
             .AsSplitQuery()
             .Include(x => x.RolePermissions)
@@ -334,7 +419,10 @@ public class RbacService : IRbacService
         }
         query = query.OrderBy(x => x.Id);
         var total = await query.CountAsync();
-        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).Select(x => ToRoleDto(x)).ToListAsync();
+        var offset = Pagination.GetOffset(page, pageSize, total);
+        var items = offset.HasValue
+            ? await query.Skip(offset.Value).Take(pageSize).Select(x => ToRoleDto(x)).ToListAsync()
+            : [];
         return new PagedResult<RoleDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
 
@@ -351,7 +439,14 @@ public class RbacService : IRbacService
         await using var transaction = await _db.Database.BeginTransactionAsync();
         var role = new Role { Code = code, Name = name, IsActive = request.IsActive };
         _db.Roles.Add(role);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "角色编码或名称已存在");
+        }
         await transaction.CommitAsync();
         return await LoadRoleDto(role.Id);
     }
@@ -371,7 +466,14 @@ public class RbacService : IRbacService
         var statusChanged = role.IsActive != request.IsActive;
         role.Name = name;
         role.IsActive = request.IsActive;
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            throw new BizException(4094, "角色名称已存在");
+        }
         if (statusChanged)
         {
             await BumpRoleMemberTokenVersionsAsync(id);
@@ -564,6 +666,7 @@ public class RbacService : IRbacService
         EnsureRequiredText(request.Name, 100, "菜单名称");
         EnsureRequiredText(request.Title, 100, "菜单标题");
         await ValidateMenuParentAsync(null, request.ParentId);
+        var (menuType, permissionCode) = await ValidateMenuMetadataAsync(request.Type, request.PermissionCode);
         await using var transaction = await _db.Database.BeginTransactionAsync();
         var menu = new Menu
         {
@@ -574,8 +677,8 @@ public class RbacService : IRbacService
             Component = request.Component,
             Icon = request.Icon,
             Sort = request.Sort,
-            Type = request.Type,
-            PermissionCode = request.PermissionCode
+            Type = menuType,
+            PermissionCode = permissionCode
         };
         _db.Menus.Add(menu);
         await _db.SaveChangesAsync();
@@ -596,6 +699,7 @@ public class RbacService : IRbacService
         var menu = await _db.Menus.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4044, "菜单不存在");
         await ValidateMenuParentAsync(id, request.ParentId);
+        var (menuType, permissionCode) = await ValidateMenuMetadataAsync(request.Type, request.PermissionCode);
         menu.ParentId = request.ParentId;
         menu.Name = request.Name.Trim();
         menu.Title = request.Title.Trim();
@@ -603,8 +707,8 @@ public class RbacService : IRbacService
         menu.Component = request.Component;
         menu.Icon = request.Icon;
         menu.Sort = request.Sort;
-        menu.Type = request.Type;
-        menu.PermissionCode = request.PermissionCode;
+        menu.Type = menuType;
+        menu.PermissionCode = permissionCode;
         await _db.SaveChangesAsync();
         return ToMenuDto(menu);
     }
@@ -762,6 +866,137 @@ public class RbacService : IRbacService
         }
     }
 
+    private async Task EnsureUserCanBeDisabledAsync(int userId)
+    {
+        if (await _db.Assets.AsNoTracking()
+                .AnyAsync(x => !x.IsDeleted && x.Status == AssetStatus.Borrowed && x.CustodianId == userId))
+        {
+            throw new BizException(4092, "该用户仍保管借出中的资产，归还或转交后才能停用");
+        }
+
+        if (await _db.TestMaterials.AsNoTracking()
+                .AnyAsync(x => !x.IsDeleted && x.Status == MaterialStatus.InUse && x.CustodianId == userId))
+        {
+            throw new BizException(4092, "该用户仍保管在用料件，退回或转交后才能停用");
+        }
+
+        if (await _db.ApprovalFlows.AsNoTracking()
+                .AnyAsync(x => x.Status == "pending" && x.BizType == "borrow" && x.ApplicantId == userId))
+        {
+            throw new BizException(4092, "该用户有进行中的资产借用申请，流程结束前不能停用");
+        }
+
+        if (await _db.ApprovalFlows.AsNoTracking()
+                .AnyAsync(x => x.Status == "pending" && x.TransfereeId == userId))
+        {
+            throw new BizException(4092, "该用户是在途资产流转的受让人，流程结束前不能停用");
+        }
+
+        if (await _db.MaterialFlows.AsNoTracking()
+                .AnyAsync(x => x.Status == "pending" && x.TransfereeId == userId))
+        {
+            throw new BizException(4092, "该用户是在途料件流转的受让人，流程结束前不能停用");
+        }
+
+        var approvalFlows = await _db.ApprovalFlows.AsNoTracking()
+            .Where(x => x.Status == "pending")
+            .ToListAsync();
+        if (await HasPendingApprovalAssignmentAsync(approvalFlows, userId))
+        {
+            throw new BizException(4092, "该用户仍有未签资产审批任务，处理或转交后才能停用");
+        }
+
+        var materialFlows = await _db.MaterialFlows.AsNoTracking()
+            .Where(x => x.Status == "pending")
+            .ToListAsync();
+        if (await HasPendingApprovalAssignmentAsync(materialFlows, userId))
+        {
+            throw new BizException(4092, "该用户仍有未签料件审批任务，处理或转交后才能停用");
+        }
+    }
+
+    private async Task<bool> HasPendingApprovalAssignmentAsync<TFlow>(
+        IReadOnlyCollection<TFlow> flows,
+        int userId)
+        where TFlow : class, Domain.Workflow.IBpmnFlowInstance
+    {
+        foreach (var flow in flows)
+        {
+            foreach (var nodeId in flow.CurrentNodeIds)
+            {
+                if (!flow.BpmnTokens.TryGetValue(nodeId, out var token)
+                    || token.Status != Domain.Workflow.BpmnTokenStatus.Active)
+                {
+                    continue;
+                }
+
+                if (token.SignStates?.TryGetValue(userId.ToString(), out var signed) == true && !signed)
+                {
+                    return true;
+                }
+            }
+
+            var workflowId = flow switch
+            {
+                ApprovalFlow assetFlow => assetFlow.WorkflowId,
+                MaterialFlow materialFlow => materialFlow.WorkflowId ?? 0,
+                _ => 0,
+            };
+            if (workflowId <= 0)
+            {
+                continue;
+            }
+
+            var bpmnXml = await _db.Workflows.AsNoTracking()
+                .Where(x => x.Id == workflowId)
+                .Select(x => x.BpmnXml)
+                .SingleOrDefaultAsync();
+            if (string.IsNullOrWhiteSpace(bpmnXml))
+            {
+                continue;
+            }
+
+            var process = BpmnParser.Parse(bpmnXml);
+            foreach (var nodeId in flow.CurrentNodeIds)
+            {
+                var node = process.FindNode(nodeId);
+                var assignee = node?.Properties.GetValueOrDefault("assignee");
+                if (!string.IsNullOrWhiteSpace(assignee)
+                    && !OrganizationApprovalResolver.IsOrganizationAssignee(assignee)
+                    && assignee is not ("deptManager" or "supervisor"))
+                {
+                    var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, assignee);
+                    if (resolution.Status == ApproverIdentityResolutionStatus.Unique
+                        && resolution.UserIds[0] == userId)
+                    {
+                        return true;
+                    }
+                }
+
+                var candidateUsers = node?.Properties.GetValueOrDefault("candidateUsers");
+                if (string.IsNullOrWhiteSpace(candidateUsers))
+                {
+                    continue;
+                }
+                var resolvedCandidates = new HashSet<int>();
+                foreach (var identity in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    var candidateResolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, identity);
+                    if (candidateResolution.Status == ApproverIdentityResolutionStatus.Unique)
+                    {
+                        resolvedCandidates.Add(candidateResolution.UserIds[0]);
+                    }
+                }
+                if (resolvedCandidates.SetEquals(new[] { userId }))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private async Task<List<UserImportRowDto>> ReadAndValidateUserImportRowsAsync(Stream file)
     {
         var rawRows = XlsxTable.Read(file).Skip(1).ToList();
@@ -804,6 +1039,12 @@ public class RbacService : IRbacService
             if (string.IsNullOrWhiteSpace(employeeNo)) errors.Add("工号必填");
             if (string.IsNullOrWhiteSpace(name)) errors.Add("姓名必填");
             if (string.IsNullOrWhiteSpace(roleName)) errors.Add("角色名称必填");
+            if (employeeNo.Length > 50) errors.Add("工号不能超过 50 个字符");
+            if (name.Length > 100) errors.Add("姓名不能超过 100 个字符");
+            if (email.Length > 200) errors.Add("邮箱不能超过 200 个字符");
+            if (!string.IsNullOrWhiteSpace(email)
+                && !new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(email))
+                errors.Add("邮箱格式不正确");
             if (!string.IsNullOrWhiteSpace(employeeNo) && existingEmployeeNoSet.Contains(employeeNo)) errors.Add("工号已存在");
             if (!string.IsNullOrWhiteSpace(employeeNo) && duplicateInFile.Contains(employeeNo)) errors.Add("工号在导入文件中重复");
             if (!string.IsNullOrWhiteSpace(departmentName) && !departmentNames.Contains(departmentName)) errors.Add("部门名称不存在或已停用");
@@ -846,6 +1087,28 @@ public class RbacService : IRbacService
         }
     }
 
+    private async Task<(string Type, string? PermissionCode)> ValidateMenuMetadataAsync(
+        string? type,
+        string? permissionCode)
+    {
+        var normalizedType = type?.Trim().ToLowerInvariant();
+        if (normalizedType is not ("menu" or "button"))
+        {
+            throw new BizException(4001, "菜单类型只能是 menu 或 button");
+        }
+
+        var normalizedPermissionCode = string.IsNullOrWhiteSpace(permissionCode)
+            ? null
+            : permissionCode.Trim();
+        if (normalizedPermissionCode is not null
+            && !await _db.Permissions.AnyAsync(x => x.Code == normalizedPermissionCode))
+        {
+            throw new BizException(4043, "菜单关联的权限编码不存在");
+        }
+
+        return (normalizedType, normalizedPermissionCode);
+    }
+
     private async Task BumpRoleMemberTokenVersionsAsync(int roleId)
     {
         await _db.Users
@@ -861,6 +1124,9 @@ public class RbacService : IRbacService
             throw new BizException(4094, "工号已存在");
         }
     }
+
+    private static bool IsDuplicateKey(DbUpdateException ex)
+        => ex.InnerException is MySqlException { Number: 1062 };
 
     private async Task EnsureRoleCodeAvailable(string code)
     {
@@ -1002,7 +1268,8 @@ public class RbacService : IRbacService
             .ThenInclude(x => x.Role)
             .SingleAsync(x => x.Id == id);
         var departmentMap = await BuildDepartmentMapAsync(new[] { user.DepartmentId });
-        return ToUserDto(user, departmentMap);
+        var supervisorMap = await BuildUserNameMapAsync(new[] { user.SupervisorId });
+        return ToUserDto(user, departmentMap, supervisorMap);
     }
 
     private async Task<Dictionary<int, string>> BuildDepartmentMapAsync(IEnumerable<int?> ids)
@@ -1018,6 +1285,19 @@ public class RbacService : IRbacService
             .ToDictionaryAsync(x => x.Id, x => x.Name);
     }
 
+    private async Task<Dictionary<int, string>> BuildUserNameMapAsync(IEnumerable<int?> ids)
+    {
+        var userIds = ids.Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToArray();
+        if (userIds.Length == 0)
+        {
+            return new Dictionary<int, string>();
+        }
+
+        return await _db.Users
+            .Where(x => userIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name);
+    }
+
     private async Task<RoleDto> LoadRoleDto(int id)
     {
         var role = await _db.Roles
@@ -1029,7 +1309,10 @@ public class RbacService : IRbacService
         return ToRoleDto(role);
     }
 
-    private static UserDto ToUserDto(User x, IReadOnlyDictionary<int, string>? departments = null) => new()
+    private static UserDto ToUserDto(
+        User x,
+        IReadOnlyDictionary<int, string>? departments = null,
+        IReadOnlyDictionary<int, string>? supervisors = null) => new()
     {
         Id = x.Id,
         EmployeeNo = x.EmployeeNo,
@@ -1042,6 +1325,9 @@ public class RbacService : IRbacService
             ? departmentName
             : null,
         SupervisorId = x.SupervisorId,
+        SupervisorName = x.SupervisorId.HasValue && supervisors?.TryGetValue(x.SupervisorId.Value, out var supervisorName) == true
+            ? supervisorName
+            : null,
         RoleIds = x.UserRoles.Select(r => r.RoleId).ToArray(),
         RoleNames = x.UserRoles
             .Where(r => r.Role is not null)

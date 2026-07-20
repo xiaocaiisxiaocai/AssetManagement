@@ -16,4 +16,5 @@ public class TestProject
     public DateTime CreatedAt { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
+    public uint RowVersion { get; set; }
 }

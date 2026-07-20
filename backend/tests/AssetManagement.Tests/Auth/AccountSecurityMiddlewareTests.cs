@@ -55,7 +55,7 @@ public class AccountSecurityMiddlewareTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Initial_password_requires_change_and_password_change_revokes_old_token()
+    public async Task Default_password_does_not_block_business_and_password_change_revokes_old_token()
     {
         var employeeNo = $"PWD{Guid.NewGuid():N}"[..14];
         await using (var scope = _factory.Services.CreateAsyncScope())
@@ -83,7 +83,6 @@ public class AccountSecurityMiddlewareTests : IClassFixture<TestWebAppFactory>
                 EmployeeNo = employeeNo,
                 Name = "初始密码测试用户",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
-                MustChangePassword = true,
                 IsActive = true
             };
             db.Users.Add(user);
@@ -104,12 +103,10 @@ public class AccountSecurityMiddlewareTests : IClassFixture<TestWebAppFactory>
             password = "123456"
         });
         var login = (await loginResponse.Content.ReadFromJsonAsync<ApiResult<LoginResponse>>())!.Data!;
-        login.MustChangePassword.Should().BeTrue();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Token);
 
-        var blocked = await client.GetAsync("/api/reports/summary");
-        blocked.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await blocked.Content.ReadFromJsonAsync<ApiResult<object?>>())!.Code.Should().Be(1006);
+        (await client.GetAsync("/api/reports/summary")).StatusCode.Should().Be(HttpStatusCode.OK,
+            "默认密码账号登录后不应被强制改密流程阻断");
 
         var changed = await client.PutAsJsonAsync("/api/auth/change-password", new
         {
@@ -122,7 +119,7 @@ public class AccountSecurityMiddlewareTests : IClassFixture<TestWebAppFactory>
             "修改密码后旧 JWT 必须立即失效");
 
         var relogin = await Login(client, "Changed12345", employeeNo);
-        relogin.MustChangePassword.Should().BeFalse();
+        relogin.Token.Should().NotBeNullOrWhiteSpace();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", relogin.Token);
         (await client.GetAsync("/api/reports/summary")).StatusCode.Should().Be(HttpStatusCode.OK);
     }

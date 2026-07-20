@@ -13,6 +13,7 @@ import {
 import { useAuthStore } from '#/store';
 
 import { generateAccess } from './access';
+import { safeInternalRedirect } from './safe-redirect';
 
 /**
  * 通用守卫配置
@@ -57,10 +58,11 @@ function setupAccessGuard(router: Router) {
     // 基本路由，这些路由不需要进入权限拦截
     if (coreRouteNames.includes(to.name as string)) {
       if (to.path === LOGIN_PATH && accessStore.accessToken) {
-        return decodeURIComponent(
-          (to.query?.redirect as string) ||
-            userStore.userInfo?.homePath ||
-            DEFAULT_HOME_PATH,
+        return safeInternalRedirect(
+          typeof to.query?.redirect === 'string'
+            ? to.query.redirect
+            : userStore.userInfo?.homePath,
+          DEFAULT_HOME_PATH,
         );
       }
       return true;
@@ -111,19 +113,23 @@ function setupAccessGuard(router: Router) {
     accessStore.setAccessMenus(accessibleMenus);
     accessStore.setAccessRoutes(accessibleRoutes);
     accessStore.setIsAccessChecked(true);
-    if (!router.hasRoute(fallbackNotFoundRoute.name!)) {
+    const fallbackRouteName = fallbackNotFoundRoute.name;
+    if (
+      fallbackRouteName !== undefined &&
+      !router.hasRoute(fallbackRouteName)
+    ) {
       router.addRoute(fallbackNotFoundRoute);
     }
-    const queryRedirect =
-      typeof from.query.redirect === 'string'
-        ? decodeURIComponent(from.query.redirect)
-        : undefined;
-    const redirectPath =
-      queryRedirect && queryRedirect !== '/'
-        ? queryRedirect
-        : to.path === '/' || to.path === DEFAULT_HOME_PATH
-          ? userInfo.homePath || DEFAULT_HOME_PATH
-          : to.fullPath;
+    const queryRedirect = safeInternalRedirect(
+      typeof from.query.redirect === 'string' ? from.query.redirect : undefined,
+      '',
+    );
+    let redirectPath = to.fullPath;
+    if (queryRedirect && queryRedirect !== '/') {
+      redirectPath = queryRedirect;
+    } else if (to.path === '/' || to.path === DEFAULT_HOME_PATH) {
+      redirectPath = userInfo.homePath || DEFAULT_HOME_PATH;
+    }
 
     return {
       ...router.resolve(redirectPath),

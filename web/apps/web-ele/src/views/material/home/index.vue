@@ -40,6 +40,7 @@ const barChartRef = ref<EchartsUIType>();
 const { renderEcharts: renderBarChart } = useEcharts(barChartRef);
 
 let themeObserver: MutationObserver | undefined;
+let disposed = false;
 
 function readCssColor(variableName: string, fallback: string) {
   const value = getComputedStyle(document.documentElement)
@@ -182,7 +183,8 @@ function renderCharts(data: TestProjectStats) {
           position: 'top',
           fontSize: 11,
           color: theme.muted,
-          formatter: (p: any) => (p.value > 0 ? String(p.value) : ''),
+          formatter: (parameter) =>
+            Number(parameter.value) > 0 ? String(parameter.value) : '',
         },
       },
       {
@@ -199,8 +201,10 @@ function renderCharts(data: TestProjectStats) {
 
 onMounted(async () => {
   const data = await getTestProjectStatsApi();
+  if (disposed) return;
   stats.value = data;
   await nextTick();
+  if (disposed) return;
   renderCharts(data);
   themeObserver = new MutationObserver(() => renderCharts(stats.value));
   themeObserver.observe(document.documentElement, {
@@ -210,6 +214,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
   themeObserver?.disconnect();
 });
 </script>

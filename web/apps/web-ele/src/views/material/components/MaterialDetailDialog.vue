@@ -53,7 +53,7 @@ watch(
 
     imagesLoading.value = true;
     const results = await Promise.allSettled(
-      images.map(loadAssetImageObjectUrl),
+      images.map((image) => loadAssetImageObjectUrl(image)),
     );
     const urls = results.flatMap((result) =>
       result.status === 'fulfilled' ? [result.value] : [],
@@ -96,7 +96,7 @@ const actionText: Record<string, string> = {
     title="测试料件详情"
     width="860px"
   >
-    <div v-loading="loading" class="material-detail-body">
+    <div class="material-detail-body" v-loading="loading">
       <template v-if="detail">
         <ElDescriptions :column="2" border class="material-detail-descriptions">
           <ElDescriptionsItem label="料件编号">
@@ -154,9 +154,9 @@ const actionText: Record<string, string> = {
         </ElDescriptions>
 
         <section
-          v-if="detail.material.images.length"
-          v-loading="imagesLoading"
+          v-if="detail.material.images.length > 0"
           class="material-photo-section"
+          v-loading="imagesLoading"
         >
           <div class="material-photo-title">
             料件照片（{{ detail.material.images.length }} 张）
@@ -169,7 +169,7 @@ const actionText: Record<string, string> = {
             show-icon
             type="warning"
           />
-          <div v-if="imageUrls.length" class="material-photo-list">
+          <div v-if="imageUrls.length > 0" class="material-photo-list">
             <ElImage
               v-for="(url, index) in imageUrls"
               :key="url"
@@ -196,7 +196,7 @@ const actionText: Record<string, string> = {
         <section class="material-flow-section">
           <div class="material-flow-title">流转记录</div>
           <ElTimeline
-            v-if="detail.records.length"
+            v-if="detail.records.length > 0"
             class="material-flow-timeline"
           >
             <ElTimelineItem

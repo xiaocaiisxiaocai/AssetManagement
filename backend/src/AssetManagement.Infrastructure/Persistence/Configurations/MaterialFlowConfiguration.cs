@@ -29,9 +29,15 @@ public class MaterialFlowConfiguration : IEntityTypeConfiguration<MaterialFlow>
         b.HasIndex(x => x.FlowNo).IsUnique();
         b.HasIndex(x => x.MaterialId);
         b.HasIndex(x => x.ApplicantId);
+        b.HasIndex(x => x.TransfereeId);
+        b.HasIndex(x => x.WorkflowId);
         b.HasIndex(x => x.Status);
         b.HasIndex(x => x.ActiveScopeKey).IsUnique();
         b.Property(x => x.RowVersion).IsConcurrencyToken();
+        b.HasOne<TestMaterial>().WithMany().HasForeignKey(x => x.MaterialId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.ApplicantId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.TransfereeId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<AssetManagement.Domain.Entities.Workflow>().WithMany().HasForeignKey(x => x.WorkflowId).OnDelete(DeleteBehavior.Restrict);
 
         b.Property(x => x.CurrentNodeIds)
             .HasConversion(

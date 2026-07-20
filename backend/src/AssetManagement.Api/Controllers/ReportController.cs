@@ -51,8 +51,8 @@ public class ReportController : ControllerBase
     [HasPermission("report:remind")]
     public async Task<ApiResult<object?>> Remind(int assetId)
     {
-        await _service.RemindOverdueAsync(assetId, CurrentUserId());
-        return ApiResult.Ok("已发送站内催办");
+        var count = await _service.RemindOverdueAsync(assetId, CurrentUserId());
+        return ApiResult.Ok(count > 0 ? "已发送站内催办" : "今日已催办，无需重复发送");
     }
 
     [HttpPost("overdue/remind-batch")]
@@ -60,7 +60,7 @@ public class ReportController : ControllerBase
     public async Task<ApiResult<object?>> RemindBatch(RemindBatchRequest request)
     {
         var count = await _service.RemindOverdueBatchAsync(request.AssetIds, CurrentUserId());
-        return ApiResult.Ok($"已发送 {count} 条站内催办");
+        return ApiResult.Ok(count > 0 ? $"已发送 {count} 条站内催办" : "今日已催办，无需重复发送");
     }
 
     private int? CurrentUserId()

@@ -228,7 +228,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             "assetmgmt_20260630_020000.sql",
             "assetmgmt_20260629_020000.sql");
         result.Data[0].SizeBytes.Should().Be(5);
-        result.Data[0].FilePath.Should().Be(newerFile);
+        typeof(DatabaseBackupFileDto).GetProperty("FilePath").Should().BeNull("接口不能泄漏服务器绝对路径");
     }
 
     [Fact]

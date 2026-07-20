@@ -5,13 +5,6 @@ import { computed, onMounted, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
 
-import { getSettingsApi, saveSettingsApi } from '#/api/base-data';
-import {
-  createPageSizeOptions,
-  getDefaultPageSize,
-  invalidateRuntimeSettings,
-} from '#/utils/runtime-settings';
-
 import {
   ElButton,
   ElDialog,
@@ -29,6 +22,13 @@ import {
   ElTableColumn,
   ElTimePicker,
 } from 'element-plus';
+
+import { getSettingsApi, saveSettingsApi } from '#/api/base-data';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+  invalidateRuntimeSettings,
+} from '#/utils/runtime-settings';
 
 defineOptions({ name: 'AdminSettings' });
 
@@ -56,10 +56,7 @@ const booleanSettingKeys = new Set([
   'material.transfer.approval.enabled',
 ]);
 
-const timeSettingKeys = new Set([
-  'audit_cleanup_time',
-  'database_backup_time',
-]);
+const timeSettingKeys = new Set(['audit_cleanup_time', 'database_backup_time']);
 
 const integerSettingRules: Record<string, { max: number; min: number }> = {
   attachment_max_mb: { max: 100, min: 1 },
@@ -68,7 +65,7 @@ const integerSettingRules: Record<string, { max: number; min: number }> = {
   page_size: { max: 200, min: 1 },
 };
 
-const auditRetentionDayOptions = [7, 14, 30];
+const auditRetentionDayOptions = new Set([7, 14, 30]);
 
 const pagedSettings = computed(() => {
   const start = (page.value - 1) * pageSize.value;
@@ -77,7 +74,8 @@ const pagedSettings = computed(() => {
 
 const formValueType = computed(() => getValueType(form.value.key));
 const formNumberValue = computed<number | undefined>({
-  get: () => (typeof form.value.value === 'number' ? form.value.value : undefined),
+  get: () =>
+    typeof form.value.value === 'number' ? form.value.value : undefined,
   set: (value) => {
     form.value.value = value;
   },
@@ -129,7 +127,11 @@ async function save() {
 
     const payload: SettingPayload[] = updatedSettings
       .filter((item) => item.key.trim())
-      .map((item) => ({ description: item.description, key: item.key, value: item.value }));
+      .map((item) => ({
+        description: item.description,
+        key: item.key,
+        value: item.value,
+      }));
 
     settings.value = await saveSettingsApi(payload);
     invalidateRuntimeSettings();
@@ -161,12 +163,15 @@ function toFormValue(key: string, value: string) {
   return value;
 }
 
-function toPayloadValue(key: string, value: number | string | undefined): string {
+function toPayloadValue(
+  key: string,
+  value: number | string | undefined,
+): string {
   const valueType = getValueType(key);
   if (valueType === 'asset-condition-options') {
     const options = assetConditionOptions.value.map((item) => item.trim());
     if (
-      options.length < 1 ||
+      options.length === 0 ||
       options.length > 20 ||
       options.some((item) => !item || item.length > 50) ||
       new Set(options.map((item) => item.toLowerCase())).size !== options.length
@@ -184,7 +189,7 @@ function toPayloadValue(key: string, value: number | string | undefined): string
 
   if (valueType === 'time') {
     const text = String(value ?? '').trim();
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(text)) {
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(text)) {
       throw new Error('请选择正确的时间');
     }
     return text;
@@ -192,7 +197,7 @@ function toPayloadValue(key: string, value: number | string | undefined): string
 
   if (valueType === 'audit-retention-days') {
     const numberValue = Number(value);
-    if (!auditRetentionDayOptions.includes(numberValue)) {
+    if (!auditRetentionDayOptions.has(numberValue)) {
       throw new Error('请选择审计日志保留天数');
     }
     return String(numberValue);
@@ -201,7 +206,11 @@ function toPayloadValue(key: string, value: number | string | undefined): string
   if (valueType === 'integer') {
     const rule = integerSettingRules[key]!;
     const numberValue = Number(value);
-    if (!Number.isInteger(numberValue) || numberValue < rule.min || numberValue > rule.max) {
+    if (
+      !Number.isInteger(numberValue) ||
+      numberValue < rule.min ||
+      numberValue > rule.max
+    ) {
       throw new Error(`参数值必须是 ${rule.min}-${rule.max} 的整数`);
     }
     return String(numberValue);
@@ -223,7 +232,7 @@ function toPayloadValue(key: string, value: number | string | undefined): string
       throw new Error('分类编码正则不能为空');
     }
     try {
-      new RegExp(text);
+      new RegExp(text).test('');
     } catch {
       throw new Error('请输入合法正则表达式');
     }
@@ -258,7 +267,13 @@ function normalizeLengthRule(value: string) {
   if (!match) return null;
   const min = Number(match[1]);
   const max = Number(match[2]);
-  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 20 || min > max) {
+  if (
+    !Number.isInteger(min) ||
+    !Number.isInteger(max) ||
+    min < 1 ||
+    max > 20 ||
+    min > max
+  ) {
     return null;
   }
   return `${min}-${max}`;
@@ -287,17 +302,30 @@ onMounted(async () => {
   <re-page>
     <div class="page-container">
       <div class="table-panel">
-        <ElTable v-loading="loading" :data="pagedSettings" border height="100%">
+        <ElTable :data="pagedSettings" border height="100%" v-loading="loading">
           <ElTableColumn label="参数键" min-width="200" prop="key" />
           <ElTableColumn label="参数值" min-width="180">
             <template #default="{ row }">
               {{ displaySettingValue(row) }}
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="说明" min-width="260" prop="description" />
-          <ElTableColumn v-if="canEditSettings" fixed="right" label="操作" width="160" align="center">
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="说明"
+            min-width="260"
+            prop="description"
+          />
+          <ElTableColumn
+            v-if="canEditSettings"
+            align="center"
+            fixed="right"
+            label="操作"
+            width="160"
+          >
             <template #default="{ row }">
-              <ElButton link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
+              <ElButton link size="small" type="primary" @click="openEdit(row)">
+                编辑
+              </ElButton>
             </template>
           </ElTableColumn>
         </ElTable>
@@ -306,7 +334,11 @@ onMounted(async () => {
             <span>共 {{ settings.length }} 条</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
-            <ElSelect v-model="pageSize" style="width: 92px" @change="onPageSizeChange">
+            <ElSelect
+              v-model="pageSize"
+              style="width: 92px"
+              @change="onPageSizeChange"
+            >
               <ElOption
                 v-for="size in pageSizeOptions"
                 :key="size"
@@ -325,21 +357,16 @@ onMounted(async () => {
         </div>
       </div>
 
-      <ElDialog
-        v-model="dialogVisible"
-        title="编辑参数"
-        width="540px"
-      >
+      <ElDialog v-model="dialogVisible" title="编辑参数" width="540px">
         <ElForm label-width="100px">
           <ElFormItem label="参数键" required>
-            <ElInput
-              v-model="form.key"
-              disabled
-              placeholder="请输入参数键"
-            />
+            <ElInput v-model="form.key" disabled placeholder="请输入参数键" />
           </ElFormItem>
           <ElFormItem label="参数值" required>
-            <ElRadioGroup v-if="formValueType === 'boolean'" v-model="form.value">
+            <ElRadioGroup
+              v-if="formValueType === 'boolean'"
+              v-model="form.value"
+            >
               <ElRadio label="true">启用</ElRadio>
               <ElRadio label="false">禁用</ElRadio>
             </ElRadioGroup>
@@ -387,7 +414,14 @@ onMounted(async () => {
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton v-if="canEditSettings" :loading="saving" type="primary" @click="submitSave">保存</ElButton>
+          <ElButton
+            v-if="canEditSettings"
+            :loading="saving"
+            type="primary"
+            @click="submitSave"
+          >
+            保存
+          </ElButton>
         </template>
       </ElDialog>
     </div>

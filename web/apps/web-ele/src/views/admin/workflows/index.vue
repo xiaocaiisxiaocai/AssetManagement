@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+
 import { useAccess } from '@vben/access';
+
 import {
   ElButton,
   ElDialog,
@@ -15,13 +17,15 @@ import {
   ElTableColumn,
   ElTag,
 } from 'element-plus';
+
 import {
   createWorkflowApi,
   deleteWorkflowApi,
   getWorkflowsApi,
   saveWorkflowApi,
-  setWorkflowStatusApi,
+  saveWorkflowDesignApi,
   type SaveWorkflowPayload,
+  setWorkflowStatusApi,
   type WorkflowItem,
 } from '#/api/workflow';
 import { buildWorkflowActionAccess } from '#/views/permissions/action-access';
@@ -31,14 +35,16 @@ defineOptions({ name: 'AdminWorkflows' });
 const BpmnModeler = defineAsyncComponent(() => import('./bpmn-modeler.vue'));
 
 const { hasAccessByCodes } = useAccess();
-const workflowActionAccess = computed(() => buildWorkflowActionAccess(hasAccessByCodes));
+const workflowActionAccess = computed(() =>
+  buildWorkflowActionAccess(hasAccessByCodes),
+);
 const loading = ref(false);
 const workflows = ref<WorkflowItem[]>([]);
 const dialogVisible = ref(false);
-const currentWorkflow = ref<WorkflowItem | null>(null);
+const currentWorkflow = ref<null | WorkflowItem>(null);
 const formDialogVisible = ref(false);
 const formSaving = ref(false);
-const editingWorkflow = ref<WorkflowItem | null>(null);
+const editingWorkflow = ref<null | WorkflowItem>(null);
 const workflowForm = ref<SaveWorkflowPayload>({
   bizType: '',
   bpmnXml: null,
@@ -47,6 +53,7 @@ const workflowForm = ref<SaveWorkflowPayload>({
 
 const bizTypeOptions = [
   { label: '资产借用', value: 'borrow' },
+  { label: '借用延期', value: 'extension' },
   { label: '资产转让', value: 'transfer' },
   { label: '资产归还', value: 'return' },
   { label: '测试料件流转', value: 'material_transfer' },
@@ -141,8 +148,7 @@ const handleDelete = async (workflow: WorkflowItem) => {
     await deleteWorkflowApi(workflow.id);
     ElMessage.success('删除成功');
     await loadWorkflows();
-  } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
+  } catch {
     // 其他错误已由 request.ts 拦截器统一弹出
   }
 };
@@ -158,9 +164,7 @@ const handleToggleStatus = async (workflow: WorkflowItem) => {
     await setWorkflowStatusApi(workflow.id, nextActive);
     ElMessage.success(`${nextActive ? '启用' : '停用'}成功`);
     await loadWorkflows();
-  } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
-  }
+  } catch {}
 };
 
 const handleSave = async (bpmnXml: string) => {
@@ -168,11 +172,7 @@ const handleSave = async (bpmnXml: string) => {
 
   try {
     const previousId = currentWorkflow.value.id;
-    const saved = await saveWorkflowApi(previousId, {
-      name: currentWorkflow.value.name,
-      bizType: currentWorkflow.value.bizType,
-      bpmnXml,
-    });
+    const saved = await saveWorkflowDesignApi(previousId, bpmnXml);
     ElMessage.success(
       saved.id === previousId
         ? '保存成功'
@@ -204,20 +204,42 @@ onMounted(() => {
           <h2 class="page-title">工作流设计器</h2>
         </div>
         <div class="page-actions">
-          <ElButton v-if="workflowActionAccess.canCreate" type="primary" @click="openCreateDialog">新增工作流</ElButton>
+          <ElButton
+            v-if="workflowActionAccess.canCreate"
+            type="primary"
+            @click="openCreateDialog"
+          >
+            新增工作流
+          </ElButton>
         </div>
       </div>
 
       <div class="table-panel">
-        <ElTable :data="workflows" v-loading="loading" border height="100%">
-          <ElTableColumn class-name="hide-on-mobile" prop="id" label="ID" width="80" align="center" />
-          <ElTableColumn prop="name" label="名称" min-width="180" />
-          <ElTableColumn prop="bizType" label="业务类型" width="120" align="center">
+        <ElTable :data="workflows" border height="100%" v-loading="loading">
+          <ElTableColumn
+            align="center"
+            class-name="hide-on-mobile"
+            label="ID"
+            prop="id"
+            width="80"
+          />
+          <ElTableColumn label="名称" min-width="180" prop="name" />
+          <ElTableColumn
+            align="center"
+            label="业务类型"
+            prop="bizType"
+            width="120"
+          >
             <template #default="{ row }">
               <ElTag size="small">{{ bizTypeLabel(row) }}</ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="BPMN 状态" width="120" align="center">
+          <ElTableColumn
+            align="center"
+            class-name="hide-on-mobile"
+            label="BPMN 状态"
+            width="120"
+          >
             <template #default="{ row }">
               <ElTag
                 :title="row.bpmnValidationErrors?.join('；')"
@@ -228,19 +250,41 @@ onMounted(() => {
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="状态" width="100" align="center">
+          <ElTableColumn align="center" label="状态" width="100">
             <template #default="{ row }">
               <ElTag :type="row.isActive ? 'success' : 'info'" size="small">
                 {{ row.isActive ? '启用' : '停用' }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn v-if="workflowActionAccess.canDesign || workflowActionAccess.canEdit || workflowActionAccess.canDelete" label="操作" width="290" align="center" fixed="right">
+          <ElTableColumn
+            v-if="
+              workflowActionAccess.canDesign ||
+              workflowActionAccess.canEdit ||
+              workflowActionAccess.canDelete
+            "
+            align="center"
+            fixed="right"
+            label="操作"
+            width="290"
+          >
             <template #default="{ row }">
-              <ElButton v-if="workflowActionAccess.canDesign" type="primary" link size="small" @click="openDesigner(row)">
+              <ElButton
+                v-if="workflowActionAccess.canDesign"
+                link
+                size="small"
+                type="primary"
+                @click="openDesigner(row)"
+              >
                 设计流程
               </ElButton>
-              <ElButton v-if="workflowActionAccess.canEdit" type="primary" link size="small" @click="openEditDialog(row)">
+              <ElButton
+                v-if="workflowActionAccess.canEdit"
+                link
+                size="small"
+                type="primary"
+                @click="openEditDialog(row)"
+              >
                 编辑
               </ElButton>
               <ElButton
@@ -252,7 +296,13 @@ onMounted(() => {
               >
                 {{ row.isActive ? '停用' : '启用' }}
               </ElButton>
-              <ElButton v-if="workflowActionAccess.canDelete" type="danger" link size="small" @click="handleDelete(row)">
+              <ElButton
+                v-if="workflowActionAccess.canDelete"
+                link
+                size="small"
+                type="danger"
+                @click="handleDelete(row)"
+              >
                 删除
               </ElButton>
             </template>
@@ -262,13 +312,16 @@ onMounted(() => {
 
       <ElDialog
         v-model="formDialogVisible"
+        :close-on-click-modal="false"
         :title="editingWorkflow ? '编辑工作流' : '新增工作流'"
         width="520px"
-        :close-on-click-modal="false"
       >
-        <ElForm label-width="90px" label-position="top">
+        <ElForm label-position="top" label-width="90px">
           <ElFormItem label="流程名称" required>
-            <ElInput v-model="workflowForm.name" placeholder="如：资产借用流程" />
+            <ElInput
+              v-model="workflowForm.name"
+              placeholder="如：资产借用流程"
+            />
           </ElFormItem>
           <ElFormItem label="业务类型" required>
             <ElSelect
@@ -290,7 +343,11 @@ onMounted(() => {
 
         <template #footer>
           <ElButton @click="formDialogVisible = false">取消</ElButton>
-          <ElButton type="primary" :loading="formSaving" @click="handleFormSave">
+          <ElButton
+            :loading="formSaving"
+            type="primary"
+            @click="handleFormSave"
+          >
             保存
           </ElButton>
         </template>
@@ -299,16 +356,16 @@ onMounted(() => {
       <!-- BPMN 设计器对话框 -->
       <ElDialog
         v-model="dialogVisible"
-        class="workflow-designer-dialog"
-        :title="`流程设计 - ${currentWorkflow?.name}`"
-        fullscreen
         :close-on-click-modal="false"
+        :title="`流程设计 - ${currentWorkflow?.name}`"
+        class="workflow-designer-dialog"
         destroy-on-close
+        fullscreen
       >
         <BpmnModeler
           v-if="dialogVisible && currentWorkflow"
-          :workflow-id="currentWorkflow.id"
           :initial-xml="currentWorkflow.bpmnXml || undefined"
+          :workflow-id="currentWorkflow.id"
           @save="handleSave"
         />
       </ElDialog>

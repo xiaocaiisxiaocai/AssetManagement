@@ -117,14 +117,13 @@ export interface AuditCleanupResult {
 
 export interface DatabaseBackupResult {
   createdAt: string;
-  filePath: string;
+  fileName: string;
   sizeBytes: number;
 }
 
 export interface DatabaseBackupFile {
   createdAt: string;
   fileName: string;
-  filePath: string;
   fileType: 'package' | 'sql' | string;
   sizeBytes: number;
 }
@@ -142,13 +141,19 @@ export const exportAssetSummaryApi = () =>
 
 export const getBorrowReportApi = (params: BorrowReportQuery) =>
   unwrap(
-    requestClient.get<ApiResult<PagedResult<BorrowReportRow>>>('/reports/borrowed', {
-      params,
-    }),
+    requestClient.get<ApiResult<PagedResult<BorrowReportRow>>>(
+      '/reports/borrowed',
+      {
+        params,
+      },
+    ),
   );
 
 export const exportBorrowReportApi = (params: BorrowReportQuery) =>
-  requestClient.get('/reports/borrowed/export', { params, responseType: 'blob' });
+  requestClient.get('/reports/borrowed/export', {
+    params,
+    responseType: 'blob',
+  });
 
 export const getOverdueReportApi = () =>
   unwrap(requestClient.get<ApiResult<OverdueReportRow[]>>('/reports/overdue'));
@@ -157,7 +162,12 @@ export const exportOverdueReportApi = () =>
   requestClient.get('/reports/overdue/export', { responseType: 'blob' });
 
 export const remindOverdueApi = (assetId: number) =>
-  unwrap(requestClient.post<ApiResult<null>>(`/reports/overdue/${assetId}/remind`, {}));
+  unwrap(
+    requestClient.post<ApiResult<null>>(
+      `/reports/overdue/${assetId}/remind`,
+      {},
+    ),
+  );
 
 export const remindOverdueBatchApi = (assetIds: number[]) =>
   unwrap(
@@ -178,9 +188,12 @@ export const exportAuditLogsApi = (params: AuditLogQuery) =>
 
 export const getAuditCleanupPreviewApi = (retentionDays: number) =>
   unwrap(
-    requestClient.get<ApiResult<AuditCleanupPreview>>('/audit-logs/cleanup-preview', {
-      params: { retentionDays },
-    }),
+    requestClient.get<ApiResult<AuditCleanupPreview>>(
+      '/audit-logs/cleanup-preview',
+      {
+        params: { retentionDays },
+      },
+    ),
   );
 
 export const cleanupAuditLogsApi = (retentionDays: number) =>
@@ -191,12 +204,22 @@ export const cleanupAuditLogsApi = (retentionDays: number) =>
   );
 
 export const backupDatabaseApi = () =>
-  unwrap(requestClient.post<ApiResult<DatabaseBackupResult>>('/database-backups', {}));
+  unwrap(
+    requestClient.post<ApiResult<DatabaseBackupResult>>(
+      '/database-backups',
+      {},
+    ),
+  );
 
 export const getDatabaseBackupsApi = () =>
-  unwrap(requestClient.get<ApiResult<DatabaseBackupFile[]>>('/database-backups'));
+  unwrap(
+    requestClient.get<ApiResult<DatabaseBackupFile[]>>('/database-backups'),
+  );
 
 export const downloadDatabaseBackupApi = (fileName: string) =>
-  requestClient.get(`/database-backups/${encodeURIComponent(fileName)}/download`, {
-    responseType: 'blob',
-  });
+  requestClient.get(
+    `/database-backups/${encodeURIComponent(fileName)}/download`,
+    {
+      responseType: 'blob',
+    },
+  );

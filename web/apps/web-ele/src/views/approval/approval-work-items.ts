@@ -9,6 +9,7 @@ export interface ApprovalWorkItem {
   applicantDept?: null | string;
   applyTime: string;
   bizType: string;
+  canWithdraw: boolean;
   currentNodeLabel: string;
   flowNo: string;
   id: number;
@@ -28,6 +29,7 @@ export interface ApprovalWorkItem {
 
 const assetBizTypeLabels: Record<string, string> = {
   borrow: '借用',
+  extension: '延期',
   return: '归还',
   transfer: '转让',
 };
@@ -39,6 +41,7 @@ export function normalizeAssetApproval(flow: ApprovalFlow): ApprovalWorkItem {
     applicantDept: flow.applicantDept,
     applyTime: flow.applyTime,
     bizType: flow.bizType,
+    canWithdraw: flow.status === 'pending',
     currentNodeLabel: currentAssetNodeLabel(flow),
     flowNo: flow.flowNo,
     id: flow.id,
@@ -66,6 +69,7 @@ export function normalizeMaterialFlow(
     applicantDept: flow.applicantDept,
     applyTime: flow.applyTime,
     bizType: 'material_transfer',
+    canWithdraw: flow.canWithdraw === true,
     currentNodeLabel: currentMaterialNodeLabel(flow),
     flowNo: flow.flowNo,
     id: flow.id,
@@ -88,10 +92,28 @@ export function mergeApprovalWorkItems(
   assetFlows: ApprovalFlow[],
   materialFlows: MaterialFlowItem[],
 ) {
-  return [
-    ...assetFlows.map(normalizeAssetApproval),
-    ...materialFlows.map(normalizeMaterialFlow),
-  ].sort((left, right) => {
+  return sortApprovalWorkItems([
+    ...assetFlows.map((flow) => normalizeAssetApproval(flow)),
+    ...materialFlows.map((flow) => normalizeMaterialFlow(flow)),
+  ]);
+}
+
+export function mergeAvailableApprovalWorkItems(
+  previous: ApprovalWorkItem[],
+  assetFlows: ApprovalFlow[] | undefined,
+  materialFlows: MaterialFlowItem[] | undefined,
+) {
+  const assets = assetFlows
+    ? assetFlows.map((flow) => normalizeAssetApproval(flow))
+    : previous.filter((item) => item.source === 'asset');
+  const materials = materialFlows
+    ? materialFlows.map((flow) => normalizeMaterialFlow(flow))
+    : previous.filter((item) => item.source === 'material');
+  return sortApprovalWorkItems([...assets, ...materials]);
+}
+
+function sortApprovalWorkItems(items: ApprovalWorkItem[]) {
+  return items.sort((left, right) => {
     const rightTime = new Date(right.applyTime).getTime();
     const leftTime = new Date(left.applyTime).getTime();
     if (rightTime !== leftTime) return rightTime - leftTime;
@@ -99,8 +121,10 @@ export function mergeApprovalWorkItems(
   });
 }
 
-export function canWithdrawApproval(item: Pick<ApprovalWorkItem, 'status'>) {
-  return item.status === 'pending';
+export function canWithdrawApproval(
+  item: Pick<ApprovalWorkItem, 'canWithdraw' | 'status'>,
+) {
+  return item.status === 'pending' && item.canWithdraw;
 }
 
 export function findApprovalWorkItemIndex(

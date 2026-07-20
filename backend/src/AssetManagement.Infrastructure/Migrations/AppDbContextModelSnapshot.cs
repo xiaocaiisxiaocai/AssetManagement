@@ -89,6 +89,10 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
+                    b.Property<string>("OriginalReturnDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
                     b.Property<string>("Reason")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
@@ -133,6 +137,10 @@ namespace AssetManagement.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("TransfereeId");
+
+                    b.HasIndex("WorkflowId");
 
                     b.ToTable("approval_flows", (string)null);
                 });
@@ -222,9 +230,13 @@ namespace AssetManagement.Infrastructure.Migrations
 
                     b.HasIndex("CategoryId");
 
+                    b.HasIndex("CustodianId");
+
                     b.HasIndex("DepartmentId");
 
                     b.HasIndex("IsDeleted");
+
+                    b.HasIndex("LocationId");
 
                     b.HasIndex("Status");
 
@@ -378,6 +390,11 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
+                    b.HasIndex("ManagerId");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
                     b.HasIndex("OrganizationLevelId");
 
                     b.HasIndex("ParentId");
@@ -435,6 +452,9 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasColumnType("varchar(100)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
 
                     b.ToTable("locations", (string)null);
                 });
@@ -530,7 +550,7 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.Property<int?>("TransfereeId")
                         .HasColumnType("int");
 
-                    b.Property<int>("WorkflowId")
+                    b.Property<int?>("WorkflowId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -546,6 +566,10 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.HasIndex("MaterialId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("TransfereeId");
+
+                    b.HasIndex("WorkflowId");
 
                     b.ToTable("material_flows", (string)null);
                 });
@@ -777,6 +801,9 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
+                    b.HasIndex("Name")
+                        .IsUnique();
+
                     b.ToTable("roles", (string)null);
                 });
 
@@ -923,9 +950,13 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.HasIndex("ActiveNameKey")
                         .IsUnique();
 
+                    b.HasIndex("CustodianId");
+
                     b.HasIndex("DepartmentId");
 
                     b.HasIndex("IsDeleted");
+
+                    b.HasIndex("LocationId");
 
                     b.HasIndex("MaterialNo")
                         .IsUnique();
@@ -985,6 +1016,12 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int unsigned")
+                        .HasDefaultValue(0u);
+
                     b.Property<DateTime?>("StartDate")
                         .HasColumnType("datetime(6)");
 
@@ -1038,6 +1075,8 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DueDate");
+
+                    b.HasIndex("FilledById");
 
                     b.HasIndex("ProjectId");
 
@@ -1104,9 +1143,6 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
-                    b.Property<bool>("MustChangePassword")
-                        .HasColumnType("tinyint(1)");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1129,8 +1165,12 @@ namespace AssetManagement.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DepartmentId");
+
                     b.HasIndex("EmployeeNo")
                         .IsUnique();
+
+                    b.HasIndex("SupervisorId");
 
                     b.ToTable("users", (string)null);
                 });
@@ -1190,12 +1230,148 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.ToTable("workflows", (string)null);
                 });
 
+            modelBuilder.Entity("AssetManagement.Domain.Entities.ApprovalFlow", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetManagement.Domain.Entities.Asset", null)
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("TransfereeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetManagement.Domain.Entities.Workflow", null)
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AssetManagement.Domain.Entities.Asset", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.AssetCategory", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CustodianId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetManagement.Domain.Entities.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetManagement.Domain.Entities.Location", null)
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AssetManagement.Domain.Entities.AssetCategory", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.AssetCategory", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AssetManagement.Domain.Entities.AuditLog", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("AssetManagement.Domain.Entities.Department", b =>
                 {
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AssetManagement.Domain.Entities.OrganizationLevel", null)
                         .WithMany()
                         .HasForeignKey("OrganizationLevelId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetManagement.Domain.Entities.Department", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AssetManagement.Domain.Entities.FlowRecord", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.ApprovalFlow", null)
+                        .WithMany()
+                        .HasForeignKey("FlowId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AssetManagement.Domain.Entities.MaterialFlow", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetManagement.Domain.Entities.TestMaterial", null)
+                        .WithMany()
+                        .HasForeignKey("MaterialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("TransfereeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetManagement.Domain.Entities.Workflow", null)
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AssetManagement.Domain.Entities.MaterialFlowRecord", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.MaterialFlow", null)
+                        .WithMany()
+                        .HasForeignKey("FlowId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AssetManagement.Domain.Entities.Menu", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.Menu", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AssetManagement.Domain.Entities.Notification", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("AssetManagement.Domain.Entities.RoleMenu", b =>
@@ -1238,6 +1414,21 @@ namespace AssetManagement.Infrastructure.Migrations
 
             modelBuilder.Entity("AssetManagement.Domain.Entities.TestMaterial", b =>
                 {
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CustodianId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetManagement.Domain.Entities.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetManagement.Domain.Entities.Location", null)
+                        .WithMany()
+                        .HasForeignKey("LocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AssetManagement.Domain.Entities.TestProject", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -1245,13 +1436,40 @@ namespace AssetManagement.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("AssetManagement.Domain.Entities.TestProject", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("AssetManagement.Domain.Entities.TestProjectFollowup", b =>
                 {
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("FilledById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("AssetManagement.Domain.Entities.TestProject", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("AssetManagement.Domain.Entities.User", b =>
+                {
+                    b.HasOne("AssetManagement.Domain.Entities.Department", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AssetManagement.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("SupervisorId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("AssetManagement.Domain.Entities.UserRole", b =>

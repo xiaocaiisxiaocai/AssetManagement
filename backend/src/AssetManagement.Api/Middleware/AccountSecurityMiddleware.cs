@@ -53,12 +53,6 @@ public sealed class AccountSecurityMiddleware
             return;
         }
 
-        if (user.MustChangePassword && !CanAccessBeforePasswordChange(context.Request.Path))
-        {
-            await RejectAsync(context, StatusCodes.Status403Forbidden, 1006, "首次登录必须先修改密码");
-            return;
-        }
-
         var activeRoles = user.UserRoles
             .Select(x => x.Role)
             .Where(x => x.IsActive)
@@ -123,10 +117,4 @@ public sealed class AccountSecurityMiddleware
         context.Response.StatusCode = statusCode;
         await context.Response.WriteAsJsonAsync(ApiResult<object?>.Fail(code, message));
     }
-
-    private static bool CanAccessBeforePasswordChange(PathString path)
-        => path.StartsWithSegments("/api/auth/user-info")
-            || path.StartsWithSegments("/api/auth/change-password")
-            || path.StartsWithSegments("/api/auth/logout")
-            || path.StartsWithSegments("/api/menu/routes");
 }

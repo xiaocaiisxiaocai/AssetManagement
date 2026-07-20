@@ -25,8 +25,8 @@ dotnet --version
 # 验证 pnpm 版本(需 9.12+,仓库锁定 pnpm@9.15.0;Node 需 20.10+)
 pnpm --version
 
-# 验证 MySQL 连接(修改连接字符串为实际值)
-mysql -h localhost -u root -p123456
+# 验证 MySQL 连接（密码在提示符中输入；本机值记录在已忽略的 docs/本地开发配置.local.md）
+mysql -h localhost -u root -p
 ```
 
 ### 后端(在仓库根目录执行)
@@ -117,7 +117,7 @@ $env:ASSET_ADMIN_PASSWORD = '<首次初始化管理员的强密码>' # 可选；
 
 - **配置键**:`ConnectionStrings:Default`、`Jwt:Key`。
 - **生产模板**:`deploy\appsettings.Production.json` 仅含占位符，部署时必须替换或用环境变量覆盖。
-- **初始化账号**:工号 `1001`;未设置 `ASSET_ADMIN_PASSWORD` 时仅在本地回退 `123456`。使用默认密码登录后必须先修改密码，生产环境仍必须通过环境变量设置强密码。
+- **初始化账号**:工号 `1001`;未设置 `ASSET_ADMIN_PASSWORD` 时仅在本地回退 `123456`。生产环境仍必须通过环境变量设置强密码。
 
 ## 前后端集成约定(关键)
 
@@ -227,7 +227,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 |------|----------|----------|
 | 编号 | 分类驱动三层(`一级-二级-三级-流水`),自动 | 临时编号 `TM-YYYYMMDD-XXX`,自动 |
 | 分类 | 三层树形强制关联(`CategoryId` 必填) | 无分类,关联测试项目(`ProjectId` 必填) |
-| 流转审批 | 借用/转让/归还三类,BPMN 工作流强制 | 仅转移一类,可全局关闭审批 |
+| 流转审批 | 借用/延期/转让/归还四类,BPMN 工作流强制 | 仅转移一类,可全局关闭审批 |
 | 删除 | 软删除,置灰保留在主清单 | 同左(复用模式) |
 | 前端入口 | 独立一级菜单"资产管理" | 独立一级菜单"新产品新技术"(项目总览 + 测试项目工作台) |
 

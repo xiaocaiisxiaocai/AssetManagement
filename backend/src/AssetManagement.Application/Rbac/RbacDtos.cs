@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using AssetManagement.Application.Common;
 
 namespace AssetManagement.Application.Rbac;
 
@@ -13,6 +14,7 @@ public record UserDto
     public int? DepartmentId { get; init; }
     public string? DepartmentName { get; init; }
     public int? SupervisorId { get; init; }
+    public string? SupervisorName { get; init; }
     public int[] RoleIds { get; init; } = Array.Empty<int>();
     public string[] RoleNames { get; init; } = Array.Empty<string>();
 }
@@ -23,6 +25,36 @@ public record UserOptionDto
     public string EmployeeNo { get; init; } = "";
     public string Name { get; init; } = "";
     public string? DepartmentName { get; init; }
+}
+
+public record WorkflowDesignerRoleOptionDto
+{
+    public int Id { get; init; }
+    public string Code { get; init; } = "";
+    public string Name { get; init; } = "";
+}
+
+public record WorkflowDesignerDepartmentOptionDto
+{
+    public int Id { get; init; }
+    public int? ParentId { get; init; }
+    public string Name { get; init; } = "";
+    public string? OrganizationLevelCode { get; init; }
+}
+
+public record WorkflowDesignerOrganizationLevelOptionDto
+{
+    public int Id { get; init; }
+    public string Code { get; init; } = "";
+    public string Name { get; init; } = "";
+}
+
+public record WorkflowDesignerOptionsDto
+{
+    public PagedResult<UserOptionDto> Users { get; init; } = new();
+    public List<WorkflowDesignerRoleOptionDto> Roles { get; init; } = new();
+    public List<WorkflowDesignerDepartmentOptionDto> Departments { get; init; } = new();
+    public List<WorkflowDesignerOrganizationLevelOptionDto> OrganizationLevels { get; init; } = new();
 }
 
 public record CreateUserRequest

@@ -16,11 +16,13 @@ public class AuditMaintenanceService : IAuditMaintenanceService
         _db = db;
     }
 
-    public async Task<AuditCleanupPreviewDto> PreviewCleanupAsync(int retentionDays)
+    public async Task<AuditCleanupPreviewDto> PreviewCleanupAsync(
+        int retentionDays,
+        CancellationToken cancellationToken = default)
     {
         ValidateRetentionDays(retentionDays);
         var cutoff = CutoffTime(retentionDays);
-        var count = await _db.AuditLogs.CountAsync(x => x.OccurredAt < cutoff);
+        var count = await _db.AuditLogs.CountAsync(x => x.OccurredAt < cutoff, cancellationToken);
         return new AuditCleanupPreviewDto
         {
             RetentionDays = retentionDays,
@@ -29,14 +31,17 @@ public class AuditMaintenanceService : IAuditMaintenanceService
         };
     }
 
-    public async Task<AuditCleanupResultDto> CleanupAsync(int retentionDays, int? operatorUserId = null)
+    public async Task<AuditCleanupResultDto> CleanupAsync(
+        int retentionDays,
+        int? operatorUserId = null,
+        CancellationToken cancellationToken = default)
     {
         ValidateRetentionDays(retentionDays);
         var cutoff = CutoffTime(retentionDays);
-        await using var transaction = await _db.Database.BeginTransactionAsync();
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
         var deletedCount = await _db.AuditLogs
             .Where(x => x.OccurredAt < cutoff)
-            .ExecuteDeleteAsync();
+            .ExecuteDeleteAsync(cancellationToken);
 
         _db.AuditLogs.Add(new AuditLog
         {
@@ -47,8 +52,8 @@ public class AuditMaintenanceService : IAuditMaintenanceService
             Detail = $"{{\"retentionDays\":{retentionDays},\"cutoffTime\":\"{cutoff:O}\",\"deletedCount\":{deletedCount}}}",
             OccurredAt = DateTime.UtcNow
         });
-        await _db.SaveChangesAsync();
-        await transaction.CommitAsync();
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return new AuditCleanupResultDto
         {

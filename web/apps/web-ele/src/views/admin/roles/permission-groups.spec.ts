@@ -8,7 +8,12 @@ const permissions: PermissionDto[] = [
   { id: 1, code: 'project:view', name: '查看项目', module: 'project' },
   { id: 2, code: 'project:create', name: '新增项目', module: 'project' },
   { id: 3, code: 'material:view', name: '查看料件', module: 'material' },
-  { id: 4, code: 'material-flow:approve', name: '审批流转', module: 'material-flow' },
+  {
+    id: 4,
+    code: 'material-flow:approve',
+    name: '审批流转',
+    module: 'material-flow',
+  },
 ];
 
 const menus: MenuDto[] = [
@@ -55,7 +60,12 @@ describe('角色权限分组', () => {
       menus,
       permissions: [
         ...permissions,
-        { id: 5, code: 'material-flow:transfer', name: '发起料件流转', module: 'material-flow' },
+        {
+          id: 5,
+          code: 'material-flow:transfer',
+          name: '发起料件流转',
+          module: 'material-flow',
+        },
       ],
       selectedPermissionIds: [1, 2, 3, 4, 5],
     });
@@ -83,22 +93,45 @@ describe('角色权限分组', () => {
           sort: 1,
           type: 'menu',
           children: [
-            { id: 11, name: 'ApprovalPending', title: '待我审批', sort: 1, type: 'menu' },
-            { id: 12, name: 'ApprovalMine', title: '我的申请', sort: 2, type: 'menu' },
-            { id: 13, name: 'ConfirmReturn', title: '待接收确认', sort: 3, type: 'menu' },
+            {
+              id: 11,
+              name: 'ApprovalPending',
+              title: '待我审批',
+              sort: 1,
+              type: 'menu',
+            },
+            {
+              id: 12,
+              name: 'ApprovalMine',
+              title: '我的申请',
+              sort: 2,
+              type: 'menu',
+            },
+            {
+              id: 13,
+              name: 'ConfirmReturn',
+              title: '待接收确认',
+              sort: 3,
+              type: 'menu',
+            },
           ],
         },
       ],
       permissions: [
         { id: 10, code: 'approval:view', name: '查看审批', module: 'approval' },
-        { id: 11, code: 'approval:handle', name: '处理审批', module: 'approval' },
+        {
+          id: 11,
+          code: 'approval:handle',
+          name: '处理审批',
+          module: 'approval',
+        },
       ],
       selectedPermissionIds: [10],
     });
 
-    expect(groups.map((group) => [group.label, group.selected, group.total])).toEqual([
-      ['审批管理', 1, 2],
-    ]);
+    expect(
+      groups.map((group) => [group.label, group.selected, group.total]),
+    ).toEqual([['审批管理', 1, 2]]);
   });
 
   it('多个报表子菜单共用同一批权限时只展示父级分组', () => {
@@ -111,9 +144,27 @@ describe('角色权限分组', () => {
           sort: 1,
           type: 'menu',
           children: [
-            { id: 21, name: 'ReportSummary', title: '资产汇总', sort: 1, type: 'menu' },
-            { id: 22, name: 'ReportBorrow', title: '借用明细', sort: 2, type: 'menu' },
-            { id: 23, name: 'ReportOverdue', title: '逾期资产', sort: 3, type: 'menu' },
+            {
+              id: 21,
+              name: 'ReportSummary',
+              title: '资产汇总',
+              sort: 1,
+              type: 'menu',
+            },
+            {
+              id: 22,
+              name: 'ReportBorrow',
+              title: '借用明细',
+              sort: 2,
+              type: 'menu',
+            },
+            {
+              id: 23,
+              name: 'ReportOverdue',
+              title: '逾期资产',
+              sort: 3,
+              type: 'menu',
+            },
           ],
         },
       ],
@@ -125,8 +176,8 @@ describe('角色权限分组', () => {
       selectedPermissionIds: [20],
     });
 
-    expect(groups.map((group) => [group.label, group.selected, group.total])).toEqual([
-      ['报表统计', 1, 3],
-    ]);
+    expect(
+      groups.map((group) => [group.label, group.selected, group.total]),
+    ).toEqual([['报表统计', 1, 3]]);
   });
 });

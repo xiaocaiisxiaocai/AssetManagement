@@ -1,5 +1,6 @@
-import { baseRequestClient, requestClient } from '#/api/request';
 import type { UserInfo } from '@vben/types';
+
+import { baseRequestClient, requestClient } from '#/api/request';
 
 interface ApiResult<T> {
   code: number;
@@ -17,7 +18,6 @@ export namespace AuthApi {
 
   /** 登录接口返回值 */
   export interface LoginResult {
-    mustChangePassword: boolean;
     token: string;
   }
 }
@@ -47,14 +47,13 @@ export async function logoutApi(token: string) {
 
 /**
  * 获取用户信息
- * @returns
+ * @returns 当前登录用户及其角色、权限信息
  */
 export const getUserInfoApi = async () => {
   const result = await requestClient.get<
     ApiResult<{
       employeeNo: string;
       id: number;
-      mustChangePassword: boolean;
       name: string;
       permissions: string[];
       roles: string[];
@@ -71,16 +70,15 @@ export const getUserInfoApi = async () => {
     userId: String(data.id),
     username: data.employeeNo,
     permissions: data.permissions,
-    mustChangePassword: data.mustChangePassword,
-  } as UserInfo & { mustChangePassword: boolean; permissions: string[] };
+  } as { permissions: string[] } & UserInfo;
 };
 
 /**
  * 修改密码
  */
 export function changePassword(data: {
-  oldPassword: string;
   newPassword: string;
+  oldPassword: string;
 }) {
   return requestClient.put('/auth/change-password', data);
 }

@@ -23,5 +23,9 @@ public class AssetConfiguration : IEntityTypeConfiguration<Asset>
         b.HasIndex(x => x.IsDeleted);
         b.HasIndex(x => x.Status);
         b.Property(x => x.RowVersion).IsConcurrencyToken();
+        b.HasOne<AssetCategory>().WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Location>().WithMany().HasForeignKey(x => x.LocationId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.CustodianId).OnDelete(DeleteBehavior.Restrict);
     }
 }

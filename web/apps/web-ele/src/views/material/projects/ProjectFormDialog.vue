@@ -1,7 +1,8 @@
 <script lang="ts" setup>
+import type { ProjectFormState } from './project-workspace-types';
+
 import type { TestProjectOption } from '#/api/test-project';
 import type { UserDto, UserOptionDto } from '#/api/user';
-import type { ProjectFormState } from './project-workspace-types';
 
 import {
   ElButton,
@@ -15,20 +16,22 @@ import {
   ElSelect,
 } from 'element-plus';
 
-const props = defineProps<{
+defineProps<{
   editing: boolean;
-  form: ProjectFormState;
   progressOptions: TestProjectOption[];
   projectTypeOptions: TestProjectOption[];
   saving: boolean;
+  searchUsers?: (keyword: string) => Promise<void>;
+  userOptionsLoading?: boolean;
   users: (UserDto | UserOptionDto)[];
 }>();
 
 const emit = defineEmits<{ save: [] }>();
+const form = defineModel<ProjectFormState>('form', { required: true });
 const visible = defineModel<boolean>('visible', { default: false });
 
 function onProgressChange(value: string) {
-  if (value !== 'closed') props.form.closedDate = '';
+  if (value !== 'closed') form.value.closedDate = '';
 }
 </script>
 
@@ -78,9 +81,12 @@ function onProgressChange(value: string) {
         <ElFormItem label="负责人" required>
           <ElSelect
             v-model="form.ownerId"
+            :loading="userOptionsLoading"
+            :remote-method="searchUsers"
             clearable
             filterable
             placeholder="请选择"
+            remote
           >
             <ElOption
               v-for="user in users"
@@ -117,7 +123,7 @@ function onProgressChange(value: string) {
             value-format="YYYY-MM-DD"
           />
         </ElFormItem>
-        <ElFormItem label="结案时间" :required="form.progressCode === 'closed'">
+        <ElFormItem :required="form.progressCode === 'closed'" label="结案时间">
           <ElDatePicker
             v-model="form.closedDate"
             :disabled="form.progressCode !== 'closed'"
@@ -141,9 +147,9 @@ function onProgressChange(value: string) {
     </ElForm>
     <template #footer>
       <ElButton @click="visible = false">取消</ElButton>
-      <ElButton :loading="saving" type="primary" @click="emit('save')"
-        >保存</ElButton
-      >
+      <ElButton :loading="saving" type="primary" @click="emit('save')">
+        保存
+      </ElButton>
     </template>
   </ElDialog>
 </template>

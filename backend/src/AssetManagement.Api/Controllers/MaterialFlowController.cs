@@ -23,10 +23,20 @@ public class MaterialFlowController : ControllerBase
     public async Task<ApiResult<List<MaterialFlowDto>>> Pending([FromQuery] int? projectId = null)
         => ApiResult<List<MaterialFlowDto>>.Ok(await _service.PendingAsync(CurrentUserId(), projectId));
 
+    [HttpGet("pending-page")]
+    [HasPermission("material-flow:approve")]
+    public async Task<ApiResult<PagedResult<MaterialFlowDto>>> PendingPage([FromQuery] MaterialFlowPageQuery query)
+        => ApiResult<PagedResult<MaterialFlowDto>>.Ok(await _service.PendingPageAsync(CurrentUserId(), query));
+
     [HttpGet("mine")]
     [HasPermission("material-flow:view")]
     public async Task<ApiResult<List<MaterialFlowDto>>> Mine([FromQuery] int? projectId = null)
         => ApiResult<List<MaterialFlowDto>>.Ok(await _service.MineAsync(CurrentUserId(), projectId));
+
+    [HttpGet("mine-page")]
+    [HasPermission("material-flow:view")]
+    public async Task<ApiResult<PagedResult<MaterialFlowDto>>> MinePage([FromQuery] MaterialFlowPageQuery query)
+        => ApiResult<PagedResult<MaterialFlowDto>>.Ok(await _service.MinePageAsync(CurrentUserId(), query));
 
     [HttpGet("{id:int}")]
     [HasPermission("material-flow:view")]

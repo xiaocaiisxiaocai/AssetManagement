@@ -1,6 +1,7 @@
 <script lang="ts" setup>
-import type { MaterialItem, MaterialStatus } from '#/api/material';
 import type { DeleteStatus } from './project-workspace-types';
+
+import type { MaterialItem, MaterialStatus } from '#/api/material';
 
 import {
   ElButton,
@@ -11,11 +12,13 @@ import {
   ElOption,
   ElPagination,
   ElSelect,
-  ElTabPane,
   ElTable,
   ElTableColumn,
+  ElTabPane,
   ElTag,
 } from 'element-plus';
+
+import { canTransferMaterial } from './material-row-actions';
 
 type MaterialActionAccess = {
   canDelete: boolean;
@@ -25,21 +28,16 @@ type MaterialActionAccess = {
   canTransfer: boolean;
 };
 
-defineProps<{
+const props = defineProps<{
   access: MaterialActionAccess;
   canCreate: boolean;
   canEdit: boolean;
+  currentUserId: number;
+  isSupervisor: boolean;
   loading: boolean;
   materials: MaterialItem[];
   pageSizeOptions: number[];
-  query: {
-    deleteStatus: DeleteStatus;
-    materialNo: string;
-    name: string;
-    page: number;
-    pageSize: number;
-    status?: MaterialStatus;
-  };
+  projectOwnerId?: null | number;
   total: number;
 }>();
 
@@ -53,6 +51,14 @@ const emit = defineEmits<{
   reset: [];
   search: [];
 }>();
+const query = defineModel<{
+  deleteStatus: DeleteStatus;
+  materialNo: string;
+  name: string;
+  page: number;
+  pageSize: number;
+  status?: MaterialStatus;
+}>('query', { required: true });
 
 const statusOptions: Array<{
   label: string;
@@ -73,6 +79,17 @@ function canOperate(row: MaterialItem) {
   return !row.isDeleted && row.status !== 1;
 }
 
+function canStartTransfer(row: MaterialItem) {
+  return (
+    props.access.canTransfer &&
+    canTransferMaterial(row, {
+      currentUserId: props.currentUserId,
+      isSupervisor: props.isSupervisor,
+      projectOwnerId: props.projectOwnerId,
+    })
+  );
+}
+
 function rowClassName({ row }: { row: MaterialItem }) {
   if (row.isDeleted) return 'material-row-deleted';
   return row.status === 1 ? 'material-row-returned' : '';
@@ -81,9 +98,9 @@ function rowClassName({ row }: { row: MaterialItem }) {
 
 <template>
   <ElTabPane name="materials">
-    <template #label
-      ><span>料件清单</span><span class="tab-count">{{ total }}</span></template
-    >
+    <template #label>
+      <span>料件清单</span><span class="tab-count">{{ total }}</span>
+    </template>
     <div class="material-filter">
       <ElInput
         v-model="query.materialNo"
@@ -122,26 +139,25 @@ function rowClassName({ row }: { row: MaterialItem }) {
         style="width: 120px"
         @change="emit('search')"
       >
-        <ElOption label="全部" value="all" /><ElOption
-          label="未删除"
-          value="active"
-        /><ElOption label="已删除" value="deleted" />
+        <ElOption label="全部" value="all" />
+        <ElOption label="未删除" value="active" />
+        <ElOption label="已删除" value="deleted" />
       </ElSelect>
-      <ElButton type="primary" @click="emit('search')">查询</ElButton
-      ><ElButton @click="emit('reset')">重置</ElButton>
-      <ElButton v-if="canCreate" type="primary" @click="emit('create')"
-        >新增料件</ElButton
-      >
+      <ElButton type="primary" @click="emit('search')">查询</ElButton>
+      <ElButton @click="emit('reset')">重置</ElButton>
+      <ElButton v-if="canCreate" type="primary" @click="emit('create')">
+        新增料件
+      </ElButton>
     </div>
     <div class="drawer-table-panel material-table-panel">
       <ElTable
-        v-loading="loading"
         :data="materials"
         :row-class-name="rowClassName"
         border
         height="100%"
         scrollbar-always-on
         stripe
+        v-loading="loading"
       >
         <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
         <ElTableColumn
@@ -156,13 +172,14 @@ function rowClassName({ row }: { row: MaterialItem }) {
           prop="vendorName"
           show-overflow-tooltip
         />
-        <ElTableColumn label="型号品牌" min-width="140" show-overflow-tooltip
-          ><template #default="{ row }"
-            ><span v-if="row.model || row.brand"
-              >{{ row.model }} {{ row.brand }}</span
-            ><span v-else>-</span></template
-          ></ElTableColumn
-        >
+        <ElTableColumn label="型号品牌" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.model || row.brand">
+              {{ row.model }} {{ row.brand }}
+            </span>
+            <span v-else>-</span>
+          </template>
+        </ElTableColumn>
         <ElTableColumn align="center" label="数量" prop="quantity" width="70" />
         <ElTableColumn
           label="部门"
@@ -177,14 +194,14 @@ function rowClassName({ row }: { row: MaterialItem }) {
           show-overflow-tooltip
         />
         <ElTableColumn align="center" label="状态" width="130">
-          <template #default="{ row }"
-            ><ElTag :type="statusMeta(row.status).tag" size="small">{{
-              statusMeta(row.status).label
-            }}</ElTag
-            ><ElTag v-if="row.isDeleted" class="ml-1" size="small" type="danger"
-              >已删除</ElTag
-            ></template
-          >
+          <template #default="{ row }">
+            <ElTag :type="statusMeta(row.status).tag" size="small">
+              {{ statusMeta(row.status).label }}
+            </ElTag>
+            <ElTag v-if="row.isDeleted" class="ml-1" size="small" type="danger">
+              已删除
+            </ElTag>
+          </template>
         </ElTableColumn>
         <ElTableColumn align="center" fixed="right" label="操作" width="150">
           <template #default="{ row }">
@@ -195,21 +212,21 @@ function rowClassName({ row }: { row: MaterialItem }) {
                   size="small"
                   type="primary"
                   @click="emit('detail', row)"
-                  >详情</ElButton
                 >
+                  详情
+                </ElButton>
                 <ElButton
                   v-if="canEdit && canOperate(row)"
                   link
                   size="small"
                   type="primary"
                   @click="emit('edit', row)"
-                  >编辑</ElButton
                 >
+                  编辑
+                </ElButton>
                 <ElDropdown
                   v-if="
-                    (access.canTransfer &&
-                      canOperate(row) &&
-                      !row.hasPendingFlow) ||
+                    canStartTransfer(row) ||
                     (access.canReturn &&
                       canOperate(row) &&
                       !row.hasPendingFlow) ||
@@ -218,17 +235,14 @@ function rowClassName({ row }: { row: MaterialItem }) {
                   @command="(command) => emit('command', command, row)"
                 >
                   <ElButton link size="small" type="primary">更多</ElButton>
-                  <template #dropdown
-                    ><ElDropdownMenu>
+                  <template #dropdown>
+                    <ElDropdownMenu>
                       <ElDropdownItem
-                        v-if="
-                          access.canTransfer &&
-                          canOperate(row) &&
-                          !row.hasPendingFlow
-                        "
+                        v-if="canStartTransfer(row)"
                         command="transfer"
-                        >转移</ElDropdownItem
                       >
+                        转移
+                      </ElDropdownItem>
                       <ElDropdownItem
                         v-if="
                           access.canReturn &&
@@ -236,16 +250,18 @@ function rowClassName({ row }: { row: MaterialItem }) {
                           !row.hasPendingFlow
                         "
                         command="return"
-                        >退回厂商</ElDropdownItem
                       >
+                        退回厂商
+                      </ElDropdownItem>
                       <ElDropdownItem
                         v-if="access.canDelete && canOperate(row)"
                         command="delete"
                         divided
-                        >删除</ElDropdownItem
                       >
-                    </ElDropdownMenu></template
-                  >
+                        删除
+                      </ElDropdownItem>
+                    </ElDropdownMenu>
+                  </template>
                 </ElDropdown>
               </template>
               <template v-else>
@@ -254,27 +270,31 @@ function rowClassName({ row }: { row: MaterialItem }) {
                   size="small"
                   type="primary"
                   @click="emit('detail', row)"
-                  >详情</ElButton
                 >
+                  详情
+                </ElButton>
                 <ElDropdown
                   v-if="access.canRestore || access.canPurge"
                   @command="(command) => emit('command', command, row)"
                 >
                   <ElButton link size="small" type="primary">更多</ElButton>
-                  <template #dropdown
-                    ><ElDropdownMenu
-                      ><ElDropdownItem
+                  <template #dropdown>
+                    <ElDropdownMenu>
+                      <ElDropdownItem
                         v-if="access.canRestore"
                         command="restore"
-                        >撤销删除</ElDropdownItem
-                      ><ElDropdownItem
+                      >
+                        撤销删除
+                      </ElDropdownItem>
+                      <ElDropdownItem
                         v-if="access.canPurge"
                         command="purge"
                         divided
-                        >彻底删除</ElDropdownItem
-                      ></ElDropdownMenu
-                    ></template
-                  >
+                      >
+                        彻底删除
+                      </ElDropdownItem>
+                    </ElDropdownMenu>
+                  </template>
                 </ElDropdown>
               </template>
             </div>
@@ -283,19 +303,22 @@ function rowClassName({ row }: { row: MaterialItem }) {
       </ElTable>
       <div class="table-bottom-pager">
         <div class="table-bottom-pager-left">
-          <span>共 {{ total }} 条记录</span
-          ><span class="table-bottom-pager-divider">|</span><span>每页</span
-          ><ElSelect
+          <span>共 {{ total }} 条记录</span>
+          <span class="table-bottom-pager-divider">|</span>
+          <span>每页</span>
+          <ElSelect
             v-model="query.pageSize"
             aria-label="料件列表每页条数"
             style="width: 92px"
             @change="emit('pageSizeChange')"
-            ><ElOption
+          >
+            <ElOption
               v-for="size in pageSizeOptions"
               :key="size"
               :label="`${size}`"
               :value="size"
-          /></ElSelect>
+            />
+          </ElSelect>
         </div>
         <ElPagination
           v-model:current-page="query.page"

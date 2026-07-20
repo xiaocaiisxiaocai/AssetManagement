@@ -1,4 +1,4 @@
-const HAS_TIME_ZONE = /(Z|[+-]\d{2}:?\d{2})$/i;
+const HAS_TIME_ZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
 /** 后端 DateTime(UTC) 在 JSON 中可能不带 Z，统一按 UTC 解析。 */
 export function parseBackendUtcDateTime(value: string) {

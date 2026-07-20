@@ -17,10 +17,11 @@ export function collectRequiredPermissionIds(
     permissions.map((item) => [item.code, item.id]),
   );
 
-  return flattenMenus(menus)
-    .filter((menu) => selected.has(menu.id) && menu.permissionCode)
-    .map((menu) => permissionIdByCode.get(menu.permissionCode!))
-    .filter((id): id is number => id !== undefined);
+  return flattenMenus(menus).flatMap((menu) => {
+    if (!selected.has(menu.id) || !menu.permissionCode) return [];
+    const permissionId = permissionIdByCode.get(menu.permissionCode);
+    return permissionId === undefined ? [] : [permissionId];
+  });
 }
 
 export function filterPageMenuTree(menus: MenuDto[]): MenuDto[] {

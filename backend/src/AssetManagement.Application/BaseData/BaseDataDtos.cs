@@ -1,5 +1,7 @@
 namespace AssetManagement.Application.BaseData;
 
+using System.ComponentModel.DataAnnotations;
+
 public record DepartmentNodeDto
 {
     public int Id { get; init; }
@@ -26,6 +28,8 @@ public record DepartmentOptionDto
 {
     public int Id { get; init; }
     public string Name { get; init; } = "";
+    public int? ManagerId { get; init; }
+    public string? ManagerName { get; init; }
     public bool IsActive { get; init; }
     public List<DepartmentOptionDto> Children { get; init; } = new();
 }
@@ -64,6 +68,7 @@ public record CreateCategoryRequest
 {
     public int? ParentId { get; init; }
     public string CodeSeg { get; init; } = "";
+    [MaxLength(500)]
     public string? Remark { get; init; }
 }
 
@@ -71,6 +76,7 @@ public record UpdateCategoryRequest
 {
     public int? ParentId { get; init; }
     public string CodeSeg { get; init; } = "";
+    [MaxLength(500)]
     public string? Remark { get; init; }
 }
 
@@ -121,7 +127,10 @@ public record CategoryCodeRulesDto
 
 public record SaveSystemSettingRequest
 {
+    [Required(ErrorMessage = "系统参数键不能为空"), MaxLength(100)]
     public string Key { get; init; } = "";
+    [Required(ErrorMessage = "系统参数值不能为空")]
     public string Value { get; init; } = "";
+    [MaxLength(200)]
     public string? Description { get; init; }
 }

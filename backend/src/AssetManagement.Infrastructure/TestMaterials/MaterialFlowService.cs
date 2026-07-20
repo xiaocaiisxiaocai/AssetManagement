@@ -32,7 +32,8 @@ public class MaterialFlowService : IMaterialFlowService
 
     public async Task<MaterialFlowDto> InitiateTransferAsync(InitiateTransferRequest request, int applicantId)
     {
-        var material = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == request.MaterialId)
+        EnsureMaxLength(request.Reason, 500, "转移原因");
+        var material = await _db.TestMaterials.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.MaterialId)
             ?? throw new BizException(4048, "测试料件不存在");
         if (material.IsDeleted) throw new BizException(4048, "测试料件不存在");
         if (material.Status != MaterialStatus.InUse)
@@ -62,6 +63,8 @@ public class MaterialFlowService : IMaterialFlowService
             for (var attempt = 0; ; attempt++)
             {
                 await using var tx = await _db.Database.BeginTransactionAsync();
+                material = await LockTransferableMaterialAsync(request.MaterialId);
+                transferee = await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
                 // 防重检查放事务内，避免并发请求同时通过检查
                 if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
                     throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
@@ -69,7 +72,7 @@ public class MaterialFlowService : IMaterialFlowService
                 {
                     FlowNo = await NextFlowNoAsync(),
                     BizType = MaterialBizType,
-                    WorkflowId = 0,
+                    WorkflowId = null,
                     MaterialId = material.Id,
                     MaterialNo = material.MaterialNo,
                     MaterialName = material.Name,
@@ -101,7 +104,7 @@ public class MaterialFlowService : IMaterialFlowService
                 {
                     await tx.RollbackAsync();
                     _db.Entry(directFlow).State = EntityState.Detached;
-                    await _db.Entry(material).ReloadAsync();
+                    _db.Entry(material).State = EntityState.Detached;
                     continue;
                 }
                 await AddRecord(directFlow.Id, "direct_transfer", applicant.Name,
@@ -118,6 +121,7 @@ public class MaterialFlowService : IMaterialFlowService
                         Body = $"料件 {material.MaterialNo}（{material.Name}）已由 {applicant.Name} 直接转移给您。备注：{request.Reason}",
                         FlowId = directFlow.Id,
                         UserId = transferee.Id,
+                        IdempotencyKey = $"material_transferred_{directFlow.Id}_{transferee.Id}"
                     });
                 }
                 catch (Exception ex)
@@ -130,20 +134,24 @@ public class MaterialFlowService : IMaterialFlowService
         }
 
         // 开关开启:走 BPMN 审批
-        var workflow = await _db.Workflows.SingleOrDefaultAsync(x => x.BizType == MaterialBizType && x.IsActive);
-        if (workflow == null)
-        {
-            if (await _db.Workflows.AnyAsync(x => x.BizType == MaterialBizType))
-                throw new BizException(4057, "流程已停用，无法发起审批");
-            throw new BizException(4049, "测试料件流转流程未配置");
-        }
-        if (string.IsNullOrWhiteSpace(workflow.BpmnXml))
-            throw new BizException(4051, "流程定义不完整,缺少 BPMN XML");
-
-        var process = BpmnParser.Parse(workflow.BpmnXml);
         for (var attempt = 0; ; attempt++)
         {
             await using var bpmnTx = await _db.Database.BeginTransactionAsync();
+            var workflow = await _db.Workflows
+                .FromSqlInterpolated($"SELECT * FROM workflows WHERE BizType = {MaterialBizType} AND IsActive = 1 FOR UPDATE")
+                .AsTracking()
+                .SingleOrDefaultAsync();
+            if (workflow == null)
+            {
+                if (await _db.Workflows.AnyAsync(x => x.BizType == MaterialBizType))
+                    throw new BizException(4057, "流程已停用，无法发起审批");
+                throw new BizException(4049, "测试料件流转流程未配置");
+            }
+            if (string.IsNullOrWhiteSpace(workflow.BpmnXml))
+                throw new BizException(4051, "流程定义不完整,缺少 BPMN XML");
+            var process = BpmnParser.Parse(workflow.BpmnXml);
+            material = await LockTransferableMaterialAsync(request.MaterialId);
+            transferee = await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
             // 防重检查放事务内，避免并发请求同时通过检查
             if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
                 throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
@@ -184,7 +192,7 @@ public class MaterialFlowService : IMaterialFlowService
                 _db.Entry(flow).State = EntityState.Detached;
                 if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
                     throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
-                await _db.Entry(material).ReloadAsync();
+                _db.Entry(material).State = EntityState.Detached;
                 continue;
             }
             await AddRecord(flow.Id, "start", applicant.Name, request.Reason);
@@ -206,42 +214,77 @@ public class MaterialFlowService : IMaterialFlowService
     }
 
     public async Task<List<MaterialFlowDto>> PendingAsync(int userId, int? projectId = null)
-    {
-        var user = await LoadUser(userId);
-        var query = _db.MaterialFlows.Where(x => x.Status == "pending");
-        if (projectId.HasValue)
-            query = query.Where(x => _db.TestMaterials
-                .Where(m => m.ProjectId == projectId.Value)
-                .Select(m => m.Id)
-                .Contains(x.MaterialId));
-        var flows = await query.OrderByDescending(x => x.Id).ToListAsync();
-
-        var workflowIds = flows.SelectMany(f => f.CurrentNodeIds.Count > 0 ? new[] { f.WorkflowId } : Array.Empty<int>())
-            .Distinct().Where(id => id > 0).ToArray();
-        var workflowMap = await _db.Workflows
-            .Where(w => workflowIds.Contains(w.Id))
-            .ToDictionaryAsync(w => w.Id, w => w);
-        var result = new List<MaterialFlowDto>();
-        foreach (var flow in flows)
+        => (await PendingPageAsync(userId, new MaterialFlowPageQuery
         {
-            var actionableNodeIds = await GetActionableNodeIdsAsync(flow, user, workflowMap);
-            if (actionableNodeIds.Count > 0) result.Add(await ToDtoAsync(flow, actionableNodeIds, userId));
+            ProjectId = projectId,
+            PageSize = AppConstants.MaxPageSize
+        })).Items.ToList();
+
+    public async Task<PagedResult<MaterialFlowDto>> PendingPageAsync(int userId, MaterialFlowPageQuery filter)
+    {
+        var (page, pageSize) = NormalizePage(filter.Page, filter.PageSize);
+        var user = await LoadUser(userId);
+        var query = ApplyMaterialFlowPageFilters(
+                _db.MaterialFlows.AsNoTracking().Where(flow => flow.Status == FlowStatus.Pending), filter)
+            .OrderByDescending(flow => flow.Id);
+        const int scanSize = 200;
+        var scanOffset = 0;
+        var pageOffset = PageOffset(page, pageSize);
+        var actionableTotal = 0;
+        var selected = new List<(MaterialFlow Flow, List<string> Nodes)>();
+        var workflowMap = new Dictionary<int, WorkflowEntity>();
+        var processCache = new Dictionary<int, BpmnProcess>();
+        var approverCache = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        while (true)
+        {
+            var chunk = await query.Skip(scanOffset).Take(scanSize).ToListAsync();
+            if (chunk.Count == 0) break;
+            scanOffset += chunk.Count;
+            var workflowIds = chunk.Where(flow => flow.WorkflowId.HasValue)
+                .Select(flow => flow.WorkflowId!.Value).Distinct()
+                .Where(workflowId => !workflowMap.ContainsKey(workflowId)).ToArray();
+            var workflows = await _db.Workflows.AsNoTracking()
+                .Where(workflow => workflowIds.Contains(workflow.Id)).ToListAsync();
+            foreach (var workflow in workflows) workflowMap[workflow.Id] = workflow;
+            foreach (var flow in chunk)
+            {
+                var actionableNodeIds = await GetActionableNodeIdsAsync(
+                    flow, user, workflowMap, processCache, approverCache);
+                if (actionableNodeIds.Count == 0) continue;
+                if ((long)actionableTotal >= pageOffset && selected.Count < pageSize)
+                    selected.Add((flow, actionableNodeIds));
+                actionableTotal++;
+            }
+            if (chunk.Count < scanSize) break;
         }
-        return result;
+        var renderContext = await BuildProgressRenderContextAsync(selected.Select(item => item.Flow).ToList());
+        var result = new List<MaterialFlowDto>(selected.Count);
+        foreach (var item in selected) result.Add(await ToDtoAsync(item.Flow, item.Nodes, userId, renderContext));
+        return new PagedResult<MaterialFlowDto> { Items = result, Total = actionableTotal, Page = page, PageSize = pageSize };
     }
 
     public async Task<List<MaterialFlowDto>> MineAsync(int userId, int? projectId = null)
+        => (await MinePageAsync(userId, new MaterialFlowPageQuery
+        {
+            ProjectId = projectId,
+            PageSize = AppConstants.MaxPageSize
+        })).Items.ToList();
+
+    public async Task<PagedResult<MaterialFlowDto>> MinePageAsync(int userId, MaterialFlowPageQuery filter)
     {
-        var query = _db.MaterialFlows.Where(x => x.ApplicantId == userId || x.TransfereeId == userId);
-        if (projectId.HasValue)
-            query = query.Where(x => _db.TestMaterials
-                .Where(m => m.ProjectId == projectId.Value)
-                .Select(m => m.Id)
-                .Contains(x.MaterialId));
-        var flows = await query.OrderByDescending(x => x.Id).ToListAsync();
+        var (page, pageSize) = NormalizePage(filter.Page, filter.PageSize);
+        var query = ApplyMaterialFlowPageFilters(_db.MaterialFlows.AsNoTracking()
+            .Where(flow => flow.ApplicantId == userId), filter);
+        var total = await query.CountAsync();
+        var pageOffset = PageOffset(page, pageSize);
+        if (pageOffset >= total)
+            return new PagedResult<MaterialFlowDto> { Total = total, Page = page, PageSize = pageSize };
+        var flows = await query.OrderByDescending(flow => flow.Id)
+            .Skip((int)pageOffset).Take(pageSize).ToListAsync();
+        var renderContext = await BuildProgressRenderContextAsync(flows);
         var result = new List<MaterialFlowDto>();
-        foreach (var flow in flows) result.Add(await ToDtoAsync(flow, currentUserId: userId));
-        return result;
+        foreach (var flow in flows) result.Add(await ToDtoAsync(flow, currentUserId: userId, renderContext: renderContext));
+        return new PagedResult<MaterialFlowDto> { Items = result, Total = total, Page = page, PageSize = pageSize };
     }
 
     public async Task<MaterialFlowDto> GetAsync(int id, int userId)
@@ -254,6 +297,8 @@ public class MaterialFlowService : IMaterialFlowService
 
     public async Task<MaterialFlowDto> ApproveAsync(int id, MaterialApprovalRequest request, int userId)
     {
+        EnsureMaxLength(request.NodeId, 100, "流程节点");
+        EnsureMaxLength(request.Opinion, 380, "审批意见");
         var flow = await LoadFlow(id);
         EnsureActive(flow);
         var user = await LoadUser(userId);
@@ -264,10 +309,15 @@ public class MaterialFlowService : IMaterialFlowService
         var process = BpmnParser.Parse(workflow.BpmnXml!);
 
         await using var tx = await _db.Database.BeginTransactionAsync();
+        await NormalizeSignStatesAsync(flow, process);
+        await ReconcileInactiveSignersAsync(flow, nodeId);
         BpmnEngine.Approve(flow, process, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion);
 
         if (flow.Status == "pending")
+        {
+            await NormalizeSignStatesAsync(flow, process);
             await EnsureCurrentApproversResolvableAsync(flow, process);
+        }
 
         // 流程完成 -> 落地业务副作用(改保管人 + 部门)
         if (flow.Status == "approved")
@@ -293,14 +343,31 @@ public class MaterialFlowService : IMaterialFlowService
         {
             if (flow.Status == "approved")
             {
-                await _notifications.CreateAsync(new CreateNotificationRequest
+                var notifications = new List<CreateNotificationRequest>
                 {
-                    Type = "material_approved",
-                    Title = $"料件流转审批通过：{flow.MaterialName}",
-                    Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请已通过审批。",
-                    FlowId = id,
-                    UserId = flow.ApplicantId,
-                });
+                    new()
+                    {
+                        Type = "material_approved",
+                        Title = $"料件流转审批通过：{flow.MaterialName}",
+                        Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请已通过审批。",
+                        FlowId = id,
+                        UserId = flow.ApplicantId,
+                        IdempotencyKey = $"material_approved_{id}_{flow.ApplicantId}"
+                    }
+                };
+                if (flow.TransfereeId is int transfereeId && transfereeId != flow.ApplicantId)
+                {
+                    notifications.Add(new CreateNotificationRequest
+                    {
+                        Type = "material_transferred",
+                        Title = $"料件已转移给您：{flow.MaterialName}",
+                        Body = $"料件 {flow.MaterialNo}（{flow.MaterialName}）已完成转移审批，当前保管人为您。",
+                        FlowId = id,
+                        UserId = transfereeId,
+                        IdempotencyKey = $"material_transferred_{id}_{transfereeId}"
+                    });
+                }
+                await _notifications.CreateBatchAsync(notifications);
             }
             else if (flow.Status == "pending")
             {
@@ -320,6 +387,8 @@ public class MaterialFlowService : IMaterialFlowService
 
     public async Task<MaterialFlowDto> RejectAsync(int id, MaterialRejectRequest request, int userId)
     {
+        EnsureMaxLength(request.NodeId, 100, "流程节点");
+        EnsureMaxLength(request.Reason, 500, "驳回原因");
         var flow = await LoadFlow(id);
         EnsureActive(flow);
         var user = await LoadUser(userId);
@@ -388,6 +457,38 @@ public class MaterialFlowService : IMaterialFlowService
     }
 
     // ===== 私有辅助 =====
+    private static (int Page, int PageSize) NormalizePage(int page, int pageSize)
+        => (Math.Max(page, 1), Math.Clamp(pageSize, 1, AppConstants.MaxPageSize));
+
+    private static long PageOffset(int page, int pageSize)
+        => ((long)page - 1L) * pageSize;
+
+    private IQueryable<MaterialFlow> ApplyMaterialFlowPageFilters(
+        IQueryable<MaterialFlow> query,
+        MaterialFlowPageQuery filter)
+    {
+        if (filter.FlowId.HasValue) query = query.Where(flow => flow.Id == filter.FlowId.Value);
+        if (!string.IsNullOrWhiteSpace(filter.Status))
+        {
+            var status = filter.Status.Trim().ToLowerInvariant();
+            query = query.Where(flow => flow.Status == status);
+        }
+        if (filter.ProjectId.HasValue)
+        {
+            var projectId = filter.ProjectId.Value;
+            query = query.Where(flow => _db.TestMaterials.Any(material =>
+                material.Id == flow.MaterialId && material.ProjectId == projectId));
+        }
+        if (!string.IsNullOrWhiteSpace(filter.Keyword))
+        {
+            var keyword = filter.Keyword.Trim();
+            query = query.Where(flow => flow.FlowNo.Contains(keyword) || flow.MaterialNo.Contains(keyword) ||
+                                        flow.MaterialName.Contains(keyword) || flow.Applicant.Contains(keyword) ||
+                                        (flow.Transferee != null && flow.Transferee.Contains(keyword)));
+        }
+        return query;
+    }
+
     private async Task<string> NextFlowNoAsync()
     {
         var today = BusinessClock.Today;
@@ -415,9 +516,11 @@ public class MaterialFlowService : IMaterialFlowService
         => await _db.MaterialFlows.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
            ?? throw new BizException(4010, "流转单不存在");
 
-    private async Task<WorkflowEntity> LoadWorkflow(int id)
-        => await _db.Workflows.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
-           ?? throw new BizException(4049, "流程不存在");
+    private async Task<WorkflowEntity> LoadWorkflow(int? id)
+        => id.HasValue
+            ? await _db.Workflows.AsTracking().SingleOrDefaultAsync(x => x.Id == id.Value)
+              ?? throw new BizException(4049, "流程不存在")
+            : throw new BizException(4049, "直接转移不存在审批流程");
 
     private async Task<User> LoadUser(int id)
     {
@@ -446,23 +549,35 @@ public class MaterialFlowService : IMaterialFlowService
     private async Task<List<string>> GetActionableNodeIdsAsync(
         MaterialFlow flow,
         User user,
-        Dictionary<int, WorkflowEntity>? workflowMap = null)
+        Dictionary<int, WorkflowEntity>? workflowMap = null,
+        Dictionary<int, BpmnProcess>? processCache = null,
+        Dictionary<string, List<int>>? approverCache = null)
     {
         WorkflowEntity? workflow;
         if (workflowMap != null)
-            workflowMap.TryGetValue(flow.WorkflowId, out workflow);
+            workflowMap.TryGetValue(flow.WorkflowId ?? 0, out workflow);
         else
             workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
         if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return new List<string>();
 
-        var process = BpmnParser.Parse(workflow.BpmnXml);
+        BpmnProcess process;
+        if (processCache is not null && processCache.TryGetValue(workflow.Id, out var cachedProcess))
+        {
+            process = cachedProcess;
+        }
+        else
+        {
+            process = BpmnParser.Parse(workflow.BpmnXml);
+            if (processCache is not null) processCache[workflow.Id] = process;
+        }
         var result = new List<string>();
         foreach (var nodeId in flow.CurrentNodeIds)
         {
             if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) || token.Status != BpmnTokenStatus.Active)
                 continue;
             var node = process.FindNode(nodeId);
-            if (node?.Type == BpmnNodeType.UserTask && await IsApproverForNode(node, user, flow))
+            if (node?.Type == BpmnNodeType.UserTask &&
+                await IsApproverForNode(node, user, flow, approverCache))
                 result.Add(nodeId);
         }
         return result;
@@ -482,15 +597,34 @@ public class MaterialFlowService : IMaterialFlowService
     }
 
     // 逻辑与 WorkflowService.IsApproverForNode 对应，保持同步更新。
-    // SignStates key 使用用户姓名（与 BPMN 设计器的 assignee 配置格式一致）；
-    // 数据库层面应保证用户姓名唯一，否则同名用户会共用签署状态。
-    private async Task<bool> IsApproverForNode(BpmnNode node, User user, MaterialFlow flow)
+    // SignStates 在服务层统一规范化为稳定用户 ID，避免姓名/工号变更或同名导致串签。
+    private async Task<bool> IsApproverForNode(
+        BpmnNode node,
+        User user,
+        MaterialFlow flow,
+        Dictionary<string, List<int>>? approverCache = null)
     {
         // 加签场景：SignStates 记录本节点各审批人是否已签，未签=仍需审批
         if (flow.BpmnTokens.TryGetValue(node.Id, out var token) && token.SignStates is { Count: > 0 })
         {
-            var identity = TryApprovalIdentity(token, user);
-            return identity != null && !token.SignStates[identity];
+            if (HasNormalizedSignStates(token))
+            {
+                return token.SignStates.TryGetValue(user.Id.ToString(), out var signed) && !signed;
+            }
+
+            var resolvedIds = await ResolveApproverUserIdsAsync(node, flow);
+            return resolvedIds.Contains(user.Id);
+        }
+
+        if (approverCache is not null)
+        {
+            var key = ProgressApproverCacheKey(flow.WorkflowId!.Value, node, flow);
+            if (!approverCache.TryGetValue(key, out var resolvedIds))
+            {
+                resolvedIds = await ResolveApproverUserIdsAsync(node, flow);
+                approverCache[key] = resolvedIds;
+            }
+            return resolvedIds.Contains(user.Id);
         }
 
         var assignee = node.Properties.GetValueOrDefault("assignee");
@@ -601,11 +735,50 @@ public class MaterialFlowService : IMaterialFlowService
         if (!flow.TransfereeId.HasValue)
             throw new BizException(4001, "流转单缺少接收人");
         material.CustodianId = flow.TransfereeId.Value;
-        var transferee = await _db.Users.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == flow.TransfereeId.Value && x.IsActive)
-            ?? throw new BizException(4041, "接收人不存在或已停用");
+        var transferee = await LockActiveUserAsync(flow.TransfereeId.Value);
         material.DepartmentId = transferee.DepartmentId;
         material.RowVersion++;
+    }
+
+    private async Task<TestMaterial> LockTransferableMaterialAsync(int materialId)
+    {
+        var tracked = _db.ChangeTracker.Entries<TestMaterial>()
+            .FirstOrDefault(entry => entry.Entity.Id == materialId);
+        if (tracked is not null) tracked.State = EntityState.Detached;
+
+        var material = await _db.TestMaterials
+            .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {materialId} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
+            ?? throw new BizException(4048, "测试料件不存在");
+        if (material.IsDeleted) throw new BizException(4048, "测试料件不存在");
+        if (material.Status != MaterialStatus.InUse)
+            throw new BizException(4098, "已退回厂商的料件不能转移");
+        return material;
+    }
+
+    private async Task<User> EnsureTransferStillAllowedAsync(TestMaterial material, User applicant, int transfereeId)
+    {
+        await EnsureMaterialInScopeAsync(material, applicant);
+        var isSupervisor = applicant.UserRoles.Any(x => x.Role is { Code: "supervisor", IsActive: true });
+        var isProjectOwner = await _db.TestProjects.AsNoTracking()
+            .AnyAsync(x => x.Id == material.ProjectId && !x.IsDeleted && x.OwnerId == applicant.Id);
+        if (!isSupervisor && material.CustodianId != applicant.Id && !isProjectOwner)
+            throw new BizException(4047, "只能流转本人保管或本人负责项目的料件");
+        if (material.CustodianId == transfereeId)
+            throw new BizException(4001, "接收人不能是当前保管人");
+        return await LockActiveUserAsync(transfereeId);
+    }
+
+    private async Task<User> LockActiveUserAsync(int userId)
+    {
+        var user = await _db.Users
+            .FromSqlInterpolated($"SELECT * FROM users WHERE Id = {userId} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync();
+        if (user is null || !user.IsActive)
+            throw new BizException(4041, "受让人不存在或已停用");
+        return user;
     }
 
     private async Task NormalizeSignStatesAsync(MaterialFlow flow, BpmnProcess process)
@@ -616,11 +789,42 @@ public class MaterialFlowService : IMaterialFlowService
             if (node?.Type != BpmnNodeType.UserTask ||
                 !node.Properties.TryGetValue("approvalMode", out var mode) || mode != "all" ||
                 !flow.BpmnTokens.TryGetValue(nodeId, out var token)) continue;
+            if (HasNormalizedSignStates(token)) continue;
             var approverIds = await ResolveApproverUserIdsAsync(node, flow);
             if (approverIds.Count == 0)
                 throw new BizException(4051, $"会签节点 {node.Name} 未解析到有效审批人");
             token.SignStates = approverIds.Distinct().ToDictionary(x => x.ToString(), _ => false);
         }
+    }
+
+    private static bool HasNormalizedSignStates(BpmnToken token)
+        => token.SignStates is { Count: > 0 } && token.SignStates.Keys.All(key =>
+            int.TryParse(key, out var userId) && userId > 0);
+
+    private async Task ReconcileInactiveSignersAsync(MaterialFlow flow, string nodeId)
+    {
+        if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) ||
+            token.SignStates is not { Count: > 0 } || !HasNormalizedSignStates(token)) return;
+
+        var pendingIds = token.SignStates
+            .Where(item => !item.Value)
+            .Select(item => int.Parse(item.Key))
+            .ToArray();
+        var activeIds = await _db.Users.AsNoTracking()
+            .Where(user => user.IsActive && pendingIds.Contains(user.Id))
+            .Select(user => user.Id.ToString())
+            .ToListAsync();
+        var activeSet = activeIds.ToHashSet(StringComparer.Ordinal);
+        foreach (var inactiveKey in token.SignStates
+                     .Where(item => !item.Value && !activeSet.Contains(item.Key))
+                     .Select(item => item.Key)
+                     .ToArray())
+        {
+            token.SignStates.Remove(inactiveKey);
+            token.AddedSigners?.Remove(inactiveKey);
+        }
+
+        if (!token.SignStates.Values.Any(signed => !signed)) token.SignStates = null;
     }
 
     private async Task EnsureCurrentApproversResolvableAsync(MaterialFlow flow, BpmnProcess process)
@@ -731,13 +935,22 @@ public class MaterialFlowService : IMaterialFlowService
         _db.MaterialFlowRecords.Add(new MaterialFlowRecord
         {
             FlowId = flowId,
-            Action = action,
-            Operator = actor,
-            Comment = remark,
+            Action = Truncate(action, 50)!,
+            Operator = Truncate(actor, 100),
+            Comment = Truncate(remark, 500),
             OperatedAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
     }
+
+    private static void EnsureMaxLength(string? value, int maxLength, string field)
+    {
+        if (value?.Length > maxLength)
+            throw new BizException(4001, $"{field}不能超过 {maxLength} 个字符");
+    }
+
+    private static string? Truncate(string? value, int maxLength)
+        => value is null || value.Length <= maxLength ? value : value[..maxLength];
 
     private async Task NotifyCurrentApproversAsync(MaterialFlow flow, BpmnProcess process, string bodyText)
     {
@@ -850,27 +1063,126 @@ public class MaterialFlowService : IMaterialFlowService
             throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{resolution.Diagnostic}");
     }
 
+    private async Task<ProgressRenderContext> BuildProgressRenderContextAsync(IReadOnlyCollection<MaterialFlow> flows)
+    {
+        var workflowIds = flows.Where(flow => flow.WorkflowId.HasValue)
+            .Select(flow => flow.WorkflowId!.Value).Distinct().ToArray();
+        var workflows = await _db.Workflows.AsNoTracking()
+            .Where(workflow => workflowIds.Contains(workflow.Id))
+            .Select(workflow => new { workflow.Id, workflow.BpmnXml })
+            .ToListAsync();
+        var context = new ProgressRenderContext();
+        foreach (var workflow in workflows)
+        {
+            if (!string.IsNullOrWhiteSpace(workflow.BpmnXml))
+                context.Processes[workflow.Id] = BpmnParser.Parse(workflow.BpmnXml);
+        }
+
+        var userIds = new HashSet<int>();
+        foreach (var flow in flows)
+        {
+            if (!flow.WorkflowId.HasValue ||
+                !context.Processes.TryGetValue(flow.WorkflowId.Value, out var process)) continue;
+            foreach (var token in flow.BpmnTokens.Values)
+            {
+                var node = process.FindNode(token.NodeId);
+                if (node?.Type != BpmnNodeType.UserTask) continue;
+                foreach (var execution in token.History)
+                    userIds.UnionWith(GetCompletedStepUserIds(ToHistoricalToken(token, execution)));
+                if (token.Status == BpmnTokenStatus.Completed)
+                    userIds.UnionWith(GetCompletedStepUserIds(token));
+            }
+
+            var pendingNodes = flow.CurrentNodeIds
+                .Select(process.FindNode)
+                .Where(node => node?.Type == BpmnNodeType.UserTask)
+                .Cast<BpmnNode>()
+                .Concat(flow.Status == FlowStatus.Pending
+                    ? FindNextUserTasks(process, flow.CurrentNodeIds).Select(candidate => candidate.Node)
+                    : Enumerable.Empty<BpmnNode>())
+                .GroupBy(node => node.Id)
+                .Select(group => group.First());
+            foreach (var node in pendingNodes)
+            {
+                var key = ProgressApproverCacheKey(flow.WorkflowId!.Value, node, flow);
+                if (!context.ResolvedApprovers.TryGetValue(key, out var resolved))
+                {
+                    resolved = await ResolveApproverUserIdsAsync(node, flow);
+                    context.ResolvedApprovers[key] = resolved;
+                }
+                userIds.UnionWith(resolved);
+            }
+        }
+
+        context.Users = await _db.Users.AsNoTracking()
+            .Where(user => userIds.Contains(user.Id))
+            .Select(user => new ProgressUser(user.Id, user.EmployeeNo, user.Name))
+            .ToDictionaryAsync(user => user.Id);
+        return context;
+    }
+
+    private static List<int> GetCompletedStepUserIds(BpmnToken? token)
+    {
+        if (token?.SignStates is { Count: > 0 })
+            return token.SignStates.Keys.Select(value => int.TryParse(value, out var id) ? id : 0)
+                .Where(id => id > 0).Distinct().ToList();
+        return ParseCompletedApproverIds(token);
+    }
+
+    private sealed class ProgressRenderContext
+    {
+        public Dictionary<int, BpmnProcess> Processes { get; } = new();
+        public Dictionary<string, List<int>> ResolvedApprovers { get; } = new(StringComparer.Ordinal);
+        public Dictionary<int, ProgressUser> Users { get; set; } = new();
+    }
+
+    private static string ProgressApproverCacheKey(int workflowId, BpmnNode node, MaterialFlow flow)
+    {
+        var assignee = node.Properties.GetValueOrDefault("assignee");
+        var isDynamic = !string.IsNullOrWhiteSpace(assignee) &&
+                        (OrganizationApprovalResolver.IsOrganizationAssignee(assignee)
+                         || assignee is "deptManager" or "supervisor");
+        return isDynamic
+            ? $"{workflowId}|{node.Id}|{flow.ApplicantId}|{flow.TransfereeId}"
+            : $"{workflowId}|{node.Id}|static";
+    }
+
+    private sealed record ProgressUser(int Id, string EmployeeNo, string Name);
+
     private async Task<MaterialFlowDto> ToDtoAsync(
         MaterialFlow flow,
         IEnumerable<string>? actionableNodeIds = null,
-        int? currentUserId = null)
+        int? currentUserId = null,
+        ProgressRenderContext? renderContext = null)
     {
         var dto = ToDto(flow, actionableNodeIds);
         dto.CanWithdraw = currentUserId.HasValue &&
                           flow.ApplicantId == currentUserId.Value &&
                           flow.Status == FlowStatus.Pending;
-        var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
-        if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return dto;
-        var process = BpmnParser.Parse(workflow.BpmnXml);
+        BpmnProcess? process;
+        if (renderContext is null)
+        {
+            var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
+            if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return dto;
+            process = BpmnParser.Parse(workflow.BpmnXml);
+        }
+        else
+        {
+            process = flow.WorkflowId.HasValue
+                ? renderContext.Processes.GetValueOrDefault(flow.WorkflowId.Value)
+                : null;
+            if (process is null) return dto;
+        }
 
         var completed = new List<WorkflowProgressStepDto>();
-        foreach (var token in flow.BpmnTokens.Values
-                     .Where(x => x.Status == BpmnTokenStatus.Completed)
-                     .OrderBy(x => x.CompletedAt))
+        foreach (var token in flow.BpmnTokens.Values.OrderBy(x => x.CompletedAt ?? x.StartedAt))
         {
             var node = process.FindNode(token.NodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
-            completed.Add(await BuildProgressStepAsync(node, flow, token, "completed", false));
+            foreach (var execution in token.History.OrderBy(x => x.CompletedAt))
+                completed.Add(await BuildProgressStepAsync(node, flow, ToHistoricalToken(token, execution), "completed", false, renderContext));
+            if (token.Status == BpmnTokenStatus.Completed)
+                completed.Add(await BuildProgressStepAsync(node, flow, token, "completed", false, renderContext));
         }
 
         var current = new List<WorkflowProgressStepDto>();
@@ -879,13 +1191,13 @@ public class MaterialFlowService : IMaterialFlowService
             var node = process.FindNode(nodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
             flow.BpmnTokens.TryGetValue(nodeId, out var token);
-            current.Add(await BuildProgressStepAsync(node, flow, token, "current", false));
+            current.Add(await BuildProgressStepAsync(node, flow, token, "current", false, renderContext));
         }
 
         var next = new List<WorkflowProgressStepDto>();
         if (flow.Status == "pending")
             foreach (var candidate in FindNextUserTasks(process, flow.CurrentNodeIds))
-                next.Add(await BuildProgressStepAsync(candidate.Node, flow, null, "next", candidate.IsPossible));
+                next.Add(await BuildProgressStepAsync(candidate.Node, flow, null, "next", candidate.IsPossible, renderContext));
 
         dto.ProgressSteps = completed.Concat(current).Concat(next).ToList();
         dto.CurrentSteps = current;
@@ -893,25 +1205,52 @@ public class MaterialFlowService : IMaterialFlowService
         return dto;
     }
 
+    private static BpmnToken ToHistoricalToken(BpmnToken current, BpmnTokenExecution execution) => new()
+    {
+        NodeId = current.NodeId,
+        NodeName = current.NodeName,
+        Status = BpmnTokenStatus.Completed,
+        StartedAt = execution.StartedAt,
+        Approver = execution.Approver,
+        Opinion = execution.Opinion,
+        CompletedAt = execution.CompletedAt,
+        SignStates = execution.SignStates
+    };
+
     private async Task<WorkflowProgressStepDto> BuildProgressStepAsync(
         BpmnNode node,
         MaterialFlow flow,
         BpmnToken? token,
         string state,
-        bool isPossible)
+        bool isPossible,
+        ProgressRenderContext? renderContext = null)
     {
         var userIds = state == "completed"
             ? ParseCompletedApproverIds(token)
-            : await ResolveApproverUserIdsAsync(node, flow);
+            : renderContext?.ResolvedApprovers.GetValueOrDefault(
+                ProgressApproverCacheKey(flow.WorkflowId!.Value, node, flow))
+              ?? await ResolveApproverUserIdsAsync(node, flow);
         if (token?.SignStates is { Count: > 0 })
             userIds = token.SignStates.Keys.Select(x => int.TryParse(x, out var id) ? id : 0)
                 .Where(x => x > 0).Distinct().ToList();
 
-        var users = await _db.Users.AsNoTracking()
-            .Where(x => userIds.Contains(x.Id))
-            .OrderBy(x => x.Name)
-            .Select(x => new { x.Id, x.EmployeeNo, x.Name })
-            .ToListAsync();
+        List<ProgressUser> users;
+        if (renderContext is null)
+        {
+            users = await _db.Users.AsNoTracking()
+                .Where(x => userIds.Contains(x.Id))
+                .OrderBy(x => x.Name)
+                .Select(x => new ProgressUser(x.Id, x.EmployeeNo, x.Name))
+                .ToListAsync();
+        }
+        else
+        {
+            users = userIds.Select(id => renderContext.Users.GetValueOrDefault(id))
+                .Where(user => user is not null)
+                .Cast<ProgressUser>()
+                .OrderBy(user => user.Name)
+                .ToList();
+        }
         var completedBy = token?.Approver;
         if (int.TryParse(completedBy, out var completedById))
             completedBy = users.FirstOrDefault(x => x.Id == completedById)?.Name ?? completedBy;

@@ -15,5 +15,6 @@ public class FlowRecordConfiguration : IEntityTypeConfiguration<FlowRecord>
         b.Property(x => x.Comment).HasMaxLength(500);
         b.HasIndex(x => x.FlowId);
         b.HasIndex(x => x.OperatedAt);
+        b.HasOne<ApprovalFlow>().WithMany().HasForeignKey(x => x.FlowId).OnDelete(DeleteBehavior.Restrict);
     }
 }

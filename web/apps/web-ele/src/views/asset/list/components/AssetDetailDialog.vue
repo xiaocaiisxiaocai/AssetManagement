@@ -58,7 +58,7 @@ watch(
     if (!opened || !images?.length) return;
     imagesLoading.value = true;
     const results = await Promise.allSettled(
-      images.map(loadAssetImageObjectUrl),
+      images.map((image) => loadAssetImageObjectUrl(image)),
     );
     const urls = results.flatMap((result) =>
       result.status === 'fulfilled' ? [result.value] : [],
@@ -92,6 +92,7 @@ const statusOptions: Array<{
 
 const bizTypeText: Record<string, string> = {
   borrow: '借用',
+  extension: '延期',
   return: '归还',
   transfer: '转让',
 };
@@ -160,9 +161,10 @@ function summaryText(summary: null | string | undefined) {
   if (!summary) return '—';
   return summary
     .replace(/^(DELETE|GET|PATCH|POST|PUT)\s+/i, '')
-    .replace(/\bborrow\b/gi, '借用')
-    .replace(/\btransfer\b/gi, '转让')
-    .replace(/\breturn\b/gi, '归还');
+    .replaceAll(/\bborrow\b/gi, '借用')
+    .replaceAll(/\bextension\b/gi, '延期')
+    .replaceAll(/\btransfer\b/gi, '转让')
+    .replaceAll(/\breturn\b/gi, '归还');
 }
 </script>
 
@@ -173,7 +175,7 @@ function summaryText(summary: null | string | undefined) {
     title="资产详情"
     width="min(900px, 92vw)"
   >
-    <div v-loading="loading" class="asset-detail">
+    <div class="asset-detail" v-loading="loading">
       <template v-if="detail">
         <header class="ad-header">
           <div class="ad-header-main">
@@ -254,9 +256,9 @@ function summaryText(summary: null | string | undefined) {
               </ElDescriptions>
 
               <section
-                v-if="detail.asset.images && detail.asset.images.length"
-                v-loading="imagesLoading"
+                v-if="detail.asset.images && detail.asset.images.length > 0"
                 class="ad-section"
+                v-loading="imagesLoading"
               >
                 <div class="ad-section-title">资产照片</div>
                 <ElAlert
@@ -293,7 +295,7 @@ function summaryText(summary: null | string | undefined) {
           <ElTabPane :label="`流转记录 ${detail.flows.length}`" name="flows">
             <div class="ad-tab-content">
               <section class="ad-section ad-timeline-section">
-                <ElTimeline v-if="detail.flows.length">
+                <ElTimeline v-if="detail.flows.length > 0">
                   <ElTimelineItem
                     v-for="flow in detail.flows"
                     :key="flow.id"
@@ -310,13 +312,23 @@ function summaryText(summary: null | string | undefined) {
                       <span class="font-medium">{{ flowTitle(flow) }}</span>
                       <span class="text-gray-500"> · {{ flow.applicant }}</span>
                       <span v-if="flow.transferee" class="text-gray-500">
-                        → {{ flow.transferee }}</span
-                      >
+                        → {{ flow.transferee }}
+                      </span>
                     </div>
                     <div v-if="flow.reason" class="text-xs text-gray-400">
                       事由：{{ flow.reason }}
                     </div>
-                    <div v-if="flow.returnDate" class="text-xs text-gray-400">
+                    <div
+                      v-if="flow.bizType === 'extension'"
+                      class="text-xs text-gray-400"
+                    >
+                      期限：{{ formatDate(flow.originalReturnDate) }} →
+                      {{ formatDate(flow.returnDate) }}
+                    </div>
+                    <div
+                      v-else-if="flow.returnDate"
+                      class="text-xs text-gray-400"
+                    >
                       应归还：{{ formatDate(flow.returnDate) }}
                     </div>
                   </ElTimelineItem>
@@ -333,7 +345,7 @@ function summaryText(summary: null | string | undefined) {
             <div class="ad-tab-content">
               <section class="ad-section">
                 <ElTable
-                  v-if="detail.recentLogs.length"
+                  v-if="detail.recentLogs.length > 0"
                   :data="detail.recentLogs"
                   border
                   max-height="480"

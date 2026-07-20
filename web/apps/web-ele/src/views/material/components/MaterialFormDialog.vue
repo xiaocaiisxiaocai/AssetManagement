@@ -7,9 +7,9 @@ import type { UserDto, UserOptionDto } from '#/api/user';
 
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 
-import { useDebounceFn } from '@vueuse/core';
 import { useAccess } from '@vben/access';
 
+import { useDebounceFn } from '@vueuse/core';
 import {
   ElButton,
   ElDatePicker,
@@ -26,7 +26,11 @@ import {
 
 import { loadAssetImageObjectUrl, uploadAssetImageApi } from '#/api/asset';
 import { createMaterialApi, updateMaterialApi } from '#/api/material';
+import { createAsyncSessionTracker } from '#/utils/async-session-tracker';
+import { createObjectUrlLifecycle } from '#/utils/object-url-lifecycle';
 import { getRuntimeSettings } from '#/utils/runtime-settings';
+import { buildFileActionAccess } from '#/views/permissions/action-access';
+
 import {
   getDefaultCustodianId,
   validateMaterialForm,
@@ -41,20 +45,25 @@ const props = defineProps<{
   material: MaterialItem | null;
   projectLocked?: boolean;
   projects: TestProjectItem[];
+  searchUsers?: (keyword: string) => Promise<void>;
+  userOptionsLoading?: boolean;
   users: (UserDto | UserOptionDto)[];
 }>();
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 const { hasAccessByCodes } = useAccess();
-const canUploadImages = computed(() => hasAccessByCodes(['file:upload']));
+const canUploadImages = computed(
+  () => buildFileActionAccess(hasAccessByCodes).canUploadAndPreview,
+);
 
 const saving = ref(false);
 const attachmentMaxMb = ref(5);
-const pendingUploads = new Set<Promise<unknown>>();
+const pendingUploads = createAsyncSessionTracker();
 const uploading = ref(false);
-type AuthenticatedUploadFile = UploadUserFile & { rawUrl?: string };
+type AuthenticatedUploadFile = { rawUrl?: string } & UploadUserFile;
 const imageFileList = ref<AuthenticatedUploadFile[]>([]);
 let imageLoadGeneration = 0;
+const uploadedImageUrls = createObjectUrlLifecycle();
 const form = reactive({
   brand: '',
   custodianId: undefined as number | undefined,
@@ -91,7 +100,10 @@ function revokeImageObjectUrls() {
   });
 }
 
-onBeforeUnmount(revokeImageObjectUrls);
+onBeforeUnmount(() => {
+  uploadedImageUrls.close();
+  revokeImageObjectUrls();
+});
 
 function onImageRemove(file: AuthenticatedUploadFile) {
   if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
@@ -103,10 +115,15 @@ function onImageRemove(file: AuthenticatedUploadFile) {
 watch(visible, async (opened) => {
   const generation = ++imageLoadGeneration;
   if (!opened) {
+    pendingUploads.close();
+    uploading.value = false;
+    uploadedImageUrls.close();
     revokeImageObjectUrls();
     imageFileList.value = [];
     return;
   }
+  pendingUploads.start();
+  uploadedImageUrls.open();
   void getRuntimeSettings()
     .then((settings) => {
       attachmentMaxMb.value = settings.attachmentMaxMb;
@@ -214,21 +231,29 @@ function beforeImageUpload(file: File) {
 }
 
 function customImageUpload(options: UploadRequestOptions) {
-  const request = uploadAssetImageApi(options.file).then(async (uploaded) => ({
-    ...uploaded,
-    rawUrl: uploaded.url,
-    url: await loadAssetImageObjectUrl(uploaded.url),
-  }));
-  pendingUploads.add(request);
+  const sessionToken = pendingUploads.token();
+  const uploadGeneration = uploadedImageUrls.token();
+  const request = uploadAssetImageApi(options.file).then(async (uploaded) => {
+    const url = await loadAssetImageObjectUrl(uploaded.url);
+    if (!uploadedImageUrls.adopt(url, uploadGeneration)) {
+      throw new DOMException('上传会话已关闭', 'AbortError');
+    }
+    return {
+      ...uploaded,
+      rawUrl: uploaded.url,
+      url,
+    };
+  });
+  pendingUploads.track(request, sessionToken);
   uploading.value = true;
   void request.then(
     () => {
-      pendingUploads.delete(request);
-      uploading.value = pendingUploads.size > 0;
+      if (pendingUploads.isCurrent(sessionToken))
+        uploading.value = pendingUploads.hasPending(sessionToken);
     },
     () => {
-      pendingUploads.delete(request);
-      uploading.value = pendingUploads.size > 0;
+      if (pendingUploads.isCurrent(sessionToken))
+        uploading.value = pendingUploads.hasPending(sessionToken);
     },
   );
   return request;
@@ -245,12 +270,15 @@ async function save() {
     return;
   }
   saving.value = true;
+  const sessionToken = pendingUploads.token();
   try {
-    await Promise.all([...pendingUploads]);
+    await Promise.all(pendingUploads.pending(sessionToken));
+    if (!pendingUploads.isCurrent(sessionToken) || !visible.value) return;
     await nextTick();
     await (props.material
       ? updateMaterialApi(props.material.id, buildPayload())
       : createMaterialApi(buildPayload()));
+    if (!pendingUploads.isCurrent(sessionToken) || !visible.value) return;
     ElMessage.success('保存成功');
     visible.value = false;
     emit('saved');
@@ -267,8 +295,8 @@ const debouncedSave = useDebounceFn(save, 300);
 <template>
   <ElDialog
     v-model="visible"
-    align-center
     :title="isEdit ? '编辑测试料件' : '新增测试料件'"
+    align-center
     width="600px"
   >
     <ElForm label-width="96px">
@@ -306,8 +334,8 @@ const debouncedSave = useDebounceFn(save, 300);
       <ElFormItem label="归属部门">
         <ElSelect
           v-model="form.departmentId"
-          clearable
           :disabled="isEdit"
+          clearable
           filterable
           placeholder="选择部门"
           style="width: 100%"
@@ -339,10 +367,13 @@ const debouncedSave = useDebounceFn(save, 300);
       <ElFormItem label="保管人">
         <ElSelect
           v-model="form.custodianId"
-          clearable
           :disabled="isEdit"
+          :loading="userOptionsLoading"
+          :remote-method="searchUsers"
+          clearable
           filterable
           placeholder="选择保管人"
+          remote
           style="width: 100%"
         >
           <ElOption

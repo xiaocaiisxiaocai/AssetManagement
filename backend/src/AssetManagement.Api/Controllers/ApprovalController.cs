@@ -27,15 +27,30 @@ public class ApprovalController : ControllerBase
     public async Task<ApiResult<List<ApprovalFlowDto>>> Pending()
         => ApiResult<List<ApprovalFlowDto>>.Ok(await _service.PendingAsync(CurrentUserId()));
 
+    [HttpGet("pending-page")]
+    [HasPermission("approval:handle")]
+    public async Task<ApiResult<PagedResult<ApprovalFlowDto>>> PendingPage([FromQuery] ApprovalFlowPageQuery query)
+        => ApiResult<PagedResult<ApprovalFlowDto>>.Ok(await _service.PendingPageAsync(CurrentUserId(), query));
+
     [HttpGet("mine")]
     [HasPermission("approval:view")]
     public async Task<ApiResult<List<ApprovalFlowDto>>> Mine()
         => ApiResult<List<ApprovalFlowDto>>.Ok(await _service.MineAsync(CurrentUserId()));
 
+    [HttpGet("mine-page")]
+    [HasPermission("approval:view")]
+    public async Task<ApiResult<PagedResult<ApprovalFlowDto>>> MinePage([FromQuery] ApprovalFlowPageQuery query)
+        => ApiResult<PagedResult<ApprovalFlowDto>>.Ok(await _service.MinePageAsync(CurrentUserId(), query));
+
     [HttpGet("pending-return")]
     [HasPermission("approval:confirm-return")]
     public async Task<ApiResult<List<ApprovalFlowDto>>> PendingReturn()
         => ApiResult<List<ApprovalFlowDto>>.Ok(await _service.PendingReturnsAsync(CurrentUserId()));
+
+    [HttpGet("pending-return-page")]
+    [HasPermission("approval:confirm-return")]
+    public async Task<ApiResult<PagedResult<ApprovalFlowDto>>> PendingReturnPage([FromQuery] ApprovalFlowPageQuery query)
+        => ApiResult<PagedResult<ApprovalFlowDto>>.Ok(await _service.PendingReturnsPageAsync(CurrentUserId(), query));
 
     [HttpGet("{id:int}")]
     [HasPermission("approval:view")]

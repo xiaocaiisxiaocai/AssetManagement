@@ -10,6 +10,8 @@ namespace AssetManagement.Infrastructure.Auth;
 
 public class AuthService : IAuthService
 {
+    private static readonly object LoginFailureCounterLock = new();
+    private static readonly string DummyPasswordHash = PasswordHashing.Hash("asset-management-dummy-password");
     private readonly AppDbContext _db;
     private readonly IJwtTokenService _jwt;
     private readonly IMemoryCache _cache;
@@ -42,36 +44,62 @@ public class AuthService : IAuthService
             throw new BizException(4292, $"IP 地址已被锁定 {AppConstants.LoginLockoutMinutes} 分钟，请稍后再试");
         }
 
+        // 密码校验前只读取定长凭据字段，避免已存在账号因加载角色/权限集合
+        // 产生明显更多的数据库读取和实体物化，从而泄漏账号是否存在。
+        var credential = await _db.Users
+            .AsNoTracking()
+            .Where(x => x.EmployeeNo == employeeNo)
+            .Select(x => new { x.Id, x.PasswordHash, x.IsActive })
+            .SingleOrDefaultAsync();
+
+        // 不存在、禁用和密码错误走同一 BCrypt 与响应路径，避免通过消息或耗时枚举账号。
+        var passwordMatches = PasswordHashing.Verify(request.Password, credential?.PasswordHash ?? DummyPasswordHash);
+        if (credential is null || !passwordMatches || !credential.IsActive)
+        {
+            RecordLoginFailure(accountKey, ipKey);
+            throw new BizException(4011, "工号或密码错误");
+        }
+
+        // 历史标准 bcrypt 哈希在首次成功登录时无感升级为带标记的 SHA-384 预哈希格式。
+        // 条件更新避免覆盖并发发生的重置密码或改密结果。
+        var verifiedPasswordHash = credential.PasswordHash;
+        if (PasswordHashing.NeedsUpgrade(credential.PasswordHash))
+        {
+            var upgradedHash = PasswordHashing.Hash(request.Password);
+            var upgraded = await _db.Users
+                .Where(x => x.Id == credential.Id && x.PasswordHash == credential.PasswordHash && x.IsActive)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.PasswordHash, upgradedHash));
+            if (upgraded != 1)
+            {
+                RecordLoginFailure(accountKey, ipKey);
+                throw new BizException(4011, "工号或密码错误");
+            }
+            verifiedPasswordHash = upgradedHash;
+        }
+
+        // 只有凭据通过后才加载授权集合。再次限定启用状态和刚验证的哈希，关闭两次查询之间
+        // 账号被停用或密码被重置后，旧凭据仍签发一次令牌的窗口。
         var user = await _db.Users
             .AsSplitQuery()
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .ThenInclude(x => x.RolePermissions)
             .ThenInclude(x => x.Permission)
-            .FirstOrDefaultAsync(x => x.EmployeeNo == employeeNo);
-
+            .SingleOrDefaultAsync(x => x.Id == credential.Id
+                && x.IsActive
+                && x.PasswordHash == verifiedPasswordHash);
         if (user is null)
         {
-            // 登录失败，记录失败次数
-            RecordLoginFailure(accountKey, ipKey);
-            throw new BizException(4011, "工号或密码错误");
-        }
-
-        if (!user.IsActive)
-        {
-            throw new BizException(4011, "账号已禁用，请联系系统管理员");
-        }
-
-        if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
-        {
-            // 登录失败，记录失败次数
             RecordLoginFailure(accountKey, ipKey);
             throw new BizException(4011, "工号或密码错误");
         }
 
         // 登录成功，清除失败计数
-        _cache.Remove(accountKey);
-        _cache.Remove(ipKey);
+        lock (LoginFailureCounterLock)
+        {
+            _cache.Remove(accountKey);
+            _cache.Remove(ipKey);
+        }
 
         var activeRoles = user.UserRoles
             .Select(x => x.Role)
@@ -109,8 +137,7 @@ public class AuthService : IAuthService
                 permissionCodes,
                 roleCodes,
                 user.DepartmentId,
-                user.TokenVersion),
-            MustChangePassword = user.MustChangePassword
+                user.TokenVersion)
         };
     }
 
@@ -121,21 +148,21 @@ public class AuthService : IAuthService
             AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(AppConstants.LoginLockoutMinutes)
         };
 
-        // 增加账号失败次数
-        var accountCount = _cache.GetOrCreate(accountKey, entry =>
-        {
-            entry.SetOptions(cacheOptions);
-            return 0;
-        });
-        _cache.Set(accountKey, accountCount + 1, cacheOptions);
+        IncrementFailureCount(_cache, accountKey, cacheOptions);
+        IncrementFailureCount(_cache, ipKey, cacheOptions);
+    }
 
-        // 增加 IP 失败次数
-        var ipCount = _cache.GetOrCreate(ipKey, entry =>
+    internal static int IncrementFailureCount(
+        IMemoryCache cache,
+        string key,
+        MemoryCacheEntryOptions cacheOptions)
+    {
+        lock (LoginFailureCounterLock)
         {
-            entry.SetOptions(cacheOptions);
-            return 0;
-        });
-        _cache.Set(ipKey, ipCount + 1, cacheOptions);
+            var next = cache.TryGetValue(key, out int current) ? current + 1 : 1;
+            cache.Set(key, next, cacheOptions);
+            return next;
+        }
     }
 
     private string GetClientIp()
@@ -163,8 +190,7 @@ public class AuthService : IAuthService
                 .Select(x => x.Permission.Code)
                 .Distinct()
                 .OrderBy(x => x)
-                .ToArray(),
-            MustChangePassword = user.MustChangePassword
+                .ToArray()
         };
     }
 
@@ -212,7 +238,7 @@ public class AuthService : IAuthService
         var user = await _db.Users.AsTracking().FirstOrDefaultAsync(x => x.Id == userId && x.IsActive)
             ?? throw new BizException(4041, "用户不存在或已停用");
 
-        if (!BCrypt.Net.BCrypt.Verify(request.OldPassword, user.PasswordHash))
+        if (!PasswordHashing.Verify(request.OldPassword, user.PasswordHash))
         {
             throw new BizException(1002, "旧密码不正确");
         }
@@ -221,13 +247,12 @@ public class AuthService : IAuthService
             throw new BizException(1003, "新密码不能使用系统默认密码");
         }
         PasswordPolicy.EnsureStrong(request.NewPassword);
-        if (BCrypt.Net.BCrypt.Verify(request.NewPassword, user.PasswordHash))
+        if (PasswordHashing.Verify(request.NewPassword, user.PasswordHash))
         {
             throw new BizException(1005, "新密码不能与旧密码相同");
         }
 
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-        user.MustChangePassword = false;
+        user.PasswordHash = PasswordHashing.Hash(request.NewPassword);
         user.TokenVersion++;
         await _db.SaveChangesAsync();
     }

@@ -3,17 +3,8 @@ import type { OverdueReportRow } from '#/api/report';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAccess } from '@vben/access';
 
-import {
-  exportOverdueReportApi,
-  getOverdueReportApi,
-  remindOverdueApi,
-  remindOverdueBatchApi,
-} from '#/api/report';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
-import { buildReportActionAccess } from '#/views/permissions/action-access';
-import { downloadBlob } from '#/utils/download';
+import { useAccess } from '@vben/access';
 
 import {
   ElButton,
@@ -26,13 +17,29 @@ import {
   ElTag,
 } from 'element-plus';
 
+import {
+  exportOverdueReportApi,
+  getOverdueReportApi,
+  remindOverdueApi,
+  remindOverdueBatchApi,
+} from '#/api/report';
+import { downloadBlob } from '#/utils/download';
+import { runHandled } from '#/utils/handled-promise';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
+import { buildReportActionAccess } from '#/views/permissions/action-access';
+
 defineOptions({ name: 'ReportOverdue' });
 
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
-const reportActionAccess = computed(() => buildReportActionAccess(hasAccessByCodes));
+const reportActionAccess = computed(() =>
+  buildReportActionAccess(hasAccessByCodes),
+);
 const loading = ref(false);
-const remindingId = ref<number | null>(null);
+const remindingId = ref<null | number>(null);
 const rows = ref<OverdueReportRow[]>([]);
 const selectedRows = ref<OverdueReportRow[]>([]);
 const pageSizeOptions = ref(createPageSizeOptions(20));
@@ -40,7 +47,9 @@ const query = reactive({
   page: 1,
   pageSize: 20,
 });
-const seriousCount = computed(() => rows.value.filter((row) => row.isSerious).length);
+const seriousCount = computed(
+  () => rows.value.filter((row) => row.isSerious).length,
+);
 const pagedRows = computed(() => {
   const start = (query.page - 1) * query.pageSize;
   return rows.value.slice(start, start + query.pageSize);
@@ -99,10 +108,12 @@ function onPageSizeChange() {
 
 function goCategoryAssets(categoryCode: string) {
   if (!categoryCode) return;
-  router.push({
-    path: '/asset/list',
-    query: { categoryCode },
-  });
+  runHandled(
+    router.push({
+      path: '/asset/list',
+      query: { categoryCode },
+    }),
+  );
 }
 
 onMounted(async () => {
@@ -120,8 +131,21 @@ onMounted(async () => {
           <h2 class="page-title">逾期资产报表</h2>
         </div>
         <div class="page-actions">
-          <ElButton v-if="reportActionAccess.canExport" type="primary" @click="exportReport">导出 Excel</ElButton>
-          <ElButton v-if="reportActionAccess.canRemind" :loading="remindingId === -1" type="warning" @click="remindBatch">批量催办</ElButton>
+          <ElButton
+            v-if="reportActionAccess.canExport"
+            type="primary"
+            @click="exportReport"
+          >
+            导出 Excel
+          </ElButton>
+          <ElButton
+            v-if="reportActionAccess.canRemind"
+            :loading="remindingId === -1"
+            type="warning"
+            @click="remindBatch"
+          >
+            批量催办
+          </ElButton>
         </div>
       </div>
 
@@ -142,21 +166,29 @@ onMounted(async () => {
 
       <div class="table-panel">
         <ElTable
-          v-loading="loading"
           :data="pagedRows"
           border
           height="100%"
           row-key="assetId"
+          v-loading="loading"
           @selection-change="onSelectionChange"
         >
-          <ElTableColumn v-if="reportActionAccess.canRemind" type="selection" width="48" />
+          <ElTableColumn
+            v-if="reportActionAccess.canRemind"
+            type="selection"
+            width="48"
+          />
           <ElTableColumn label="资产" min-width="220">
             <template #default="{ row }">
               <div>{{ row.assetName }}</div>
               <ElTag size="small">{{ row.assetNo }}</ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="分类" min-width="170">
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="分类"
+            min-width="170"
+          >
             <template #default="{ row }">
               <button
                 v-if="row.categoryCode"
@@ -170,18 +202,40 @@ onMounted(async () => {
             </template>
           </ElTableColumn>
           <ElTableColumn label="借用人" min-width="120" prop="borrower" />
-          <ElTableColumn class-name="hide-on-mobile" label="部门" min-width="120" prop="borrowerDept" />
-          <ElTableColumn class-name="hide-on-mobile" label="预计归还" min-width="120" prop="returnDate" />
-          <ElTableColumn label="逾期天数" width="120" align="center">
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="部门"
+            min-width="120"
+            prop="borrowerDept"
+          />
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="预计归还"
+            min-width="120"
+            prop="returnDate"
+          />
+          <ElTableColumn align="center" label="逾期天数" width="120">
             <template #default="{ row }">
               <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">
                 {{ row.overdueDays }} 天
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn v-if="reportActionAccess.canRemind" fixed="right" label="操作" width="110" align="center">
+          <ElTableColumn
+            v-if="reportActionAccess.canRemind"
+            align="center"
+            fixed="right"
+            label="操作"
+            width="110"
+          >
             <template #default="{ row }">
-              <ElButton :loading="remindingId === row.assetId" link type="warning" size="small" @click="remind(row)">
+              <ElButton
+                :loading="remindingId === row.assetId"
+                link
+                size="small"
+                type="warning"
+                @click="remind(row)"
+              >
                 催办
               </ElButton>
             </template>
@@ -192,7 +246,11 @@ onMounted(async () => {
             <span>共 {{ rows.length }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
-            <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
+            <ElSelect
+              v-model="query.pageSize"
+              style="width: 92px"
+              @change="onPageSizeChange"
+            >
               <ElOption
                 v-for="size in pageSizeOptions"
                 :key="size"

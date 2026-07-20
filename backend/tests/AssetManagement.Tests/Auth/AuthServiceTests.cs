@@ -6,7 +6,9 @@ using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Caching.Memory;
 using MySqlConnector;
+using System.Data.Common;
 
 namespace AssetManagement.Tests.Auth;
 
@@ -36,6 +38,83 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task Login_success_upgrades_legacy_standard_bcrypt_hash()
+    {
+        await using var fixture = await AuthFixture.Create();
+        PasswordHashing.NeedsUpgrade(fixture.ReloadUserPasswordHash()).Should().BeTrue();
+
+        await fixture.CreateService().LoginAsync(
+            new LoginRequest { EmployeeNo = "1001", Password = "123456" });
+
+        var upgraded = fixture.ReloadUserPasswordHash();
+        PasswordHashing.NeedsUpgrade(upgraded).Should().BeFalse();
+        PasswordHashing.Verify("123456", upgraded).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Enhanced_password_hash_distinguishes_long_password_suffixes()
+    {
+        var sharedPrefix = new string('a', 80);
+        var storedHash = PasswordHashing.Hash(sharedPrefix + "1");
+
+        PasswordHashing.Verify(sharedPrefix + "1", storedHash).Should().BeTrue();
+        PasswordHashing.Verify(sharedPrefix + "2", storedHash).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Login_disabled_account_is_indistinguishable_from_unknown_account()
+    {
+        await using var fixture = await AuthFixture.Create();
+        fixture.SetUserActive(false);
+        var service = fixture.CreateService();
+
+        var disabled = await Assert.ThrowsAsync<BizException>(() => service.LoginAsync(
+            new LoginRequest { EmployeeNo = "1001", Password = "bad" }));
+        var unknown = await Assert.ThrowsAsync<BizException>(() => service.LoginAsync(
+            new LoginRequest { EmployeeNo = "missing-user", Password = "bad" }));
+
+        disabled.Code.Should().Be(4011);
+        disabled.Message.Should().Be(unknown.Message);
+    }
+
+    [Fact]
+    public void Login_failure_counter_increment_is_atomic_under_parallel_writers()
+    {
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var options = new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+        };
+
+        Parallel.For(0, 100, _ => AuthService.IncrementFailureCount(cache, "same-key", options));
+
+        cache.Get<int>("same-key").Should().Be(100);
+    }
+
+    [Fact]
+    public async Task Login_wrong_password_does_not_load_role_or_permission_collections()
+    {
+        var recorder = new CommandRecorder();
+        await using var fixture = await AuthFixture.Create(recorder);
+        var service = fixture.CreateService();
+        recorder.Clear();
+
+        await Assert.ThrowsAsync<BizException>(() => service.LoginAsync(
+            new LoginRequest { EmployeeNo = "1001", Password = "bad" }));
+
+        recorder.Commands.Should().ContainSingle("credential failure must execute only the minimal credential query");
+        recorder.Commands.Should().NotContain(command =>
+            command.Contains("user_roles", StringComparison.OrdinalIgnoreCase)
+            || command.Contains("role_permissions", StringComparison.OrdinalIgnoreCase));
+
+        recorder.Clear();
+        await service.LoginAsync(new LoginRequest { EmployeeNo = "1001", Password = "123456" });
+        recorder.Commands.Should().Contain(command =>
+            command.Contains("user_roles", StringComparison.OrdinalIgnoreCase),
+            "authorization collections are loaded only after the credential succeeds");
+    }
+
+    [Fact]
     public async Task ChangePassword_with_wrong_old_password_throws()
     {
         await using var fixture = await AuthFixture.Create();
@@ -60,7 +139,7 @@ public class AuthServiceTests
 
         var newHash = fixture.GetUserPasswordHash();
         newHash.Should().NotBe(oldHash);
-        BCrypt.Net.BCrypt.Verify("newpwd123", newHash).Should().BeTrue();
+        PasswordHashing.Verify("newpwd123", newHash).Should().BeTrue();
     }
 
     [Fact]
@@ -77,15 +156,39 @@ public class AuthServiceTests
     }
 
     [Theory]
-    [InlineData("short1")]
-    [InlineData("onlyletters")]
-    [InlineData("12345678")]
-    public async Task ChangePassword_with_weak_password_throws(string newPassword)
+    [InlineData("abcdef")]
+    [InlineData("654321")]
+    [InlineData("!!!!!!")]
+    public async Task ChangePassword_allows_six_character_password_without_composition_requirement(string newPassword)
+    {
+        await using var fixture = await AuthFixture.Create();
+
+        await fixture.CreateService().ChangePasswordAsync(
+            fixture.GetUserId(),
+            new ChangePasswordRequest { OldPassword = "123456", NewPassword = newPassword });
+
+        PasswordHashing.Verify(newPassword, fixture.GetUserPasswordHash()).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("12345")]
+    public async Task ChangePassword_with_too_short_password_throws(string newPassword)
     {
         await using var fixture = await AuthFixture.Create();
         var act = () => fixture.CreateService().ChangePasswordAsync(
             fixture.GetUserId(),
             new ChangePasswordRequest { OldPassword = "123456", NewPassword = newPassword });
+
+        await act.Should().ThrowAsync<BizException>().Where(x => x.Code == 1004);
+    }
+
+    [Fact]
+    public async Task ChangePassword_with_more_than_12_characters_throws()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var act = () => fixture.CreateService().ChangePasswordAsync(
+            fixture.GetUserId(),
+            new ChangePasswordRequest { OldPassword = "123456", NewPassword = new string('a', 13) });
 
         await act.Should().ThrowAsync<BizException>().Where(x => x.Code == 1004);
     }
@@ -112,6 +215,47 @@ public class AuthServiceTests
 
         routes.Should().ContainSingle();
         routes[0].Meta.Permissions.Should().Equal("asset:view");
+    }
+
+    private sealed class CommandRecorder : DbCommandInterceptor
+    {
+        private readonly List<string> _commands = new();
+        public IReadOnlyList<string> Commands
+        {
+            get
+            {
+                lock (_commands) return _commands.ToArray();
+            }
+        }
+
+        public void Clear()
+        {
+            lock (_commands) _commands.Clear();
+        }
+
+        public override InterceptionResult<DbDataReader> ReaderExecuting(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result)
+        {
+            Record(command);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            Record(command);
+            return ValueTask.FromResult(result);
+        }
+
+        private void Record(DbCommand command)
+        {
+            lock (_commands) _commands.Add(command.CommandText);
+        }
     }
 
     private sealed class AuthFixture : IAsyncDisposable
@@ -144,7 +288,7 @@ public class AuthServiceTests
 
         private AppDbContext Db { get; }
 
-        public static async Task<AuthFixture> Create()
+        public static async Task<AuthFixture> Create(CommandRecorder? recorder = null)
         {
             var dbName = $"assetmgmt_auth_{Guid.NewGuid():N}";
 
@@ -158,11 +302,12 @@ public class AuthServiceTests
             }
 
             var connStr = $"{BaseConnStr}Database={dbName};";
-            var options = new DbContextOptionsBuilder<AppDbContext>()
+            var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>()
                 .UseMySql(connStr, ServerVersion.AutoDetect(connStr))
                 .ConfigureWarnings(warnings => warnings.Throw(
-                    RelationalEventId.MultipleCollectionIncludeWarning))
-                .Options;
+                    RelationalEventId.MultipleCollectionIncludeWarning));
+            if (recorder is not null) optionsBuilder.AddInterceptors(recorder);
+            var options = optionsBuilder.Options;
             var db = new AppDbContext(options);
             await db.Database.EnsureCreatedAsync();
 
@@ -192,10 +337,23 @@ public class AuthServiceTests
 
         public int GetUserId() => _userId;
         public string GetUserPasswordHash() => Db.Users.First(x => x.Id == _userId).PasswordHash;
+        public string ReloadUserPasswordHash()
+        {
+            Db.ChangeTracker.Clear();
+            return Db.Users.First(x => x.Id == _userId).PasswordHash;
+        }
         public void SetRoleCode(string code)
         {
             var role = Db.Roles.AsTracking().Single();
             role.Code = code;
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+        }
+
+        public void SetUserActive(bool isActive)
+        {
+            var user = Db.Users.AsTracking().Single(x => x.Id == _userId);
+            user.IsActive = isActive;
             Db.SaveChanges();
             Db.ChangeTracker.Clear();
         }

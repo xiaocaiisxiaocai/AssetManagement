@@ -1,6 +1,6 @@
-import { requestClient } from '#/api/request';
-
 import type { BpmnToken, WorkflowProgressStep } from './workflow';
+
+import { requestClient } from '#/api/request';
 
 interface ApiResult<T> {
   code: number;
@@ -13,6 +13,15 @@ export interface PagedResult<T> {
   page: number;
   pageSize: number;
   total: number;
+}
+
+export interface MaterialFlowPageQuery {
+  flowId?: number;
+  keyword?: string;
+  page: number;
+  pageSize: number;
+  projectId?: number;
+  status?: string;
 }
 
 // 0=在用 1=已退回厂商
@@ -163,7 +172,7 @@ export const listPendingFlowsApi = (projectId?: number) =>
     requestClient.get<ApiResult<MaterialFlowItem[]>>(
       '/material-flows/pending',
       {
-        params: projectId != null ? { projectId } : undefined,
+        params: projectId === undefined ? undefined : { projectId },
       },
     ),
   );
@@ -171,8 +180,24 @@ export const listPendingFlowsApi = (projectId?: number) =>
 export const listMyFlowsApi = (projectId?: number) =>
   unwrap(
     requestClient.get<ApiResult<MaterialFlowItem[]>>('/material-flows/mine', {
-      params: projectId != null ? { projectId } : undefined,
+      params: projectId === undefined ? undefined : { projectId },
     }),
+  );
+
+export const listPendingFlowsPageApi = (params: MaterialFlowPageQuery) =>
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<MaterialFlowItem>>>(
+      '/material-flows/pending-page',
+      { params },
+    ),
+  );
+
+export const listMyFlowsPageApi = (params: MaterialFlowPageQuery) =>
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<MaterialFlowItem>>>(
+      '/material-flows/mine-page',
+      { params },
+    ),
   );
 
 export const approveFlowApi = (id: number, opinion?: string, nodeId?: string) =>

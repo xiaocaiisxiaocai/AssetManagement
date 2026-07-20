@@ -16,6 +16,8 @@ public record AssetDto
     public string? LocationName { get; init; }
     public int? CustodianId { get; init; }
     public string? CustodianName { get; init; }
+    /// <summary>当前借用周期的原应归还日期；转让不会改变该日期。</summary>
+    public string? ReturnDate { get; init; }
     public int Quantity { get; init; }
     public AssetStatus Status { get; init; }
     public DateTime? PurchaseDate { get; init; }
@@ -30,6 +32,7 @@ public record AssetDto
 
 public record AssetQuery
 {
+    public string? Keyword { get; init; }
     public string? AssetNo { get; init; }
     public string? Name { get; init; }
     public int? CategoryId { get; init; }
@@ -128,6 +131,7 @@ public record AssetFlowDto
     public string Applicant { get; init; } = "";
     public string? Transferee { get; init; }
     public string? Reason { get; init; }
+    public string? OriginalReturnDate { get; init; }
     public string? ReturnDate { get; init; }
     public DateTime ApplyTime { get; init; }
     public DateTime? ConfirmedAt { get; init; }

@@ -1,44 +1,51 @@
 <script lang="ts" setup>
 import type { MaterialFlowItem } from '#/api/material';
 
-import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
-import { canWithdrawMaterialFlow } from './project-workspace-rules';
-
 import {
   ElButton,
   ElOption,
   ElPagination,
   ElSelect,
-  ElTabPane,
   ElTable,
   ElTableColumn,
+  ElTabPane,
   ElTabs,
   ElTag,
 } from 'element-plus';
+
+import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
+
+import { canWithdrawMaterialFlow } from './project-workspace-rules';
 
 defineProps<{
   canApprove: boolean;
   myCount: number;
   myFlows: MaterialFlowItem[];
   myLoading: boolean;
-  myQuery: { page: number; pageSize: number };
   pageSizeOptions: number[];
   pendingCount: number;
   pendingFlows: MaterialFlowItem[];
   pendingLoading: boolean;
-  pendingQuery: { page: number; pageSize: number };
   readOnly: boolean;
 }>();
 
 const emit = defineEmits<{
   approve: [flow: MaterialFlowItem];
   myPageSizeChange: [];
+  pageChange: [];
   pendingPageSizeChange: [];
   reject: [flow: MaterialFlowItem];
   tabChange: [];
   withdraw: [flow: MaterialFlowItem];
 }>();
 const activeTab = defineModel<string>('activeTab', { required: true });
+const myQuery = defineModel<{ page: number; pageSize: number }>('myQuery', {
+  required: true,
+});
+const pendingQuery = defineModel<{ page: number; pageSize: number }>(
+  'pendingQuery',
+  { required: true },
+);
 
 const flowStatusMeta: Record<
   string,
@@ -70,11 +77,11 @@ function flowMetaOf(status: string) {
         <template #label>待我审批 {{ pendingCount }}</template>
         <div class="drawer-table-panel flow-table-panel">
           <ElTable
-            v-loading="pendingLoading"
             :data="pendingFlows"
             border
             height="100%"
             stripe
+            v-loading="pendingLoading"
           >
             <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
             <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
@@ -109,24 +116,26 @@ function flowMetaOf(status: string) {
                   size="small"
                   type="success"
                   @click="emit('approve', row)"
-                  >通过</ElButton
                 >
+                  通过
+                </ElButton>
                 <ElButton
                   :disabled="row.actionableNodeIds.length === 0"
                   link
                   size="small"
                   type="danger"
                   @click="emit('reject', row)"
-                  >驳回</ElButton
                 >
+                  驳回
+                </ElButton>
               </template>
             </ElTableColumn>
           </ElTable>
           <div class="table-bottom-pager">
             <div class="table-bottom-pager-left">
-              <span>共 {{ pendingCount }} 条记录</span
-              ><span class="table-bottom-pager-divider">|</span
-              ><span>每页</span>
+              <span>共 {{ pendingCount }} 条记录</span>
+              <span class="table-bottom-pager-divider">|</span>
+              <span>每页</span>
               <ElSelect
                 v-model="pendingQuery.pageSize"
                 style="width: 92px"
@@ -146,6 +155,7 @@ function flowMetaOf(status: string) {
               :total="pendingCount"
               background
               layout="prev, pager, next"
+              @current-change="emit('pageChange')"
             />
           </div>
         </div>
@@ -154,11 +164,11 @@ function flowMetaOf(status: string) {
         <template #label>我的发起 {{ myCount }}</template>
         <div class="drawer-table-panel flow-table-panel">
           <ElTable
-            v-loading="myLoading"
             :data="myFlows"
             border
             height="100%"
             stripe
+            v-loading="myLoading"
           >
             <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
             <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
@@ -176,11 +186,11 @@ function flowMetaOf(status: string) {
               show-overflow-tooltip
             />
             <ElTableColumn align="center" label="状态" width="110">
-              <template #default="{ row }"
-                ><ElTag :type="flowMetaOf(row.status).tag" size="small">{{
-                  flowMetaOf(row.status).label
-                }}</ElTag></template
-              >
+              <template #default="{ row }">
+                <ElTag :type="flowMetaOf(row.status).tag" size="small">
+                  {{ flowMetaOf(row.status).label }}
+                </ElTag>
+              </template>
             </ElTableColumn>
             <ElTableColumn label="审批进度" min-width="320">
               <template #default="{ row }">
@@ -199,16 +209,17 @@ function flowMetaOf(status: string) {
                   size="small"
                   type="danger"
                   @click="emit('withdraw', row)"
-                  >撤回</ElButton
                 >
+                  撤回
+                </ElButton>
               </template>
             </ElTableColumn>
           </ElTable>
           <div class="table-bottom-pager">
             <div class="table-bottom-pager-left">
-              <span>共 {{ myCount }} 条记录</span
-              ><span class="table-bottom-pager-divider">|</span
-              ><span>每页</span>
+              <span>共 {{ myCount }} 条记录</span>
+              <span class="table-bottom-pager-divider">|</span>
+              <span>每页</span>
               <ElSelect
                 v-model="myQuery.pageSize"
                 style="width: 92px"
@@ -228,6 +239,7 @@ function flowMetaOf(status: string) {
               :total="myCount"
               background
               layout="prev, pager, next"
+              @current-change="emit('pageChange')"
             />
           </div>
         </div>

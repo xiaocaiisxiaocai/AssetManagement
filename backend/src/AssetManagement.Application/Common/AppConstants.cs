@@ -20,6 +20,9 @@ public static class AppConstants
     /// </summary>
     public const int MaxPageSize = 200;
 
+    /// <summary>单次导出最大数据行数，避免全量内存导出拖垮进程。</summary>
+    public const int MaxExportRows = 10_000;
+
     /// <summary>
     /// 登录失败最大尝试次数
     /// </summary>

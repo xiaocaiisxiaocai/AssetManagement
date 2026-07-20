@@ -1,4 +1,5 @@
 using AssetManagement.Domain.Workflow;
+using AssetManagement.Infrastructure.Workflow;
 using FluentAssertions;
 
 namespace AssetManagement.Tests.Workflow;
@@ -10,6 +11,13 @@ namespace AssetManagement.Tests.Workflow;
 /// </summary>
 public class BpmnEngineTests
 {
+    [Fact]
+    public void Flow_record_comment_truncation_respects_database_boundary()
+    {
+        WorkflowService.Truncate(new string('意', 501), 500)
+            .Should().HaveLength(500);
+    }
+
     [Fact]
     public void Start_initializes_flow_and_advances_to_first_user_task()
     {
@@ -175,6 +183,229 @@ public class BpmnEngineTests
         // 排他网关应选择技术部分支
         flow.CurrentNodeIds.Should().ContainSingle()
             .Which.Should().Be("Task_DeptA", "applicantDept == '技术部' 应走部门A分支");
+    }
+
+    [Fact]
+    public void Applicant_department_not_equals_condition_matches_runtime_validator_contract()
+    {
+        var process = BpmnParser.Parse(DepartmentNotEqualsBpmn());
+        BpmnValidator.Validate(DepartmentNotEqualsBpmn()).Should().BeEmpty();
+        var flow = new TestFlow { ApplicantDept = "行政部" };
+
+        BpmnEngine.Start(flow, process);
+
+        flow.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_Other");
+    }
+
+    [Fact]
+    public void Inclusive_join_does_not_wait_for_branch_whose_actual_route_bypasses_join()
+    {
+        var process = BpmnParser.Parse(InclusiveConditionalBypassBpmn());
+        var flow = new TestFlow
+        {
+            Context = new() { ["joinB"] = "false" }
+        };
+
+        BpmnEngine.Start(flow, process);
+        BpmnEngine.Approve(flow, process, "Task_A", "1");
+        BpmnEngine.Approve(flow, process, "Task_B", "2");
+
+        flow.Status.Should().Be("approved");
+        flow.BpmnTokens.Values.Should().NotContain(x => x.Status == BpmnTokenStatus.Waiting);
+    }
+
+    [Fact]
+    public void Parser_rejects_reachable_parallel_gateway_without_outgoing_path()
+    {
+        var process = BpmnParser.Parse(DeadEndParallelGatewayBpmn());
+
+        BpmnParser.Validate(process).Should().Contain(x => x.Contains("并行网关"));
+    }
+
+    [Fact]
+    public void Parser_rejects_parallel_branches_that_collapse_into_the_same_user_task()
+    {
+        const string bpmn = """
+            <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+              <bpmn:process id="parallel-collapse">
+                <bpmn:startEvent id="Start"/><bpmn:parallelGateway id="Fork"/>
+                <bpmn:userTask id="Task" camunda:assignee="user:1"/><bpmn:endEvent id="End"/>
+                <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Fork"/>
+                <bpmn:sequenceFlow id="f2" sourceRef="Fork" targetRef="Task"/>
+                <bpmn:sequenceFlow id="f3" sourceRef="Fork" targetRef="Task"/>
+                <bpmn:sequenceFlow id="f4" sourceRef="Task" targetRef="End"/>
+              </bpmn:process>
+            </bpmn:definitions>
+            """;
+
+        var errors = BpmnParser.Validate(BpmnParser.Parse(bpmn));
+
+        errors.Should().Contain(error => error.Contains("并行分支不能同时进入"));
+    }
+
+    [Fact]
+    public void Parser_allows_exclusive_branches_to_merge_into_the_same_user_task()
+    {
+        const string bpmn = """
+            <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+              <bpmn:process id="exclusive-merge">
+                <bpmn:startEvent id="Start"/><bpmn:exclusiveGateway id="Route"/>
+                <bpmn:userTask id="A" camunda:assignee="user:1"/><bpmn:userTask id="B" camunda:assignee="user:1"/>
+                <bpmn:userTask id="Review" camunda:assignee="user:1"/><bpmn:endEvent id="End"/>
+                <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Route"/>
+                <bpmn:sequenceFlow id="f2" sourceRef="Route" targetRef="A"><bpmn:conditionExpression>${route} == 'a'</bpmn:conditionExpression></bpmn:sequenceFlow>
+                <bpmn:sequenceFlow id="f3" sourceRef="Route" targetRef="B"/><bpmn:sequenceFlow id="f4" sourceRef="A" targetRef="Review"/>
+                <bpmn:sequenceFlow id="f5" sourceRef="B" targetRef="Review"/><bpmn:sequenceFlow id="f6" sourceRef="Review" targetRef="End"/>
+              </bpmn:process>
+            </bpmn:definitions>
+            """;
+
+        BpmnParser.Validate(BpmnParser.Parse(bpmn)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Parser_rejects_parallel_branches_joined_only_by_exclusive_gateway()
+    {
+        const string bpmn = """
+            <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+              <bpmn:process id="parallel-exclusive-merge">
+                <bpmn:startEvent id="Start"/><bpmn:parallelGateway id="Fork"/><bpmn:exclusiveGateway id="Merge"/>
+                <bpmn:userTask id="Review" camunda:assignee="user:1"/><bpmn:endEvent id="End"/>
+                <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Fork"/>
+                <bpmn:sequenceFlow id="f2" sourceRef="Fork" targetRef="Merge"/>
+                <bpmn:sequenceFlow id="f3" sourceRef="Fork" targetRef="Merge"/>
+                <bpmn:sequenceFlow id="f4" sourceRef="Merge" targetRef="Review"/>
+                <bpmn:sequenceFlow id="f5" sourceRef="Review" targetRef="End"/>
+              </bpmn:process>
+            </bpmn:definitions>
+            """;
+
+        BpmnParser.Validate(BpmnParser.Parse(bpmn))
+            .Should().Contain(error => error.Contains("并行分支不能同时进入"));
+    }
+
+    [Fact]
+    public void Parser_rejects_inclusive_branches_that_collapse_into_the_same_user_task()
+    {
+        const string bpmn = """
+            <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+              <bpmn:process id="inclusive-collapse">
+                <bpmn:startEvent id="Start"/><bpmn:inclusiveGateway id="Split"/>
+                <bpmn:userTask id="Review" camunda:assignee="user:1"/><bpmn:endEvent id="End"/>
+                <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Split"/>
+                <bpmn:sequenceFlow id="f2" sourceRef="Split" targetRef="Review"/>
+                <bpmn:sequenceFlow id="f3" sourceRef="Split" targetRef="Review"/>
+                <bpmn:sequenceFlow id="f4" sourceRef="Review" targetRef="End"/>
+              </bpmn:process>
+            </bpmn:definitions>
+            """;
+
+        BpmnParser.Validate(BpmnParser.Parse(bpmn))
+            .Should().Contain(error => error.Contains("包容分支不能同时进入"));
+    }
+
+    [Fact]
+    public void Parser_allows_inclusive_branches_with_explicit_inclusive_join()
+    {
+        const string bpmn = """
+            <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+              <bpmn:process id="inclusive-join">
+                <bpmn:startEvent id="Start"/><bpmn:inclusiveGateway id="Split"/>
+                <bpmn:userTask id="A" camunda:assignee="user:1"/><bpmn:userTask id="B" camunda:assignee="user:1"/>
+                <bpmn:inclusiveGateway id="Join"/><bpmn:userTask id="Review" camunda:assignee="user:1"/><bpmn:endEvent id="End"/>
+                <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Split"/>
+                <bpmn:sequenceFlow id="f2" sourceRef="Split" targetRef="A"/><bpmn:sequenceFlow id="f3" sourceRef="Split" targetRef="B"/>
+                <bpmn:sequenceFlow id="f4" sourceRef="A" targetRef="Join"/><bpmn:sequenceFlow id="f5" sourceRef="B" targetRef="Join"/>
+                <bpmn:sequenceFlow id="f6" sourceRef="Join" targetRef="Review"/><bpmn:sequenceFlow id="f7" sourceRef="Review" targetRef="End"/>
+              </bpmn:process>
+            </bpmn:definitions>
+            """;
+
+        BpmnParser.Validate(BpmnParser.Parse(bpmn)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Parser_rejects_parallel_branches_that_end_without_joining()
+    {
+        const string bpmn = """
+            <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+              <bpmn:process id="parallel-no-join">
+                <bpmn:startEvent id="Start"/><bpmn:parallelGateway id="Fork"/>
+                <bpmn:userTask id="A" camunda:assignee="user:1"/><bpmn:userTask id="B" camunda:assignee="user:1"/>
+                <bpmn:endEvent id="EndA"/><bpmn:endEvent id="EndB"/>
+                <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Fork"/>
+                <bpmn:sequenceFlow id="f2" sourceRef="Fork" targetRef="A"/><bpmn:sequenceFlow id="f3" sourceRef="Fork" targetRef="B"/>
+                <bpmn:sequenceFlow id="f4" sourceRef="A" targetRef="EndA"/><bpmn:sequenceFlow id="f5" sourceRef="B" targetRef="EndB"/>
+              </bpmn:process>
+            </bpmn:definitions>
+            """;
+
+        BpmnParser.Validate(BpmnParser.Parse(bpmn))
+            .Should().Contain(error => error.Contains("汇聚前到达结束事件"));
+    }
+
+    [Fact]
+    public void Parser_rejects_inclusive_split_joined_by_parallel_gateway()
+    {
+        const string bpmn = """
+            <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+              <bpmn:process id="inclusive-parallel-join">
+                <bpmn:startEvent id="Start"/><bpmn:inclusiveGateway id="Split"/>
+                <bpmn:userTask id="A" camunda:assignee="user:1"/><bpmn:userTask id="B" camunda:assignee="user:1"/>
+                <bpmn:parallelGateway id="Join"/><bpmn:endEvent id="End"/>
+                <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Split"/>
+                <bpmn:sequenceFlow id="f2" sourceRef="Split" targetRef="A"><bpmn:conditionExpression>${takeA} == true</bpmn:conditionExpression></bpmn:sequenceFlow>
+                <bpmn:sequenceFlow id="f3" sourceRef="Split" targetRef="B"/>
+                <bpmn:sequenceFlow id="f4" sourceRef="A" targetRef="Join"/><bpmn:sequenceFlow id="f5" sourceRef="B" targetRef="Join"/>
+                <bpmn:sequenceFlow id="f6" sourceRef="Join" targetRef="End"/>
+              </bpmn:process>
+            </bpmn:definitions>
+            """;
+
+        BpmnParser.Validate(BpmnParser.Parse(bpmn))
+            .Should().Contain(error => error.Contains("包容分支不能同时进入"));
+    }
+
+    [Fact]
+    public void Reentering_user_task_preserves_previous_execution_history()
+    {
+        var process = BpmnParser.Parse(UserTaskLoopBpmn());
+        var flow = new TestFlow { Context = new() { ["repeat"] = "true" } };
+        BpmnEngine.Start(flow, process);
+
+        BpmnEngine.Approve(flow, process, "Task_Review", "1", "第一次");
+        flow.Context!["repeat"] = "false";
+        BpmnEngine.Approve(flow, process, "Task_Review", "2", "第二次");
+
+        flow.Status.Should().Be("approved");
+        flow.BpmnTokens["Task_Review"].History.Should().ContainSingle()
+            .Which.Opinion.Should().Be("第一次");
+    }
+
+    [Fact]
+    public void Applicant_role_condition_matches_any_active_role_in_context()
+    {
+        var process = BpmnParser.Parse(MultiRoleBpmn());
+        var flow = new TestFlow
+        {
+            Context = new()
+            {
+                ["applicantRole"] = "employee",
+                ["applicantRoles"] = "employee,supervisor"
+            }
+        };
+
+        BpmnEngine.Start(flow, process);
+
+        flow.CurrentNodeIds.Should().ContainSingle().Which.Should().Be("Task_Supervisor");
+    }
+
+    [Fact]
+    public void Parser_rejects_reachable_nodes_that_cannot_reach_an_end_event()
+    {
+        var process = BpmnParser.Parse(AutomaticCycleWithoutEndBpmn());
+
+        BpmnParser.Validate(process).Should().Contain(error => error.Contains("不存在到结束事件的路径"));
     }
 
     [Fact]
@@ -361,6 +592,79 @@ public class BpmnEngineTests
     <bpmn:sequenceFlow id="F3" sourceRef="Gateway" targetRef="Task_Default" />
     <bpmn:sequenceFlow id="F4" sourceRef="Task_Owner" targetRef="End" />
     <bpmn:sequenceFlow id="F5" sourceRef="Task_Default" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string DepartmentNotEqualsBpmn() => """
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="departmentNotEquals">
+    <bpmn:startEvent id="Start"/><bpmn:exclusiveGateway id="Gateway"/>
+    <bpmn:userTask id="Task_Other" camunda:assignee="user:1"/><bpmn:userTask id="Task_Default" camunda:assignee="user:1"/>
+    <bpmn:endEvent id="End"/>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Gateway"/>
+    <bpmn:sequenceFlow id="f2" sourceRef="Gateway" targetRef="Task_Other"><bpmn:conditionExpression>${applicantDept} != "技术部"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f3" sourceRef="Gateway" targetRef="Task_Default"/>
+    <bpmn:sequenceFlow id="f4" sourceRef="Task_Other" targetRef="End"/><bpmn:sequenceFlow id="f5" sourceRef="Task_Default" targetRef="End"/>
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string InclusiveConditionalBypassBpmn() => """
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="inclusiveBypass">
+    <bpmn:startEvent id="Start"/><bpmn:inclusiveGateway id="Fork"/>
+    <bpmn:userTask id="Task_A" camunda:assignee="user:1"/><bpmn:userTask id="Task_B" camunda:assignee="user:2"/>
+    <bpmn:exclusiveGateway id="Route_B"/><bpmn:inclusiveGateway id="Join"/>
+    <bpmn:endEvent id="End_Join"/><bpmn:endEvent id="End_Bypass"/>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Fork"/>
+    <bpmn:sequenceFlow id="f2" sourceRef="Fork" targetRef="Task_A"/><bpmn:sequenceFlow id="f3" sourceRef="Fork" targetRef="Task_B"/>
+    <bpmn:sequenceFlow id="f4" sourceRef="Task_A" targetRef="Join"/><bpmn:sequenceFlow id="f5" sourceRef="Task_B" targetRef="Route_B"/>
+    <bpmn:sequenceFlow id="f6" sourceRef="Route_B" targetRef="Join"><bpmn:conditionExpression>${joinB} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f7" sourceRef="Route_B" targetRef="End_Bypass"/>
+    <bpmn:sequenceFlow id="f8" sourceRef="Join" targetRef="End_Join"/>
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string DeadEndParallelGatewayBpmn() => """
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="deadEndParallel">
+    <bpmn:startEvent id="Start"/><bpmn:parallelGateway id="DeadEnd"/><bpmn:endEvent id="End"/>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="DeadEnd"/>
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string UserTaskLoopBpmn() => """
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="userLoop">
+    <bpmn:startEvent id="Start"/><bpmn:userTask id="Task_Review" camunda:assignee="user:1"/><bpmn:exclusiveGateway id="Route"/><bpmn:endEvent id="End"/>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Task_Review"/><bpmn:sequenceFlow id="f2" sourceRef="Task_Review" targetRef="Route"/>
+    <bpmn:sequenceFlow id="f3" sourceRef="Route" targetRef="Task_Review"><bpmn:conditionExpression>${repeat} == "true"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f4" sourceRef="Route" targetRef="End"/>
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string MultiRoleBpmn() => """
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="multiRole">
+    <bpmn:startEvent id="Start"/><bpmn:exclusiveGateway id="Route"/>
+    <bpmn:userTask id="Task_Supervisor" camunda:assignee="user:1"/><bpmn:userTask id="Task_Default" camunda:assignee="user:1"/><bpmn:endEvent id="End"/>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Route"/>
+    <bpmn:sequenceFlow id="f2" sourceRef="Route" targetRef="Task_Supervisor"><bpmn:conditionExpression>${applicantRole} == "supervisor"</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f3" sourceRef="Route" targetRef="Task_Default"/>
+    <bpmn:sequenceFlow id="f4" sourceRef="Task_Supervisor" targetRef="End"/><bpmn:sequenceFlow id="f5" sourceRef="Task_Default" targetRef="End"/>
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    private static string AutomaticCycleWithoutEndBpmn() => """
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="automaticCycle">
+    <bpmn:startEvent id="Start"/><bpmn:serviceTask id="Service_A"/><bpmn:serviceTask id="Service_B"/><bpmn:endEvent id="End"/>
+    <bpmn:sequenceFlow id="f1" sourceRef="Start" targetRef="Service_A"/><bpmn:sequenceFlow id="f2" sourceRef="Service_A" targetRef="Service_B"/><bpmn:sequenceFlow id="f3" sourceRef="Service_B" targetRef="Service_A"/>
   </bpmn:process>
 </bpmn:definitions>
 """;

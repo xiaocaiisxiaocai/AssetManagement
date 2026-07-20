@@ -73,7 +73,13 @@ function parseLengthRule(raw: string) {
 
   const min = Number(match[1]);
   const max = Number(match[2]);
-  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 20 || min > max) {
+  if (
+    !Number.isInteger(min) ||
+    !Number.isInteger(max) ||
+    min < 1 ||
+    max > 20 ||
+    min > max
+  ) {
     return null;
   }
 

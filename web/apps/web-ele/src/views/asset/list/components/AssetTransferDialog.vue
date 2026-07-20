@@ -3,7 +3,6 @@ import type { AssetItem } from '#/api/asset';
 import type { UserOptionDto } from '#/api/user';
 
 import { reactive, ref, watch } from 'vue';
-
 import { useRouter } from 'vue-router';
 
 import {
@@ -19,10 +18,17 @@ import {
 
 import { startApprovalApi } from '#/api/workflow';
 
+const props = defineProps<{
+  asset: AssetItem | null;
+  searchUsers?: (keyword: string) => Promise<void>;
+  userOptionsLoading?: boolean;
+  users: UserOptionDto[];
+}>();
+
+const emit = defineEmits<{ submitted: [] }>();
+
 const router = useRouter();
 
-const props = defineProps<{ asset: AssetItem | null; users: UserOptionDto[] }>();
-const emit = defineEmits<{ submitted: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 
 const saving = ref(false);
@@ -46,7 +52,10 @@ async function submit() {
     ElMessage.warning('请选择受让人');
     return;
   }
-  if (props.asset.custodianId && form.transfereeId === props.asset.custodianId) {
+  if (
+    props.asset.custodianId &&
+    form.transfereeId === props.asset.custodianId
+  ) {
     ElMessage.warning('受让人不能是当前持有人');
     return;
   }
@@ -86,8 +95,11 @@ async function submit() {
       <ElFormItem label="受让人">
         <ElSelect
           v-model="form.transfereeId"
+          :loading="userOptionsLoading"
+          :remote-method="searchUsers"
           filterable
           placeholder="选择受让人"
+          remote
           style="width: 100%"
         >
           <ElOption

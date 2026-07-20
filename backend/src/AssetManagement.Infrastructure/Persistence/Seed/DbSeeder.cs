@@ -2,7 +2,9 @@ using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Common;
+using AssetManagement.Infrastructure.Auth;
 using Microsoft.EntityFrameworkCore;
+using System.Xml.Linq;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Infrastructure.Persistence.Seed;
@@ -10,7 +12,6 @@ namespace AssetManagement.Infrastructure.Persistence.Seed;
 public static class DbSeeder
 {
     private const string CoreRoleDefaultsInitializedKey = "rbac_core_role_defaults_initialized_v1";
-    private const string DefaultPasswordBackfillKey = "security_default_password_backfill_v1";
 
     public static void Seed(AppDbContext db, string? configuredAdminPassword = null)
     {
@@ -23,7 +24,6 @@ public static class DbSeeder
             EnsureOrganizationLevels(db);
             if (db.Users.Any())
             {
-                EnsureDefaultPasswordUsersRequireChange(db);
                 SeedIncremental(db);
                 SeedTestMaterialModule(db);
                 MarkCoreRoleDefaultsInitialized(db);
@@ -120,8 +120,6 @@ public static class DbSeeder
 
         // 初始管理员密码:优先取环境变量 ASSET_ADMIN_PASSWORD(生产部署应设置强密码),未设置时回退默认(仅供本地开发)
         var adminPassword = configuredAdminPassword;
-        var usesDefaultAdminPassword = string.IsNullOrWhiteSpace(adminPassword)
-            || adminPassword == AppConstants.DefaultUserPassword;
         if (string.IsNullOrWhiteSpace(adminPassword))
         {
             adminPassword = "123456";
@@ -130,8 +128,7 @@ public static class DbSeeder
         {
             EmployeeNo = "1001",
             Name = "系统管理员",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
-            MustChangePassword = usesDefaultAdminPassword,
+            PasswordHash = PasswordHashing.Hash(adminPassword),
             IsActive = true
         };
         db.Users.Add(admin);
@@ -159,8 +156,7 @@ public static class DbSeeder
             new SystemSetting { Key = "category_code_level2_length", Value = "2-6", Description = "资产分类二级编码段位数" },
             new SystemSetting { Key = "category_code_level2_regex", Value = "^[A-Za-z0-9]+$", Description = "资产分类二级编码段正则" },
             new SystemSetting { Key = "category_code_level3_length", Value = "2-6", Description = "资产分类三级编码段位数" },
-            new SystemSetting { Key = "category_code_level3_regex", Value = "^[A-Za-z0-9]+$", Description = "资产分类三级编码段正则" },
-            new SystemSetting { Key = DefaultPasswordBackfillKey, Value = "true", Description = "默认密码账号强制改密治理已完成" }
+            new SystemSetting { Key = "category_code_level3_regex", Value = "^[A-Za-z0-9]+$", Description = "资产分类三级编码段正则" }
         );
         db.Workflows.AddRange(DefaultWorkflows());
         db.SaveChanges();
@@ -187,12 +183,25 @@ public static class DbSeeder
         }
         else
         {
+            var existingBizTypes = db.Workflows
+                .Select(workflow => workflow.BizType)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var missingDefault in defaultWorkflows.Where(workflow => !existingBizTypes.Contains(workflow.BizType)))
+            {
+                db.Workflows.Add(missingDefault);
+            }
+
             var defaultBorrowWorkflow = defaultWorkflows.Single(x => x.BizType == "borrow");
             var borrowWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "borrow" && x.IsActive);
             if (borrowWorkflow is not null && string.IsNullOrWhiteSpace(borrowWorkflow.BpmnXml))
             {
-                borrowWorkflow.Name = defaultBorrowWorkflow.Name;
-                borrowWorkflow.BpmnXml = defaultBorrowWorkflow.BpmnXml;
+                var hasPendingInstances = db.ApprovalFlows.Any(x => x.WorkflowId == borrowWorkflow.Id && x.Status == "pending")
+                                          || db.MaterialFlows.Any(x => x.WorkflowId == borrowWorkflow.Id && x.Status == "pending");
+                if (!hasPendingInstances)
+                {
+                    borrowWorkflow.Name = defaultBorrowWorkflow.Name;
+                    borrowWorkflow.BpmnXml = defaultBorrowWorkflow.BpmnXml;
+                }
             }
 
             // 修复早期内置转让模板：语义层包含角色网关和 7 条顺序流，但 DI 层缺少
@@ -210,7 +219,7 @@ public static class DbSeeder
                 if (hasPendingInstances)
                 {
                     transferWorkflow.IsActive = false;
-                    transferWorkflow.Name = $"{transferWorkflow.Name}（历史版本 {transferWorkflow.Id}）";
+                    transferWorkflow.Name = HistoricalWorkflowName(transferWorkflow);
                     db.SaveChanges();
                     db.Workflows.Add(new WorkflowEntity
                     {
@@ -441,32 +450,6 @@ public static class DbSeeder
         }
 
         SyncMenuPermissionCodes(db);
-        db.SaveChanges();
-    }
-
-    private static void EnsureDefaultPasswordUsersRequireChange(AppDbContext db)
-    {
-        if (db.SystemSettings.Any(x => x.Key == DefaultPasswordBackfillKey))
-        {
-            return;
-        }
-
-        foreach (var user in db.Users.AsTracking().Where(x => !x.MustChangePassword).ToList())
-        {
-            if (!BCrypt.Net.BCrypt.Verify(AppConstants.DefaultUserPassword, user.PasswordHash))
-            {
-                continue;
-            }
-            user.MustChangePassword = true;
-            user.TokenVersion++;
-        }
-
-        db.SystemSettings.Add(new SystemSetting
-        {
-            Key = DefaultPasswordBackfillKey,
-            Value = "true",
-            Description = "默认密码账号强制改密治理已完成"
-        });
         db.SaveChanges();
     }
 
@@ -975,14 +958,50 @@ public static class DbSeeder
         foreach (var workflow in db.Workflows.AsTracking().ToList())
         {
             if (string.IsNullOrEmpty(workflow.BpmnXml)) continue;
-            workflow.BpmnXml = workflow.BpmnXml
-                .Replace("warehouse", "supervisor", StringComparison.OrdinalIgnoreCase)
-                .Replace("仓库管理员", "部门主管", StringComparison.Ordinal)
-                .Replace("资产管理员", "部门主管", StringComparison.Ordinal)
-                .Replace(
-                    "camunda:candidateGroups=\"supervisor\"",
-                    "camunda:candidateGroups=\"role:supervisor\"",
-                    StringComparison.Ordinal);
+            if (db.ApprovalFlows.Any(flow => flow.WorkflowId == workflow.Id && flow.Status == "pending") ||
+                db.MaterialFlows.Any(flow => flow.WorkflowId == workflow.Id && flow.Status == "pending"))
+                continue;
+
+            try
+            {
+                var document = XDocument.Parse(workflow.BpmnXml, LoadOptions.PreserveWhitespace);
+                var changed = false;
+                foreach (var element in document.Descendants())
+                {
+                    var candidateGroups = element.Attributes()
+                        .FirstOrDefault(attribute => attribute.Name.LocalName == "candidateGroups");
+                    if (candidateGroups is not null)
+                    {
+                        var values = candidateGroups.Value
+                            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                            .Select(value => value is "warehouse" or "role:warehouse" or "supervisor"
+                                ? "role:supervisor"
+                                : value)
+                            .ToArray();
+                        var normalized = string.Join(',', values);
+                        if (!string.Equals(normalized, candidateGroups.Value, StringComparison.Ordinal))
+                        {
+                            candidateGroups.Value = normalized;
+                            changed = true;
+                        }
+                    }
+
+                    var assignee = element.Attributes()
+                        .FirstOrDefault(attribute => attribute.Name.LocalName == "assignee");
+                    if (assignee?.Value is "warehouse" or "role:warehouse")
+                    {
+                        var candidateName = XName.Get("candidateGroups", assignee.Name.NamespaceName);
+                        element.SetAttributeValue(candidateName, "role:supervisor");
+                        assignee.Remove();
+                        changed = true;
+                    }
+                }
+                if (changed) workflow.BpmnXml = document.ToString(SaveOptions.DisableFormatting);
+            }
+            catch
+            {
+                // 旧数据中的非法 XML 由流程管理界面修复，种子不应扩大损坏。
+            }
         }
         db.SaveChanges();
     }
@@ -1177,7 +1196,11 @@ public static class DbSeeder
             "__DEFAULT_APPROVER__",
             $"user:{defaultApproverId}",
             StringComparison.Ordinal);
-        var materialWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "material_transfer");
+        var materialWorkflow = db.Workflows
+            .Where(x => x.BizType == "material_transfer")
+            .OrderByDescending(x => x.IsActive)
+            .ThenByDescending(x => x.Id)
+            .FirstOrDefault();
         if (materialWorkflow is null)
         {
             db.Workflows.Add(new WorkflowEntity
@@ -1187,19 +1210,45 @@ public static class DbSeeder
                 BpmnXml = materialTransferBpmnXml
             });
         }
-        else if (IsLegacyMaterialTransferWorkflow(materialWorkflow.BpmnXml))
+        else if (IsLegacyMaterialTransferWorkflow(materialWorkflow.BpmnXml) ||
+                 materialWorkflow.BpmnXml?.Contains("camunda:assignee=\"1001\"", StringComparison.Ordinal) == true)
         {
-            materialWorkflow.Name = "测试料件流转流程";
-            materialWorkflow.BpmnXml = materialTransferBpmnXml;
-        }
-        else if (materialWorkflow.BpmnXml?.Contains("id=\"Task_projectOwnerSpecified\"", StringComparison.Ordinal) == true)
-        {
-            materialWorkflow.BpmnXml = materialWorkflow.BpmnXml.Replace(
-                "camunda:assignee=\"1001\"",
-                $"camunda:assignee=\"user:{defaultApproverId}\"",
-                StringComparison.Ordinal);
+            var hasPendingInstances = db.MaterialFlows.Any(flow =>
+                flow.WorkflowId == materialWorkflow.Id && flow.Status == "pending");
+            if (hasPendingInstances)
+            {
+                if (materialWorkflow.IsActive)
+                {
+                    materialWorkflow.IsActive = false;
+                    materialWorkflow.Name = HistoricalWorkflowName(materialWorkflow);
+                    db.SaveChanges();
+                }
+                if (!db.Workflows.Any(workflow => workflow.BizType == "material_transfer" && workflow.IsActive))
+                {
+                    db.Workflows.Add(new WorkflowEntity
+                    {
+                        Name = "测试料件流转流程",
+                        BizType = "material_transfer",
+                        BpmnXml = materialTransferBpmnXml,
+                        IsActive = true
+                    });
+                }
+            }
+            else
+            {
+                materialWorkflow.Name = "测试料件流转流程";
+                materialWorkflow.BpmnXml = materialTransferBpmnXml;
+            }
         }
         db.SaveChanges();
+    }
+
+    internal static string HistoricalWorkflowName(WorkflowEntity workflow)
+    {
+        var suffix = $"（历史版本 {workflow.Id}）";
+        var maxPrefixLength = Math.Max(0, 100 - suffix.Length);
+        var prefix = workflow.Name.Length > maxPrefixLength ? workflow.Name[..maxPrefixLength] : workflow.Name;
+        return prefix + suffix;
     }
 
     private static bool IsLegacyMaterialTransferWorkflow(string? bpmnXml)
@@ -1340,6 +1389,54 @@ public static class DbSeeder
   </bpmn:process>
   <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
     <bpmndi:BPMNPlane id=""BPMNPlane_1"" bpmnElement=""Process_borrow"">
+      <bpmndi:BPMNShape id=""StartEvent_1_di"" bpmnElement=""StartEvent_1"">
+        <dc:Bounds x=""152"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""Task_supervisor_di"" bpmnElement=""Task_supervisor"">
+        <dc:Bounds x=""240"" y=""80"" width=""100"" height=""80"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id=""EndEvent_1_di"" bpmnElement=""EndEvent_1"">
+        <dc:Bounds x=""392"" y=""102"" width=""36"" height=""36"" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id=""Flow_1_di"" bpmnElement=""Flow_1"">
+        <di:waypoint x=""188"" y=""120"" />
+        <di:waypoint x=""240"" y=""120"" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id=""Flow_2_di"" bpmnElement=""Flow_2"">
+        <di:waypoint x=""340"" y=""120"" />
+        <di:waypoint x=""392"" y=""120"" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>"
+        },
+        new WorkflowEntity
+        {
+            Name = "借用延期流程",
+            BizType = "extension",
+            BpmnXml = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+<bpmn:definitions xmlns:bpmn=""http://www.omg.org/spec/BPMN/20100524/MODEL""
+                  xmlns:bpmndi=""http://www.omg.org/spec/BPMN/20100524/DI""
+                  xmlns:dc=""http://www.omg.org/spec/DD/20100524/DC""
+                  xmlns:di=""http://www.omg.org/spec/DD/20100524/DI""
+                  xmlns:camunda=""http://camunda.org/schema/1.0/bpmn""
+                  id=""Definitions_extension"">
+  <bpmn:process id=""Process_extension"" isExecutable=""true"">
+    <bpmn:startEvent id=""StartEvent_1"" name=""发起延期申请"">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id=""Task_supervisor"" name=""直属主管审批"" camunda:assignee=""supervisor"">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id=""EndEvent_1"" name=""流程结束"">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id=""Flow_1"" sourceRef=""StartEvent_1"" targetRef=""Task_supervisor"" />
+    <bpmn:sequenceFlow id=""Flow_2"" sourceRef=""Task_supervisor"" targetRef=""EndEvent_1"" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id=""BPMNDiagram_1"">
+    <bpmndi:BPMNPlane id=""BPMNPlane_1"" bpmnElement=""Process_extension"">
       <bpmndi:BPMNShape id=""StartEvent_1_di"" bpmnElement=""StartEvent_1"">
         <dc:Bounds x=""152"" y=""102"" width=""36"" height=""36"" />
       </bpmndi:BPMNShape>

@@ -7,7 +7,7 @@ public class MaterialFlow : IBpmnFlowInstance
     public int Id { get; set; }
     public string FlowNo { get; set; } = "";
     public string BizType { get; set; } = "material_transfer";
-    public int WorkflowId { get; set; }
+    public int? WorkflowId { get; set; }
     public int MaterialId { get; set; }
     public string MaterialNo { get; set; } = "";
     public string MaterialName { get; set; } = "";

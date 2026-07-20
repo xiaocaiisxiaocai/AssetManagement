@@ -29,8 +29,8 @@ public interface INotificationService
     Task MarkReadAsync(int id, int userId);
     Task MarkAllReadAsync(int userId);
     Task ClearAsync(int userId);
-    /// <summary>写入单条通知；若 IdempotencyKey 已存在则静默跳过</summary>
-    Task CreateAsync(CreateNotificationRequest request);
-    /// <summary>批量写入通知；每条独立做幂等检查</summary>
-    Task CreateBatchAsync(IEnumerable<CreateNotificationRequest> requests);
+    /// <summary>写入单条通知；返回是否实际新增，幂等键已存在时为 false。</summary>
+    Task<bool> CreateAsync(CreateNotificationRequest request, CancellationToken cancellationToken = default);
+    /// <summary>批量写入通知；返回实际新增条数。</summary>
+    Task<int> CreateBatchAsync(IEnumerable<CreateNotificationRequest> requests, CancellationToken cancellationToken = default);
 }

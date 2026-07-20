@@ -6,6 +6,7 @@ using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Persistence;
 using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
@@ -46,36 +47,62 @@ public class WorkflowService : IWorkflowService
         return ToWorkflowDto(workflow);
     }
 
-    public async Task<WorkflowDto> SaveWorkflowAsync(int id, SaveWorkflowRequest request)
+    public async Task<WorkflowDto> SaveWorkflowAsync(int id, UpdateWorkflowMetadataRequest request)
     {
-        var workflow = await LoadWorkflow(id);
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var workflow = await LockWorkflowAsync(id);
         var requestedBizType = request.BizType?.Trim() ?? "";
-        var bpmnChanges = !string.Equals(workflow.BpmnXml, request.BpmnXml, StringComparison.Ordinal);
         var bizTypeChanges = !string.Equals(workflow.BizType, requestedBizType, StringComparison.Ordinal);
         var hasPendingInstances = await _db.ApprovalFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending")
                                   || await _db.MaterialFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending");
         if (bizTypeChanges && hasPendingInstances)
         {
-            throw new BizException(4093, "该流程仍有进行中的实例，不能修改业务类型；可直接修改流程图，系统会自动创建新版本");
+            throw new BizException(4093, "该流程仍有进行中的实例，不能修改业务类型");
         }
-        if (bpmnChanges && hasPendingInstances)
-        {
-            await using var tx = await _db.Database.BeginTransactionAsync();
-            workflow.IsActive = false;
-            workflow.Name = HistoricalWorkflowName(workflow);
-            await _db.SaveChangesAsync();
-
-            var nextVersion = new WorkflowEntity { IsActive = true };
-            await ApplyWorkflowDefinition(nextVersion, request);
-            _db.Workflows.Add(nextVersion);
-            await _db.SaveChangesAsync();
-            await tx.CommitAsync();
-            return ToWorkflowDto(nextVersion);
-        }
-        await ApplyWorkflowDefinition(workflow, request);
+        await ApplyWorkflowMetadata(workflow, request.Name, request.BizType);
         _db.Entry(workflow).State = EntityState.Modified;
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
         return ToWorkflowDto(workflow);
+    }
+
+    public async Task<WorkflowDto> SaveWorkflowDesignAsync(int id, DesignWorkflowRequest request)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var workflow = await LockWorkflowAsync(id);
+        ValidateBpmnXml(request.BpmnXml);
+        if (string.Equals(workflow.BpmnXml, request.BpmnXml, StringComparison.Ordinal))
+        {
+            await tx.CommitAsync();
+            return ToWorkflowDto(workflow);
+        }
+
+        var hasPendingInstances = await _db.ApprovalFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending")
+                                  || await _db.MaterialFlows.AnyAsync(x => x.WorkflowId == id && x.Status == "pending");
+        if (!hasPendingInstances)
+        {
+            workflow.BpmnXml = request.BpmnXml;
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+            return ToWorkflowDto(workflow);
+        }
+
+        var originalName = workflow.Name;
+        var originalActive = workflow.IsActive;
+        workflow.IsActive = false;
+        workflow.Name = HistoricalWorkflowName(workflow);
+        await _db.SaveChangesAsync();
+        var nextVersion = new WorkflowEntity
+        {
+            Name = originalName,
+            BizType = workflow.BizType,
+            BpmnXml = request.BpmnXml,
+            IsActive = originalActive
+        };
+        _db.Workflows.Add(nextVersion);
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        return ToWorkflowDto(nextVersion);
     }
 
     private static string HistoricalWorkflowName(WorkflowEntity workflow)
@@ -88,19 +115,22 @@ public class WorkflowService : IWorkflowService
 
     public async Task<WorkflowDto> SetWorkflowStatusAsync(int id, bool isActive)
     {
-        var workflow = await LoadWorkflow(id);
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var workflow = await LockWorkflowAsync(id);
         if (isActive)
         {
             await EnsureNoOtherActiveWorkflowForBizType(workflow.BizType, workflow.Id);
         }
         workflow.IsActive = isActive;
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
         return ToWorkflowDto(workflow);
     }
 
     public async Task DeleteWorkflowAsync(int id)
     {
-        var workflow = await LoadWorkflow(id);
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var workflow = await LockWorkflowAsync(id);
         if (await _db.ApprovalFlows.AnyAsync(x => x.WorkflowId == id))
         {
             throw new BizException(4093, "已有审批实例使用该流程，不能删除");
@@ -112,11 +142,16 @@ public class WorkflowService : IWorkflowService
 
         _db.Workflows.Remove(workflow);
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
     }
 
     public async Task<ApprovalFlowDto> StartAsync(StartApprovalRequest request, int applicantId)
     {
-        var workflow = await _db.Workflows.SingleOrDefaultAsync(x => x.BizType == request.BizType && x.IsActive);
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var workflow = await _db.Workflows
+            .FromSqlInterpolated($"SELECT * FROM workflows WHERE BizType = {request.BizType} AND IsActive = 1 FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync();
         if (workflow == null)
         {
             if (await _db.Workflows.AnyAsync(x => x.BizType == request.BizType))
@@ -150,6 +185,7 @@ public class WorkflowService : IWorkflowService
         if (workflow.BizType == "transfer" && request.TransfereeId == applicantId)
             throw new BizException(4001, "接收人不能与申请人相同");
         var returnDate = ValidateReturnDate(workflow.BizType, request.ReturnDate);
+        string? originalReturnDate = null;
         var transferee = request.TransfereeId.HasValue
             ? await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId.Value && x.IsActive)
             : null;
@@ -158,8 +194,6 @@ public class WorkflowService : IWorkflowService
 
         // 解析 BPMN 流程定义
         var bpmnProcess = BpmnParser.Parse(workflow.BpmnXml);
-
-        await using var tx = await _db.Database.BeginTransactionAsync();
 
         // 与删除路径使用相同的资产行锁，并在获锁后重新读取/校验。
         // 否则“发起时已读取”与“删除时尚无 pending”可能同时成立。
@@ -183,6 +217,55 @@ public class WorkflowService : IWorkflowService
         if (activeFlow is not null)
             throw new BizException(4056, BuildActiveFlowConflictMessage(activeFlow));
 
+        // 转让只变更借用责任人，不重新计算借用期限。应归还日期始终取自
+        // 当前未结束的原借用单，并复制到转让单中作为不可变的业务快照。
+        if (workflow.BizType == "transfer" && asset.Status == AssetStatus.Borrowed)
+        {
+            returnDate = await _db.ApprovalFlows.AsNoTracking()
+                .Where(candidate => candidate.AssetId == asset.Id &&
+                                    candidate.BizType == "borrow" &&
+                                    candidate.Status == "approved" &&
+                                    candidate.ConfirmedAt == null &&
+                                    candidate.ReturnDate != null)
+                .OrderByDescending(candidate => candidate.ApplyTime)
+                .Select(candidate => candidate.ReturnDate)
+                .FirstOrDefaultAsync();
+        }
+
+        if (workflow.BizType == "extension")
+        {
+            originalReturnDate = await _db.ApprovalFlows.AsNoTracking()
+                .Where(candidate => candidate.AssetId == asset.Id &&
+                                    candidate.BizType == "borrow" &&
+                                    candidate.Status == "approved" &&
+                                    candidate.ConfirmedAt == null &&
+                                    candidate.ReturnDate != null)
+                .OrderByDescending(candidate => candidate.ApplyTime)
+                .Select(candidate => candidate.ReturnDate)
+                .FirstOrDefaultAsync();
+            if (originalReturnDate is null)
+                throw new BizException(4055, "未找到当前有效借用记录，无法申请延期");
+            if (!DateOnly.TryParseExact(originalReturnDate, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out var originalDate))
+                throw new BizException(4090, "原借用记录的归还日期无效，请联系管理员处理");
+            if (DateOnly.ParseExact(returnDate!, "yyyy-MM-dd", CultureInfo.InvariantCulture) <= originalDate)
+                throw new BizException(4001, "新归还日期必须晚于原应归还日期");
+        }
+
+        // 与用户停用路径共用 users 行锁，并保持 asset -> user 的锁顺序。
+        // 只锁实际会被停用校验保护的当事人：借用申请人或转让接收人。
+        // 避免同一请求同时持有多个用户锁，与管理员保底锁形成环路。
+        var protectedParticipantIds = workflow.BizType switch
+        {
+            "borrow" => new[] { applicantId },
+            "transfer" when request.TransfereeId.HasValue => new[] { request.TransfereeId.Value },
+            "extension" => new[] { applicantId },
+            _ => Array.Empty<int>()
+        };
+        var lockedParticipants = await LockActiveParticipantsAsync(protectedParticipantIds);
+        if (request.TransfereeId.HasValue)
+            transferee = lockedParticipants[request.TransfereeId.Value];
+
         var flow = new ApprovalFlow
         {
             FlowNo = $"APV-{BusinessClock.Today:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}",
@@ -198,6 +281,7 @@ public class WorkflowService : IWorkflowService
             Transferee = transferee?.Name,
             TransfereeDept = await DepartmentName(transferee?.DepartmentId),
             Reason = request.Reason,
+            OriginalReturnDate = originalReturnDate,
             ReturnDate = returnDate,
             Status = "pending",
             ApplyTime = DateTime.UtcNow,
@@ -239,96 +323,128 @@ public class WorkflowService : IWorkflowService
     }
 
     public async Task<List<ApprovalFlowDto>> PendingAsync(int userId)
+        => (await PendingPageAsync(userId, new ApprovalFlowPageQuery { PageSize = AppConstants.MaxPageSize })).Items.ToList();
+
+    public async Task<PagedResult<ApprovalFlowDto>> PendingPageAsync(int userId, ApprovalFlowPageQuery query)
     {
+        var (page, pageSize) = NormalizePage(query.Page, query.PageSize);
         var user = await LoadUser(userId);
-        var isAdmin = IsAdmin(user);
 
-        // supervisor 只能看到自己管辖部门相关的流程；转让接收节点还要看接收人部门。
-        int[]? allowedDeptIds = null;
-        if (!isAdmin && IsSupervisor(user) && !user.DepartmentId.HasValue)
-            return new List<ApprovalFlowDto>();
-        if (!isAdmin && IsSupervisor(user) && user.DepartmentId.HasValue)
+        var baseQuery = ApplyApprovalPageFilters(
+                _db.ApprovalFlows.AsNoTracking().Where(x => x.Status == FlowStatus.Pending), query)
+            .OrderByDescending(x => x.Id);
+        const int scanSize = 200;
+        var scanOffset = 0;
+        var pageOffset = PageOffset(page, pageSize);
+        var actionableTotal = 0;
+        var selected = new List<(ApprovalFlow Flow, List<string> Nodes)>();
+        var workflowMap = new Dictionary<int, WorkflowEntity>();
+        var processCache = new Dictionary<int, BpmnProcess>();
+        var approverCache = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        while (true)
         {
-            allowedDeptIds = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
-        }
-
-        var flows = await _db.ApprovalFlows
-            .AsNoTracking()
-            .Where(x => x.Status == "pending")
-            .OrderByDescending(x => x.Id)
-            .ToListAsync();
-        await HydrateParticipantNamesAsync(flows);
-
-        if (allowedDeptIds != null)
-        {
-            var relatedUserIds = flows
-                .SelectMany(f => new[] { f.ApplicantId, f.TransfereeId ?? 0 })
-                .Where(id => id > 0)
-                .Distinct()
-                .ToArray();
-            var userDeptMap = await _db.Users
-                .Where(u => relatedUserIds.Contains(u.Id))
-                .Select(u => new { u.Id, u.DepartmentId })
-                .ToDictionaryAsync(u => u.Id, u => u.DepartmentId);
-            flows = flows
-                .Where(f => HasPendingSignTaskForUser(f, user.Id)
-                            || IsDeptInScope(userDeptMap.GetValueOrDefault(f.ApplicantId), allowedDeptIds)
-                            || (f.TransfereeId.HasValue && IsDeptInScope(userDeptMap.GetValueOrDefault(f.TransfereeId.Value), allowedDeptIds)))
-                .ToList();
-        }
-
-        // 预取所有涉及的工作流定义，避免 N+1 查询
-        var workflowIds = flows.Select(f => f.WorkflowId).Distinct().ToArray();
-        var workflowMap = await _db.Workflows
-            .Where(w => workflowIds.Contains(w.Id))
-            .ToDictionaryAsync(w => w.Id, w => w);
-
-        // 筛选当前用户可以审批的流程
-        var result = new List<ApprovalFlowDto>();
-        foreach (var flow in flows)
-        {
-            var actionableNodeIds = await GetActionableNodeIdsAsync(flow, user, workflowMap);
-            if (actionableNodeIds.Count > 0)
+            var chunk = await baseQuery.Skip(scanOffset).Take(scanSize).ToListAsync();
+            if (chunk.Count == 0) break;
+            scanOffset += chunk.Count;
+            var workflowIds = chunk.Select(flow => flow.WorkflowId).Distinct()
+                .Where(workflowId => !workflowMap.ContainsKey(workflowId)).ToArray();
+            var workflows = await _db.Workflows.AsNoTracking()
+                .Where(workflow => workflowIds.Contains(workflow.Id)).ToListAsync();
+            foreach (var workflow in workflows) workflowMap[workflow.Id] = workflow;
+            foreach (var flow in chunk)
             {
-                result.Add(await ToFlowDtoAsync(flow, actionableNodeIds));
+                var actionableNodeIds = await GetActionableNodeIdsAsync(
+                    flow, user, workflowMap, processCache, approverCache);
+                if (actionableNodeIds.Count == 0) continue;
+                if ((long)actionableTotal >= pageOffset && selected.Count < pageSize)
+                    selected.Add((flow, actionableNodeIds));
+                actionableTotal++;
             }
+            if (chunk.Count < scanSize) break;
         }
-
-        return result;
+        var pageFlows = selected.Select(item => item.Flow).ToList();
+        await HydrateParticipantNamesAsync(pageFlows);
+        var renderContext = await BuildProgressRenderContextAsync(pageFlows);
+        var items = new List<ApprovalFlowDto>(pageFlows.Count);
+        foreach (var item in selected) items.Add(await ToFlowDtoAsync(item.Flow, item.Nodes, renderContext));
+        return new PagedResult<ApprovalFlowDto> { Items = items, Total = actionableTotal, Page = page, PageSize = pageSize };
     }
 
     public async Task<List<ApprovalFlowDto>> MineAsync(int userId)
+        => (await MinePageAsync(userId, new ApprovalFlowPageQuery { PageSize = AppConstants.MaxPageSize })).Items.ToList();
+
+    public async Task<PagedResult<ApprovalFlowDto>> MinePageAsync(int userId, ApprovalFlowPageQuery query)
     {
-        var flows = await _db.ApprovalFlows
-            .AsNoTracking()
-            .Where(x => x.ApplicantId == userId)
-            .OrderByDescending(x => x.Id)
-            .ToListAsync();
+        var (page, pageSize) = NormalizePage(query.Page, query.PageSize);
+        var flowsQuery = ApplyApprovalPageFilters(
+            _db.ApprovalFlows.AsNoTracking().Where(x => x.ApplicantId == userId), query);
+        var total = await flowsQuery.CountAsync();
+        var pageOffset = PageOffset(page, pageSize);
+        if (pageOffset >= total)
+            return new PagedResult<ApprovalFlowDto> { Total = total, Page = page, PageSize = pageSize };
+        var flows = await flowsQuery.OrderByDescending(x => x.Id)
+            .Skip((int)pageOffset).Take(pageSize).ToListAsync();
         await HydrateParticipantNamesAsync(flows);
 
+        var renderContext = await BuildProgressRenderContextAsync(flows);
         var result = new List<ApprovalFlowDto>();
-        foreach (var flow in flows) result.Add(await ToFlowDtoAsync(flow));
-        return result;
+        foreach (var flow in flows) result.Add(await ToFlowDtoAsync(flow, renderContext: renderContext));
+        return new PagedResult<ApprovalFlowDto> { Items = result, Total = total, Page = page, PageSize = pageSize };
     }
 
     public async Task<List<ApprovalFlowDto>> PendingReturnsAsync(int userId)
+        => (await PendingReturnsPageAsync(userId, new ApprovalFlowPageQuery { PageSize = AppConstants.MaxPageSize })).Items.ToList();
+
+    public async Task<PagedResult<ApprovalFlowDto>> PendingReturnsPageAsync(int userId, ApprovalFlowPageQuery pageQuery)
     {
+        var (page, pageSize) = NormalizePage(pageQuery.Page, pageQuery.PageSize);
         var user = await LoadUser(userId);
         var managedDepartmentIds = await ManagedDepartmentIdsAsync(user.Id);
-        if (managedDepartmentIds.Length == 0) return [];
+        if (managedDepartmentIds.Length == 0)
+            return new PagedResult<ApprovalFlowDto> { Page = page, PageSize = pageSize };
 
-        var query = _db.ApprovalFlows
+        var query = ApplyApprovalPageFilters(_db.ApprovalFlows.AsNoTracking()
             .Where(x => x.Status == "approved" && x.BizType == "borrow" && x.ConfirmedAt == null)
             .Where(x => _db.Assets.Any(a =>
                 a.Id == x.AssetId &&
                 a.DepartmentId.HasValue &&
-                managedDepartmentIds.Contains(a.DepartmentId.Value)));
-        var flows = await query.AsNoTracking().OrderByDescending(x => x.Id).ToListAsync();
+                managedDepartmentIds.Contains(a.DepartmentId.Value))), pageQuery with { Keyword = null });
+        if (!string.IsNullOrWhiteSpace(pageQuery.Keyword))
+        {
+            var keyword = pageQuery.Keyword.Trim();
+            query = query.Where(flow => flow.FlowNo.Contains(keyword) ||
+                                        flow.AssetNo.Contains(keyword) ||
+                                        flow.AssetName.Contains(keyword) ||
+                                        _db.Assets.Any(asset => asset.Id == flow.AssetId &&
+                                            asset.CustodianId.HasValue &&
+                                            _db.Users.Any(current => current.Id == asset.CustodianId.Value &&
+                                                (current.Name.Contains(keyword) || current.EmployeeNo.Contains(keyword)))));
+        }
+        var total = await query.CountAsync();
+        var pageOffset = PageOffset(page, pageSize);
+        if (pageOffset >= total)
+            return new PagedResult<ApprovalFlowDto> { Total = total, Page = page, PageSize = pageSize };
+        var flows = await query.OrderByDescending(x => x.Id)
+            .Skip((int)pageOffset).Take(pageSize).ToListAsync();
         await HydrateParticipantNamesAsync(flows);
 
+        var renderContext = await BuildProgressRenderContextAsync(flows);
         var result = new List<ApprovalFlowDto>();
-        foreach (var flow in flows) result.Add(await ToFlowDtoAsync(flow));
-        return result;
+        var currentCustodians = await CurrentCustodiansByAssetAsync(flows.Select(flow => flow.AssetId));
+        foreach (var flow in flows)
+        {
+            var dto = await ToFlowDtoAsync(flow, renderContext: renderContext);
+            if (currentCustodians.TryGetValue(flow.AssetId, out var custodian))
+            {
+                dto = dto with
+                {
+                    Applicant = custodian.Name,
+                    ApplicantDept = custodian.DepartmentName
+                };
+            }
+            result.Add(dto);
+        }
+        return new PagedResult<ApprovalFlowDto> { Items = result, Total = total, Page = page, PageSize = pageSize };
     }
 
     public async Task<ApprovalFlowDto> GetFlowAsync(int id, int userId)
@@ -371,10 +487,15 @@ public class WorkflowService : IWorkflowService
         // 执行审批
         await using var tx = await _db.Database.BeginTransactionAsync();
 
+        await NormalizeSignStatesAsync(flow, bpmnProcess);
+        await ReconcileInactiveSignersAsync(flow, nodeId);
         BpmnEngine.Approve(flow, bpmnProcess, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion);
 
         if (flow.Status == "pending")
+        {
+            await NormalizeSignStatesAsync(flow, bpmnProcess);
             await EnsureCurrentApproversResolvableAsync(flow, bpmnProcess);
+        }
 
         // 检查流程是否完成
         if (flow.Status == "approved")
@@ -499,9 +620,11 @@ public class WorkflowService : IWorkflowService
 
     private static string? ValidateReturnDate(string bizType, string? value)
     {
-        if (bizType != "borrow") return null;
+        if (bizType is not ("borrow" or "extension")) return null;
         if (string.IsNullOrWhiteSpace(value))
-            throw new BizException(4001, "借用申请必须选择归还日期");
+            throw new BizException(4001, bizType == "extension"
+                ? "延期申请必须选择新的归还日期"
+                : "借用申请必须选择归还日期");
         if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture,
                 DateTimeStyles.None, out var returnDate))
             throw new BizException(4001, "归还日期格式必须为 yyyy-MM-dd");
@@ -519,6 +642,9 @@ public class WorkflowService : IWorkflowService
         if (bizType == "return" &&
             (asset.Status != AssetStatus.Borrowed || asset.CustodianId != applicantId))
             throw new BizException(4055, "只有当前借用人可以发起归还流程");
+        if (bizType == "extension" &&
+            (asset.Status != AssetStatus.Borrowed || asset.CustodianId != applicantId))
+            throw new BizException(4055, "只有当前借用人可以发起延期流程");
         if (bizType == "transfer" && asset.CustodianId != applicantId)
             throw new BizException(4055, "只有当前保管人可以发起转让流程");
     }
@@ -565,12 +691,18 @@ public class WorkflowService : IWorkflowService
         }
 
         await EnsureCanApproveNode(flow, nodeId, user);
+        var token = flow.BpmnTokens.GetValueOrDefault(nodeId)
+            ?? throw new BizException(4014, "该节点当前不可审批");
+        if (token.AddedSigners?.ContainsKey(user.Id.ToString()) == true)
+            throw new BizException(4057, "被加签人不能再次发起加签");
 
         if (string.IsNullOrWhiteSpace(request.Who))
             throw new BizException(4057, "请选择加签人");
 
         if (!int.TryParse(request.Who, out var signUserId))
             throw new BizException(4001, "加签人标识无效，请重新选择");
+        if (signUserId == user.Id)
+            throw new BizException(4057, "不能加签自己");
         var signUser = await _db.Users
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
@@ -583,9 +715,6 @@ public class WorkflowService : IWorkflowService
                 x.Id == signUser.DepartmentId.Value && x.IsActive);
         if (!isActiveSupervisor || !hasActiveDepartment)
             throw new BizException(4057, "加签人必须是有效部门的部门主管");
-
-        var token = flow.BpmnTokens.GetValueOrDefault(nodeId)
-            ?? throw new BizException(4014, "该节点当前不可审批");
 
         token.SignStates ??= new Dictionary<string, bool>
         {
@@ -705,12 +834,26 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4030, "仅资产所属组织负责人可确认归还");
 
         await using var tx = await _db.Database.BeginTransactionAsync();
-        flow.ConfirmedAt = DateTime.UtcNow;
+        var lockedFlow = await _db.ApprovalFlows
+            .FromSqlInterpolated($"SELECT * FROM approval_flows WHERE Id = {id} FOR UPDATE")
+            .AsNoTracking()
+            .SingleAsync();
+        if (lockedFlow.Status != "approved" || lockedFlow.BizType != "borrow" || lockedFlow.ConfirmedAt.HasValue)
+            throw new BizException(4090, "归还单状态已变化，请刷新后重试");
 
-        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == flow.AssetId);
+        var asset = await _db.Assets
+            .FromSqlInterpolated($"SELECT * FROM assets WHERE Id = {flow.AssetId} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync();
+        var returningCustodianId = asset?.CustodianId;
+        if (await _db.ApprovalFlows.AsNoTracking().AnyAsync(candidate =>
+                candidate.Id != id && candidate.AssetId == flow.AssetId && candidate.Status == "pending"))
+            throw new BizException(4092, "该资产存在进行中的归还或转让审批，不能确认接收");
+
+        flow.ConfirmedAt = DateTime.UtcNow;
         if (asset != null)
         {
-            if (asset.IsDeleted || asset.Status != AssetStatus.Borrowed || asset.CustodianId != flow.ApplicantId)
+            if (asset.IsDeleted || asset.Status != AssetStatus.Borrowed || !asset.CustodianId.HasValue)
                 throw new BizException(4090, "资产当前状态与该归还单不一致，请刷新后重试");
             asset.Status = AssetStatus.Available;
             asset.CustodianId = null;
@@ -737,7 +880,7 @@ public class WorkflowService : IWorkflowService
                 Title = $"归还接收确认：{flow.AssetName}",
                 Body = $"您借用的 {flow.AssetName}（{flow.AssetNo}）已确认接收归还。",
                 FlowId = id,
-                UserId = flow.ApplicantId,
+                UserId = returningCustodianId ?? flow.ApplicantId,
             });
         }
         catch (Exception ex)
@@ -750,23 +893,101 @@ public class WorkflowService : IWorkflowService
 
     // ========== 私有辅助方法 ==========
 
+    private static (int Page, int PageSize) NormalizePage(int page, int pageSize)
+        => (Math.Max(page, 1), Math.Clamp(pageSize, 1, AppConstants.MaxPageSize));
+
+    private static long PageOffset(int page, int pageSize)
+        => ((long)page - 1L) * pageSize;
+
+    private static IQueryable<ApprovalFlow> ApplyApprovalPageFilters(
+        IQueryable<ApprovalFlow> query,
+        ApprovalFlowPageQuery filter)
+    {
+        if (filter.FlowId.HasValue) query = query.Where(flow => flow.Id == filter.FlowId.Value);
+        if (!string.IsNullOrWhiteSpace(filter.BizType))
+        {
+            var bizType = filter.BizType.Trim();
+            query = query.Where(flow => flow.BizType == bizType);
+        }
+        if (!string.IsNullOrWhiteSpace(filter.Status))
+        {
+            var status = filter.Status.Trim().ToLowerInvariant();
+            query = query.Where(flow => flow.Status == status);
+        }
+        if (!string.IsNullOrWhiteSpace(filter.ReturnDate))
+        {
+            var returnDate = filter.ReturnDate.Trim();
+            if (!DateOnly.TryParseExact(returnDate, "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out _))
+                throw new BizException(4001, "归还日期格式必须为 yyyy-MM-dd");
+            query = query.Where(flow => flow.ReturnDate == returnDate);
+        }
+        if (!string.IsNullOrWhiteSpace(filter.Keyword))
+        {
+            var keyword = filter.Keyword.Trim();
+            query = query.Where(flow => flow.FlowNo.Contains(keyword) || flow.AssetNo.Contains(keyword) ||
+                                        flow.AssetName.Contains(keyword) || flow.Applicant.Contains(keyword) ||
+                                        (flow.Transferee != null && flow.Transferee.Contains(keyword)));
+        }
+        return query;
+    }
+
     private async Task<WorkflowEntity> LoadWorkflow(int id)
         => await _db.Workflows.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
            ?? throw new BizException(4049, "流程不存在");
 
+    private async Task<WorkflowEntity> LockWorkflowAsync(int id)
+        => await _db.Workflows
+               .FromSqlInterpolated($"SELECT * FROM workflows WHERE Id = {id} FOR UPDATE")
+               .AsTracking()
+               .SingleOrDefaultAsync()
+           ?? throw new BizException(4049, "流程不存在");
+
+    private async Task<Dictionary<int, User>> LockActiveParticipantsAsync(IEnumerable<int> userIds)
+    {
+        var result = new Dictionary<int, User>();
+        foreach (var userId in userIds.Distinct().OrderBy(id => id))
+        {
+            var user = await _db.Users
+                .FromSqlInterpolated($"SELECT * FROM users WHERE Id = {userId} FOR UPDATE")
+                .AsTracking()
+                .SingleOrDefaultAsync();
+            if (user is null || !user.IsActive)
+                throw new BizException(4041, "用户不存在或已停用");
+            result[userId] = user;
+        }
+        return result;
+    }
+
     private async Task ApplyWorkflowDefinition(WorkflowEntity workflow, SaveWorkflowRequest request)
     {
-        var name = request.Name?.Trim() ?? "";
-        var bizType = request.BizType?.Trim() ?? "";
+        await ApplyWorkflowMetadata(workflow, request.Name, request.BizType);
+        ValidateBpmnXml(request.BpmnXml);
+        workflow.BpmnXml = request.BpmnXml;
+    }
+
+    private async Task ApplyWorkflowMetadata(WorkflowEntity workflow, string? requestedName, string? requestedBizType)
+    {
+        var name = requestedName?.Trim() ?? "";
+        var bizType = requestedBizType?.Trim() ?? "";
 
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new BizException(4001, "流程名称不能为空");
         }
+        if (name.Length > 100)
+        {
+            throw new BizException(4001, "流程名称不能超过 100 个字符");
+        }
 
         if (string.IsNullOrWhiteSpace(bizType))
         {
             throw new BizException(4001, "业务类型不能为空");
+        }
+        if (bizType.Length > 50)
+        {
+            throw new BizException(4001, "业务类型不能超过 50 个字符");
         }
 
         if (await _db.Workflows.AnyAsync(x => x.Name == name && x.Id != workflow.Id))
@@ -774,13 +995,11 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4094, "流程名称已存在");
         }
 
-        await EnsureNoOtherActiveWorkflowForBizType(bizType, workflow.Id);
-
-        ValidateBpmnXml(request.BpmnXml);
+        if (workflow.IsActive)
+            await EnsureNoOtherActiveWorkflowForBizType(bizType, workflow.Id);
 
         workflow.Name = name;
         workflow.BizType = bizType;
-        workflow.BpmnXml = request.BpmnXml;
     }
 
     private async Task EnsureNoOtherActiveWorkflowForBizType(string bizType, int workflowId)
@@ -794,6 +1013,11 @@ public class WorkflowService : IWorkflowService
     private static void ValidateBpmnXml(string? bpmnXml)
     {
         if (string.IsNullOrWhiteSpace(bpmnXml)) return;
+
+        if (Encoding.UTF8.GetByteCount(bpmnXml) > 65_535)
+        {
+            throw new BizException(4001, "BPMN 定义的 UTF-8 内容不能超过 65535 字节");
+        }
 
         var securityErrors = BpmnValidator.ValidateSecurity(bpmnXml);
         if (securityErrors.Any())
@@ -842,7 +1066,9 @@ public class WorkflowService : IWorkflowService
     private async Task<List<string>> GetActionableNodeIdsAsync(
         ApprovalFlow flow,
         User user,
-        Dictionary<int, WorkflowEntity>? workflowMap = null)
+        Dictionary<int, WorkflowEntity>? workflowMap = null,
+        Dictionary<int, BpmnProcess>? processCache = null,
+        Dictionary<string, List<int>>? approverCache = null)
     {
         WorkflowEntity? workflow;
         if (workflowMap != null)
@@ -851,14 +1077,24 @@ public class WorkflowService : IWorkflowService
             workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
         if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return new List<string>();
 
-        var process = BpmnParser.Parse(workflow.BpmnXml);
+        BpmnProcess process;
+        if (processCache is not null && processCache.TryGetValue(workflow.Id, out var cachedProcess))
+        {
+            process = cachedProcess;
+        }
+        else
+        {
+            process = BpmnParser.Parse(workflow.BpmnXml);
+            if (processCache is not null) processCache[workflow.Id] = process;
+        }
         var result = new List<string>();
         foreach (var nodeId in flow.CurrentNodeIds)
         {
             if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) || token.Status != BpmnTokenStatus.Active)
                 continue;
             var node = process.FindNode(nodeId);
-            if (node?.Type == BpmnNodeType.UserTask && await IsApproverForNode(node, user, flow))
+            if (node?.Type == BpmnNodeType.UserTask &&
+                await IsApproverForNode(node, user, flow, approverCache))
                 result.Add(nodeId);
         }
         return result;
@@ -866,15 +1102,6 @@ public class WorkflowService : IWorkflowService
 
     private async Task<bool> CanApprove(ApprovalFlow flow, User user)
         => (await GetActionableNodeIdsAsync(flow, user)).Count > 0;
-
-    private static bool HasPendingSignTaskForUser(ApprovalFlow flow, int userId)
-    {
-        var identity = userId.ToString();
-        return flow.CurrentNodeIds.Any(nodeId =>
-            flow.BpmnTokens.TryGetValue(nodeId, out var token) &&
-            token.Status == BpmnTokenStatus.Active &&
-            token.SignStates?.GetValueOrDefault(identity) == false);
-    }
 
     private async Task EnsureCanApproveNode(ApprovalFlow flow, string nodeId, User user)
     {
@@ -898,12 +1125,32 @@ public class WorkflowService : IWorkflowService
         }
     }
 
-    private async Task<bool> IsApproverForNode(BpmnNode node, User user, ApprovalFlow flow)
+    private async Task<bool> IsApproverForNode(
+        BpmnNode node,
+        User user,
+        ApprovalFlow flow,
+        Dictionary<string, List<int>>? approverCache = null)
     {
         if (flow.BpmnTokens.TryGetValue(node.Id, out var token) && token.SignStates is { Count: > 0 })
         {
-            var identity = TryApprovalIdentity(token, user);
-            return identity != null && !token.SignStates[identity];
+            if (HasNormalizedSignStates(token))
+            {
+                return token.SignStates.TryGetValue(user.Id.ToString(), out var signed) && !signed;
+            }
+
+            var resolvedIds = await ResolveApproverUserIdsAsync(node, flow);
+            return resolvedIds.Contains(user.Id);
+        }
+
+        if (approverCache is not null)
+        {
+            var key = ProgressApproverCacheKey(flow.WorkflowId, node, flow);
+            if (!approverCache.TryGetValue(key, out var resolvedIds))
+            {
+                resolvedIds = await ResolveApproverUserIdsAsync(node, flow);
+                approverCache[key] = resolvedIds;
+            }
+            return resolvedIds.Contains(user.Id);
         }
 
         // 从节点属性中获取审批人配置
@@ -1008,11 +1255,42 @@ public class WorkflowService : IWorkflowService
             if (node?.Type != BpmnNodeType.UserTask ||
                 !node.Properties.TryGetValue("approvalMode", out var mode) || mode != "all" ||
                 !flow.BpmnTokens.TryGetValue(nodeId, out var token)) continue;
+            if (HasNormalizedSignStates(token)) continue;
             var approverIds = await ResolveApproverUserIdsAsync(node, flow);
             if (approverIds.Count == 0)
                 throw new BizException(4051, $"会签节点 {node.Name} 未解析到有效审批人");
             token.SignStates = approverIds.Distinct().ToDictionary(x => x.ToString(), _ => false);
         }
+    }
+
+    private static bool HasNormalizedSignStates(BpmnToken token)
+        => token.SignStates is { Count: > 0 } && token.SignStates.Keys.All(key =>
+            int.TryParse(key, out var userId) && userId > 0);
+
+    private async Task ReconcileInactiveSignersAsync(ApprovalFlow flow, string nodeId)
+    {
+        if (!flow.BpmnTokens.TryGetValue(nodeId, out var token) ||
+            token.SignStates is not { Count: > 0 } || !HasNormalizedSignStates(token)) return;
+
+        var pendingIds = token.SignStates
+            .Where(item => !item.Value)
+            .Select(item => int.Parse(item.Key))
+            .ToArray();
+        var activeIds = await _db.Users.AsNoTracking()
+            .Where(user => user.IsActive && pendingIds.Contains(user.Id))
+            .Select(user => user.Id.ToString())
+            .ToListAsync();
+        var activeSet = activeIds.ToHashSet(StringComparer.Ordinal);
+        foreach (var inactiveKey in token.SignStates
+                     .Where(item => !item.Value && !activeSet.Contains(item.Key))
+                     .Select(item => item.Key)
+                     .ToArray())
+        {
+            token.SignStates.Remove(inactiveKey);
+            token.AddedSigners?.Remove(inactiveKey);
+        }
+
+        if (!token.SignStates.Values.Any(signed => !signed)) token.SignStates = null;
     }
 
     private async Task EnsureCurrentApproversResolvableAsync(ApprovalFlow flow, BpmnProcess process)
@@ -1262,6 +1540,45 @@ public class WorkflowService : IWorkflowService
         }
     }
 
+    private async Task<Dictionary<int, CurrentCustodianDisplay>> CurrentCustodiansByAssetAsync(
+        IEnumerable<int> assetIds)
+    {
+        var ids = assetIds.Distinct().ToArray();
+        if (ids.Length == 0) return new Dictionary<int, CurrentCustodianDisplay>();
+
+        var assets = await _db.Assets.AsNoTracking()
+            .Where(asset => ids.Contains(asset.Id) && asset.CustodianId.HasValue)
+            .Select(asset => new { asset.Id, CustodianId = asset.CustodianId!.Value })
+            .ToListAsync();
+        var custodianIds = assets.Select(asset => asset.CustodianId).Distinct().ToArray();
+        var users = await _db.Users.AsNoTracking()
+            .Where(user => custodianIds.Contains(user.Id))
+            .Select(user => new { user.Id, user.Name, user.DepartmentId })
+            .ToListAsync();
+        var departmentIds = users.Where(user => user.DepartmentId.HasValue)
+            .Select(user => user.DepartmentId!.Value)
+            .Distinct()
+            .ToArray();
+        var departments = await _db.Departments.AsNoTracking()
+            .Where(department => departmentIds.Contains(department.Id))
+            .ToDictionaryAsync(department => department.Id, department => department.Name);
+        var usersById = users.ToDictionary(user => user.Id);
+
+        return assets
+            .Where(asset => usersById.ContainsKey(asset.CustodianId))
+            .ToDictionary(asset => asset.Id, asset =>
+            {
+                var user = usersById[asset.CustodianId];
+                return new CurrentCustodianDisplay(
+                    user.Name,
+                    user.DepartmentId.HasValue
+                        ? departments.GetValueOrDefault(user.DepartmentId.Value)
+                        : null);
+            });
+    }
+
+    private sealed record CurrentCustodianDisplay(string Name, string? DepartmentName);
+
     private async Task<Dictionary<string, string>> BuildWorkflowContext(User applicant, BpmnProcess process)
     {
         var roleCodes = applicant.UserRoles
@@ -1275,7 +1592,8 @@ public class WorkflowService : IWorkflowService
         var context = new Dictionary<string, string>
         {
             ["applicantRole"] = roleCodes.FirstOrDefault() ?? "",
-            ["applicantRoles"] = string.Join(",", roleCodes)
+            ["applicantRoles"] = string.Join(",", roleCodes),
+            ["isProjectOwner"] = "false"
         };
         if (!OrganizationApprovalResolver.IsUsedBy(process)) return context;
 
@@ -1302,9 +1620,6 @@ public class WorkflowService : IWorkflowService
         return applicant?.DepartmentId;
     }
 
-    private static bool IsDeptInScope(int? deptId, int[] allowedDeptIds)
-        => deptId.HasValue && allowedDeptIds.Contains(deptId.Value);
-
     private async Task AddRecord(int flowId, string action, string actor, string? remark)
     {
         _db.FlowRecords.Add(new FlowRecord
@@ -1312,11 +1627,14 @@ public class WorkflowService : IWorkflowService
             FlowId = flowId,
             Action = action,
             Operator = actor,
-            Comment = remark,
+            Comment = Truncate(remark, 500),
             OperatedAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
     }
+
+    internal static string? Truncate(string? value, int maxLength)
+        => string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value[..maxLength];
 
     private static WorkflowDto ToWorkflowDto(WorkflowEntity w)
     {
@@ -1342,6 +1660,7 @@ public class WorkflowService : IWorkflowService
             "borrow" => "资产借用",
             "transfer" => "资产转让",
             "return" => "资产归还",
+            "extension" => "借用延期",
             "material_transfer" => "测试料件流转",
             _ => bizType
         };
@@ -1386,23 +1705,117 @@ public class WorkflowService : IWorkflowService
                + $"（流程号：{flow.FlowNo}{currentNodeText}），请等待流程结束后再试";
     }
 
+    private async Task<ProgressRenderContext> BuildProgressRenderContextAsync(IReadOnlyCollection<ApprovalFlow> flows)
+    {
+        var workflowIds = flows.Select(flow => flow.WorkflowId).Distinct().ToArray();
+        var workflows = await _db.Workflows.AsNoTracking()
+            .Where(workflow => workflowIds.Contains(workflow.Id))
+            .Select(workflow => new { workflow.Id, workflow.BpmnXml })
+            .ToListAsync();
+        var context = new ProgressRenderContext();
+        foreach (var workflow in workflows)
+        {
+            if (!string.IsNullOrWhiteSpace(workflow.BpmnXml))
+                context.Processes[workflow.Id] = BpmnParser.Parse(workflow.BpmnXml);
+        }
+
+        var userIds = new HashSet<int>();
+        foreach (var flow in flows)
+        {
+            if (!context.Processes.TryGetValue(flow.WorkflowId, out var process)) continue;
+            foreach (var token in flow.BpmnTokens.Values)
+            {
+                var node = process.FindNode(token.NodeId);
+                if (node?.Type != BpmnNodeType.UserTask) continue;
+                foreach (var execution in token.History)
+                    userIds.UnionWith(GetCompletedStepUserIds(ToHistoricalToken(token, execution)));
+                if (token.Status == BpmnTokenStatus.Completed)
+                    userIds.UnionWith(GetCompletedStepUserIds(token));
+            }
+
+            var pendingNodes = flow.CurrentNodeIds
+                .Select(process.FindNode)
+                .Where(node => node?.Type == BpmnNodeType.UserTask)
+                .Cast<BpmnNode>()
+                .Concat(flow.Status == FlowStatus.Pending
+                    ? FindNextUserTasks(process, flow.CurrentNodeIds).Select(candidate => candidate.Node)
+                    : Enumerable.Empty<BpmnNode>())
+                .GroupBy(node => node.Id)
+                .Select(group => group.First());
+            foreach (var node in pendingNodes)
+            {
+                var key = ProgressApproverCacheKey(flow.WorkflowId, node, flow);
+                if (!context.ResolvedApprovers.TryGetValue(key, out var resolved))
+                {
+                    resolved = await ResolveApproverUserIdsAsync(node, flow);
+                    context.ResolvedApprovers[key] = resolved;
+                }
+                userIds.UnionWith(resolved);
+            }
+        }
+
+        context.Users = await _db.Users.AsNoTracking()
+            .Where(user => userIds.Contains(user.Id))
+            .Select(user => new ProgressUser(user.Id, user.EmployeeNo, user.Name))
+            .ToDictionaryAsync(user => user.Id);
+        return context;
+    }
+
+    private static List<int> GetCompletedStepUserIds(BpmnToken? token)
+    {
+        if (token?.SignStates is { Count: > 0 })
+            return token.SignStates.Keys.Select(value => int.TryParse(value, out var id) ? id : 0)
+                .Where(id => id > 0).Distinct().ToList();
+        return ParseCompletedApproverIds(token);
+    }
+
+    private sealed class ProgressRenderContext
+    {
+        public Dictionary<int, BpmnProcess> Processes { get; } = new();
+        public Dictionary<string, List<int>> ResolvedApprovers { get; } = new(StringComparer.Ordinal);
+        public Dictionary<int, ProgressUser> Users { get; set; } = new();
+    }
+
+    private static string ProgressApproverCacheKey(int workflowId, BpmnNode node, ApprovalFlow flow)
+    {
+        var assignee = node.Properties.GetValueOrDefault("assignee");
+        var isDynamic = !string.IsNullOrWhiteSpace(assignee) &&
+                        (OrganizationApprovalResolver.IsOrganizationAssignee(assignee)
+                         || assignee is "deptManager" or "supervisor");
+        return isDynamic
+            ? $"{workflowId}|{node.Id}|{flow.BizType}|{flow.ApplicantId}|{flow.TransfereeId}"
+            : $"{workflowId}|{node.Id}|static";
+    }
+
+    private sealed record ProgressUser(int Id, string EmployeeNo, string Name);
+
     private async Task<ApprovalFlowDto> ToFlowDtoAsync(
         ApprovalFlow flow,
-        IEnumerable<string>? actionableNodeIds = null)
+        IEnumerable<string>? actionableNodeIds = null,
+        ProgressRenderContext? renderContext = null)
     {
         var dto = ToFlowDto(flow, actionableNodeIds);
-        var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
-        if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return dto;
-
-        var process = BpmnParser.Parse(workflow.BpmnXml);
+        BpmnProcess? process;
+        if (renderContext is null)
+        {
+            var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
+            if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return dto;
+            process = BpmnParser.Parse(workflow.BpmnXml);
+        }
+        else
+        {
+            process = renderContext.Processes.GetValueOrDefault(flow.WorkflowId);
+            if (process is null) return dto;
+        }
         var completed = new List<WorkflowProgressStepDto>();
-        foreach (var token in flow.BpmnTokens.Values
-                     .Where(x => x.Status == BpmnTokenStatus.Completed)
-                     .OrderBy(x => x.CompletedAt))
+        foreach (var token in flow.BpmnTokens.Values.OrderBy(x => x.CompletedAt ?? x.StartedAt))
         {
             var node = process.FindNode(token.NodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
-            completed.Add(await BuildProgressStepAsync(node, flow, token, "completed", false));
+            foreach (var execution in token.History.OrderBy(x => x.CompletedAt))
+                completed.Add(await BuildProgressStepAsync(node, flow, ToHistoricalToken(token, execution), "completed", false, renderContext));
+            if (token.Status == BpmnTokenStatus.Completed)
+                completed.Add(await BuildProgressStepAsync(node, flow, token, "completed", false, renderContext));
         }
 
         var current = new List<WorkflowProgressStepDto>();
@@ -1411,7 +1824,7 @@ public class WorkflowService : IWorkflowService
             var node = process.FindNode(nodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
             flow.BpmnTokens.TryGetValue(nodeId, out var token);
-            current.Add(await BuildProgressStepAsync(node, flow, token, "current", false));
+            current.Add(await BuildProgressStepAsync(node, flow, token, "current", false, renderContext));
         }
 
         var next = new List<WorkflowProgressStepDto>();
@@ -1419,7 +1832,7 @@ public class WorkflowService : IWorkflowService
         {
             foreach (var candidate in FindNextUserTasks(process, flow.CurrentNodeIds))
             {
-                next.Add(await BuildProgressStepAsync(candidate.Node, flow, null, "next", candidate.IsPossible));
+                next.Add(await BuildProgressStepAsync(candidate.Node, flow, null, "next", candidate.IsPossible, renderContext));
             }
         }
 
@@ -1431,16 +1844,30 @@ public class WorkflowService : IWorkflowService
         };
     }
 
+    private static BpmnToken ToHistoricalToken(BpmnToken current, BpmnTokenExecution execution) => new()
+    {
+        NodeId = current.NodeId,
+        NodeName = current.NodeName,
+        Status = BpmnTokenStatus.Completed,
+        StartedAt = execution.StartedAt,
+        Approver = execution.Approver,
+        Opinion = execution.Opinion,
+        CompletedAt = execution.CompletedAt,
+        SignStates = execution.SignStates
+    };
+
     private async Task<WorkflowProgressStepDto> BuildProgressStepAsync(
         BpmnNode node,
         ApprovalFlow flow,
         BpmnToken? token,
         string state,
-        bool isPossible)
+        bool isPossible,
+        ProgressRenderContext? renderContext = null)
     {
         var userIds = state == "completed"
             ? ParseCompletedApproverIds(token)
-            : await ResolveApproverUserIdsAsync(node, flow);
+            : renderContext?.ResolvedApprovers.GetValueOrDefault(ProgressApproverCacheKey(flow.WorkflowId, node, flow))
+              ?? await ResolveApproverUserIdsAsync(node, flow);
         if (token?.SignStates is { Count: > 0 })
         {
             userIds = token.SignStates.Keys
@@ -1450,11 +1877,23 @@ public class WorkflowService : IWorkflowService
                 .ToList();
         }
 
-        var users = await _db.Users.AsNoTracking()
-            .Where(x => userIds.Contains(x.Id))
-            .OrderBy(x => x.Name)
-            .Select(x => new { x.Id, x.EmployeeNo, x.Name })
-            .ToListAsync();
+        List<ProgressUser> users;
+        if (renderContext is null)
+        {
+            users = await _db.Users.AsNoTracking()
+                .Where(x => userIds.Contains(x.Id))
+                .OrderBy(x => x.Name)
+                .Select(x => new ProgressUser(x.Id, x.EmployeeNo, x.Name))
+                .ToListAsync();
+        }
+        else
+        {
+            users = userIds.Select(id => renderContext.Users.GetValueOrDefault(id))
+                .Where(user => user is not null)
+                .Cast<ProgressUser>()
+                .OrderBy(user => user.Name)
+                .ToList();
+        }
         var assignees = users.Select(user => new WorkflowAssigneeDto
         {
             UserId = user.Id,
@@ -1550,6 +1989,7 @@ public class WorkflowService : IWorkflowService
         Transferee = f.Transferee,
         TransfereeDept = f.TransfereeDept,
         Reason = f.Reason,
+        OriginalReturnDate = f.OriginalReturnDate,
         ReturnDate = f.ReturnDate,
         Status = f.Status,
         CurrentNodeIds = f.CurrentNodeIds,

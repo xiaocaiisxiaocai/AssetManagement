@@ -1,9 +1,10 @@
 <script lang="ts" setup>
+import type { OptionKind } from './project-workspace-types';
+
 import type {
   SaveTestProjectOptionPayload,
   TestProjectOption,
 } from '#/api/test-project';
-import type { OptionKind } from './project-workspace-types';
 
 import {
   ElButton,
@@ -13,9 +14,9 @@ import {
   ElInput,
   ElInputNumber,
   ElSwitch,
-  ElTabPane,
   ElTable,
   ElTableColumn,
+  ElTabPane,
   ElTabs,
   ElTag,
 } from 'element-plus';
@@ -24,7 +25,6 @@ defineProps<{
   canManage: boolean;
   displayedOptions: TestProjectOption[];
   editingId: null | number;
-  form: SaveTestProjectOptionPayload;
   saving: boolean;
 }>();
 
@@ -34,6 +34,9 @@ const emit = defineEmits<{
   reset: [kind: OptionKind];
   save: [];
 }>();
+const form = defineModel<SaveTestProjectOptionPayload>('form', {
+  required: true,
+});
 const visible = defineModel<boolean>('visible', { default: false });
 const activeKind = defineModel<OptionKind>('activeKind', { required: true });
 
@@ -86,9 +89,9 @@ const kindLabels: Record<OptionKind, string> = {
     </div>
     <ElTable :data="displayedOptions" border>
       <ElTableColumn label="类型" width="110">
-        <template #default="{ row }">{{
-          kindLabels[row.kind as OptionKind]
-        }}</template>
+        <template #default="{ row }">
+          {{ kindLabels[row.kind as OptionKind] }}
+        </template>
       </ElTableColumn>
       <ElTableColumn label="名称" prop="label" />
       <ElTableColumn align="center" label="排序" prop="sort" width="80" />

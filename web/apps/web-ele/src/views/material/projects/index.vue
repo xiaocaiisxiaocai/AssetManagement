@@ -1,4 +1,13 @@
 <script lang="ts" setup>
+import type { ProjectFilter } from './project-filter';
+import type {
+  DeleteStatus,
+  FlatOption,
+  OptionKind,
+  ProjectFormState,
+} from './project-workspace-types';
+
+import type { DepartmentOptionNode, LocationNode } from '#/api/base-data';
 import type {
   MaterialDetail,
   MaterialFlowItem,
@@ -6,7 +15,6 @@ import type {
   MaterialQuery,
   MaterialStatus,
 } from '#/api/material';
-import type { DepartmentOptionNode, LocationNode } from '#/api/base-data';
 import type {
   SaveTestProjectOptionPayload,
   SaveTestProjectPayload,
@@ -14,7 +22,7 @@ import type {
   TestProjectItem,
   TestProjectOption,
 } from '#/api/test-project';
-import type { UserOptionDto } from '#/api/user';
+import type { UserDto, UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 
@@ -24,22 +32,13 @@ import { useUserStore } from '@vben/stores';
 import { ElDrawer, ElMessage, ElMessageBox, ElTabs, ElTag } from 'element-plus';
 
 import { getDepartmentOptionsApi, getLocationTreeApi } from '#/api/base-data';
-import { flattenActiveDepartments } from '#/utils/department-options';
-import {
-  createPageSizeOptions,
-  getDefaultPageSize,
-} from '#/utils/runtime-settings';
-import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
-import { formatDate } from '#/utils/date-format';
-import { createLatestRequestGuard } from '#/utils/latest-request';
-import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
 import {
   approveFlowApi,
   deleteMaterialApi,
   getMaterialDetailApi,
   listMaterialsApi,
-  listMyFlowsApi,
-  listPendingFlowsApi,
+  listMyFlowsPageApi,
+  listPendingFlowsPageApi,
   purgeMaterialApi,
   rejectFlowApi,
   restoreMaterialApi,
@@ -55,42 +54,59 @@ import {
   deleteTestProjectOptionApi,
   listTestProjectFollowupsApi,
   listTestProjectOptionsApi,
-  listTestProjectsApi,
+  listTestProjectsPageApi,
   purgeTestProjectApi,
   restoreTestProjectApi,
   updateTestProjectApi,
   updateTestProjectFollowupApi,
   updateTestProjectOptionApi,
 } from '#/api/test-project';
-import { getUserListApi, getUserOptionsApi } from '#/api/user';
-
-import MaterialDetailDialog from '../components/MaterialDetailDialog.vue';
-import MaterialFormDialog from '../components/MaterialFormDialog.vue';
-import TransferDialog from '../components/TransferDialog.vue';
-import ProjectFormDialog from './ProjectFormDialog.vue';
-import ProjectFlowsTab from './ProjectFlowsTab.vue';
-import ProjectFollowupsTab from './ProjectFollowupsTab.vue';
-import ProjectMaterialsTab from './ProjectMaterialsTab.vue';
-import ProjectOptionDialog from './ProjectOptionDialog.vue';
-import ProjectTable from './ProjectTable.vue';
-import type {
-  DeleteStatus,
-  FlatOption,
-  OptionKind,
-  ProjectFormState,
-} from './project-workspace-types';
+import { getUserListApi, getUserOptionsPageApi } from '#/api/user';
+import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
+import { formatDate } from '#/utils/date-format';
+import { flattenActiveDepartments } from '#/utils/department-options';
+import { runHandled } from '#/utils/handled-promise';
+import { createLatestRequestGuard } from '#/utils/latest-request';
+import { normalizedPage } from '#/utils/pagination';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
+import {
+  mergeSelectedUserOption,
+  mergeUserOptions,
+} from '#/utils/user-options';
+import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
 import {
   buildMaterialActionAccess,
   buildProjectActionAccess,
 } from '#/views/permissions/action-access';
-import { filterProjects, type ProjectFilter } from './project-filter';
+
+import MaterialDetailDialog from '../components/MaterialDetailDialog.vue';
+import MaterialFormDialog from '../components/MaterialFormDialog.vue';
+import TransferDialog from '../components/TransferDialog.vue';
 import { validateProjectForm } from './project-form-rules';
+import { buildProjectPageQuery } from './project-page-query';
 import { projectFollowUpStatusMeta } from './project-workspace-rules';
+import ProjectFlowsTab from './ProjectFlowsTab.vue';
+import ProjectFollowupsTab from './ProjectFollowupsTab.vue';
+import ProjectFormDialog from './ProjectFormDialog.vue';
+import ProjectMaterialsTab from './ProjectMaterialsTab.vue';
+import ProjectOptionDialog from './ProjectOptionDialog.vue';
+import ProjectTable from './ProjectTable.vue';
 
 defineOptions({ name: 'MaterialProjects' });
 
+function reactiveObjectModel<T extends object>(state: T) {
+  return computed<T>({
+    get: () => state,
+    set: (value) => Object.assign(state, value),
+  });
+}
+
 const { hasAccessByCodes } = useAccess();
 const userStore = useUserStore();
+const currentProject = ref<null | TestProjectItem>(null);
 const projectActionAccess = computed(() =>
   buildProjectActionAccess(hasAccessByCodes),
 );
@@ -112,6 +128,10 @@ const isCurrentProjectOwner = computed(
     String(currentProject.value.ownerId) ===
       String(userStore.userInfo?.userId ?? ''),
 );
+const currentUserId = computed(() => Number(userStore.userInfo?.userId ?? 0));
+const isCurrentUserSupervisor = computed(() =>
+  userStore.userRoles.includes('supervisor'),
+);
 const canWriteCurrentProjectMaterial = computed(
   () =>
     !isCurrentProjectReadOnly.value &&
@@ -125,6 +145,7 @@ const canEditCurrentProjectMaterial = computed(
 
 const loading = ref(false);
 const projects = ref<TestProjectItem[]>([]);
+const projectTotal = ref(0);
 const deleteStatus = ref<DeleteStatus>('all');
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const projectQuery = reactive({
@@ -138,9 +159,13 @@ const projectFilter = reactive<ProjectFilter>({
   progressCode: '',
   projectTypeCode: '',
 });
+const projectQueryModel = reactiveObjectModel(projectQuery);
+const projectFilterModel = reactiveObjectModel(projectFilter);
 
 const options = ref<TestProjectOption[]>([]);
 const users = ref<UserOptionDto[]>([]);
+const userOptionsLoading = ref(false);
+const userOptionsRequestGuard = createLatestRequestGuard();
 const departments = ref<DepartmentOptionNode[]>([]);
 const locations = ref<LocationNode[]>([]);
 
@@ -159,6 +184,7 @@ const form = reactive<ProjectFormState>({
   startDate: '',
   testStatus: '',
 });
+const formModel = reactiveObjectModel(form);
 
 const optionDialogVisible = ref(false);
 const optionSaving = ref(false);
@@ -171,9 +197,9 @@ const optionForm = reactive<SaveTestProjectOptionPayload>({
   label: '',
   sort: 0,
 });
+const optionFormModel = reactiveObjectModel(optionForm);
 
 const followupDrawerVisible = ref(false);
-const currentProject = ref<null | TestProjectItem>(null);
 const activeProjectTab = ref('materials');
 const followups = ref<TestProjectFollowup[]>([]);
 const followupLoading = ref(false);
@@ -183,6 +209,7 @@ const followupForm = reactive({
   content: '',
   dueDate: '',
 });
+const followupFormModel = reactiveObjectModel(followupForm);
 
 const materialLoading = ref(false);
 const materials = ref<MaterialItem[]>([]);
@@ -193,6 +220,7 @@ const materialDetailVisible = ref(false);
 const materialDetailLoading = ref(false);
 const materialDetail = ref<MaterialDetail | null>(null);
 const followupRequestGuard = createLatestRequestGuard();
+const projectListRequestGuard = createLatestRequestGuard();
 const materialRequestGuard = createLatestRequestGuard();
 const pendingFlowRequestGuard = createLatestRequestGuard();
 const myFlowRequestGuard = createLatestRequestGuard();
@@ -210,6 +238,7 @@ const materialQuery = reactive({
   pageSize: 10,
   status: undefined as MaterialStatus | undefined,
 });
+const materialQueryModel = reactiveObjectModel(materialQuery);
 const materialPageSizeOptions = ref(createPageSizeOptions(20));
 
 const flowActiveTab = ref('mine');
@@ -217,6 +246,8 @@ const pendingFlowLoading = ref(false);
 const myFlowLoading = ref(false);
 const pendingFlows = ref<MaterialFlowItem[]>([]);
 const myFlows = ref<MaterialFlowItem[]>([]);
+const pendingFlowTotal = ref(0);
+const myFlowTotal = ref(0);
 const pendingFlowQuery = reactive({
   page: 1,
   pageSize: 10,
@@ -225,6 +256,8 @@ const myFlowQuery = reactive({
   page: 1,
   pageSize: 10,
 });
+const pendingFlowQueryModel = reactiveObjectModel(pendingFlowQuery);
+const myFlowQueryModel = reactiveObjectModel(myFlowQuery);
 const flowPageSizeOptions = ref(createPageSizeOptions(20));
 
 const projectTypeOptions = computed(() => activeOptions('project_type'));
@@ -256,21 +289,11 @@ const currentProjectProgressText = computed(
     currentProject.value?.progressCode ||
     '未设置进度',
 );
-const pendingFlowCount = computed(() => pendingFlows.value.length);
-const myFlowCount = computed(() => myFlows.value.length);
-const pagedPendingFlows = computed(() => {
-  const start = (pendingFlowQuery.page - 1) * pendingFlowQuery.pageSize;
-  return pendingFlows.value.slice(start, start + pendingFlowQuery.pageSize);
-});
-const pagedMyFlows = computed(() => {
-  const start = (myFlowQuery.page - 1) * myFlowQuery.pageSize;
-  return myFlows.value.slice(start, start + myFlowQuery.pageSize);
-});
-const filteredProjects = computed(() =>
-  filterProjects(projects.value, projectFilter),
-);
 const projectOwnerOptions = computed(() => {
   const ownerMap = new Map<number, { id: number; name: string }>();
+  for (const user of users.value) {
+    ownerMap.set(user.id, { id: user.id, name: user.name });
+  }
   for (const project of projects.value) {
     if (project.ownerId && project.ownerName) {
       ownerMap.set(project.ownerId, {
@@ -281,18 +304,13 @@ const projectOwnerOptions = computed(() => {
   }
   return [...ownerMap.values()];
 });
-const pagedProjects = computed(() => {
-  const start = (projectQuery.page - 1) * projectQuery.pageSize;
-  return filteredProjects.value.slice(start, start + projectQuery.pageSize);
-});
-
 function activeOptions(kind: OptionKind) {
   return options.value.filter((item) => item.kind === kind && item.isActive);
 }
 
 function normalizeText(value?: null | string) {
   const text = value?.trim();
-  return text ? text : null;
+  return text || null;
 }
 
 function statusMeta(project: TestProjectItem) {
@@ -305,32 +323,45 @@ function generateOptionCode(kind: OptionKind) {
 }
 
 async function loadData() {
+  const requestGeneration = projectListRequestGuard.next();
   loading.value = true;
   try {
-    projects.value = await listTestProjectsApi(deleteStatus.value);
+    const result = await listTestProjectsPageApi(
+      buildProjectPageQuery(
+        projectFilter,
+        deleteStatus.value,
+        projectQuery.page,
+        projectQuery.pageSize,
+      ),
+    );
+    if (!projectListRequestGuard.isLatest(requestGeneration)) return;
+    const validPage = normalizedPage(
+      projectQuery.page,
+      result.total,
+      projectQuery.pageSize,
+    );
+    if (projectQuery.page !== validPage) {
+      projectQuery.page = validPage;
+      await loadData();
+      return;
+    }
+    projects.value = result.items;
+    projectTotal.value = result.total;
     if (currentProject.value) {
       const refreshed = projects.value.find(
         (project) => project.id === currentProject.value?.id,
       );
       if (refreshed) currentProject.value = refreshed;
     }
-    normalizeProjectPage();
   } finally {
-    loading.value = false;
-  }
-}
-
-function normalizeProjectPage() {
-  if (
-    (projectQuery.page - 1) * projectQuery.pageSize >=
-    filteredProjects.value.length
-  ) {
-    projectQuery.page = 1;
+    if (projectListRequestGuard.isLatest(requestGeneration))
+      loading.value = false;
   }
 }
 
 function searchProjects() {
   projectQuery.page = 1;
+  runHandled(loadData());
 }
 
 function resetProjectFilter() {
@@ -342,6 +373,7 @@ function resetProjectFilter() {
     projectTypeCode: '',
   });
   projectQuery.page = 1;
+  runHandled(loadData());
 }
 
 async function loadOptions() {
@@ -350,20 +382,36 @@ async function loadOptions() {
 
 async function loadUsers() {
   if (users.value.length > 0) return;
-  if (
+  await searchUsers('');
+}
+
+async function searchUsers(keyword = '') {
+  const requestGeneration = userOptionsRequestGuard.next();
+  const canUseBusinessOptions =
     hasAccessByCodes(['approval:create']) ||
     hasAccessByCodes(['material-flow:transfer']) ||
+    hasAccessByCodes(['project:view']) ||
     hasAccessByCodes(['project:create']) ||
     hasAccessByCodes(['project:edit']) ||
     hasAccessByCodes(['material:create']) ||
-    hasAccessByCodes(['material:edit'])
-  ) {
-    users.value = await getUserOptionsApi();
-    return;
-  }
-  if (hasAccessByCodes(['user:view'])) {
-    const result = await getUserListApi('', 1, 500);
-    users.value = result.items.filter((user) => user.isActive);
+    hasAccessByCodes(['material:edit']);
+  userOptionsLoading.value = true;
+  try {
+    let incoming: (UserDto | UserOptionDto)[] = [];
+    if (canUseBusinessOptions) {
+      const result = await getUserOptionsPageApi(keyword, 1, 50);
+      incoming = result.items;
+    } else if (hasAccessByCodes(['user:view'])) {
+      const result = await getUserListApi(keyword, 1, 50);
+      incoming = result.items.filter((user) => user.isActive);
+    }
+    if (!userOptionsRequestGuard.isLatest(requestGeneration)) return;
+    users.value = mergeUserOptions(users.value, incoming);
+  } catch {
+    // 请求层已提示，保留已回填选项。
+  } finally {
+    if (userOptionsRequestGuard.isLatest(requestGeneration))
+      userOptionsLoading.value = false;
   }
 }
 
@@ -398,10 +446,14 @@ function openCreate() {
   editingId.value = null;
   resetProjectForm();
   dialogVisible.value = true;
-  void Promise.all([loadUsers(), loadBaseOptions()]);
+  runHandled(Promise.all([loadUsers(), loadBaseOptions()]));
 }
 
 function openEdit(row: TestProjectItem) {
+  users.value = mergeSelectedUserOption(users.value, {
+    id: row.ownerId,
+    name: row.ownerName,
+  });
   editingId.value = row.id;
   Object.assign(form, {
     closedDate: row.closedDate ? row.closedDate.slice(0, 10) : '',
@@ -418,7 +470,7 @@ function openEdit(row: TestProjectItem) {
     testStatus: row.testStatus ?? '',
   });
   dialogVisible.value = true;
-  void Promise.all([loadUsers(), loadBaseOptions()]);
+  runHandled(Promise.all([loadUsers(), loadBaseOptions()]));
 }
 
 function buildProjectPayload(): SaveTestProjectPayload {
@@ -745,6 +797,16 @@ async function loadProjectMaterials(projectId = currentProject.value?.id) {
       followupDrawerVisible.value &&
       currentProject.value?.id === projectId
     ) {
+      const validPage = normalizedPage(
+        materialQuery.page,
+        result.total,
+        materialQuery.pageSize,
+      );
+      if (materialQuery.page !== validPage) {
+        materialQuery.page = validPage;
+        await loadProjectMaterials(projectId);
+        return;
+      }
       materials.value = result.items;
       materialTotal.value = result.total;
     }
@@ -757,7 +819,7 @@ async function loadProjectMaterials(projectId = currentProject.value?.id) {
 
 function searchMaterials() {
   materialQuery.page = 1;
-  void loadProjectMaterials();
+  runHandled(loadProjectMaterials());
 }
 
 function resetMaterialQuery() {
@@ -768,20 +830,26 @@ function resetMaterialQuery() {
     page: 1,
     status: undefined,
   });
-  void loadProjectMaterials();
+  runHandled(loadProjectMaterials());
 }
 
 function onProjectPageSizeChange() {
   projectQuery.page = 1;
+  runHandled(loadData());
+}
+
+function onProjectDeleteStatusChange() {
+  projectQuery.page = 1;
+  runHandled(loadData());
 }
 
 function onMaterialPageSizeChange() {
   materialQuery.page = 1;
-  void loadProjectMaterials();
+  runHandled(loadProjectMaterials());
 }
 
 function loadMaterialFormOptions() {
-  void Promise.all([loadUsers(), loadBaseOptions()]);
+  runHandled(Promise.all([loadUsers(), loadBaseOptions()]));
 }
 
 function openCreateMaterial() {
@@ -795,19 +863,19 @@ function onMaterialRowCommand(command: number | string, row: MaterialItem) {
   if (isCurrentProjectReadOnly.value) return;
   switch (command) {
     case 'delete': {
-      void removeMaterial(row);
+      runHandled(removeMaterial(row));
       break;
     }
     case 'purge': {
-      void purgeMaterial(row);
+      runHandled(purgeMaterial(row));
       break;
     }
     case 'restore': {
-      void restoreMaterial(row);
+      runHandled(restoreMaterial(row));
       break;
     }
     case 'return': {
-      void onReturnMaterial(row);
+      runHandled(onReturnMaterial(row));
       break;
     }
     case 'transfer': {
@@ -820,6 +888,10 @@ function onMaterialRowCommand(command: number | string, row: MaterialItem) {
 
 function openEditMaterial(row: MaterialItem) {
   if (isCurrentProjectReadOnly.value) return;
+  users.value = mergeSelectedUserOption(users.value, {
+    id: row.custodianId,
+    name: row.custodianName,
+  });
   editingMaterial.value = row;
   loadMaterialFormOptions();
   materialFormVisible.value = true;
@@ -930,8 +1002,7 @@ async function purgeMaterial(row: MaterialItem) {
 }
 
 async function afterMaterialChanged() {
-  await loadProjectMaterials();
-  void loadProjectFlows();
+  await Promise.all([loadProjectMaterials(), loadProjectFlows()]);
 }
 
 async function loadProjectFlows(projectId = currentProject.value?.id) {
@@ -943,9 +1014,10 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
   const requestGuard = loadMine ? myFlowRequestGuard : pendingFlowRequestGuard;
   const requestGeneration = requestGuard.next();
   try {
-    const flows = await (loadMine
-      ? listMyFlowsApi(projectId)
-      : listPendingFlowsApi(projectId));
+    const query = loadMine ? myFlowQuery : pendingFlowQuery;
+    const result = await (loadMine
+      ? listMyFlowsPageApi({ ...query, projectId })
+      : listPendingFlowsPageApi({ ...query, projectId }));
     if (
       !requestGuard.isLatest(requestGeneration) ||
       !followupDrawerVisible.value ||
@@ -953,12 +1025,18 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
     ) {
       return;
     }
+    const lastPage = Math.max(1, Math.ceil(result.total / query.pageSize));
+    if (query.page > lastPage) {
+      query.page = lastPage;
+      await loadProjectFlows(projectId);
+      return;
+    }
     if (loadMine) {
-      myFlows.value = flows;
-      normalizeFlowPage('mine');
+      myFlows.value = result.items;
+      myFlowTotal.value = result.total;
     } else {
-      pendingFlows.value = flows;
-      normalizeFlowPage('pending');
+      pendingFlows.value = result.items;
+      pendingFlowTotal.value = result.total;
     }
   } finally {
     if (requestGuard.isLatest(requestGeneration)) {
@@ -1036,32 +1114,25 @@ async function withdrawFlow(row: MaterialFlowItem) {
 
 function onProjectTabChange(name: number | string) {
   if (name === 'materials') {
-    void loadProjectMaterials();
+    runHandled(loadProjectMaterials());
   }
   if (name === 'flows') {
-    void loadProjectFlows();
+    runHandled(loadProjectFlows());
   }
 }
 
 function onFlowTabChange() {
-  void loadProjectFlows();
-}
-
-function normalizeFlowPage(type: 'mine' | 'pending') {
-  const query = type === 'mine' ? myFlowQuery : pendingFlowQuery;
-  const total =
-    type === 'mine' ? myFlows.value.length : pendingFlows.value.length;
-  if ((query.page - 1) * query.pageSize >= total) {
-    query.page = 1;
-  }
+  runHandled(loadProjectFlows());
 }
 
 function onPendingFlowPageSizeChange() {
   pendingFlowQuery.page = 1;
+  runHandled(loadProjectFlows());
 }
 
 function onMyFlowPageSizeChange() {
   myFlowQuery.page = 1;
+  runHandled(loadProjectFlows());
 }
 
 onMounted(async () => {
@@ -1101,47 +1172,52 @@ watch(materialDetailVisible, (opened) => {
     <div class="material-projects-page p-5">
       <ProjectTable
         v-model:delete-status="deleteStatus"
+        v-model:filter="projectFilterModel"
+        v-model:query="projectQueryModel"
         :access="projectActionAccess"
-        :filter="projectFilter"
-        :filtered-total="filteredProjects.length"
+        :filtered-total="projectTotal"
         :loading="loading"
         :owner-options="projectOwnerOptions"
         :page-size-options="pageSizeOptions"
-        :paged-projects="pagedProjects"
+        :paged-projects="projects"
         :progress-options="progressOptions"
         :project-type-options="projectTypeOptions"
-        :query="projectQuery"
+        :user-options-loading="userOptionsLoading"
         @create="openCreate"
         @edit="openEdit"
         @open="openFollowups"
         @options="openOptionDialog"
+        @page-change="loadData"
         @page-size-change="onProjectPageSizeChange"
         @purge="purge"
         @remove="remove"
         @reset="resetProjectFilter"
         @restore="restore"
         @search="searchProjects"
-        @status-change="loadData"
+        @status-change="onProjectDeleteStatusChange"
+        @user-search="searchUsers"
       />
 
       <ProjectFormDialog
+        v-model:form="formModel"
         v-model:visible="dialogVisible"
         :editing="editingId !== null"
-        :form="form"
         :progress-options="progressOptions"
         :project-type-options="projectTypeOptions"
         :saving="saving"
+        :search-users="searchUsers"
+        :user-options-loading="userOptionsLoading"
         :users="users"
         @save="save"
       />
 
       <ProjectOptionDialog
         v-model:active-kind="activeOptionKind"
+        v-model:form="optionFormModel"
         v-model:visible="optionDialogVisible"
         :can-manage="projectActionAccess.canOption"
         :displayed-options="displayedOptions"
         :editing-id="optionEditingId"
-        :form="optionForm"
         :saving="optionSaving"
         @edit="openOptionEdit"
         @remove="removeOption"
@@ -1149,7 +1225,7 @@ watch(materialDetailVisible, (opened) => {
         @save="saveOption"
       />
 
-      <ElDrawer v-model="followupDrawerVisible" title="项目跟进" size="78%">
+      <ElDrawer v-model="followupDrawerVisible" size="78%" title="项目跟进">
         <div v-if="currentProject" class="followup-panel">
           <section class="project-brief">
             <div class="project-brief-main">
@@ -1194,13 +1270,16 @@ watch(materialDetailVisible, (opened) => {
             @tab-change="onProjectTabChange"
           >
             <ProjectMaterialsTab
+              v-model:query="materialQueryModel"
               :access="currentMaterialActionAccess"
               :can-create="canWriteCurrentProjectMaterial"
               :can-edit="canEditCurrentProjectMaterial"
+              :current-user-id="currentUserId"
+              :is-supervisor="isCurrentUserSupervisor"
               :loading="materialLoading"
               :materials="materials"
               :page-size-options="materialPageSizeOptions"
-              :query="materialQuery"
+              :project-owner-id="currentProject.ownerId"
               :total="materialTotal"
               @command="onMaterialRowCommand"
               @create="openCreateMaterial"
@@ -1214,19 +1293,20 @@ watch(materialDetailVisible, (opened) => {
 
             <ProjectFlowsTab
               v-model:active-tab="flowActiveTab"
+              v-model:my-query="myFlowQueryModel"
+              v-model:pending-query="pendingFlowQueryModel"
               :can-approve="currentMaterialActionAccess.canApprove"
-              :my-count="myFlowCount"
-              :my-flows="pagedMyFlows"
+              :my-count="myFlowTotal"
+              :my-flows="myFlows"
               :my-loading="myFlowLoading"
-              :my-query="myFlowQuery"
               :page-size-options="flowPageSizeOptions"
-              :pending-count="pendingFlowCount"
-              :pending-flows="pagedPendingFlows"
+              :pending-count="pendingFlowTotal"
+              :pending-flows="pendingFlows"
               :pending-loading="pendingFlowLoading"
-              :pending-query="pendingFlowQuery"
               :read-only="isCurrentProjectReadOnly"
               @approve="approveFlow"
               @my-page-size-change="onMyFlowPageSizeChange"
+              @page-change="loadProjectFlows"
               @pending-page-size-change="onPendingFlowPageSizeChange"
               @reject="rejectFlow"
               @tab-change="onFlowTabChange"
@@ -1234,9 +1314,9 @@ watch(materialDetailVisible, (opened) => {
             />
 
             <ProjectFollowupsTab
+              v-model:form="followupFormModel"
               :editing-id="editingFollowupId"
               :followups="followups"
-              :form="followupForm"
               :loading="followupLoading"
               :project="currentProject"
               :saving="followupSaving"
@@ -1257,6 +1337,8 @@ watch(materialDetailVisible, (opened) => {
         :material="editingMaterial"
         :project-locked="true"
         :projects="currentProjectList"
+        :search-users="searchUsers"
+        :user-options-loading="userOptionsLoading"
         :users="users"
         @saved="afterMaterialChanged"
       />
@@ -1270,6 +1352,8 @@ watch(materialDetailVisible, (opened) => {
       <TransferDialog
         v-model:visible="transferVisible"
         :material="transferMaterial"
+        :search-users="searchUsers"
+        :user-options-loading="userOptionsLoading"
         :users="users"
         @done="afterMaterialChanged"
       />

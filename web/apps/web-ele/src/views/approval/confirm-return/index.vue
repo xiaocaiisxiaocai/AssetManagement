@@ -3,10 +3,6 @@ import type { ApprovalFlow } from '#/api/workflow';
 
 import { onMounted, reactive, ref } from 'vue';
 
-import { getPendingReturnsApi, confirmReturnApi } from '#/api/workflow';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
-import { formatDateTime } from '#/utils/date-format';
-
 import {
   ElButton,
   ElDatePicker,
@@ -23,6 +19,15 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { confirmReturnApi, getPendingReturnsPageApi } from '#/api/workflow';
+import { formatDateTime } from '#/utils/date-format';
+import { runHandled } from '#/utils/handled-promise';
+import { createLatestRequestGuard } from '#/utils/latest-request';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
+
 defineOptions({ name: 'ConfirmReturn' });
 
 const loading = ref(false);
@@ -38,67 +43,47 @@ const query = reactive({
   pageSize: 20,
 });
 
-const allFlowsCache = ref<ApprovalFlow[]>([]);
+const listRequestGuard = createLatestRequestGuard();
 
 async function loadData() {
+  const requestGeneration = listRequestGuard.next();
   loading.value = true;
   try {
-    const allFlows = await getPendingReturnsApi();
-    allFlowsCache.value = allFlows.filter(
-      (f) => f.bizType === 'borrow' && f.status === 'approved' && !f.confirmedAt
-    );
-    query.page = 1;
-    updatePage();
+    const result = await getPendingReturnsPageApi({
+      keyword: query.keyword.trim() || undefined,
+      page: query.page,
+      pageSize: query.pageSize,
+      returnDate: query.returnDate || undefined,
+    });
+    if (!listRequestGuard.isLatest(requestGeneration)) return;
+    const lastPage = Math.max(1, Math.ceil(result.total / query.pageSize));
+    if (query.page > lastPage) {
+      query.page = lastPage;
+      await loadData();
+      return;
+    }
+    flows.value = result.items;
+    total.value = result.total;
   } finally {
-    loading.value = false;
+    if (listRequestGuard.isLatest(requestGeneration)) loading.value = false;
   }
-}
-
-function filteredFlows() {
-  const keyword = query.keyword.trim().toLowerCase();
-  return allFlowsCache.value.filter((flow) => {
-    const matchKeyword =
-      !keyword ||
-      [
-        flow.flowNo,
-        flow.assetNo,
-        flow.assetName,
-        flow.applicant,
-        flow.applicantDept,
-        flow.reason,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword));
-    const matchReturnDate = !query.returnDate || flow.returnDate === query.returnDate;
-    return matchKeyword && matchReturnDate;
-  });
-}
-
-function updatePage() {
-  const filtered = filteredFlows();
-  total.value = filtered.length;
-  if ((query.page - 1) * query.pageSize >= total.value) {
-    query.page = 1;
-  }
-  const start = (query.page - 1) * query.pageSize;
-  flows.value = filtered.slice(start, start + query.pageSize);
 }
 
 function onPageSizeChange() {
   query.page = 1;
-  updatePage();
+  runHandled(loadData());
 }
 
 function search() {
   query.page = 1;
-  updatePage();
+  runHandled(loadData());
 }
 
 function resetQuery() {
   query.keyword = '';
   query.returnDate = '';
   query.page = 1;
-  updatePage();
+  runHandled(loadData());
 }
 
 async function confirmReturn(row: ApprovalFlow) {
@@ -112,7 +97,7 @@ async function confirmReturn(row: ApprovalFlow) {
         cancelButtonText: '暂不确认',
         closeOnClickModal: false,
         closeOnPressEscape: false,
-      }
+      },
     );
   } catch {
     return;
@@ -131,7 +116,11 @@ async function confirmReturn(row: ApprovalFlow) {
 }
 
 function bizText(type: string) {
-  return { borrow: '借用', return: '归还', transfer: '转让' }[type] ?? type;
+  return (
+    { borrow: '借用', extension: '延期', return: '归还', transfer: '转让' }[
+      type
+    ] ?? type
+  );
 }
 
 onMounted(async () => {
@@ -174,31 +163,53 @@ onMounted(async () => {
       </div>
 
       <div class="table-panel-with-toolbar">
-        <ElTable v-loading="loading" :data="flows" border height="100%">
+        <ElTable :data="flows" border height="100%" v-loading="loading">
           <ElTableColumn label="流程编号" min-width="160" prop="flowNo" />
-          <ElTableColumn class-name="hide-on-mobile" label="资产编号" min-width="140" prop="assetNo" />
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="资产编号"
+            min-width="140"
+            prop="assetNo"
+          />
           <ElTableColumn label="资产名称" min-width="200" prop="assetName" />
-          <ElTableColumn label="业务类型" width="100" align="center">
+          <ElTableColumn align="center" label="业务类型" width="100">
             <template #default="{ row }">
-              <ElTag type="success" size="small">{{ bizText(row.bizType) }}</ElTag>
+              <ElTag size="small" type="success">
+                {{ bizText(row.bizType) }}
+              </ElTag>
             </template>
           </ElTableColumn>
           <ElTableColumn label="借用人" min-width="130" prop="applicant" />
-          <ElTableColumn class-name="hide-on-mobile" label="借用部门" min-width="150" prop="applicantDept" />
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="借用部门"
+            min-width="150"
+            prop="applicantDept"
+          />
           <ElTableColumn label="应归还日期" min-width="140" prop="returnDate" />
-          <ElTableColumn class-name="hide-on-mobile" label="申请时间" min-width="180">
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="申请时间"
+            min-width="180"
+          >
             <template #default="{ row }">
               {{ formatDateTime(row.applyTime) }}
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="借用事由" min-width="200" prop="reason" show-overflow-tooltip />
-          <ElTableColumn fixed="right" label="操作" width="120" align="center">
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="借用事由"
+            min-width="200"
+            prop="reason"
+            show-overflow-tooltip
+          />
+          <ElTableColumn align="center" fixed="right" label="操作" width="120">
             <template #default="{ row }">
               <ElButton
                 :loading="confirmingIds.has(row.id)"
                 link
-                type="primary"
                 size="small"
+                type="primary"
                 @click="confirmReturn(row)"
               >
                 确认已收回
@@ -212,7 +223,11 @@ onMounted(async () => {
             <span>共 {{ total }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
-            <ElSelect v-model="query.pageSize" style="width: 92px" @change="onPageSizeChange">
+            <ElSelect
+              v-model="query.pageSize"
+              style="width: 92px"
+              @change="onPageSizeChange"
+            >
               <ElOption
                 v-for="size in pageSizeOptions"
                 :key="size"
@@ -227,7 +242,7 @@ onMounted(async () => {
             :total="total"
             background
             layout="prev, pager, next"
-            @current-change="updatePage"
+            @current-change="loadData"
           />
         </div>
       </div>

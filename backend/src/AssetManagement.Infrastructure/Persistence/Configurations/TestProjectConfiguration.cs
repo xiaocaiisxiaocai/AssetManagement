@@ -16,9 +16,11 @@ public class TestProjectConfiguration : IEntityTypeConfiguration<TestProject>
         b.Property(x => x.ProgressCode).HasMaxLength(50);
         b.Property(x => x.TestStatus).HasMaxLength(1000);
         b.Property(x => x.FollowUpIntervalDays).HasDefaultValue(14);
+        b.Property(x => x.RowVersion).IsConcurrencyToken().HasDefaultValue(0u);
         b.HasIndex(x => x.IsDeleted);
         b.HasIndex(x => x.OwnerId);
         b.HasIndex(x => x.Code).IsUnique();
         b.HasIndex(x => x.Name).IsUnique();
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
     }
 }

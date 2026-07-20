@@ -81,6 +81,6 @@ public interface IReportService
     Task<byte[]> ExportBorrowedAsync(BorrowReportQuery query);
     Task<List<OverdueReportRow>> QueryOverdueAsync();
     Task<byte[]> ExportOverdueAsync();
-    Task RemindOverdueAsync(int assetId, int? userId);
+    Task<int> RemindOverdueAsync(int assetId, int? userId);
     Task<int> RemindOverdueBatchAsync(IReadOnlyCollection<int> assetIds, int? userId);
 }

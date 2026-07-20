@@ -29,12 +29,24 @@ public class WorkflowController : ControllerBase
     [HttpPost]
     [HasPermission("workflow:create")]
     public async Task<ApiResult<WorkflowDto>> Create(SaveWorkflowRequest request)
-        => ApiResult<WorkflowDto>.Ok(await _service.CreateWorkflowAsync(request));
+    {
+        if (!string.IsNullOrWhiteSpace(request.BpmnXml) &&
+            !User.FindAll("perm").Any(claim => claim.Value == "workflow:design"))
+        {
+            throw new BizException(4030, "创建时配置流程图需要流程设计权限");
+        }
+        return ApiResult<WorkflowDto>.Ok(await _service.CreateWorkflowAsync(request));
+    }
 
     [HttpPut("{id:int}")]
     [HasPermission("workflow:edit")]
-    public async Task<ApiResult<WorkflowDto>> Save(int id, SaveWorkflowRequest request)
+    public async Task<ApiResult<WorkflowDto>> Save(int id, UpdateWorkflowMetadataRequest request)
         => ApiResult<WorkflowDto>.Ok(await _service.SaveWorkflowAsync(id, request));
+
+    [HttpPut("{id:int}/design")]
+    [HasPermission("workflow:design")]
+    public async Task<ApiResult<WorkflowDto>> Design(int id, DesignWorkflowRequest request)
+        => ApiResult<WorkflowDto>.Ok(await _service.SaveWorkflowDesignAsync(id, request));
 
     [HttpPost("{id:int}/status")]
     [HasPermission("workflow:edit")]

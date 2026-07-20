@@ -1,19 +1,28 @@
 <script lang="ts" setup>
-import type { RoleDto } from '#/api/role';
-import type { UserOptionDto } from '#/api/user';
-import type { DepartmentNode, OrganizationLevel } from '#/api/base-data';
 import type { AssigneeType } from './assignee-identities';
+
+import type { UserOptionDto } from '#/api/user';
+import type { WorkflowDesignerOptions } from '#/api/workflow';
 
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
-import { useAccess } from '@vben/access';
-
 import {
-  getDepartmentTreeApi,
-  getOrganizationLevelsApi,
-} from '#/api/base-data';
-import { getRoleListApi } from '#/api/role';
-import { getUserListApi, getUserOptionsApi } from '#/api/user';
+  ElButton,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElOption,
+  ElRadioButton,
+  ElRadioGroup,
+  ElSelect,
+  ElTag,
+} from 'element-plus';
+
+import { getWorkflowDesignerOptionsApi } from '#/api/workflow';
+import { runHandled } from '#/utils/handled-promise';
+import { createLatestRequestGuard } from '#/utils/latest-request';
+import { mergeUserOptions } from '#/utils/user-options';
+
 import {
   loadAssigneeSelection,
   roleAssigneeIdentity,
@@ -21,55 +30,16 @@ import {
   userAssigneeIdentity,
 } from './assignee-identities';
 import {
-  ElButton,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElOption,
-  ElRadioGroup,
-  ElRadioButton,
-  ElSelect,
-  ElTag,
-} from 'element-plus';
-import {
   gatewaySupportsConditions,
   getSuggestedBranchName,
   getTargetNodeTitle,
   isDefaultGatewayBranch,
 } from './gateway-branches';
 
-defineOptions({ name: 'BpmnProperties' });
-
 interface Props {
   element: any; // BPMN 元素
   modeler: any; // BPMN Modeler 实例
 }
-
-const props = defineProps<Props>();
-const { hasAccessByCodes } = useAccess();
-
-const elementType = ref('');
-const elementName = ref('');
-const elementId = ref('');
-
-// 审批人类型
-const assigneeType = ref<AssigneeType>('');
-const assigneeValue = ref<string | string[]>('');
-const approvalMode = ref<'all' | 'any'>('any');
-const userOptions = ref<UserOptionDto[]>([]);
-const roleOptions = ref<RoleDto[]>([]);
-const departmentOptions = ref<{ label: string; value: string }[]>([]);
-const organizationLevels = ref<OrganizationLevel[]>([]);
-
-// 条件表达式
-const conditionExpression = ref('');
-const conditionField = ref('applicantDept');
-const conditionOperator = ref('==');
-const conditionValue = ref('');
-const gatewayConditions = ref<GatewayCondition[]>([]);
-const isLoadingElement = ref(false);
-let boundEventBus: any;
-let gatewayRefreshQueued = false;
 
 interface ParsedCondition {
   expression: string;
@@ -89,6 +59,41 @@ interface GatewayCondition extends ParsedCondition {
   targetName: string;
   flow: any;
 }
+
+defineOptions({ name: 'BpmnProperties' });
+
+const props = defineProps<Props>();
+
+const elementType = ref('');
+const elementName = ref('');
+const elementId = ref('');
+
+// 审批人类型
+const assigneeType = ref<AssigneeType>('');
+const assigneeValue = ref<string | string[]>('');
+const approvalMode = ref<'all' | 'any'>('any');
+const userOptions = ref<UserOptionDto[]>([]);
+const roleOptions = ref<WorkflowDesignerOptions['roles']>([]);
+const departmentOptions = ref<{ label: string; value: string }[]>([]);
+const organizationLevels = ref<WorkflowDesignerOptions['organizationLevels']>(
+  [],
+);
+const assigneeOptionsLoading = ref(false);
+const assigneeOptionsRequestGuard = createLatestRequestGuard();
+
+// 条件表达式
+const conditionExpression = ref('');
+const conditionExpressionPlaceholder = [
+  '如: $',
+  '{applicantDept} == "信息部"',
+].join('');
+const conditionField = ref('applicantDept');
+const conditionOperator = ref('==');
+const conditionValue = ref('');
+const gatewayConditions = ref<GatewayCondition[]>([]);
+const isLoadingElement = ref(false);
+let boundEventBus: any;
+let gatewayRefreshQueued = false;
 
 // 审批人类型选项
 const assigneeTypes = [
@@ -168,42 +173,34 @@ const assigneeValueOptions = computed(() => {
 
   return [];
 });
-const assigneeValuePlaceholder = computed(() =>
-  assigneeType.value === 'roleName'
-    ? '选择角色'
-    : assigneeType.value === 'organizationManager'
-      ? '选择目标组织层级'
-      : '选择审批人员',
-);
+const assigneeValuePlaceholder = computed(() => {
+  if (assigneeType.value === 'roleName') return '选择角色';
+  if (assigneeType.value === 'organizationManager') return '选择目标组织层级';
+  return '选择审批人员';
+});
 
-async function loadAssigneeOptions() {
-  const [users, roles, departments, levels] = await Promise.all([
-    hasAccessByCodes(['approval:create']) ||
-    hasAccessByCodes(['material-flow:transfer'])
-      ? getUserOptionsApi()
-      : getUserListApi('', 1, 200).then((result) =>
-          result.items.filter((user) => user.isActive),
-        ),
-    getRoleListApi('', 1, 200),
-    getDepartmentTreeApi(),
-    getOrganizationLevelsApi(),
-  ]);
-  userOptions.value = users;
-  roleOptions.value = roles.items.filter((role) => role.isActive);
-  departmentOptions.value = flattenDepartments(departments);
-  organizationLevels.value = levels;
-}
-
-function flattenDepartments(
-  nodes: DepartmentNode[],
-  level = 0,
-): { label: string; value: string }[] {
-  return nodes
-    .filter((node) => node.isActive)
-    .flatMap((node) => [
-      { label: `${'　'.repeat(level)}${node.name}`, value: node.name },
-      ...flattenDepartments(node.children, level + 1),
-    ]);
+async function loadAssigneeOptions(keyword = '') {
+  const requestGeneration = assigneeOptionsRequestGuard.next();
+  assigneeOptionsLoading.value = true;
+  try {
+    const options = await getWorkflowDesignerOptionsApi(keyword, 1, 50);
+    if (!assigneeOptionsRequestGuard.isLatest(requestGeneration)) return;
+    userOptions.value = mergeUserOptions(
+      userOptions.value,
+      options.users.items,
+    );
+    roleOptions.value = options.roles;
+    departmentOptions.value = options.departments.map((department) => ({
+      label: department.name,
+      value: department.name,
+    }));
+    organizationLevels.value = options.organizationLevels;
+  } catch {
+    // 统一请求层已给出错误提示；保留已加载的选项，不阻断设计器。
+  } finally {
+    if (assigneeOptionsRequestGuard.isLatest(requestGeneration))
+      assigneeOptionsLoading.value = false;
+  }
 }
 
 // 加载元素属性
@@ -270,11 +267,7 @@ function loadElement() {
     conditionValue.value = '';
   }
 
-  if (isGateway.value) {
-    gatewayConditions.value = loadGatewayConditions();
-  } else {
-    gatewayConditions.value = [];
-  }
+  gatewayConditions.value = isGateway.value ? loadGatewayConditions() : [];
 
   nextTick(() => {
     isLoadingElement.value = false;
@@ -581,7 +574,7 @@ watch([conditionOperator, conditionValue], () => {
 });
 
 onMounted(() => {
-  void loadAssigneeOptions();
+  runHandled(loadAssigneeOptions());
 });
 
 onUnmounted(() => {
@@ -608,7 +601,7 @@ onUnmounted(() => {
     </div>
 
     <div v-else class="properties-form">
-      <ElForm label-width="100px" label-position="top" size="small">
+      <ElForm label-position="top" label-width="100px" size="small">
         <section class="property-section">
           <div class="section-title">基础信息</div>
 
@@ -664,12 +657,17 @@ onUnmounted(() => {
             >
               <ElSelect
                 v-model="assigneeValue"
-                clearable
-                filterable
+                :loading="assigneeOptionsLoading"
                 :multiple="assigneeType === 'usernames'"
+                :placeholder="assigneeValuePlaceholder"
+                :remote="
+                  assigneeType === 'username' || assigneeType === 'usernames'
+                "
+                :remote-method="loadAssigneeOptions"
+                clearable
                 collapse-tags
                 collapse-tags-tooltip
-                :placeholder="assigneeValuePlaceholder"
+                filterable
                 style="width: 100%"
               >
                 <ElOption
@@ -748,9 +746,9 @@ onUnmounted(() => {
                 </ElSelect>
                 <ElSelect
                   v-model="conditionValue"
+                  :placeholder="conditionValuePlaceholder(conditionField)"
                   clearable
                   filterable
-                  :placeholder="conditionValuePlaceholder(conditionField)"
                   style="width: 100%"
                 >
                   <ElOption
@@ -763,10 +761,10 @@ onUnmounted(() => {
               </div>
               <ElInput
                 v-model="conditionExpression"
+                :placeholder="conditionExpressionPlaceholder"
+                :rows="3"
                 class="expression-input"
                 type="textarea"
-                :rows="3"
-                placeholder='如: ${applicantDept} == "信息部"'
               />
             </ElFormItem>
 
@@ -833,10 +831,10 @@ onUnmounted(() => {
                   <span class="branch-number">{{ item.index + 1 }}</span>
                   <div>
                     <strong>{{ item.label }}</strong>
-                    <span
-                      >{{ elementName || '当前网关' }} →
-                      {{ item.targetName }}</span
-                    >
+                    <span>
+                      {{ elementName || '当前网关' }} →
+                      {{ item.targetName }}
+                    </span>
                   </div>
                 </div>
                 <ElButton
@@ -909,9 +907,9 @@ onUnmounted(() => {
                     </ElSelect>
                     <ElSelect
                       v-model="item.value"
+                      :placeholder="conditionValuePlaceholder(item.field)"
                       clearable
                       filterable
-                      :placeholder="conditionValuePlaceholder(item.field)"
                       style="width: 100%"
                       @change="updateGatewayCondition(item)"
                     >

@@ -1,10 +1,9 @@
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue';
-import { ElButton, ElButtonGroup, ElMessage } from 'element-plus';
+
 import BpmnModeler from 'bpmn-js/lib/Modeler';
-import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
-import 'bpmn-js/dist/assets/bpmn-js.css';
-import 'bpmn-js/dist/assets/diagram-js.css';
+import { ElButton, ElButtonGroup, ElMessage } from 'element-plus';
+
 import BpmnProperties from './bpmn-properties.vue';
 import {
   getBranchLabelDelta,
@@ -14,14 +13,19 @@ import {
   resolveDiagramElement,
 } from './gateway-branches';
 
-defineOptions({ name: 'BpmnModeler' });
+import 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css';
+import 'bpmn-js/dist/assets/bpmn-js.css';
+import 'bpmn-js/dist/assets/diagram-js.css';
 
 interface Props {
   workflowId: number;
   initialXml?: string;
 }
 
+defineOptions({ name: 'BpmnModeler' });
+
 const props = defineProps<Props>();
+
 const emit = defineEmits<{
   save: [bpmnXml: string];
 }>();
@@ -56,23 +60,23 @@ const selectedElementText = computed(() => {
 });
 
 const allowedPaletteEntries = new Set([
-  'hand-tool',
-  'lasso-tool',
-  'global-connect-tool',
-  'tool-separator',
-  'create.start-event',
   'create.end-event',
   'create.exclusive-gateway',
-  'create.parallel-gateway',
   'create.inclusive-gateway',
+  'create.parallel-gateway',
   'create.service-task',
+  'create.start-event',
   'create.task',
+  'global-connect-tool',
+  'hand-tool',
+  'lasso-tool',
+  'tool-separator',
 ]);
 
 const allowedContextPadEntries = new Set([
+  'append.append-task',
   'append.end-event',
   'append.gateway',
-  'append.append-task',
   'connect',
   'delete',
 ]);
@@ -374,11 +378,10 @@ async function initModeler() {
     const eventBus = modeler.value.get('eventBus');
     eventBus.on('selection.changed', (event: any) => {
       const { newSelection } = event;
-      if (newSelection && newSelection.length > 0) {
-        selectedElement.value = resolveDiagramElement(newSelection[0]);
-      } else {
-        selectedElement.value = null;
-      }
+      selectedElement.value =
+        newSelection && newSelection.length > 0
+          ? resolveDiagramElement(newSelection[0])
+          : null;
     });
     eventBus.on('commandStack.changed', scheduleGatewayBranchNormalization);
   } catch (error: any) {
@@ -519,7 +522,7 @@ onUnmounted(() => {
           <ElButton @click="handleZoomIn">放大</ElButton>
         </ElButtonGroup>
         <ElButton @click="handleDownload"> 下载 </ElButton>
-        <ElButton type="primary" :loading="saving" @click="handleSave">
+        <ElButton :loading="saving" type="primary" @click="handleSave">
           保存
         </ElButton>
       </div>
@@ -529,11 +532,11 @@ onUnmounted(() => {
       <aside class="designer-sidebar">
         <div class="sidebar-title">组件库</div>
         <div
+          aria-label="添加发起节点到画布"
           class="node-card node-start"
           draggable="true"
           role="button"
           tabindex="0"
-          aria-label="添加发起节点到画布"
           @dragstart="startCreateShape($event, 'bpmn:StartEvent')"
           @keydown="handleNodeCardKeydown($event, 'bpmn:StartEvent')"
         >
@@ -544,11 +547,11 @@ onUnmounted(() => {
           </div>
         </div>
         <div
+          aria-label="添加审批节点到画布"
           class="node-card node-approval"
           draggable="true"
           role="button"
           tabindex="0"
-          aria-label="添加审批节点到画布"
           @dragstart="startCreateShape($event, 'bpmn:UserTask')"
           @keydown="handleNodeCardKeydown($event, 'bpmn:UserTask')"
         >
@@ -559,11 +562,11 @@ onUnmounted(() => {
           </div>
         </div>
         <div
+          aria-label="添加条件分支到画布"
           class="node-card node-gateway"
           draggable="true"
           role="button"
           tabindex="0"
-          aria-label="添加条件分支到画布"
           @dragstart="startCreateShape($event, 'bpmn:ExclusiveGateway')"
           @keydown="handleNodeCardKeydown($event, 'bpmn:ExclusiveGateway')"
         >
@@ -574,11 +577,11 @@ onUnmounted(() => {
           </div>
         </div>
         <div
+          aria-label="添加并行审批到画布"
           class="node-card node-parallel"
           draggable="true"
           role="button"
           tabindex="0"
-          aria-label="添加并行审批到画布"
           @dragstart="startCreateShape($event, 'bpmn:ParallelGateway')"
           @keydown="handleNodeCardKeydown($event, 'bpmn:ParallelGateway')"
         >
@@ -589,11 +592,11 @@ onUnmounted(() => {
           </div>
         </div>
         <div
+          aria-label="添加包容分支到画布"
           class="node-card node-gateway"
           draggable="true"
           role="button"
           tabindex="0"
-          aria-label="添加包容分支到画布"
           @dragstart="startCreateShape($event, 'bpmn:InclusiveGateway')"
           @keydown="handleNodeCardKeydown($event, 'bpmn:InclusiveGateway')"
         >
@@ -604,11 +607,11 @@ onUnmounted(() => {
           </div>
         </div>
         <div
+          aria-label="添加自动任务到画布"
           class="node-card node-approval"
           draggable="true"
           role="button"
           tabindex="0"
-          aria-label="添加自动任务到画布"
           @dragstart="startCreateShape($event, 'bpmn:ServiceTask')"
           @keydown="handleNodeCardKeydown($event, 'bpmn:ServiceTask')"
         >
@@ -619,11 +622,11 @@ onUnmounted(() => {
           </div>
         </div>
         <div
+          aria-label="添加结束节点到画布"
           class="node-card node-end"
           draggable="true"
           role="button"
           tabindex="0"
-          aria-label="添加结束节点到画布"
           @dragstart="startCreateShape($event, 'bpmn:EndEvent')"
           @keydown="handleNodeCardKeydown($event, 'bpmn:EndEvent')"
         >
@@ -647,10 +650,10 @@ onUnmounted(() => {
         </div>
         <div
           ref="containerRef"
-          v-loading="loading"
           class="bpmn-container"
           element-loading-text="正在载入流程设计器..."
-        />
+          v-loading="loading"
+        ></div>
       </main>
 
       <div class="properties-panel">

@@ -1,63 +1,84 @@
 <script lang="ts" setup>
 import type { ApprovalWorkItem } from '../approval-work-items';
+
 import type { MaterialFlowItem } from '#/api/material';
-import type { ApprovalActionPayload, ApprovalFlow } from '#/api/workflow';
 import type { UserOptionDto } from '#/api/user';
+import type { ApprovalActionPayload, ApprovalFlow } from '#/api/workflow';
+
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
-import { useDebounceFn } from '@vueuse/core';
+import { useRoute, useRouter } from 'vue-router';
+
 import { useAccess } from '@vben/access';
 import { useUserStore } from '@vben/stores';
-import {
-  approveFlowApi as approveMaterialFlowApi,
-  listPendingFlowsApi,
-  rejectFlowApi as rejectMaterialFlowApi,
-} from '#/api/material';
-import {
-  addSignFlowApi,
-  approveFlowApi,
-  BpmnTokenStatus,
-  cancelAddSignFlowApi,
-  getPendingApprovalsApi,
-  rejectFlowApi,
-} from '#/api/workflow';
-import { getApproverOptionsApi } from '#/api/user';
-import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
-import WorkflowProgressDetail from '#/components/workflow/WorkflowProgressDetail.vue';
-import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
-import {
-  createPageSizeOptions,
-  getDefaultPageSize,
-} from '#/utils/runtime-settings';
-import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
-import { formatDate, formatDateTime } from '#/utils/date-format';
-import {
-  findApprovalWorkItemIndex,
-  mergeApprovalWorkItems,
-  normalizeAssetApproval,
-} from '../approval-work-items';
+
+import { useDebounceFn } from '@vueuse/core';
 import {
   ElButton,
-  ElDialog,
   ElDescriptions,
   ElDescriptionsItem,
+  ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
+  ElMessage,
+  ElMessageBox,
   ElOption,
   ElPagination,
   ElSelect,
   ElTable,
   ElTableColumn,
+  ElTabPane,
+  ElTabs,
   ElTag,
-  ElMessage,
-  ElMessageBox,
 } from 'element-plus';
+
+import {
+  approveFlowApi as approveMaterialFlowApi,
+  listPendingFlowsPageApi,
+  rejectFlowApi as rejectMaterialFlowApi,
+} from '#/api/material';
+import { getApproverOptionsApi } from '#/api/user';
+import {
+  addSignFlowApi,
+  approveFlowApi,
+  BpmnTokenStatus,
+  cancelAddSignFlowApi,
+  getPendingApprovalsPageApi,
+  rejectFlowApi,
+} from '#/api/workflow';
+import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
+import WorkflowProgressDetail from '#/components/workflow/WorkflowProgressDetail.vue';
+import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
+import { formatDate, formatDateTime } from '#/utils/date-format';
+import { runHandled } from '#/utils/handled-promise';
+import { createLatestRequestGuard } from '#/utils/latest-request';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
+import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
+
+import {
+  canUserInitiateAddSign,
+  excludeCurrentUserFromAddSignCandidates,
+} from '../add-sign-access';
+import {
+  findApprovalWorkItemIndex,
+  normalizeAssetApproval,
+  normalizeMaterialFlow,
+} from '../approval-work-items';
+import {
+  type ApprovalSource,
+  beginNotificationFlowAttempt,
+  notificationSource,
+  withoutNotificationFlowId,
+} from '../notification-flow-attempt';
 
 defineOptions({ name: 'ApprovalPending' });
 
 const { hasAccessByCodes } = useAccess();
 const route = useRoute();
+const router = useRouter();
 const userStore = useUserStore();
 const currentUserId = computed(() => Number(userStore.userInfo?.userId || 0));
 const canAddSign = computed(() => hasAccessByCodes(['approval:add-sign']));
@@ -71,7 +92,11 @@ const cancelAddSignLoadingKey = ref('');
 const detailVisible = ref(false);
 const addSignVisible = ref(false);
 const selected = ref<ApprovalFlow | null>(null);
-const flows = ref<ApprovalWorkItem[]>([]);
+const activeSource = ref<ApprovalSource>('asset');
+const assetFlows = ref<ApprovalWorkItem[]>([]);
+const materialFlows = ref<ApprovalWorkItem[]>([]);
+const assetTotal = ref(0);
+const materialTotal = ref(0);
 const users = ref<UserOptionDto[]>([]);
 const materialActionLoadingIds = ref(new Set<number>());
 const pageSizeOptions = ref(createPageSizeOptions(20));
@@ -82,92 +107,128 @@ const workflowNodeSelector = ref<InstanceType<
   typeof WorkflowNodeSelectDialog
 > | null>(null);
 const openedNotificationFlowKey = ref('');
+const listRequestGuard = createLatestRequestGuard();
 const query = reactive({
   keyword: '',
   bizType: '',
-  page: 1,
-  pageSize: 20,
 });
-
-const filteredFlows = computed(() => {
-  const keyword = query.keyword.trim().toLowerCase();
-
-  return flows.value.filter((flow) => {
-    const matchBizType = !query.bizType || flow.bizType === query.bizType;
-    const matchKeyword =
-      !keyword ||
-      [
-        flow.flowNo,
-        flow.objectNo,
-        flow.objectName,
-        flow.applicant,
-        flow.applicantDept,
-        flow.transferee,
-        flow.currentNodeLabel,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword));
-
-    return matchBizType && matchKeyword;
-  });
-});
-
-const pagedFlows = computed(() => {
-  const start = (query.page - 1) * query.pageSize;
-  return filteredFlows.value.slice(start, start + query.pageSize);
-});
+const assetPage = reactive({ page: 1, pageSize: 20 });
+const materialPage = reactive({ page: 1, pageSize: 20 });
+const currentPage = computed(() =>
+  activeSource.value === 'asset' ? assetPage : materialPage,
+);
+const flows = computed(() =>
+  activeSource.value === 'asset' ? assetFlows.value : materialFlows.value,
+);
+const currentTotal = computed(() =>
+  activeSource.value === 'asset' ? assetTotal.value : materialTotal.value,
+);
+const addSignCandidates = computed(() =>
+  excludeCurrentUserFromAddSignCandidates(users.value, currentUserId.value),
+);
 
 async function loadData() {
+  const requestGeneration = listRequestGuard.next();
   loading.value = true;
+  let requestedNotificationKey = '';
   try {
-    const materialPendingPromise = canHandleMaterialFlow.value
-      ? listPendingFlowsApi()
-      : Promise.resolve([]);
-    const usersPromise = canAddSign.value
-      ? getApproverOptionsApi()
-      : Promise.resolve([]);
-    const [pending, materialPending, userOptions] = await Promise.all([
-      getPendingApprovalsApi(),
-      materialPendingPromise,
-      usersPromise,
-    ]);
-    flows.value = mergeApprovalWorkItems(pending, materialPending);
-    if ((query.page - 1) * query.pageSize >= flows.value.length) {
-      query.page = 1;
-    }
-    users.value = userOptions;
+    const page = currentPage.value;
     const notificationFlowId = Number(route.query.flowId || 0);
-    const notificationSource =
-      route.query.source === 'material' ? 'material' : 'asset';
-    const notificationKey = `${notificationSource}:${notificationFlowId}`;
-    if (
-      notificationFlowId &&
-      notificationKey !== openedNotificationFlowKey.value
-    ) {
+    const targetSource = notificationSource(route.query.source, route.path);
+    const attempt = beginNotificationFlowAttempt(
+      notificationFlowId,
+      targetSource,
+      activeSource.value,
+      openedNotificationFlowKey.value,
+    );
+    const notificationKey = attempt.key;
+    const requestedFlowId = attempt.requestedFlowId;
+    if (requestedFlowId) {
+      requestedNotificationKey = notificationKey;
+      // 深链只尝试一次；即使目标已过期或无权限，也不能让 flowId 永久约束列表。
+      openedNotificationFlowKey.value = attempt.consumedKey;
+    }
+    if (activeSource.value === 'asset') {
+      const result = await getPendingApprovalsPageApi({
+        bizType: requestedFlowId ? undefined : query.bizType || undefined,
+        flowId: requestedFlowId,
+        keyword: requestedFlowId
+          ? undefined
+          : query.keyword.trim() || undefined,
+        page: requestedFlowId ? 1 : page.page,
+        pageSize: page.pageSize,
+      });
+      if (!listRequestGuard.isLatest(requestGeneration)) return;
+      const lastPage = Math.max(1, Math.ceil(result.total / page.pageSize));
+      if (page.page > lastPage) {
+        page.page = lastPage;
+        await loadData();
+        return;
+      }
+      assetFlows.value = result.items.map((flow) =>
+        normalizeAssetApproval(flow),
+      );
+      assetTotal.value = result.total;
+    } else if (canHandleMaterialFlow.value) {
+      const result = await listPendingFlowsPageApi({
+        flowId: requestedFlowId,
+        keyword: requestedFlowId
+          ? undefined
+          : query.keyword.trim() || undefined,
+        page: requestedFlowId ? 1 : page.page,
+        pageSize: page.pageSize,
+      });
+      if (!listRequestGuard.isLatest(requestGeneration)) return;
+      const lastPage = Math.max(1, Math.ceil(result.total / page.pageSize));
+      if (page.page > lastPage) {
+        page.page = lastPage;
+        await loadData();
+        return;
+      }
+      materialFlows.value = result.items.map((flow) =>
+        normalizeMaterialFlow(flow),
+      );
+      materialTotal.value = result.total;
+    }
+    if (canAddSign.value && users.value.length === 0) {
+      users.value = await getApproverOptionsApi();
+      if (!listRequestGuard.isLatest(requestGeneration)) return;
+    }
+    if (requestedFlowId) {
       const target = flows.value.find(
         (item) =>
-          item.source === notificationSource && item.id === notificationFlowId,
+          item.source === targetSource && item.id === notificationFlowId,
       );
       if (target) {
-        openedNotificationFlowKey.value = notificationKey;
         if (target.source === 'asset') {
           openDetail(target);
-        } else {
-          query.keyword = target.flowNo;
-          query.page = 1;
         }
+      } else {
+        ElMessage.warning('该通知对应的待办已处理、已过期或当前无权查看');
       }
+      clearNotificationFlowQuery();
     }
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
+    if (requestedNotificationKey) clearNotificationFlowQuery();
   } finally {
-    loading.value = false;
+    if (listRequestGuard.isLatest(requestGeneration)) loading.value = false;
   }
+}
+
+function clearNotificationFlowQuery() {
+  if (!route.query.flowId) return;
+  const nextQuery = withoutNotificationFlowId(route.query);
+  runHandled(router.replace({ path: route.path, query: nextQuery }));
 }
 
 watch(
   () => [route.query.flowId, route.query.source],
-  () => void loadData(),
+  () => {
+    activeSource.value = notificationSource(route.query.source, route.path);
+    currentPage.value.page = 1;
+    runHandled(loadData());
+  },
 );
 
 function openDetail(item: ApprovalWorkItem) {
@@ -197,7 +258,7 @@ const currentNodeInfo = computed(() => {
   return {
     count: activeTokens.length,
     names: activeTokens.map((t) => t.nodeName).join(', '),
-    nodeIds: nodeIds,
+    nodeIds,
   };
 });
 
@@ -248,6 +309,17 @@ function resolveNodeId() {
     ? selectedNodeId.value
     : undefined;
 }
+
+const canCurrentUserAddSign = computed(() => {
+  if (!canAddSign.value || !selected.value) return false;
+  const nodeId = resolveNodeId();
+  if (!nodeId) return false;
+
+  return canUserInitiateAddSign(
+    selected.value.bpmnTokens[nodeId],
+    currentUserId.value,
+  );
+});
 
 async function cancelAddSign(item: {
   displayName: string;
@@ -300,6 +372,10 @@ function ensureNodeSelected() {
 
 function openAddSign() {
   if (!selected.value) return;
+  if (!canCurrentUserAddSign.value) {
+    ElMessage.warning('被加签人不能再次发起加签');
+    return;
+  }
   if (!ensureNodeSelected()) return;
   addSignUser.value = '';
   addSignVisible.value = true;
@@ -437,22 +513,32 @@ const debouncedApprove = useDebounceFn(approve, 300);
 const debouncedReject = useDebounceFn(reject, 300);
 
 function onPageSizeChange() {
-  query.page = 1;
+  currentPage.value.page = 1;
+  runHandled(loadData());
 }
 
 function search() {
-  query.page = 1;
+  currentPage.value.page = 1;
+  runHandled(loadData());
 }
 
 function resetQuery() {
   query.keyword = '';
   query.bizType = '';
-  query.page = 1;
+  currentPage.value.page = 1;
+  runHandled(loadData());
+}
+
+function onSourceChange() {
+  query.bizType = '';
+  currentPage.value.page = 1;
+  runHandled(loadData());
 }
 
 function getBizTypeLabel(type: string) {
   const map: Record<string, string> = {
     borrow: '借用',
+    extension: '延期',
     transfer: '转让',
     return: '归还',
     material_transfer: '测试料件流转',
@@ -461,8 +547,11 @@ function getBizTypeLabel(type: string) {
 }
 
 onMounted(async () => {
-  query.pageSize = await getDefaultPageSize();
-  pageSizeOptions.value = createPageSizeOptions(query.pageSize);
+  const pageSize = await getDefaultPageSize();
+  assetPage.pageSize = pageSize;
+  materialPage.pageSize = pageSize;
+  pageSizeOptions.value = createPageSizeOptions(pageSize);
+  activeSource.value = notificationSource(route.query.source, route.path);
   await loadData();
 });
 </script>
@@ -481,7 +570,7 @@ onMounted(async () => {
               @keyup.enter="search"
             />
           </ElFormItem>
-          <ElFormItem label="业务类型">
+          <ElFormItem v-if="activeSource === 'asset'" label="业务类型">
             <ElSelect
               v-model="query.bizType"
               clearable
@@ -490,8 +579,8 @@ onMounted(async () => {
             >
               <ElOption label="借用" value="borrow" />
               <ElOption label="转让" value="transfer" />
+              <ElOption label="延期" value="extension" />
               <ElOption label="归还" value="return" />
-              <ElOption label="测试料件流转" value="material_transfer" />
             </ElSelect>
           </ElFormItem>
           <ElFormItem>
@@ -501,10 +590,19 @@ onMounted(async () => {
         </ElForm>
       </div>
 
+      <ElTabs v-model="activeSource" @tab-change="onSourceChange">
+        <ElTabPane label="资产审批" name="asset" />
+        <ElTabPane
+          v-if="canHandleMaterialFlow"
+          label="料件审批"
+          name="material"
+        />
+      </ElTabs>
+
       <div class="pending-table-panel">
-        <ElTable :data="pagedFlows" v-loading="loading" border height="100%">
-          <ElTableColumn prop="flowNo" label="流程单号" width="180" />
-          <ElTableColumn label="来源" width="110" align="center">
+        <ElTable :data="flows" border height="100%" v-loading="loading">
+          <ElTableColumn label="流程单号" prop="flowNo" width="180" />
+          <ElTableColumn align="center" label="来源" width="110">
             <template #default="{ row }">
               <ElTag
                 :type="row.source === 'asset' ? 'primary' : 'success'"
@@ -515,49 +613,49 @@ onMounted(async () => {
             </template>
           </ElTableColumn>
           <ElTableColumn
-            prop="bizType"
-            label="业务类型"
-            width="120"
             align="center"
+            label="业务类型"
+            prop="bizType"
+            width="120"
           >
             <template #default="{ row }">
               <ElTag
                 v-if="row.bizType === 'borrow'"
-                type="success"
                 size="small"
+                type="success"
               >
                 {{ row.typeLabel }}
               </ElTag>
               <ElTag
                 v-else-if="row.bizType === 'transfer'"
-                type="warning"
                 size="small"
+                type="warning"
               >
                 {{ row.typeLabel }}
               </ElTag>
               <ElTag
                 v-else-if="row.bizType === 'material_transfer'"
-                type="primary"
                 size="small"
+                type="primary"
               >
                 {{ row.typeLabel }}
               </ElTag>
-              <ElTag v-else type="info" size="small">
+              <ElTag v-else size="small" type="info">
                 {{ row.typeLabel }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn prop="objectName" label="对象名称" min-width="160" />
+          <ElTableColumn label="对象名称" min-width="160" prop="objectName" />
           <ElTableColumn
             class-name="hide-on-mobile"
-            prop="applicant"
             label="申请人"
+            prop="applicant"
             width="120"
           />
           <ElTableColumn
             class-name="hide-on-mobile"
-            prop="participant"
             label="借用人/接收人"
+            prop="participant"
             width="140"
           />
           <ElTableColumn
@@ -565,9 +663,9 @@ onMounted(async () => {
             label="申请时间"
             width="170"
           >
-            <template #default="{ row }">{{
-              formatDateTime(row.applyTime)
-            }}</template>
+            <template #default="{ row }">
+              {{ formatDateTime(row.applyTime) }}
+            </template>
           </ElTableColumn>
           <ElTableColumn label="审批进度" min-width="320">
             <template #default="{ row }">
@@ -578,13 +676,13 @@ onMounted(async () => {
               />
             </template>
           </ElTableColumn>
-          <ElTableColumn label="操作" width="150" fixed="right" align="center">
+          <ElTableColumn align="center" fixed="right" label="操作" width="150">
             <template #default="{ row }">
               <ElButton
                 v-if="row.source === 'asset'"
-                type="primary"
                 link
                 size="small"
+                type="primary"
                 @click="openDetail(row)"
               >
                 审批
@@ -616,11 +714,11 @@ onMounted(async () => {
         </ElTable>
         <div class="table-bottom-pager">
           <div class="table-bottom-pager-left">
-            <span>共 {{ filteredFlows.length }} 条记录</span>
+            <span>共 {{ currentTotal }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
             <ElSelect
-              v-model="query.pageSize"
+              v-model="currentPage.pageSize"
               style="width: 92px"
               @change="onPageSizeChange"
             >
@@ -633,11 +731,12 @@ onMounted(async () => {
             </ElSelect>
           </div>
           <ElPagination
-            v-model:current-page="query.page"
-            :page-size="query.pageSize"
-            :total="filteredFlows.length"
+            v-model:current-page="currentPage.page"
+            :page-size="currentPage.pageSize"
+            :total="currentTotal"
             background
             layout="prev, pager, next"
+            @current-change="loadData"
           />
         </div>
       </div>
@@ -645,55 +744,67 @@ onMounted(async () => {
       <!-- 审批对话框 -->
       <ElDialog
         v-model="detailVisible"
+        :close-on-click-modal="false"
         title="审批"
         width="640px"
-        :close-on-click-modal="false"
       >
         <ElDescriptions v-if="selected" :column="2" border>
-          <ElDescriptionsItem label="流程单号">{{
-            selected.flowNo
-          }}</ElDescriptionsItem>
+          <ElDescriptionsItem label="流程单号">
+            {{ selected.flowNo }}
+          </ElDescriptionsItem>
           <ElDescriptionsItem label="业务类型">
             {{ getBizTypeLabel(selected.bizType) }}
           </ElDescriptionsItem>
-          <ElDescriptionsItem label="资产编号">{{
-            selected.assetNo
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="资产名称">{{
-            selected.assetName
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="申请人">{{
-            selected.applicant
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="申请部门">{{
-            selected.applicantDept || '-'
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="申请时间" :span="2">
+          <ElDescriptionsItem label="资产编号">
+            {{ selected.assetNo }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="资产名称">
+            {{ selected.assetName }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="申请人">
+            {{ selected.applicant }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="申请部门">
+            {{ selected.applicantDept || '-' }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem :span="2" label="申请时间">
             {{ formatDateTime(selected.applyTime) }}
           </ElDescriptionsItem>
-          <ElDescriptionsItem label="申请理由" :span="2">
+          <ElDescriptionsItem :span="2" label="申请理由">
             {{ selected.reason || '-' }}
           </ElDescriptionsItem>
           <ElDescriptionsItem
             v-if="selected.bizType === 'borrow'"
-            label="归还日期"
             :span="2"
+            label="归还日期"
           >
             {{ formatDate(selected.returnDate) }}
           </ElDescriptionsItem>
-          <ElDescriptionsItem v-if="currentNodeInfo" label="当前节点" :span="2">
+          <ElDescriptionsItem
+            v-if="selected.bizType === 'extension'"
+            label="原应归还日期"
+          >
+            {{ formatDate(selected.originalReturnDate) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem
+            v-if="selected.bizType === 'extension'"
+            label="新归还日期"
+          >
+            {{ formatDate(selected.returnDate) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem v-if="currentNodeInfo" :span="2" label="当前节点">
             {{ currentNodeInfo.names }}
             <span v-if="currentNodeInfo.count > 1" class="pending-node-tip">
               ({{ currentNodeInfo.count }} 个并行节点)
             </span>
           </ElDescriptionsItem>
-          <ElDescriptionsItem label="完整流转" :span="2">
+          <ElDescriptionsItem :span="2" label="完整流转">
             <WorkflowProgressDetail :steps="selected.progressSteps || []" />
           </ElDescriptionsItem>
           <ElDescriptionsItem
             v-if="activeNodeOptions.length > 1"
-            label="处理节点"
             :span="2"
+            label="处理节点"
           >
             <ElSelect
               v-model="selectedNodeId"
@@ -710,8 +821,8 @@ onMounted(async () => {
           </ElDescriptionsItem>
           <ElDescriptionsItem
             v-if="currentSignStates.length > 0"
-            label="签核状态"
             :span="2"
+            label="签核状态"
           >
             <div class="pending-sign-list">
               <span
@@ -724,12 +835,12 @@ onMounted(async () => {
                 </ElTag>
                 <ElButton
                   v-if="item.canCancel"
-                  link
-                  size="small"
-                  type="danger"
                   :loading="
                     cancelAddSignLoadingKey === `${item.nodeId}-${item.name}`
                   "
+                  link
+                  size="small"
+                  type="danger"
                   @click="cancelAddSign(item)"
                 >
                   取消加签
@@ -742,32 +853,32 @@ onMounted(async () => {
         <div class="pending-opinion-panel">
           <ElInput
             v-model="opinion"
-            type="textarea"
             :rows="3"
             placeholder="请输入审批意见"
+            type="textarea"
           />
         </div>
 
         <template #footer>
           <ElButton @click="detailVisible = false">取消</ElButton>
           <ElButton
-            v-if="canAddSign"
-            @click="openAddSign"
+            v-if="canCurrentUserAddSign"
             :loading="addSignLoading"
+            @click="openAddSign"
           >
             加签
           </ElButton>
           <ElButton
+            :loading="actionLoading"
             type="danger"
             @click="debouncedReject"
-            :loading="actionLoading"
           >
             驳回
           </ElButton>
           <ElButton
+            :loading="actionLoading"
             type="primary"
             @click="debouncedApprove"
-            :loading="actionLoading"
           >
             通过
           </ElButton>
@@ -777,9 +888,9 @@ onMounted(async () => {
       <!-- 加签对话框 -->
       <ElDialog
         v-model="addSignVisible"
+        :close-on-click-modal="false"
         title="加签"
         width="460px"
-        :close-on-click-modal="false"
       >
         <ElSelect
           v-model="addSignUser"
@@ -788,7 +899,7 @@ onMounted(async () => {
           style="width: 100%"
         >
           <ElOption
-            v-for="user in users"
+            v-for="user in addSignCandidates"
             :key="user.id"
             :label="`${user.name}（${user.employeeNo}）`"
             :value="String(user.id)"
@@ -797,7 +908,7 @@ onMounted(async () => {
 
         <template #footer>
           <ElButton @click="addSignVisible = false">取消</ElButton>
-          <ElButton type="primary" :loading="addSignLoading" @click="addSign">
+          <ElButton :loading="addSignLoading" type="primary" @click="addSign">
             确认加签
           </ElButton>
         </template>

@@ -35,6 +35,8 @@ export interface DepartmentOptionNode {
   children: DepartmentOptionNode[];
   id: number;
   isActive: boolean;
+  managerId?: null | number;
+  managerName?: null | string;
   name: string;
 }
 

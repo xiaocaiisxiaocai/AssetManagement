@@ -3,12 +3,16 @@ using System.Net.Http.Json;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Workflow;
+using AssetManagement.Api.Controllers;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
+using System.Net;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Tests.Workflow;
@@ -89,6 +93,175 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
         invalidRow.BizTypeLabel.Should().Be("测试料件流转");
         invalidRow.BpmnStatus.Should().Be("invalid");
         invalidRow.BpmnValidationErrors.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Design_endpoint_updates_only_bpmn_definition()
+    {
+        await Login();
+        var bizType = Unique("designonly");
+        var created = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = "仅设计流程",
+            BizType = bizType
+        });
+
+        var saved = await Put<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data!.Id}/design",
+            new DesignWorkflowRequest { BpmnXml = SimpleBpmn() });
+
+        saved.Data!.Id.Should().Be(created.Data.Id);
+        saved.Data.Name.Should().Be(created.Data.Name);
+        saved.Data.BizType.Should().Be(created.Data.BizType);
+        saved.Data.IsActive.Should().Be(created.Data.IsActive);
+        saved.Data.BpmnXml.Should().Be(SimpleBpmn());
+    }
+
+    [Theory]
+    [InlineData(101, 1)]
+    [InlineData(1, 51)]
+    public async Task Workflow_create_rejects_text_longer_than_database_limit(int nameLength, int bizTypeLength)
+    {
+        await Login();
+
+        var result = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = new string('流', nameLength),
+            BizType = new string('b', bizTypeLength)
+        });
+
+        result.Code.Should().Be(4001);
+    }
+
+    [Fact]
+    public async Task Workflow_create_rejects_bpmn_larger_than_mysql_text_limit_in_utf8_bytes()
+    {
+        await Login();
+
+        var result = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = Unique("超长BPMN"),
+            BizType = Unique("large_bpmn"),
+            BpmnXml = new string('中', 21_846)
+        });
+
+        result.Code.Should().Be(4001);
+        result.Message.Should().Contain("65535");
+    }
+
+    [Fact]
+    public void Design_endpoint_requires_design_permission_without_weakening_general_edit()
+    {
+        var designPermission = typeof(WorkflowController).GetMethod(nameof(WorkflowController.Design))!
+            .GetCustomAttribute<HasPermissionAttribute>();
+        var editPermission = typeof(WorkflowController).GetMethod(nameof(WorkflowController.Save))!
+            .GetCustomAttribute<HasPermissionAttribute>();
+
+        designPermission!.Policy.Should().Be("perm:workflow:design");
+        editPermission!.Policy.Should().Be("perm:workflow:edit");
+    }
+
+    [Fact]
+    public async Task Edit_only_user_cannot_change_bpmn_through_metadata_endpoint()
+    {
+        await Login();
+        var originalBpmn = SimpleBpmn();
+        var created = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = Unique("权限隔离流程"),
+            BizType = Unique("permission"),
+            BpmnXml = originalBpmn
+        });
+        var employeeNo = Unique("WFEDIT");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var role = new Role { Code = Unique("wf_edit_role"), Name = Unique("流程编辑角色") };
+            var user = new User
+            {
+                EmployeeNo = employeeNo,
+                Name = Unique("流程元数据编辑员"),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("TestPass123"),
+                IsActive = true
+            };
+            db.AddRange(role, user);
+            await db.SaveChangesAsync();
+            var editPermission = await db.Permissions.SingleAsync(permission => permission.Code == "workflow:edit");
+            db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = editPermission.Id });
+            db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
+            await db.SaveChangesAsync();
+        }
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "TestPass123"
+        });
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
+
+        var changedBpmn = SimpleBpmn().Replace("Review", "ReviewChanged", StringComparison.Ordinal);
+        var metadata = await Put<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data!.Id}", new
+        {
+            name = "仅修改元数据",
+            bizType = created.Data.BizType,
+            bpmnXml = changedBpmn
+        });
+        var designResponse = await _client.PutAsJsonAsync($"/api/workflows/{created.Data.Id}/design",
+            new DesignWorkflowRequest { BpmnXml = changedBpmn });
+
+        metadata.Code.Should().Be(0);
+        metadata.Data!.Name.Should().Be("仅修改元数据");
+        metadata.Data.BpmnXml.Should().Be(originalBpmn);
+        designResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        (await verifyDb.Workflows.SingleAsync(workflow => workflow.Id == created.Data.Id)).BpmnXml
+            .Should().Be(originalBpmn);
+    }
+
+    [Fact]
+    public async Task Create_only_user_can_create_metadata_but_cannot_embed_bpmn_definition()
+    {
+        await Login();
+        var employeeNo = Unique("WFCREATE");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var role = new Role { Code = Unique("wf_create_role"), Name = Unique("流程创建角色") };
+            var user = new User
+            {
+                EmployeeNo = employeeNo,
+                Name = Unique("流程创建员"),
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("TestPass123"),
+                IsActive = true
+            };
+            db.AddRange(role, user);
+            await db.SaveChangesAsync();
+            var createPermission = await db.Permissions.SingleAsync(permission => permission.Code == "workflow:create");
+            db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = createPermission.Id });
+            db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
+            await db.SaveChangesAsync();
+        }
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "TestPass123"
+        });
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
+
+        var metadataOnly = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = Unique("仅创建元数据"),
+            BizType = Unique("create_only")
+        });
+        var embeddedDesign = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        {
+            Name = Unique("越权流程图"),
+            BizType = Unique("design_bypass"),
+            BpmnXml = SimpleBpmn()
+        });
+
+        metadataOnly.Code.Should().Be(0);
+        embeddedDesign.Code.Should().Be(4030);
+        embeddedDesign.Message.Should().Contain("流程设计权限");
     }
 
     [Fact]
@@ -249,14 +422,17 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
         duplicated.Message.Should().Be("流程名称已存在");
     }
 
-    [Fact]
-    public async Task Workflow_definition_update_creates_new_version_when_instance_is_pending()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Workflow_definition_update_creates_new_version_and_preserves_status_when_instance_is_pending(bool isActive)
     {
         await Login();
         var bizType = Unique("versioned");
+        var workflowName = Unique("版本化流程");
         var created = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
         {
-            Name = "版本化流程",
+            Name = workflowName,
             BizType = bizType
         });
         using (var scope = _factory.Services.CreateScope())
@@ -305,16 +481,17 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
             await db.SaveChangesAsync();
         }
 
-        var saved = await Put<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data!.Id}", new SaveWorkflowRequest
+        if (!isActive)
         {
-            Name = "版本化流程",
-            BizType = bizType,
-            BpmnXml = SimpleBpmn()
-        });
+            await Post<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data!.Id}/status", new { isActive = false });
+        }
+
+        var saved = await Put<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data!.Id}/design",
+            new DesignWorkflowRequest { BpmnXml = SimpleBpmn() });
 
         saved.Code.Should().Be(0, saved.Message);
         saved.Data!.Id.Should().NotBe(created.Data.Id);
-        saved.Data.IsActive.Should().BeTrue();
+        saved.Data.IsActive.Should().Be(isActive);
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
         var oldVersion = await verifyDb.Workflows.SingleAsync(x => x.Id == created.Data.Id);

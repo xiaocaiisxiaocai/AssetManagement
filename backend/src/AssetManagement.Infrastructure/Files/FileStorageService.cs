@@ -1,5 +1,6 @@
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Files;
+using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,9 +17,9 @@ public class FileStorageService : IFileStorageService
     public FileStorageService(string configuredPath, string contentRootPath, AppDbContext db)
     {
         _db = db;
-        _root = Path.IsPathRooted(configuredPath)
+        _root = NormalizeRoot(Path.GetFullPath(Path.IsPathRooted(configuredPath)
             ? configuredPath
-            : Path.Combine(contentRootPath, configuredPath);
+            : Path.Combine(contentRootPath, configuredPath)));
         Directory.CreateDirectory(_root);
     }
 
@@ -64,18 +65,50 @@ public class FileStorageService : IFileStorageService
         return new FileUploadResult { Name = name, Url = $"/api/files/{name}" };
     }
 
+    public async Task<IAsyncDisposable> AcquireReferenceLeaseAsync(
+        IEnumerable<string>? imageUrls,
+        CancellationToken cancellationToken = default)
+    {
+        var lease = await ImageLifecycleLock.AcquireAsync(cancellationToken);
+        try
+        {
+            foreach (var url in imageUrls ?? Array.Empty<string>())
+            {
+                if (!ImageHelpers.IsStoredImageUrl(url))
+                {
+                    throw new BizException(4152, "照片地址无效，仅允许使用本系统上传的图片");
+                }
+
+                var storedName = Path.GetFileName(url);
+                var fullPath = Path.GetFullPath(Path.Combine(_root, storedName));
+                if (!IsPathInsideRoot(fullPath) || !File.Exists(fullPath))
+                {
+                    throw new BizException(4152, "照片文件不存在或已被清理，请重新上传");
+                }
+            }
+
+            return lease;
+        }
+        catch
+        {
+            await lease.DisposeAsync();
+            throw;
+        }
+    }
+
     public StoredFile? Open(string storedName)
     {
         // 防路径穿越:仅接受纯文件名
-        if (string.IsNullOrEmpty(storedName)
-            || storedName.Contains('/')
-            || storedName.Contains('\\')
-            || storedName.Contains(".."))
+        if (!ImageHelpers.IsStoredImageName(storedName))
         {
             return null;
         }
 
-        var fullPath = Path.Combine(_root, storedName);
+        var fullPath = Path.GetFullPath(Path.Combine(_root, storedName));
+        if (!IsPathInsideRoot(fullPath))
+        {
+            return null;
+        }
         if (!File.Exists(fullPath))
         {
             return null;
@@ -119,5 +152,22 @@ public class FileStorageService : IFileStorageService
         return int.TryParse(value, out var maxMb)
             ? Math.Clamp(maxMb, 1, 100)
             : 5;
+    }
+
+    private static string NormalizeRoot(string path)
+    {
+        var root = Path.GetPathRoot(path);
+        return string.Equals(path, root, StringComparison.OrdinalIgnoreCase)
+            ? path
+            : path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private bool IsPathInsideRoot(string fullPath)
+    {
+        var rootPrefix = _root.EndsWith(Path.DirectorySeparatorChar)
+            || _root.EndsWith(Path.AltDirectorySeparatorChar)
+            ? _root
+            : _root + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase);
     }
 }

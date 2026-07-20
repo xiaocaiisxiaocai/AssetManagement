@@ -6,17 +6,6 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useAccess } from '@vben/access';
 
 import {
-  getRuntimeSettingsApi,
-  createCategoryApi,
-  deleteCategoryApi,
-  getCategoryTreeApi,
-  purgeCategoryApi,
-  restoreCategoryApi,
-  updateCategoryApi,
-} from '#/api/base-data';
-import { buildCategoryActionAccess } from '#/views/permissions/action-access';
-
-import {
   ElButton,
   ElDialog,
   ElForm,
@@ -28,11 +17,23 @@ import {
   ElTableColumn,
   ElTag,
 } from 'element-plus';
+
+import {
+  createCategoryApi,
+  deleteCategoryApi,
+  getCategoryTreeApi,
+  getRuntimeSettingsApi,
+  purgeCategoryApi,
+  restoreCategoryApi,
+  updateCategoryApi,
+} from '#/api/base-data';
+import { buildCategoryActionAccess } from '#/views/permissions/action-access';
+
 import {
   categoryCodeRuleHint,
+  type CategoryCodeRules,
   defaultCategoryCodeRules,
   validateCategoryCodeSeg,
-  type CategoryCodeRules,
 } from './category-code-rules';
 
 defineOptions({ name: 'AssetCategories' });
@@ -47,7 +48,9 @@ const parentCode = ref('');
 const categories = ref<CategoryNode[]>([]);
 const categoryCodeRules = ref<CategoryCodeRules>(defaultCategoryCodeRules);
 const MAX_CATEGORY_LEVEL = 3;
-const categoryActionAccess = computed(() => buildCategoryActionAccess(hasAccessByCodes));
+const categoryActionAccess = computed(() =>
+  buildCategoryActionAccess(hasAccessByCodes),
+);
 const form = reactive<CategoryPayload>({
   codeSeg: '',
   parentId: null,
@@ -76,7 +79,8 @@ async function loadData() {
       getRuntimeSettingsApi(),
     ]);
     categories.value = tree;
-    categoryCodeRules.value = runtimeSettings.categoryCodeRules ?? defaultCategoryCodeRules;
+    categoryCodeRules.value =
+      runtimeSettings.categoryCodeRules ?? defaultCategoryCodeRules;
   } finally {
     loading.value = false;
   }
@@ -128,11 +132,9 @@ async function save() {
   };
   saving.value = true;
   try {
-    if (editingId.value) {
-      await updateCategoryApi(editingId.value, payload);
-    } else {
-      await createCategoryApi(payload);
-    }
+    await (editingId.value
+      ? updateCategoryApi(editingId.value, payload)
+      : createCategoryApi(payload));
     ElMessage.success('保存成功');
     dialogVisible.value = false;
     await loadData();
@@ -190,7 +192,10 @@ function tableRowClassName({ row }: { row: CategoryNode }) {
   return row.isDeleted ? 'category-row-deleted' : '';
 }
 
-function findNode(nodes: CategoryNode[], id?: null | number): CategoryNode | null {
+function findNode(
+  nodes: CategoryNode[],
+  id?: null | number,
+): CategoryNode | null {
   if (!id) return null;
   for (const node of nodes) {
     if (node.id === id) return node;
@@ -227,57 +232,88 @@ onMounted(loadData);
           <h2 class="page-title">资产分类编码树</h2>
         </div>
         <div class="flex gap-2">
-          <ElButton v-if="categoryActionAccess.canCreate" type="primary" @click="openCreate()">新增顶级分类</ElButton>
+          <ElButton
+            v-if="categoryActionAccess.canCreate"
+            type="primary"
+            @click="openCreate()"
+          >
+            新增顶级分类
+          </ElButton>
         </div>
       </div>
 
       <div class="table-panel">
         <ElTable
-          v-loading="loading"
           :data="categories"
           :row-class-name="tableRowClassName"
-          row-key="id"
           border
           default-expand-all
           height="100%"
+          row-key="id"
+          v-loading="loading"
         >
           <ElTableColumn label="编码段" min-width="140" prop="codeSeg" />
           <ElTableColumn label="完整编码" min-width="200">
             <template #default="{ row }">
               <ElTag size="default">{{ row.code }}</ElTag>
-              <ElTag v-if="row.isDeleted" class="ml-1" type="danger" size="small">
+              <ElTag
+                v-if="row.isDeleted"
+                class="ml-1"
+                size="small"
+                type="danger"
+              >
                 已删除
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="备注" min-width="260">
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="备注"
+            min-width="260"
+          >
             <template #default="{ row }">
               <div class="category-remark">
                 {{ row.parentId ? row.remark || '-' : '-' }}
               </div>
             </template>
           </ElTableColumn>
-          <ElTableColumn fixed="right" label="操作" width="260" align="center">
+          <ElTableColumn align="center" fixed="right" label="操作" width="260">
             <template #default="{ row }">
               <template v-if="!row.isDeleted">
                 <ElButton
                   v-if="categoryActionAccess.canCreate && canCreateChild(row)"
                   link
-                  type="primary"
                   size="small"
+                  type="primary"
                   @click="openCreate(row)"
                 >
                   新增下级
                 </ElButton>
-                <ElButton v-if="categoryActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-                <ElButton v-if="categoryActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
+                <ElButton
+                  v-if="categoryActionAccess.canEdit"
+                  link
+                  size="small"
+                  type="primary"
+                  @click="openEdit(row)"
+                >
+                  编辑
+                </ElButton>
+                <ElButton
+                  v-if="categoryActionAccess.canDelete"
+                  link
+                  size="small"
+                  type="danger"
+                  @click="remove(row)"
+                >
+                  删除
+                </ElButton>
               </template>
               <template v-else>
                 <ElButton
                   v-if="categoryActionAccess.canRestore"
                   link
-                  type="success"
                   size="small"
+                  type="success"
                   @click="restore(row)"
                 >
                   撤销删除
@@ -285,13 +321,21 @@ onMounted(loadData);
                 <ElButton
                   v-if="categoryActionAccess.canPurge"
                   link
-                  type="danger"
                   size="small"
+                  type="danger"
                   @click="purge(row)"
                 >
                   彻底删除
                 </ElButton>
-                <span v-if="!categoryActionAccess.canRestore && !categoryActionAccess.canPurge" class="asset-no-permission">无操作权限</span>
+                <span
+                  v-if="
+                    !categoryActionAccess.canRestore &&
+                    !categoryActionAccess.canPurge
+                  "
+                  class="asset-no-permission"
+                >
+                  无操作权限
+                </span>
               </template>
             </template>
           </ElTableColumn>
@@ -312,15 +356,24 @@ onMounted(loadData);
             <div class="form-tip">{{ codeRuleHint }}</div>
           </ElFormItem>
           <ElFormItem v-if="!isRootCategory" label="备注">
-            <ElInput v-model="form.remark" :rows="3" type="textarea" placeholder="请输入备注信息" />
+            <ElInput
+              v-model="form.remark"
+              :rows="3"
+              placeholder="请输入备注信息"
+              type="textarea"
+            />
           </ElFormItem>
           <ElFormItem label="完整编码">
-            <ElTag size="default" type="info">{{ previewCode || '待输入编码段' }}</ElTag>
+            <ElTag size="default" type="info">
+              {{ previewCode || '待输入编码段' }}
+            </ElTag>
           </ElFormItem>
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
+          <ElButton :loading="saving" type="primary" @click="save">
+            保存
+          </ElButton>
         </template>
       </ElDialog>
     </div>

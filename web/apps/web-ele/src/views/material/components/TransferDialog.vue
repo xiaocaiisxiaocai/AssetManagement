@@ -17,7 +17,12 @@ import {
 
 import { initiateTransferApi } from '#/api/material';
 
-const props = defineProps<{ material: MaterialItem | null; users: UserOptionDto[] }>();
+const props = defineProps<{
+  material: MaterialItem | null;
+  searchUsers?: (keyword: string) => Promise<void>;
+  userOptionsLoading?: boolean;
+  users: UserOptionDto[];
+}>();
 const emit = defineEmits<{ done: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 
@@ -42,7 +47,10 @@ async function submit() {
     ElMessage.warning('请选择受让人');
     return;
   }
-  if (props.material.custodianId && form.transfereeId === props.material.custodianId) {
+  if (
+    props.material.custodianId &&
+    form.transfereeId === props.material.custodianId
+  ) {
     ElMessage.warning('受让人不能是当前保管人');
     return;
   }
@@ -81,8 +89,11 @@ async function submit() {
       <ElFormItem label="受让人">
         <ElSelect
           v-model="form.transfereeId"
+          :loading="userOptionsLoading"
+          :remote-method="searchUsers"
           filterable
           placeholder="选择受让人"
+          remote
           style="width: 100%"
         >
           <ElOption

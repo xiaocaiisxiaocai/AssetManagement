@@ -21,5 +21,9 @@
   "disable": "Disable",
   "all": "All",
   "ing": "In progress...",
-  "tooltip": { "title": "Prompt", "delete": "Are you sure you want to delete?", "logout": "You have been forced to log out! You will be redirected to the login page in 3 seconds." }
+  "tooltip": {
+    "title": "Prompt",
+    "delete": "Are you sure you want to delete?",
+    "logout": "You have been forced to log out! You will be redirected to the login page in 3 seconds."
+  }
 }

@@ -19,5 +19,6 @@ public class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         b.Property(x => x.UserAgent).HasMaxLength(500);
         b.HasIndex(x => x.UserId);
         b.HasIndex(x => x.OccurredAt);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
     }
 }

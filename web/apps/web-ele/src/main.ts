@@ -21,10 +21,14 @@ async function initApplication() {
   // 品牌信息不作为用户偏好，避免旧缓存继续显示模板默认名称和 Logo。
   updatePreferences({
     app: {
+      locale: 'zh-CN',
       name: '资产管理系统',
     },
     logo: {
       source: '/images/saa.png',
+    },
+    widget: {
+      languageToggle: false,
     },
   });
 

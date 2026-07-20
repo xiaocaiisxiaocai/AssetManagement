@@ -21,6 +21,11 @@ public class AssetController : ControllerBase
     public async Task<ApiResult<PagedResult<AssetDto>>> List([FromQuery] AssetQuery query)
         => ApiResult<PagedResult<AssetDto>>.Ok(await _service.QueryAsync(query));
 
+    [HttpGet("category-counts")]
+    [HasPermission("asset:view")]
+    public async Task<ApiResult<Dictionary<int, int>>> CategoryCounts()
+        => ApiResult<Dictionary<int, int>>.Ok(await _service.GetCategoryCountsAsync());
+
     [HttpGet("{id:int}")]
     [HasPermission("asset:view")]
     public async Task<ApiResult<AssetDto>> Get(int id)

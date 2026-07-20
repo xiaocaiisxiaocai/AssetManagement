@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Infrastructure.Audit;
 
@@ -56,11 +57,16 @@ public class AuditActionFilter : IAsyncActionFilter
 
     private readonly AppDbContext _db;
     private readonly ILogger<AuditActionFilter> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public AuditActionFilter(AppDbContext db, ILogger<AuditActionFilter> logger)
+    public AuditActionFilter(
+        AppDbContext db,
+        ILogger<AuditActionFilter> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _db = db;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
@@ -77,9 +83,10 @@ public class AuditActionFilter : IAsyncActionFilter
             return;
         }
 
-        // Action 本身抛出了异常时跳过审计写入，避免在 faulted ChangeTracker 上二次提交
+        // 异常路径必须保留失败审计，但不能在业务 Action 使用过的 ChangeTracker 上二次提交。
         if (executed.Exception != null && !executed.ExceptionHandled)
         {
+            await TryWriteExceptionAuditAsync(context, executed, controllerName, targetId, before, stopwatch.ElapsedMilliseconds);
             return;
         }
 
@@ -145,6 +152,53 @@ public class AuditActionFilter : IAsyncActionFilter
             _logger.LogWarning(ex, "读取审计快照失败：{Method} {Path}",
                 context.HttpContext.Request.Method, context.HttpContext.Request.Path);
             return null;
+        }
+    }
+
+    private async Task TryWriteExceptionAuditAsync(
+        ActionExecutingContext context,
+        ActionExecutedContext executed,
+        string? controllerName,
+        string? targetId,
+        Dictionary<string, object?>? before,
+        long elapsedMilliseconds)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var auditDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var userIdText = context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            int? userId = int.TryParse(userIdText, out var parsedUserId) ? parsedUserId : null;
+            var exception = executed.Exception!;
+            var businessCode = exception is AssetManagement.Application.Common.BizException biz ? biz.Code : 500;
+            auditDb.AuditLogs.Add(new AuditLog
+            {
+                UserId = userId,
+                ActionType = ResolveActionType(context, controllerName),
+                TargetType = controllerName,
+                TargetId = targetId,
+                Summary = Truncate($"失败：{context.HttpContext.Request.Method} {context.HttpContext.Request.Path}", 500) ?? "业务操作失败",
+                Detail = JsonSerializer.Serialize(new
+                {
+                    Success = false,
+                    BusinessCode = businessCode,
+                    ExceptionType = exception.GetType().Name,
+                    Error = exception is AssetManagement.Application.Common.BizException
+                        ? exception.Message
+                        : "服务器内部错误",
+                    Before = before
+                }, JsonOptions),
+                Ip = IpNormalizer.Normalize(context.HttpContext.Connection.RemoteIpAddress?.ToString()),
+                UserAgent = Truncate(context.HttpContext.Request.Headers.UserAgent.ToString(), 500),
+                DurationMs = (int)Math.Min(elapsedMilliseconds, int.MaxValue),
+                OccurredAt = DateTime.UtcNow
+            });
+            await auditDb.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception auditException)
+        {
+            _logger.LogError(auditException, "业务请求失败，且失败审计日志写入失败：{Method} {Path}",
+                context.HttpContext.Request.Method, context.HttpContext.Request.Path);
         }
     }
 
@@ -354,7 +408,12 @@ public class AuditActionFilter : IAsyncActionFilter
             Success = success,
             StatusCode = EffectiveStatusCode(context, executed),
             ExceptionType = executed.Exception?.GetType().Name,
-            Error = executed.Exception?.Message,
+            Error = executed.Exception switch
+            {
+                AssetManagement.Application.Common.BizException biz => biz.Message,
+                not null => "服务器内部错误",
+                _ => null,
+            },
             Before = before,
             After = after,
             Changes = changes

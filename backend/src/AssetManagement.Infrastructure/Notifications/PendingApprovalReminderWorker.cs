@@ -43,7 +43,7 @@ public class PendingApprovalReminderWorker : BackgroundService
 
             try
             {
-                await ScanAndRemindAsync();
+                await ScanAndRemindAsync(stoppingToken);
             }
             catch (Exception ex)
             {
@@ -61,7 +61,7 @@ public class PendingApprovalReminderWorker : BackgroundService
         await Task.Delay(delay, ct);
     }
 
-    internal async Task ScanAndRemindAsync()
+    internal async Task ScanAndRemindAsync(CancellationToken cancellationToken = default)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -73,33 +73,35 @@ public class PendingApprovalReminderWorker : BackgroundService
         var requests = new List<CreateNotificationRequest>();
 
         // 扫描资产审批流
-        await RemindApprovalFlowsAsync(db, threshold, todayStr, requests);
+        await RemindApprovalFlowsAsync(db, threshold, todayStr, requests, cancellationToken);
 
         // 扫描料件流转
-        await RemindMaterialFlowsAsync(db, threshold, todayStr, requests);
+        await RemindMaterialFlowsAsync(db, threshold, todayStr, requests, cancellationToken);
 
         if (requests.Count > 0)
         {
-            await notificationSvc.CreateBatchAsync(requests);
+            await notificationSvc.CreateBatchAsync(requests, cancellationToken);
             _logger.LogInformation("发送待审批催办通知 {Count} 条", requests.Count);
         }
     }
 
     private async Task RemindApprovalFlowsAsync(
         AppDbContext db, DateTime threshold, string todayStr,
-        List<CreateNotificationRequest> requests)
+        List<CreateNotificationRequest> requests,
+        CancellationToken cancellationToken)
     {
         var pendingFlows = await db.ApprovalFlows
             .Where(f => f.Status == "pending")
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         var workflowIds = pendingFlows.Select(f => f.WorkflowId).Distinct().ToArray();
         var workflowMap = await db.Workflows
             .Where(w => workflowIds.Contains(w.Id))
-            .ToDictionaryAsync(w => w.Id, w => w);
+            .ToDictionaryAsync(w => w.Id, w => w, cancellationToken);
 
         foreach (var flow in pendingFlows)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var overdueNodeIds = OverdueCurrentNodeIds(
                 flow.CurrentNodeIds, flow.BpmnTokens, flow.ApplyTime, threshold);
             if (overdueNodeIds.Count == 0)
@@ -129,26 +131,29 @@ public class PendingApprovalReminderWorker : BackgroundService
 
     private async Task RemindMaterialFlowsAsync(
         AppDbContext db, DateTime threshold, string todayStr,
-        List<CreateNotificationRequest> requests)
+        List<CreateNotificationRequest> requests,
+        CancellationToken cancellationToken)
     {
         var pendingFlows = await db.MaterialFlows
             .Where(f => f.Status == "pending")
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
-        var workflowIds = pendingFlows.Select(f => f.WorkflowId).Distinct()
-            .Where(id => id > 0).ToArray();
+        var workflowIds = pendingFlows.Where(f => f.WorkflowId.HasValue)
+            .Select(f => f.WorkflowId!.Value).Distinct().ToArray();
         var workflowMap = await db.Workflows
             .Where(w => workflowIds.Contains(w.Id))
-            .ToDictionaryAsync(w => w.Id, w => w);
+            .ToDictionaryAsync(w => w.Id, w => w, cancellationToken);
 
         foreach (var flow in pendingFlows)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var overdueNodeIds = OverdueCurrentNodeIds(
                 flow.CurrentNodeIds, flow.BpmnTokens, flow.ApplyTime, threshold);
             if (overdueNodeIds.Count == 0)
                 continue;
 
-            if (!workflowMap.TryGetValue(flow.WorkflowId, out var wf) ||
+            if (!flow.WorkflowId.HasValue
+                || !workflowMap.TryGetValue(flow.WorkflowId.Value, out var wf) ||
                 string.IsNullOrEmpty(wf.BpmnXml)) continue;
 
             var process = BpmnParser.Parse(wf.BpmnXml);

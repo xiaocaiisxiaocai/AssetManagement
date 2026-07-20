@@ -54,6 +54,27 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Asset_keyword_search_matches_number_or_name()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var marker = Guid.NewGuid().ToString("N")[..8];
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = $"关键字资产-{marker}",
+            CategoryId = category.Id
+        });
+
+        var byName = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>(
+            $"/api/assets?keyword={Uri.EscapeDataString(marker)}&page=1&pageSize=20");
+        var byNumber = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>(
+            $"/api/assets?keyword={Uri.EscapeDataString(created.Data!.AssetNo)}&page=1&pageSize=20");
+
+        byName!.Data!.Items.Should().ContainSingle(x => x.Id == created.Data.Id);
+        byNumber!.Data!.Items.Should().ContainSingle(x => x.Id == created.Data.Id);
+    }
+
+    [Fact]
     public async Task Create_asset_rejects_condition_outside_dictionary()
     {
         await Login();
@@ -306,6 +327,51 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Import_preview_rejects_values_longer_than_database_columns()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var bytes = BuildXlsx(new[]
+        {
+            new[] { "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注" },
+            new[] { new string('名', 101), category.Code, "", "", "", "" },
+            new[] { "合法名称", category.Code, "", "", "", new string('备', 501) },
+        });
+
+        var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
+
+        preview.Data.Should().HaveCount(2);
+        preview.Data![0].IsValid.Should().BeFalse();
+        preview.Data[0].Error.Should().Contain("100");
+        preview.Data[1].IsValid.Should().BeFalse();
+        preview.Data[1].Error.Should().Contain("500");
+    }
+
+    [Fact]
+    public async Task Category_counts_returns_direct_active_asset_counts()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var active = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "分类计数资产",
+            CategoryId = category.Id,
+        });
+        var deleted = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "已删除分类计数资产",
+            CategoryId = category.Id,
+        });
+        await _client.DeleteAsync($"/api/assets/{deleted.Data!.Id}");
+
+        var result = await _client.GetFromJsonAsync<ApiResult<Dictionary<int, int>>>(
+            "/api/assets/category-counts");
+
+        active.Data.Should().NotBeNull();
+        result!.Data.Should().ContainKey(category.Id).WhoseValue.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Import_uses_max_sequence_after_middle_asset_is_purged()
     {
         await Login();
@@ -372,7 +438,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var category = await CreateCategory();
-        var images = new List<string> { "/api/files/a1.png", "/api/files/b2.jpg" };
+        var images = new List<string> { await UploadImage() };
 
         var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
@@ -560,6 +626,19 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var res = await _client.PostAsync(url, form);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<string> UploadImage()
+    {
+        using var form = new MultipartFormDataContent();
+        var content = new ByteArrayContent(
+            new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1 });
+        content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        form.Add(content, "file", "asset.png");
+        var response = await _client.PostAsync("/api/files/upload", form);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ApiResult<AssetManagement.Application.Files.FileUploadResult>>())!
+            .Data!.Url;
     }
 
     private static byte[] BuildXlsx(IEnumerable<string[]> rows)

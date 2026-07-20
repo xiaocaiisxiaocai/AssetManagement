@@ -15,25 +15,20 @@ async function generateRoutesByBackend(
 ): Promise<RouteRecordRaw[]> {
   const { fetchMenuListAsync, layoutMap = {}, pageMap = {} } = options;
 
-  try {
-    const menuRoutes = await fetchMenuListAsync?.();
-    if (!menuRoutes) {
-      return [];
-    }
-
-    const normalizePageMap: ComponentRecordType = {};
-
-    for (const [key, value] of Object.entries(pageMap)) {
-      normalizePageMap[normalizeViewPath(key)] = value;
-    }
-
-    const routes = convertRoutes(menuRoutes, layoutMap, normalizePageMap);
-
-    return routes;
-  } catch (error) {
-    console.error(error);
+  const menuRoutes = await fetchMenuListAsync?.();
+  if (!menuRoutes) {
     return [];
   }
+
+  const normalizePageMap: ComponentRecordType = {};
+
+  for (const [key, value] of Object.entries(pageMap)) {
+    normalizePageMap[normalizeViewPath(key)] = value;
+  }
+
+  const routes = convertRoutes(menuRoutes, layoutMap, normalizePageMap);
+
+  return routes;
 }
 
 function convertRoutes(

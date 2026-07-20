@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { SupportedLanguagesType } from '@vben/locales';
 import type {
   BreadcrumbStyleType,
   BuiltinThemeType,
@@ -15,7 +14,7 @@ import type { SegmentedItem } from '@vben-core/shadcn-ui';
 import { computed, ref } from 'vue';
 
 import { Copy, RotateCw } from '@vben/icons';
-import { $t, loadLocaleMessages } from '@vben/locales';
+import { $t } from '@vben/locales';
 import {
   clearPreferencesCache,
   preferences,
@@ -57,7 +56,6 @@ const emit = defineEmits<{ clearPreferencesAndLogout: [] }>();
 
 const message = globalShareState.getMessage();
 
-const appLocale = defineModel<SupportedLanguagesType>('appLocale');
 const appDynamicTitle = defineModel<boolean>('appDynamicTitle');
 const appLayout = defineModel<LayoutType>('appLayout');
 const appColorGrayMode = defineModel<boolean>('appColorGrayMode');
@@ -147,7 +145,6 @@ const shortcutKeysGlobalLockScreen = defineModel<boolean>(
 
 const widgetGlobalSearch = defineModel<boolean>('widgetGlobalSearch');
 const widgetFullscreen = defineModel<boolean>('widgetFullscreen');
-const widgetLanguageToggle = defineModel<boolean>('widgetLanguageToggle');
 const widgetNotification = defineModel<boolean>('widgetNotification');
 const widgetThemeToggle = defineModel<boolean>('widgetThemeToggle');
 const widgetSidebarToggle = defineModel<boolean>('widgetSidebarToggle');
@@ -215,12 +212,11 @@ async function handleClearCache() {
   emit('clearPreferencesAndLogout');
 }
 
-async function handleReset() {
+function handleReset() {
   if (!diffPreference.value) {
     return;
   }
   resetPreferences();
-  await loadLocaleMessages(preferences.app.locale);
 }
 </script>
 
@@ -234,8 +230,8 @@ async function handleReset() {
       <template #extra>
         <div class="flex items-center">
           <VbenIconButton
-            :disabled="!diffPreference"
             :aria-label="$t('preferences.resetTip')"
+            :disabled="!diffPreference"
             :title="$t('preferences.resetTip')"
             :tooltip="$t('preferences.resetTip')"
             class="relative"
@@ -256,7 +252,6 @@ async function handleReset() {
               <General
                 v-model:app-dynamic-title="appDynamicTitle"
                 v-model:app-enable-check-updates="appEnableCheckUpdates"
-                v-model:app-locale="appLocale"
                 v-model:app-watermark="appWatermark"
               />
             </Block>
@@ -365,7 +360,6 @@ async function handleReset() {
                 "
                 v-model:widget-fullscreen="widgetFullscreen"
                 v-model:widget-global-search="widgetGlobalSearch"
-                v-model:widget-language-toggle="widgetLanguageToggle"
                 v-model:widget-lock-screen="widgetLockScreen"
                 v-model:widget-notification="widgetNotification"
                 v-model:widget-refresh="widgetRefresh"

@@ -19,7 +19,7 @@ describe('内置菜单排序', () => {
       },
     ]);
 
-    expect(admin!.children!.map((item) => item.name)).toEqual([
+    expect(admin?.children?.map((item) => item.name)).toEqual([
       'AdminUsers',
       'AdminRoles',
       'AdminDepartments',

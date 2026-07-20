@@ -69,16 +69,16 @@ const nextText = computed(() => {
   <div class="workflow-summary">
     <div
       v-if="terminalProgress"
-      class="workflow-summary-terminal"
       :class="`workflow-summary-terminal-${terminalProgress.tone}`"
+      class="workflow-summary-terminal"
     >
       {{ terminalProgress.text }}
     </div>
     <template v-else>
       <div class="workflow-summary-line">
-        <span class="workflow-summary-label workflow-summary-current"
-          >待处理</span
-        >
+        <span class="workflow-summary-label workflow-summary-current">
+          待处理
+        </span>
         <span>{{ currentText }}</span>
       </div>
       <div

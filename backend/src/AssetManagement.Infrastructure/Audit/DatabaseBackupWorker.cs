@@ -32,7 +32,7 @@ public class DatabaseBackupWorker : BackgroundService
                 using var scope = _scopeFactory.CreateScope();
                 var service = scope.ServiceProvider.GetRequiredService<IDatabaseBackupService>();
                 var result = await service.BackupAsync(stoppingToken);
-                _logger.LogInformation("定时数据库备份完成：{FilePath}", result.FilePath);
+                _logger.LogInformation("定时数据库备份完成：{FileName}", result.FileName);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

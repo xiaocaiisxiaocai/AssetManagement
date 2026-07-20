@@ -4,6 +4,8 @@ export interface DepartmentOption {
   id: number;
   isActive: boolean;
   label: string;
+  managerId?: number;
+  managerName?: string;
 }
 
 export function flattenActiveDepartments(
@@ -20,6 +22,12 @@ export function flattenActiveDepartments(
         id: node.id,
         isActive: true,
         label: `${'　'.repeat(level)}${node.name}`,
+        ...(node.managerId === null || node.managerId === undefined
+          ? {}
+          : {
+              managerId: node.managerId,
+              managerName: node.managerName ?? undefined,
+            }),
       },
       ...flattenActiveDepartments(node.children, level + 1),
     ];

@@ -45,7 +45,7 @@ public record AuditCleanupResultDto
 
 public record DatabaseBackupResultDto
 {
-    public string FilePath { get; init; } = "";
+    public string FileName { get; init; } = "";
     public DateTime CreatedAt { get; init; }
     public long SizeBytes { get; init; }
 }
@@ -53,7 +53,6 @@ public record DatabaseBackupResultDto
 public record DatabaseBackupFileDto
 {
     public string FileName { get; init; } = "";
-    public string FilePath { get; init; } = "";
     public string FileType { get; init; } = "";
     public DateTime CreatedAt { get; init; }
     public long SizeBytes { get; init; }
@@ -69,8 +68,13 @@ public interface IAuditQueryService
 
 public interface IAuditMaintenanceService
 {
-    Task<AuditCleanupPreviewDto> PreviewCleanupAsync(int retentionDays);
-    Task<AuditCleanupResultDto> CleanupAsync(int retentionDays, int? operatorUserId = null);
+    Task<AuditCleanupPreviewDto> PreviewCleanupAsync(
+        int retentionDays,
+        CancellationToken cancellationToken = default);
+    Task<AuditCleanupResultDto> CleanupAsync(
+        int retentionDays,
+        int? operatorUserId = null,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IDatabaseBackupService

@@ -1,27 +1,11 @@
 <script lang="ts" setup>
-import type { DepartmentNode } from '#/api/base-data';
-import type { UserDto, UserImportRow } from '#/api/user';
+import type { DepartmentOptionNode } from '#/api/base-data';
+import type { RoleDto } from '#/api/role';
+import type { UserDto, UserImportRow, UserOptionDto } from '#/api/user';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
-
-import { getDepartmentTreeApi } from '#/api/base-data';
-import {
-  createUserApi,
-  deleteUserApi,
-  downloadUserImportTemplateApi,
-  getUserListApi,
-  importUsersApi,
-  resetUserPasswordApi,
-  toggleUserStatusApi,
-  updateUserApi,
-  validateUserImportApi,
-} from '#/api/user';
-import { getRoleListApi } from '#/api/role';
-import { flattenActiveDepartments } from '#/utils/department-options';
-import { createPageSizeOptions, getDefaultPageSize } from '#/utils/runtime-settings';
-import { buildUserActionAccess } from '#/views/permissions/action-access';
 
 import {
   ElButton,
@@ -39,10 +23,47 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { getDepartmentOptionsApi } from '#/api/base-data';
+import { getRoleListApi } from '#/api/role';
+import {
+  createUserApi,
+  deleteUserApi,
+  downloadUserImportTemplateApi,
+  getUserListApi,
+  importUsersApi,
+  resetUserPasswordApi,
+  toggleUserStatusApi,
+  updateUserApi,
+  validateUserImportApi,
+} from '#/api/user';
+import { flattenActiveDepartments } from '#/utils/department-options';
+import { runHandled } from '#/utils/handled-promise';
+import { createLatestRequestGuard } from '#/utils/latest-request';
+import {
+  createPageSizeOptions,
+  getDefaultPageSize,
+} from '#/utils/runtime-settings';
+import {
+  mergeSelectedUserOption,
+  mergeUserOptions,
+} from '#/utils/user-options';
+import { buildUserActionAccess } from '#/views/permissions/action-access';
+
+import {
+  buildUserPayload,
+  resolveDefaultEmployeeRoleId,
+  resolveDepartmentSupervisor,
+  userToForm,
+} from './user-form';
+
 defineOptions({ name: 'AdminUsers' });
 
+const listRequestGuard = createLatestRequestGuard();
+
 const { hasAccessByCodes } = useAccess();
-const userActionAccess = computed(() => buildUserActionAccess(hasAccessByCodes));
+const userActionAccess = computed(() =>
+  buildUserActionAccess(hasAccessByCodes),
+);
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -50,8 +71,11 @@ const importDialogVisible = ref(false);
 const importing = ref(false);
 const editingId = ref<null | number>(null);
 const users = ref<UserDto[]>([]);
-const roles = ref<any[]>([]);
-const departments = ref<DepartmentNode[]>([]);
+const supervisorOptions = ref<UserOptionDto[]>([]);
+const supervisorOptionsLoading = ref(false);
+const supervisorOptionsRequestGuard = createLatestRequestGuard();
+const roles = ref<RoleDto[]>([]);
+const departments = ref<DepartmentOptionNode[]>([]);
 const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const importFileInput = ref<HTMLInputElement | null>(null);
@@ -69,25 +93,39 @@ const query = reactive({
 const form = reactive({
   employeeNo: '',
   name: '',
+  phone: '',
   email: '',
   departmentId: undefined as number | undefined,
   roleId: undefined as number | undefined,
+  roleName: '',
+  supervisorId: undefined as number | undefined,
 });
 
-const departmentOptions = computed(() => flattenActiveDepartments(departments.value));
+const departmentOptions = computed(() =>
+  flattenActiveDepartments(departments.value),
+);
 
 async function loadRoles() {
-  if (!userActionAccess.value.canCreate && !userActionAccess.value.canEdit) return;
-  const result = await getRoleListApi();
+  if (!userActionAccess.value.canViewRoles) return;
+  const result = await getRoleListApi(undefined, 1, 100);
   roles.value = result.items;
+  if (
+    dialogVisible.value &&
+    editingId.value === null &&
+    form.roleId === undefined
+  ) {
+    form.roleId = resolveDefaultEmployeeRoleId(roles.value);
+  }
 }
 
 async function loadDepartments() {
-  if (!userActionAccess.value.canCreate && !userActionAccess.value.canEdit) return;
-  departments.value = await getDepartmentTreeApi();
+  if (!userActionAccess.value.canCreate && !userActionAccess.value.canEdit)
+    return;
+  departments.value = await getDepartmentOptionsApi();
 }
 
 async function loadData() {
+  const requestGeneration = listRequestGuard.next();
   loading.value = true;
   try {
     const result = await getUserListApi(
@@ -97,10 +135,11 @@ async function loadData() {
       query.departmentId,
       query.roleId,
     );
+    if (!listRequestGuard.isLatest(requestGeneration)) return;
     users.value = result.items;
     total.value = result.total;
   } finally {
-    loading.value = false;
+    if (listRequestGuard.isLatest(requestGeneration)) loading.value = false;
   }
 }
 
@@ -109,23 +148,59 @@ function openCreate() {
   Object.assign(form, {
     employeeNo: '',
     name: '',
+    phone: '',
     email: '',
     departmentId: undefined,
-    roleId: undefined,
+    roleId: resolveDefaultEmployeeRoleId(roles.value),
+    roleName: '',
+    supervisorId: undefined,
   });
   dialogVisible.value = true;
+  runHandled(searchSupervisors(''));
 }
 
 function openEdit(row: UserDto) {
   editingId.value = row.id;
-  Object.assign(form, {
-    employeeNo: row.employeeNo,
-    name: row.name,
-    email: row.email ?? '',
-    departmentId: row.departmentId ?? undefined,
-    roleId: row.roleIds?.[0],
+  Object.assign(form, userToForm(row));
+  supervisorOptions.value = mergeSelectedUserOption(supervisorOptions.value, {
+    id: row.supervisorId,
+    name: row.supervisorName,
   });
   dialogVisible.value = true;
+  runHandled(searchSupervisors(''));
+}
+
+async function searchSupervisors(keyword = '') {
+  const generation = supervisorOptionsRequestGuard.next();
+  supervisorOptionsLoading.value = true;
+  try {
+    const result = await getUserListApi(keyword, 1, 50);
+    if (!supervisorOptionsRequestGuard.isLatest(generation)) return;
+    supervisorOptions.value = mergeUserOptions(
+      supervisorOptions.value,
+      result.items.filter(
+        (user) => user.isActive && user.id !== editingId.value,
+      ),
+    );
+  } catch {
+    // 请求层已提示，保留现有选项。
+  } finally {
+    if (supervisorOptionsRequestGuard.isLatest(generation))
+      supervisorOptionsLoading.value = false;
+  }
+}
+
+function onDepartmentChange(departmentId?: number) {
+  const selection = resolveDepartmentSupervisor(
+    departmentOptions.value,
+    departmentId,
+    editingId.value,
+  );
+  form.supervisorId = selection.supervisorId;
+  supervisorOptions.value = mergeSelectedUserOption(supervisorOptions.value, {
+    id: selection.supervisorId,
+    name: selection.supervisorName,
+  });
 }
 
 async function save() {
@@ -144,21 +219,14 @@ async function save() {
 
   saving.value = true;
   try {
-    const payload = {
-      name: form.name,
-      email: form.email || null,
-      departmentId: form.departmentId ?? null,
-      roleIds: form.roleId ? [form.roleId] : [],
-    };
+    const payload = buildUserPayload(form);
 
-    if (editingId.value) {
-      await updateUserApi(editingId.value, payload);
-    } else {
-      await createUserApi({
-        employeeNo: form.employeeNo,
-        ...payload,
-      });
-    }
+    await (editingId.value
+      ? updateUserApi(editingId.value, payload)
+      : createUserApi({
+          employeeNo: form.employeeNo,
+          ...payload,
+        }));
     ElMessage.success('保存成功');
     dialogVisible.value = false;
     query.page = 1;
@@ -252,7 +320,9 @@ async function onImportFileChange(event: Event) {
     const result = await validateUserImportApi(selectedImportFile.value);
     importRows.value = result.rows;
     if (result.failedCount > 0) {
-      ElMessage.warning(`预览发现 ${result.failedCount} 条错误，请修正后重新选择文件`);
+      ElMessage.warning(
+        `预览发现 ${result.failedCount} 条错误，请修正后重新选择文件`,
+      );
     } else {
       ElMessage.success(`预览通过 ${result.successCount} 条`);
     }
@@ -286,7 +356,7 @@ async function confirmImportUsers() {
 
 function search() {
   query.page = 1;
-  void loadData();
+  runHandled(loadData());
 }
 
 function reset() {
@@ -294,7 +364,7 @@ function reset() {
   query.keyword = '';
   query.page = 1;
   query.roleId = undefined;
-  void loadData();
+  runHandled(loadData());
 }
 
 onMounted(async () => {
@@ -313,8 +383,16 @@ onMounted(async () => {
           <h2 class="user-title">用户管理</h2>
         </div>
         <div class="user-header-actions">
-          <ElButton v-if="userActionAccess.canCreate" @click="openImport">批量导入</ElButton>
-          <ElButton v-if="userActionAccess.canCreate" type="primary" @click="openCreate">新增用户</ElButton>
+          <ElButton v-if="userActionAccess.canImport" @click="openImport">
+            批量导入
+          </ElButton>
+          <ElButton
+            v-if="userActionAccess.canCreate"
+            type="primary"
+            @click="openCreate"
+          >
+            新增用户
+          </ElButton>
         </div>
       </div>
 
@@ -369,47 +447,91 @@ onMounted(async () => {
       </div>
 
       <div class="user-table-panel">
-        <ElTable v-loading="loading" :data="users" border height="100%">
+        <ElTable :data="users" border height="100%" v-loading="loading">
           <ElTableColumn label="工号" min-width="120" prop="employeeNo" />
           <ElTableColumn label="姓名" min-width="140" prop="name" />
-          <ElTableColumn class-name="hide-on-mobile" label="部门" min-width="150" prop="departmentName" show-overflow-tooltip>
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="部门"
+            min-width="150"
+            prop="departmentName"
+            show-overflow-tooltip
+          >
             <template #default="{ row }">
               {{ row.departmentName || '--' }}
             </template>
           </ElTableColumn>
-          <ElTableColumn class-name="hide-on-mobile" label="邮箱" min-width="180" prop="email" />
-          <ElTableColumn class-name="hide-on-mobile" label="角色" min-width="180">
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="邮箱"
+            min-width="180"
+            prop="email"
+          />
+          <ElTableColumn
+            class-name="hide-on-mobile"
+            label="角色"
+            min-width="180"
+          >
             <template #default="{ row }">
-              <template v-if="row.roleNames && row.roleNames.length">
-                <ElTag v-for="role in row.roleNames" :key="role" size="small" style="margin-right: 4px">
+              <template v-if="row.roleNames && row.roleNames.length > 0">
+                <ElTag
+                  v-for="role in row.roleNames"
+                  :key="role"
+                  size="small"
+                  style="margin-right: 4px"
+                >
                   {{ role }}
                 </ElTag>
               </template>
               <span v-else class="user-empty-text">--</span>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="状态" width="100" align="center">
+          <ElTableColumn align="center" label="状态" width="100">
             <template #default="{ row }">
               <ElTag :type="row.isActive ? 'success' : 'danger'" size="small">
                 {{ row.isActive ? '启用' : '禁用' }}
               </ElTag>
             </template>
           </ElTableColumn>
-          <ElTableColumn fixed="right" label="操作" width="300" align="center">
+          <ElTableColumn align="center" fixed="right" label="操作" width="300">
             <template #default="{ row }">
-              <ElButton v-if="userActionAccess.canEdit" link type="primary" size="small" @click="openEdit(row)">编辑</ElButton>
-              <ElButton v-if="userActionAccess.canResetPassword" link type="primary" size="small" @click="resetPassword(row)">重置密码</ElButton>
+              <ElButton
+                v-if="userActionAccess.canEdit"
+                link
+                size="small"
+                type="primary"
+                @click="openEdit(row)"
+              >
+                编辑
+              </ElButton>
+              <ElButton
+                v-if="userActionAccess.canResetPassword"
+                link
+                size="small"
+                type="primary"
+                @click="resetPassword(row)"
+              >
+                重置密码
+              </ElButton>
               <ElButton
                 v-if="userActionAccess.canToggleStatus"
-                link
                 :disabled="loading"
                 :type="row.isActive ? 'danger' : 'primary'"
+                link
                 size="small"
                 @click="toggleStatus(row)"
               >
                 {{ row.isActive ? '禁用' : '启用' }}
               </ElButton>
-              <ElButton v-if="userActionAccess.canDelete" link type="danger" size="small" @click="remove(row)">删除</ElButton>
+              <ElButton
+                v-if="userActionAccess.canDelete"
+                link
+                size="small"
+                type="danger"
+                @click="remove(row)"
+              >
+                删除
+              </ElButton>
             </template>
           </ElTableColumn>
         </ElTable>
@@ -461,7 +583,19 @@ onMounted(async () => {
             <ElInput v-model="form.name" placeholder="请输入姓名" />
           </ElFormItem>
           <ElFormItem label="邮箱">
-            <ElInput v-model="form.email" clearable placeholder="请输入邮箱" type="email" />
+            <ElInput
+              v-model="form.email"
+              clearable
+              placeholder="请输入邮箱"
+              type="email"
+            />
+          </ElFormItem>
+          <ElFormItem label="手机号">
+            <ElInput
+              v-model="form.phone"
+              clearable
+              placeholder="请输入手机号"
+            />
           </ElFormItem>
           <ElFormItem label="部门">
             <ElSelect
@@ -470,6 +604,7 @@ onMounted(async () => {
               filterable
               placeholder="选择部门"
               style="width: 100%"
+              @change="onDepartmentChange"
             >
               <ElOption
                 v-for="department in departmentOptions"
@@ -480,8 +615,32 @@ onMounted(async () => {
               />
             </ElSelect>
           </ElFormItem>
+          <ElFormItem label="直属主管">
+            <ElSelect
+              v-model="form.supervisorId"
+              :loading="supervisorOptionsLoading"
+              :remote-method="searchSupervisors"
+              clearable
+              filterable
+              placeholder="选择直属主管"
+              remote
+              style="width: 100%"
+            >
+              <ElOption
+                v-for="supervisor in supervisorOptions"
+                :key="supervisor.id"
+                :label="
+                  supervisor.employeeNo
+                    ? `${supervisor.name}（${supervisor.employeeNo}）`
+                    : supervisor.name
+                "
+                :value="supervisor.id"
+              />
+            </ElSelect>
+          </ElFormItem>
           <ElFormItem label="角色" required>
             <ElSelect
+              v-if="userActionAccess.canAssignRole"
               v-model="form.roleId"
               filterable
               placeholder="选择角色"
@@ -494,15 +653,22 @@ onMounted(async () => {
                 :value="role.id"
               />
             </ElSelect>
+            <ElInput v-else :model-value="form.roleName || '未分配'" disabled />
           </ElFormItem>
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save">保存</ElButton>
+          <ElButton :loading="saving" type="primary" @click="save">
+            保存
+          </ElButton>
         </template>
       </ElDialog>
 
-      <ElDialog v-model="importDialogVisible" title="批量导入用户" width="920px">
+      <ElDialog
+        v-model="importDialogVisible"
+        title="批量导入用户"
+        width="920px"
+      >
         <div class="user-import-toolbar">
           <ElButton @click="downloadImportTemplate">下载模板</ElButton>
           <input
@@ -517,7 +683,9 @@ onMounted(async () => {
             {{ selectedImportFile?.name || '未选择文件' }}
           </span>
           <ElButton
-            :disabled="!importRows.length || importRows.some((row) => !row.isValid)"
+            :disabled="
+              importRows.length === 0 || importRows.some((row) => !row.isValid)
+            "
             :loading="importing"
             type="primary"
             @click="confirmImportUsers"
@@ -527,11 +695,15 @@ onMounted(async () => {
         </div>
         <ElTable :data="importRows" border max-height="360">
           <ElTableColumn label="行号" prop="row" width="80" />
-          <ElTableColumn label="工号" prop="employeeNo" min-width="120" />
-          <ElTableColumn label="姓名" prop="name" min-width="120" />
-          <ElTableColumn label="邮箱" prop="email" min-width="180" />
-          <ElTableColumn label="部门名称" prop="departmentName" min-width="140" />
-          <ElTableColumn label="角色名称" prop="roleName" min-width="140" />
+          <ElTableColumn label="工号" min-width="120" prop="employeeNo" />
+          <ElTableColumn label="姓名" min-width="120" prop="name" />
+          <ElTableColumn label="邮箱" min-width="180" prop="email" />
+          <ElTableColumn
+            label="部门名称"
+            min-width="140"
+            prop="departmentName"
+          />
+          <ElTableColumn label="角色名称" min-width="140" prop="roleName" />
           <ElTableColumn label="状态" width="90">
             <template #default="{ row }">
               <ElTag :type="row.isValid ? 'success' : 'danger'">

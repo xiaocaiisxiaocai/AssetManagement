@@ -11,7 +11,9 @@ export type AssetRowActionAccess = {
   canView: boolean;
 };
 
-export function buildAssetRowActionAccess(hasAccess: (codes: string[]) => boolean): AssetRowActionAccess {
+export function buildAssetRowActionAccess(
+  hasAccess: (codes: string[]) => boolean,
+): AssetRowActionAccess {
   return {
     canBorrow: hasAccess(['approval:create']),
     canCreate: hasAccess(['asset:create']),
@@ -26,7 +28,10 @@ export function buildAssetRowActionAccess(hasAccess: (codes: string[]) => boolea
   };
 }
 
-export function canRunAvailableAssetAction(asset: { isDeleted: boolean; status: number }) {
+export function canRunAvailableAssetAction(asset: {
+  isDeleted: boolean;
+  status: number;
+}) {
   return !asset.isDeleted && asset.status === 0;
 }
 
@@ -38,5 +43,9 @@ export function canTransferAvailableAsset(
   },
   currentUserId: number,
 ) {
-  return canRunAvailableAssetAction(asset) && asset.custodianId === currentUserId;
+  return (
+    !asset.isDeleted &&
+    (asset.status === 0 || asset.status === 1) &&
+    asset.custodianId === currentUserId
+  );
 }

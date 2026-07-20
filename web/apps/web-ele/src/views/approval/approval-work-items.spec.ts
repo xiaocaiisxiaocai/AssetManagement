@@ -7,6 +7,7 @@ import {
   canWithdrawApproval,
   findApprovalWorkItemIndex,
   mergeApprovalWorkItems,
+  mergeAvailableApprovalWorkItems,
   normalizeAssetApproval,
   normalizeMaterialFlow,
 } from './approval-work-items';
@@ -48,6 +49,7 @@ const materialFlow: MaterialFlowItem = {
       status: 0,
     },
   },
+  canWithdraw: false,
   directTransfer: false,
   flowNo: 'MF-001',
   id: 2,
@@ -71,6 +73,15 @@ describe('审批工作项适配', () => {
       objectName: '示波器',
       participant: '张三',
       currentNodeLabel: '部门经理审批',
+    });
+  });
+
+  it('延期审批显示为延期业务', () => {
+    expect(
+      normalizeAssetApproval({ ...assetFlow, bizType: 'extension' }),
+    ).toMatchObject({
+      participant: '张三',
+      typeLabel: '延期',
     });
   });
 
@@ -148,11 +159,35 @@ describe('审批工作项适配', () => {
     expect(result.map((item) => item.key)).toEqual(['material-2', 'asset-1']);
   });
 
-  it('只有审批中的申请允许撤回', () => {
-    expect(canWithdrawApproval({ status: 'pending' })).toBe(true);
-    expect(canWithdrawApproval({ status: 'approved' })).toBe(false);
-    expect(canWithdrawApproval({ status: 'rejected' })).toBe(false);
-    expect(canWithdrawApproval({ status: 'withdrawn' })).toBe(false);
+  it('可选来源失败时保留该来源旧数据，仍刷新成功来源', () => {
+    const previous = mergeApprovalWorkItems([assetFlow], [materialFlow]);
+    const result = mergeAvailableApprovalWorkItems(
+      previous,
+      [{ ...assetFlow, flowNo: 'AF-NEW' }],
+      undefined,
+    );
+    expect(result.find((item) => item.source === 'asset')?.flowNo).toBe(
+      'AF-NEW',
+    );
+    expect(result.find((item) => item.source === 'material')?.flowNo).toBe(
+      'MF-001',
+    );
+  });
+
+  it('撤回同时遵循服务端返回的当前用户资格', () => {
+    const applicant = normalizeMaterialFlow({
+      ...materialFlow,
+      canWithdraw: true,
+    });
+    const transferee = normalizeMaterialFlow({
+      ...materialFlow,
+      canWithdraw: false,
+    });
+    expect(canWithdrawApproval(applicant)).toBe(true);
+    expect(canWithdrawApproval(transferee)).toBe(false);
+    expect(canWithdrawApproval({ ...applicant, status: 'approved' })).toBe(
+      false,
+    );
   });
 
   it('按来源和编号共同定位审批项，避免跨业务同号误更新', () => {

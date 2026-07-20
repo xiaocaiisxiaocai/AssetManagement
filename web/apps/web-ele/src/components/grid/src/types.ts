@@ -1,57 +1,57 @@
 import type { VxeComponentSizeType } from 'vxe-pc-ui';
 import type { VxeGridPropTypes } from 'vxe-table';
 
+export type CommonOperationType = {
+  add?: {
+    handleClick: (params?: any) => void;
+    params?: any;
+    permissionCode: string;
+  };
+  delete?: {
+    handleClick: (params?: any) => void;
+    params?: any;
+    permissionCode: string;
+  };
+  edit?: {
+    handleClick: (params?: any) => void;
+    params?: any;
+    permissionCode: string;
+  };
+  export?: {
+    handleClick: (params?: any) => void;
+    params?: any;
+    permissionCode: string;
+  };
+  import?: {
+    handleClick: (params?: any) => void;
+    params?: any;
+    permissionCode: string;
+  };
+  view?: {
+    handleClick: (params?: any) => void;
+    params?: any;
+    permissionCode: string;
+  };
+};
+
 export interface PurestGridProps {
   height?: number;
-  columns: VxeGridPropTypes.Columns<any> | Array<any>;
+  columns: Array<any> | VxeGridPropTypes.Columns<any>;
   customToolbarActions?: VxeGridPropTypes.ToolbarConfig;
   commonOperation?: CommonOperationType | undefined;
   request: (params: any) => Promise<any>;
   rowKey?: string;
-  size?: VxeComponentSizeType | undefined;
+  size?: undefined | VxeComponentSizeType;
   treeConfig?: any;
   customePager?: {
-    total: number;
     pageIndex: number;
     pageSize: number;
+    total: number;
   };
   searchOptions?: {
     formData: any;
     formItems: Array<any>;
-    submit: (params?: any) => void;
     reset: () => void;
+    submit: (params?: any) => void;
   };
 }
-
-export type CommonOperationType = {
-  view?: {
-    permissionCode: string;
-    params?: any;
-    handleClick: (params?: any) => void;
-  };
-  edit?: {
-    permissionCode: string;
-    params?: any;
-    handleClick: (params?: any) => void;
-  };
-  delete?: {
-    permissionCode: string;
-    params?: any;
-    handleClick: (params?: any) => void;
-  };
-  add?: {
-    permissionCode: string;
-    params?: any;
-    handleClick: (params?: any) => void;
-  };
-  import?: {
-    permissionCode: string;
-    params?: any;
-    handleClick: (params?: any) => void;
-  };
-  export?: {
-    permissionCode: string;
-    params?: any;
-    handleClick: (params?: any) => void;
-  };
-};

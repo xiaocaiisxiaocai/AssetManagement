@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
-const emits = defineEmits<{
-  (e: 'submit'): void;
-}>();
+
 const props = withDefaults(
   defineProps<{
     heigh?: number;
@@ -13,6 +11,9 @@ const props = withDefaults(
     width: 800,
   },
 );
+const emits = defineEmits<{
+  (e: 'submit'): void;
+}>();
 const vxeModalRef = ref();
 const modalOptions = reactive({
   value: false,
@@ -37,23 +38,23 @@ defineExpose({ show, close });
     show-footer
     v-bind="$attrs"
     v-model="modalOptions.value"
-    :width="props.width"
     :height="props.heigh"
     :title="modalOptions.title"
+    :width="props.width"
   >
-    <template #default><slot name="default" /></template>
+    <template #default><slot name="default"></slot></template>
     <template #footer>
       <vxe-button
         v-if="!modalOptions.readonly"
-        size="small"
         :content="$t(`common.cancel`)"
+        size="small"
         @click="modalOptions.value = false"
       />
       <vxe-button
         v-if="!modalOptions.readonly"
-        size="small"
-        :status="`primary`"
         :content="$t(`common.save`)"
+        size="small"
+        status="primary"
         @click="emits('submit')"
       />
     </template>

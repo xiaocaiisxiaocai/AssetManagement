@@ -223,6 +223,10 @@ public static class BpmnParser
 
         // 检查连线引用的节点是否存在
         var nodeIds = process.Nodes.Select(n => n.Id).ToHashSet();
+        foreach (var duplicateId in process.Nodes.GroupBy(n => n.Id).Where(g => string.IsNullOrWhiteSpace(g.Key) || g.Count() > 1))
+        {
+            errors.Add($"流程节点 ID 必须唯一且不能为空: {duplicateId.Key}");
+        }
         foreach (var flow in process.Flows)
         {
             if (!nodeIds.Contains(flow.SourceRef))
@@ -261,6 +265,7 @@ public static class BpmnParser
             {
                 errors.Add($"节点 {node.Name}（{node.Id}）必须且只能有一个出边");
             }
+
         }
 
         foreach (var gateway in process.Nodes.Where(n => n.Type is BpmnNodeType.ExclusiveGateway or BpmnNodeType.InclusiveGateway))
@@ -278,6 +283,110 @@ public static class BpmnParser
             {
                 errors.Add($"排他网关 {gateway.Name}（{gateway.Id}）需要保留一个无条件默认分支");
             }
+        }
+
+        foreach (var gateway in process.Nodes.Where(n => n.Type == BpmnNodeType.ParallelGateway))
+        {
+            var incomingCount = process.GetIncomingFlows(gateway.Id).Count;
+            var outgoingCount = process.GetOutgoingFlows(gateway.Id).Count;
+            var isSplit = incomingCount == 1 && outgoingCount >= 2;
+            var isJoin = incomingCount >= 2 && outgoingCount == 1;
+            if (!isSplit && !isJoin)
+            {
+                errors.Add($"并行网关 {gateway.Name}（{gateway.Id}）必须是单入多出的分叉或多入单出的汇聚");
+            }
+        }
+
+        // BpmnTokens 以节点 ID 为键，只拒绝“同一次并行分叉的两个可同时激活分支”
+        // 未经显式汇聚网关便进入同一执行节点的拓扑。排他分支的普通多入边仍然合法。
+        foreach (var split in process.Nodes.Where(node =>
+                     node.Type is BpmnNodeType.ParallelGateway or BpmnNodeType.InclusiveGateway &&
+                     process.GetIncomingFlows(node.Id).Count == 1 && process.GetOutgoingFlows(node.Id).Count >= 2))
+        {
+            var reachedByBranches = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
+            var branchReachedEndBeforeJoin = false;
+            var branches = process.GetOutgoingFlows(split.Id);
+            for (var branchIndex = 0; branchIndex < branches.Count; branchIndex++)
+            {
+                var pending = new Stack<string>();
+                var visited = new HashSet<string>(StringComparer.Ordinal);
+                pending.Push(branches[branchIndex].TargetRef);
+                while (pending.TryPop(out var nodeId))
+                {
+                    if (!visited.Add(nodeId)) continue;
+                    var node = process.FindNode(nodeId);
+                    if (node is null) continue;
+
+                    // 包容分叉只能由包容汇聚正确等待“实际激活”的分支。并行汇聚会等待
+                    // 所有静态入边，遇到未命中的包容分支将永久阻塞。并行分叉的所有分支
+                    // 都会激活，因此并行/包容汇聚均能形成安全同步点。
+                    var isSynchronizationJoin = process.GetIncomingFlows(nodeId).Count > 1 &&
+                                                (node.Type == BpmnNodeType.InclusiveGateway ||
+                                                 split.Type == BpmnNodeType.ParallelGateway &&
+                                                 node.Type == BpmnNodeType.ParallelGateway);
+                    if (isSynchronizationJoin)
+                        continue;
+
+                    // 任何未同步便被多个分支共同到达的执行节点都会折叠同一 Token。
+                    // EndEvent 也必须计入：否则第一个到达结束事件的分支会提前完成整单。
+                    if (node.Type != BpmnNodeType.StartEvent)
+                    {
+                        if (!reachedByBranches.TryGetValue(nodeId, out var branchSet))
+                            reachedByBranches[nodeId] = branchSet = new HashSet<int>();
+                        branchSet.Add(branchIndex);
+                    }
+                    if (node.Type == BpmnNodeType.EndEvent)
+                    {
+                        branchReachedEndBeforeJoin = true;
+                        continue;
+                    }
+                    foreach (var edge in process.GetOutgoingFlows(nodeId)) pending.Push(edge.TargetRef);
+                }
+            }
+            foreach (var collapsed in reachedByBranches.Where(item => item.Value.Count > 1))
+            {
+                var node = process.FindNode(collapsed.Key)!;
+                var splitLabel = split.Type == BpmnNodeType.ParallelGateway ? "并行" : "包容";
+                errors.Add($"{splitLabel}分支不能同时进入节点 {node.Name}（{node.Id}），请先使用汇聚网关合并分支");
+            }
+            if (branchReachedEndBeforeJoin)
+            {
+                var splitLabel = split.Type == BpmnNodeType.ParallelGateway ? "并行" : "包容";
+                errors.Add($"{splitLabel}分支不能在汇聚前到达结束事件（{split.Id}）");
+            }
+        }
+
+        var starts = process.Nodes.Where(n => n.Type == BpmnNodeType.StartEvent).ToList();
+        if (starts.Count != 1)
+        {
+            errors.Add("流程必须且只能包含一个开始事件（StartEvent）");
+        }
+        if (starts.Count == 1)
+        {
+            var reachable = new HashSet<string>(StringComparer.Ordinal);
+            var queue = new Queue<string>();
+            queue.Enqueue(starts[0].Id);
+            while (queue.TryDequeue(out var current))
+            {
+                if (!reachable.Add(current)) continue;
+                foreach (var edge in process.GetOutgoingFlows(current)) queue.Enqueue(edge.TargetRef);
+            }
+            foreach (var node in process.Nodes.Where(node => !reachable.Contains(node.Id)))
+                errors.Add($"节点 {node.Name}（{node.Id}）无法从开始事件到达");
+
+            // 从所有结束事件逆向搜索：从 Start 可达但无法到达任一 End 的节点，
+            // 会使运行中 Token 永久滞留，应在保存流程定义时拒绝。
+            var canReachEnd = new HashSet<string>(StringComparer.Ordinal);
+            var reverseQueue = new Queue<string>(process.Nodes
+                .Where(node => node.Type == BpmnNodeType.EndEvent)
+                .Select(node => node.Id));
+            while (reverseQueue.TryDequeue(out var current))
+            {
+                if (!canReachEnd.Add(current)) continue;
+                foreach (var edge in process.GetIncomingFlows(current)) reverseQueue.Enqueue(edge.SourceRef);
+            }
+            foreach (var node in process.Nodes.Where(node => reachable.Contains(node.Id) && !canReachEnd.Contains(node.Id)))
+                errors.Add($"节点 {node.Name}（{node.Id}）不存在到结束事件的路径");
         }
 
         // 检查用户任务必须有审批人配置

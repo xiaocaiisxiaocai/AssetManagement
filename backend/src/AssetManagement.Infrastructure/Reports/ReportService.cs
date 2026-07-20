@@ -122,15 +122,16 @@ public class ReportService : IReportService
 
     public async Task<PagedResult<BorrowReportRow>> QueryBorrowedAsync(BorrowReportQuery query)
     {
-        var page = Math.Max(query.Page, 1);
-        var pageSize = Math.Clamp(query.PageSize, 1, 200);
+        var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
         var flows = ApplyBorrowQuery(_db.ApprovalFlows.AsNoTracking(), query);
         var total = await flows.CountAsync();
-        var pageFlows = await flows
-            .OrderByDescending(x => x.ApplyTime)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
+        var offset = Pagination.GetOffset(page, pageSize, total);
+        var pageFlows = offset.HasValue
+            ? await flows.OrderByDescending(x => x.ApplyTime)
+                .Skip(offset.Value)
+                .Take(pageSize)
+                .ToListAsync()
+            : [];
 
         return new PagedResult<BorrowReportRow>
         {
@@ -147,7 +148,10 @@ public class ReportService : IReportService
         {
             new[] { "流程号", "资产编号", "资产名称", "分类", "借用人", "部门", "申请时间", "预计归还", "状态" }
         };
-        var flows = await ApplyBorrowQuery(_db.ApprovalFlows.AsNoTracking(), query)
+        var exportQuery = ApplyBorrowQuery(_db.ApprovalFlows.AsNoTracking(), query);
+        if (await exportQuery.CountAsync() > AppConstants.MaxExportRows)
+            throw new BizException(4130, $"单次最多导出 {AppConstants.MaxExportRows} 条数据，请缩小筛选范围");
+        var flows = await exportQuery
             .OrderByDescending(x => x.ApplyTime)
             .ToListAsync();
         rows.AddRange((await ToBorrowRows(flows)).Select(x => new[]
@@ -167,23 +171,28 @@ public class ReportService : IReportService
 
     public async Task<List<OverdueReportRow>> QueryOverdueAsync()
     {
-        var flows = await ApplyFlowScope(_db.ApprovalFlows.AsNoTracking())
-            .Where(x => x.BizType == "borrow" && x.Status == "approved" && x.ReturnDate != null)
-            .OrderByDescending(x => x.ApplyTime)
-            .ToListAsync();
-        var assetIds = flows.Select(x => x.AssetId).Distinct().ToArray();
-        var borrowedAssets = await ApplyAssetScope(_db.Assets.AsNoTracking())
-            .Where(x => assetIds.Contains(x.Id) && !x.IsDeleted && x.Status == AssetStatus.Borrowed)
-            .ToDictionaryAsync(x => x.Id);
+        var flows = ApplyFlowScope(_db.ApprovalFlows.AsNoTracking())
+            .Where(x => x.BizType == "borrow" && x.Status == "approved"
+                        && x.ConfirmedAt == null && x.ReturnDate != null
+                        && _db.Assets.Any(asset => asset.Id == x.AssetId
+                            && !asset.IsDeleted
+                            && asset.Status == AssetStatus.Borrowed))
+            .OrderByDescending(x => x.ApplyTime);
         var today = BusinessClock.Today;
-        var overdue = flows
-            .Where(x => borrowedAssets.ContainsKey(x.AssetId))
-            .Select(x => new { Flow = x, Due = ParseDate(x.ReturnDate) })
-            .Where(x => x.Due.HasValue && x.Due.Value.Date < today)
-            .Select(x => new { x.Flow, Due = x.Due!.Value.Date, Days = (today - x.Due.Value.Date).Days })
-            .ToList();
+        var overdue = new List<(ApprovalFlow Flow, DateTime Due, int Days)>();
+        await foreach (var flow in flows.AsAsyncEnumerable())
+        {
+            var due = ParseDate(flow.ReturnDate);
+            if (!due.HasValue || due.Value.Date >= today) continue;
+            overdue.Add((flow, due.Value.Date, (today - due.Value.Date).Days));
+            if (overdue.Count > AppConstants.MaxExportRows)
+            {
+                throw new BizException(4130,
+                    $"逾期数据不能超过 {AppConstants.MaxExportRows} 行，请先缩小数据范围");
+            }
+        }
 
-        return await ToOverdueRows(overdue.Select(x => (x.Flow, x.Due, x.Days)).ToList());
+        return await ToOverdueRows(overdue);
     }
 
     public async Task<byte[]> ExportOverdueAsync()
@@ -206,15 +215,16 @@ public class ReportService : IReportService
         return XlsxTable.Write(rows);
     }
 
-    public async Task RemindOverdueAsync(int assetId, int? userId)
+    public async Task<int> RemindOverdueAsync(int assetId, int? userId)
     {
         var row = (await QueryOverdueAsync()).FirstOrDefault(x => x.AssetId == assetId)
             ?? throw new BizException(4060, "资产不存在或未逾期");
         var (auditLog, notification) = BuildOverdueReminder(row, userId);
         _db.AuditLogs.Add(auditLog);
-        await _notifications.CreateAsync(notification);
+        var inserted = await _notifications.CreateAsync(notification);
         // 幂等通知已存在时 NotificationService 会直接返回，仍需显式保存本次催办审计。
         await _db.SaveChangesAsync();
+        return inserted ? 1 : 0;
     }
 
     public async Task<int> RemindOverdueBatchAsync(IReadOnlyCollection<int> assetIds, int? userId)
@@ -244,10 +254,10 @@ public class ReportService : IReportService
         await using var transaction = await _db.Database.BeginTransactionAsync();
         var reminders = ids.Select(id => BuildOverdueReminder(rowMap[id], userId)).ToList();
         _db.AuditLogs.AddRange(reminders.Select(x => x.AuditLog));
-        await _notifications.CreateBatchAsync(reminders.Select(x => x.Notification));
+        var insertedCount = await _notifications.CreateBatchAsync(reminders.Select(x => x.Notification));
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();
-        return ids.Length;
+        return insertedCount;
     }
 
     private static (AuditLog AuditLog, CreateNotificationRequest Notification) BuildOverdueReminder(
@@ -297,7 +307,13 @@ public class ReportService : IReportService
 
         if (query.BorrowerId.HasValue)
         {
-            queryable = queryable.Where(x => x.ApplicantId == query.BorrowerId.Value);
+            var borrowerId = query.BorrowerId.Value;
+            queryable = queryable.Where(x =>
+                (x.ConfirmedAt != null && x.ApplicantId == borrowerId) ||
+                (x.ConfirmedAt == null && _db.Assets.Any(asset =>
+                    asset.Id == x.AssetId && asset.CustodianId == borrowerId)) ||
+                (x.ConfirmedAt == null && x.ApplicantId == borrowerId &&
+                    _db.Assets.Any(asset => asset.Id == x.AssetId && !asset.CustodianId.HasValue)));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Status))
@@ -305,8 +321,8 @@ public class ReportService : IReportService
             var status = query.Status.Trim().ToLowerInvariant();
             queryable = status switch
             {
-                "returned" => queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted && a.Status == AssetStatus.Available)),
-                "borrowed" => queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted && a.Status == AssetStatus.Borrowed)),
+                "returned" => queryable.Where(x => x.ConfirmedAt != null),
+                "borrowed" => queryable.Where(x => x.ConfirmedAt == null),
                 _ => queryable
             };
         }
@@ -328,11 +344,16 @@ public class ReportService : IReportService
             .ToDictionaryAsync(x => x.Id);
         var categoryIds = assets.Values.Select(x => x.CategoryId).Distinct().ToArray();
         var categories = await _db.AssetCategories.AsNoTracking().Where(x => categoryIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
+        var currentCustodians = await CurrentCustodiansByAssetAsync(assets.Values);
 
         return list.Select(x =>
         {
             assets.TryGetValue(x.AssetId, out var asset);
             var category = asset is not null && categories.TryGetValue(asset.CategoryId, out var c) ? c : null;
+            currentCustodians.TryGetValue(x.AssetId, out var currentCustodian);
+            var hasCurrentCustodian = x.ConfirmedAt == null &&
+                                      asset?.Status == AssetStatus.Borrowed &&
+                                      currentCustodian is not null;
             return new BorrowReportRow
             {
                 FlowId = x.Id,
@@ -341,12 +362,12 @@ public class ReportService : IReportService
                 AssetNo = x.AssetNo,
                 AssetName = x.AssetName,
                 CategoryCode = category?.Code ?? "",
-                BorrowerId = x.ApplicantId,
-                Borrower = x.Applicant,
-                BorrowerDept = x.ApplicantDept,
+                BorrowerId = hasCurrentCustodian ? currentCustodian!.Id : x.ApplicantId,
+                Borrower = hasCurrentCustodian ? currentCustodian!.Name : x.Applicant,
+                BorrowerDept = hasCurrentCustodian ? currentCustodian!.DepartmentName : x.ApplicantDept,
                 ReturnDate = x.ReturnDate,
                 ApplyTime = x.ApplyTime,
-                Status = asset?.Status == AssetStatus.Available ? "returned" : "borrowed"
+                Status = x.ConfirmedAt.HasValue ? "returned" : "borrowed"
             };
         }).ToList();
     }
@@ -359,11 +380,13 @@ public class ReportService : IReportService
             .ToDictionaryAsync(x => x.Id);
         var categoryIds = assets.Values.Select(x => x.CategoryId).Distinct().ToArray();
         var categories = await _db.AssetCategories.AsNoTracking().Where(x => categoryIds.Contains(x.Id) && !x.IsDeleted).ToDictionaryAsync(x => x.Id);
+        var currentCustodians = await CurrentCustodiansByAssetAsync(assets.Values);
 
         return overdue.Select(x =>
         {
             assets.TryGetValue(x.Flow.AssetId, out var asset);
             var category = asset is not null && categories.TryGetValue(asset.CategoryId, out var c) ? c : null;
+            var hasCurrentCustodian = currentCustodians.TryGetValue(x.Flow.AssetId, out var currentCustodian);
             return new OverdueReportRow
             {
                 FlowId = x.Flow.Id,
@@ -371,9 +394,9 @@ public class ReportService : IReportService
                 AssetNo = x.Flow.AssetNo,
                 AssetName = x.Flow.AssetName,
                 CategoryCode = category?.Code ?? "",
-                BorrowerId = x.Flow.ApplicantId,
-                Borrower = x.Flow.Applicant,
-                BorrowerDept = x.Flow.ApplicantDept,
+                BorrowerId = hasCurrentCustodian ? currentCustodian!.Id : x.Flow.ApplicantId,
+                Borrower = hasCurrentCustodian ? currentCustodian!.Name : x.Flow.Applicant,
+                BorrowerDept = hasCurrentCustodian ? currentCustodian!.DepartmentName : x.Flow.ApplicantDept,
                 ReturnDate = x.Due.ToString("yyyy-MM-dd"),
                 OverdueDays = x.Days,
                 IsSerious = x.Days > 10
@@ -429,6 +452,42 @@ public class ReportService : IReportService
 
     private static DateTime? ParseDate(string? text)
         => DateTime.TryParse(text, CultureInfo.InvariantCulture, out var date) ? date.Date : null;
+
+    private async Task<Dictionary<int, CurrentCustodianDisplay>> CurrentCustodiansByAssetAsync(
+        IEnumerable<Asset> assets)
+    {
+        var assetList = assets.Where(asset => asset.CustodianId.HasValue).ToList();
+        var custodianIds = assetList.Select(asset => asset.CustodianId!.Value).Distinct().ToArray();
+        if (custodianIds.Length == 0) return new Dictionary<int, CurrentCustodianDisplay>();
+
+        var users = await _db.Users.AsNoTracking()
+            .Where(user => custodianIds.Contains(user.Id))
+            .Select(user => new { user.Id, user.Name, user.DepartmentId })
+            .ToListAsync();
+        var departmentIds = users.Where(user => user.DepartmentId.HasValue)
+            .Select(user => user.DepartmentId!.Value)
+            .Distinct()
+            .ToArray();
+        var departments = await _db.Departments.AsNoTracking()
+            .Where(department => departmentIds.Contains(department.Id))
+            .ToDictionaryAsync(department => department.Id, department => department.Name);
+        var usersById = users.ToDictionary(user => user.Id);
+
+        return assetList
+            .Where(asset => usersById.ContainsKey(asset.CustodianId!.Value))
+            .ToDictionary(asset => asset.Id, asset =>
+            {
+                var user = usersById[asset.CustodianId!.Value];
+                return new CurrentCustodianDisplay(
+                    user.Id,
+                    user.Name,
+                    user.DepartmentId.HasValue
+                        ? departments.GetValueOrDefault(user.DepartmentId.Value)
+                        : null);
+            });
+    }
+
+    private sealed record CurrentCustodianDisplay(int Id, string Name, string? DepartmentName);
 
     private static decimal Percent(int count, int total)
         => total == 0 ? 0 : decimal.Round(count * 100m / total, 2);

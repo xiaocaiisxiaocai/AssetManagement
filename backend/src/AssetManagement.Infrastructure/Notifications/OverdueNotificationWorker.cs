@@ -1,4 +1,5 @@
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Notifications;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -61,20 +62,24 @@ public class OverdueNotificationWorker : BackgroundService
                      && f.Status == "approved"
                      && f.ConfirmedAt == null
                      && f.ReturnDate != null
-                     && !db.Assets.Any(a => a.Id == f.AssetId && a.IsDeleted))
-            .Select(f => new { f.Id, f.ApplicantId, f.ReturnDate, f.AssetName, f.AssetNo })
+                     && db.Assets.Any(a => a.Id == f.AssetId &&
+                         !a.IsDeleted && a.Status == AssetStatus.Borrowed))
+            .Select(f => new
+            {
+                f.Id,
+                f.ApplicantId,
+                CurrentCustodianId = db.Assets
+                    .Where(a => a.Id == f.AssetId)
+                    .Select(a => a.CustodianId)
+                    .FirstOrDefault(),
+                f.ReturnDate,
+                f.AssetName,
+                f.AssetNo
+            })
             .ToListAsync(ct);
 
-        var notifications = new List<Notification>();
+        var notifications = new List<CreateNotificationRequest>();
         var todayStr = today.ToString("yyyyMMdd");
-
-        // 一次性取出今日已有的幂等键，避免循环内 N+1 查询
-        var candidateKeys = flows.SelectMany(f => new[] { "overdue", "due_soon_1d", "due_soon_3d" }
-            .Select(t => $"{t}_{f.Id}_{todayStr}")).ToList();
-        var existingKeys = (await db.Notifications
-            .Where(n => n.IdempotencyKey != null && candidateKeys.Contains(n.IdempotencyKey!))
-            .Select(n => n.IdempotencyKey!)
-            .ToListAsync(ct)).ToHashSet();
 
         foreach (var flow in flows)
         {
@@ -93,26 +98,23 @@ public class OverdueNotificationWorker : BackgroundService
             if (type == null) continue;
 
             var key = $"{type}_{flow.Id}_{todayStr}";
-            if (existingKeys.Contains(key)) continue;
-
             var (title, body) = BuildMessage(type, flow.AssetName, flow.AssetNo, returnDate);
-            notifications.Add(new Notification
+            notifications.Add(new CreateNotificationRequest
             {
                 Type = type,
                 Title = title,
                 Body = body,
                 FlowId = flow.Id,
-                UserId = flow.ApplicantId,
+                UserId = flow.CurrentCustodianId ?? flow.ApplicantId,
                 IdempotencyKey = key,
-                CreatedAt = DateTime.UtcNow,
             });
         }
 
         if (notifications.Count > 0)
         {
-            db.Notifications.AddRange(notifications);
-            await db.SaveChangesAsync(ct);
-            _logger.LogInformation("生成到期提醒 {Count} 条", notifications.Count);
+            var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
+            var insertedCount = await notificationService.CreateBatchAsync(notifications, ct);
+            _logger.LogInformation("生成到期提醒 {Count} 条", insertedCount);
         }
     }
 

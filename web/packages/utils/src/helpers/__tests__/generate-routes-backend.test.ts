@@ -1,9 +1,20 @@
-import { describe, expect, it } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
+
+import { describe, expect, it } from 'vitest';
 
 import { generateRoutesByBackend } from '../generate-routes-backend';
 
 describe('generateRoutesByBackend', () => {
+  it('菜单请求失败时向上抛出，使路由守卫可以重试', async () => {
+    await expect(
+      generateRoutesByBackend({
+        fetchMenuListAsync: async () => {
+          throw new Error('temporary failure');
+        },
+      }),
+    ).rejects.toThrow('temporary failure');
+  });
+
   it('keeps absolute home child routable when home parent avoids root path', async () => {
     const component = () => Promise.resolve({});
     const routes = await generateRoutesByBackend({

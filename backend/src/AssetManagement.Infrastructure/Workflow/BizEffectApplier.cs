@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using AssetManagement.Application.Workflow;
@@ -39,20 +40,66 @@ public class BizEffectApplier : IBizEffectApplier
         switch (flow.BizType)
         {
             case "borrow":
+                if (asset.Status != AssetStatus.Available)
+                    throw new BizException(4090, "资产状态已变化，无法完成借用审批");
+                await LockActiveUserAsync(flow.ApplicantId, "借用申请人不存在或已停用，请撤回后重新发起");
                 asset.Status = AssetStatus.Borrowed;
                 asset.CustodianId = flow.ApplicantId;
                 break;
             case "transfer":
+                if (asset.Status is not (AssetStatus.Available or AssetStatus.Borrowed) ||
+                    asset.CustodianId != flow.ApplicantId)
+                    throw new BizException(4090, "资产状态或保管人已变化，无法完成转让审批");
+                if (!flow.TransfereeId.HasValue)
+                    throw new BizException(4001, "转让申请缺少接收人");
+                var user = await LockActiveUserAsync(flow.TransfereeId.Value, "接收人不存在或已停用，请撤回后重新发起");
                 asset.CustodianId = flow.TransfereeId;
-                if (flow.TransfereeId.HasValue)
-                {
-                    var user = await _db.Users.SingleOrDefaultAsync(x => x.Id == flow.TransfereeId.Value);
-                    asset.DepartmentId = user?.DepartmentId;
-                }
+                asset.DepartmentId = user.DepartmentId;
                 break;
             case "return":
+                if (asset.Status != AssetStatus.Borrowed || asset.CustodianId != flow.ApplicantId)
+                    throw new BizException(4090, "资产状态或保管人已变化，无法完成归还审批");
                 asset.Status = AssetStatus.Available;
                 asset.CustodianId = null;
+                var borrowFlow = await _db.ApprovalFlows.AsTracking()
+                    .Where(candidate => candidate.Id != flow.Id &&
+                                        candidate.AssetId == flow.AssetId &&
+                                        candidate.BizType == "borrow" &&
+                                        candidate.Status == "approved" &&
+                                        candidate.ConfirmedAt == null)
+                    .OrderByDescending(candidate => candidate.ApplyTime)
+                    .FirstOrDefaultAsync();
+                if (borrowFlow is not null)
+                {
+                    borrowFlow.ConfirmedAt = DateTime.UtcNow;
+                    borrowFlow.RowVersion++;
+                }
+                break;
+            case "extension":
+                if (asset.Status != AssetStatus.Borrowed || asset.CustodianId != flow.ApplicantId)
+                    throw new BizException(4090, "资产状态或当前借用人已变化，无法完成延期审批");
+                await LockActiveUserAsync(flow.ApplicantId, "延期申请人不存在或已停用，请撤回后重新发起");
+                if (string.IsNullOrWhiteSpace(flow.OriginalReturnDate) || string.IsNullOrWhiteSpace(flow.ReturnDate))
+                    throw new BizException(4001, "延期申请缺少原归还日期或新归还日期");
+                if (!DateOnly.TryParseExact(flow.OriginalReturnDate, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var originalDate) ||
+                    !DateOnly.TryParseExact(flow.ReturnDate, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var requestedDate) ||
+                    requestedDate <= originalDate)
+                    throw new BizException(4001, "延期申请的新归还日期必须晚于原应归还日期");
+                var activeBorrow = await _db.ApprovalFlows.AsTracking()
+                    .Where(candidate => candidate.Id != flow.Id &&
+                                        candidate.AssetId == flow.AssetId &&
+                                        candidate.BizType == "borrow" &&
+                                        candidate.Status == "approved" &&
+                                        candidate.ConfirmedAt == null)
+                    .OrderByDescending(candidate => candidate.ApplyTime)
+                    .FirstOrDefaultAsync()
+                    ?? throw new BizException(4090, "当前有效借用记录已不存在，无法完成延期审批");
+                if (!string.Equals(activeBorrow.ReturnDate, flow.OriginalReturnDate, StringComparison.Ordinal))
+                    throw new BizException(4090, "原借用期限已变化，请撤回后重新发起延期申请");
+                activeBorrow.ReturnDate = flow.ReturnDate;
+                activeBorrow.RowVersion++;
                 break;
         }
         asset.RowVersion++;
@@ -70,13 +117,24 @@ public class BizEffectApplier : IBizEffectApplier
                 FlowId = flow.Id,
                 flow.FlowNo,
                 flow.BizType,
+                flow.OriginalReturnDate,
+                flow.ReturnDate,
                 Before = before,
                 After = after,
                 Changes = BuildChanges(before, after)
             }, JsonOptions),
             OccurredAt = DateTime.UtcNow
         });
-        await _db.SaveChangesAsync();
+    }
+
+    private async Task<User> LockActiveUserAsync(int userId, string errorMessage)
+    {
+        var user = await _db.Users
+            .FromSqlInterpolated($"SELECT * FROM users WHERE Id = {userId} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync();
+        if (user is null || !user.IsActive) throw new BizException(4041, errorMessage);
+        return user;
     }
 
     private static Dictionary<string, object?> Snapshot(Asset asset)

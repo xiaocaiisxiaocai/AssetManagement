@@ -36,6 +36,7 @@ export interface AssetItem {
   quantity: number;
   registrationTime?: null | string;
   remark?: null | string;
+  returnDate?: null | string;
   status: AssetStatus;
 }
 
@@ -47,6 +48,7 @@ export interface AssetQuery {
   departmentId?: null | number;
   deletedOnly?: boolean;
   name?: string;
+  keyword?: string;
   page?: number;
   pageSize?: number;
   status?: AssetStatus | null;
@@ -93,6 +95,7 @@ export interface AssetFlow {
   confirmedAt?: null | string;
   flowNo: string;
   id: number;
+  originalReturnDate?: null | string;
   reason?: null | string;
   returnDate?: null | string;
   status: string;
@@ -125,20 +128,12 @@ export const getAssetListApi = (params: AssetQuery) =>
     requestClient.get<ApiResult<PagedResult<AssetItem>>>('/assets', { params }),
   );
 
-export async function getAllAssetsApi(
-  params: Omit<AssetQuery, 'page' | 'pageSize'> = {},
-): Promise<AssetItem[]> {
-  const pageSize = 200;
-  const first = await getAssetListApi({ ...params, page: 1, pageSize });
-  const pageCount = Math.ceil(first.total / pageSize);
-  if (pageCount <= 1) return first.items;
-  const remaining = await Promise.all(
-    Array.from({ length: pageCount - 1 }, (_, index) =>
-      getAssetListApi({ ...params, page: index + 2, pageSize }),
+export const getAssetCategoryCountsApi = () =>
+  unwrap(
+    requestClient.get<ApiResult<Record<string, number>>>(
+      '/assets/category-counts',
     ),
   );
-  return [first, ...remaining].flatMap((page) => page.items);
-}
 
 export const getAssetDetailApi = (id: number) =>
   unwrap(requestClient.get<ApiResult<AssetDetail>>(`/assets/${id}/detail`));
@@ -195,11 +190,23 @@ export const uploadAssetImageApi = (file: File) => {
   );
 };
 
+const SAFE_ASSET_IMAGE_URL =
+  /^\/api\/files\/([0-9a-f]{32}\.(?:gif|jpe?g|png|webp))$/i;
+
+/**
+ * 只允许请求本系统生成的图片地址。这个值来自业务数据，不能当作可信 URL。
+ */
+export function normalizeAssetImageRequestUrl(url: string): string {
+  const match = SAFE_ASSET_IMAGE_URL.exec(url);
+  if (!match?.[1]) {
+    throw new Error('非法的图片地址');
+  }
+  return `/files/${match[1]}`;
+}
+
 // 图片接口受鉴权保护，使用请求客户端携带 Authorization 获取 Blob，避免 JWT 暴露在 URL、日志和历史记录中。
 export async function loadAssetImageObjectUrl(url: string): Promise<string> {
-  // requestClient 已以 /api 为 baseURL；持久化地址同样以 /api 开头时需先去掉该前缀，
-  // 否则会请求到 /api/api/files/...。
-  const requestUrl = url.startsWith('/api/') ? url.slice(4) : url;
+  const requestUrl = normalizeAssetImageRequestUrl(url);
   const response = await requestClient.get(requestUrl, {
     responseType: 'blob',
   });

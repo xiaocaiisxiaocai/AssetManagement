@@ -1,9 +1,9 @@
 <script lang="ts" setup>
 import type { WorkflowProgressStep } from '#/api/workflow';
 
-import { formatDateTime } from '#/utils/date-format';
-
 import { ElTag, ElTimeline, ElTimelineItem } from 'element-plus';
+
+import { formatDateTime } from '#/utils/date-format';
 
 defineProps<{ steps: WorkflowProgressStep[] }>();
 
@@ -11,7 +11,9 @@ function isRejected(step: WorkflowProgressStep) {
   return step.assignees.some((person) => person.status === 'rejected');
 }
 
-function personStatusMeta(status: WorkflowProgressStep['assignees'][number]['status']) {
+function personStatusMeta(
+  status: WorkflowProgressStep['assignees'][number]['status'],
+) {
   return {
     completed: { label: '已同意', type: 'success' as const },
     pending: { label: '待处理', type: 'warning' as const },
@@ -26,7 +28,7 @@ function opinionText(step: WorkflowProgressStep) {
 </script>
 
 <template>
-  <ElTimeline v-if="steps.length" class="workflow-progress-detail">
+  <ElTimeline v-if="steps.length > 0" class="workflow-progress-detail">
     <ElTimelineItem
       v-for="step in steps"
       :key="`${step.state}-${step.nodeId}`"
@@ -41,24 +43,30 @@ function opinionText(step: WorkflowProgressStep) {
         isRejected(step)
           ? 'danger'
           : step.state === 'completed'
-          ? 'success'
-          : step.state === 'current'
-            ? 'primary'
-            : 'info'
+            ? 'success'
+            : step.state === 'current'
+              ? 'primary'
+              : 'info'
       "
     >
       <div class="workflow-step-title">
         <strong>{{ step.nodeName }}</strong>
         <ElTag v-if="isRejected(step)" size="small" type="danger">已驳回</ElTag>
-        <ElTag v-else-if="step.state === 'completed'" size="small" type="success"
-          >已完成</ElTag
+        <ElTag
+          v-else-if="step.state === 'completed'"
+          size="small"
+          type="success"
         >
-        <ElTag v-else-if="step.state === 'current'" size="small">当前处理</ElTag>
+          已完成
+        </ElTag>
+        <ElTag v-else-if="step.state === 'current'" size="small">
+          当前处理
+        </ElTag>
         <ElTag v-else size="small" type="info">
           {{ step.isPossible ? '可能下一步' : '下一步' }}
         </ElTag>
       </div>
-      <div v-if="step.assignees.length" class="workflow-step-people">
+      <div v-if="step.assignees.length > 0" class="workflow-step-people">
         <div
           v-for="person in step.assignees"
           :key="person.userId"

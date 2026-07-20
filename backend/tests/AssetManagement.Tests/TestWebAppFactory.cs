@@ -4,10 +4,12 @@ using AssetManagement.Domain.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MySqlConnector;
+using System.Data.Common;
 
 /// <summary>
 /// 集成测试工厂：每个测试类（IClassFixture）一个实例，使用各自独立的 MySQL 测试库
@@ -17,6 +19,7 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbName;
     private readonly string _baseConnStr = BuildBaseConnectionString();
+    public DbCommandCounterInterceptor CommandCounter { get; } = new();
 
     private static string BuildBaseConnectionString()
     {
@@ -74,6 +77,7 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
             var connStr = $"{_baseConnStr}Database={_dbName};";
             services.AddDbContext<AppDbContext>(o =>
                 o.UseMySql(connStr, ServerVersion.AutoDetect(connStr))
+                    .AddInterceptors(CommandCounter)
                     .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking));
         });
     }
@@ -84,7 +88,6 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
         using var scope = host.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var admin = db.Users.AsTracking().Single(x => x.EmployeeNo == "1001");
-        admin.MustChangePassword = false;
         if (!admin.SupervisorId.HasValue)
         {
             var department = new Department
@@ -128,5 +131,22 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $"DROP DATABASE IF EXISTS `{_dbName}`;";
         cmd.ExecuteNonQuery();
+    }
+}
+
+public sealed class DbCommandCounterInterceptor : DbCommandInterceptor
+{
+    private int _readerCount;
+    public int ReaderCount => Volatile.Read(ref _readerCount);
+    public void Reset() => Interlocked.Exchange(ref _readerCount, 0);
+
+    public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+        DbCommand command,
+        CommandEventData eventData,
+        InterceptionResult<DbDataReader> result,
+        CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref _readerCount);
+        return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
     }
 }

@@ -5,6 +5,7 @@ namespace AssetManagement.Application.Assets;
 public interface IAssetService
 {
     Task<PagedResult<AssetDto>> QueryAsync(AssetQuery query);
+    Task<Dictionary<int, int>> GetCategoryCountsAsync();
     Task<AssetDto> GetAsync(int id);
     Task<AssetDetailDto> GetDetailAsync(int id);
     Task<AssetDto> CreateAsync(CreateAssetRequest request);

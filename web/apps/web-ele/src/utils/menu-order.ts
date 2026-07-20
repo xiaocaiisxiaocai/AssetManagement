@@ -45,9 +45,10 @@ function orderOf(item: OrderedMenuLike) {
 }
 
 function cloneWithSortedChildren<T extends OrderedMenuLike>(item: T): T {
-  const children = Array.isArray(item.children) && item.children.length > 0
-    ? sortBuiltInMenus(item.children as OrderedMenuLike[])
-    : item.children;
+  const children =
+    Array.isArray(item.children) && item.children.length > 0
+      ? sortBuiltInMenus(item.children as OrderedMenuLike[])
+      : item.children;
   return {
     ...item,
     ...(children ? { children } : {}),

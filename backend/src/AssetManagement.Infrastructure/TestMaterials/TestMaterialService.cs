@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Files;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
@@ -17,23 +18,29 @@ public class TestMaterialService : ITestMaterialService
     private readonly AppDbContext _db;
     private readonly IHttpContextAccessor _http;
     private readonly IMemoryCache _cache;
+    private readonly IFileStorageService _files;
     private const string DepartmentTreeCacheKey = "department_tree";
 
-    public TestMaterialService(AppDbContext db, IHttpContextAccessor http, IMemoryCache cache)
+    public TestMaterialService(AppDbContext db, IHttpContextAccessor http, IMemoryCache cache, IFileStorageService files)
     {
         _db = db;
         _http = http;
         _cache = cache;
+        _files = files;
     }
 
     public async Task<PagedResult<TestMaterialDto>> QueryAsync(TestMaterialQuery query)
     {
-        var page = Math.Max(query.Page, 1);
-        var pageSize = Math.Clamp(query.PageSize, 1, 200);
+        var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
         var q = await ApplyQueryAsync(_db.TestMaterials.AsQueryable(), query);
         var total = await q.CountAsync();
-        var items = await q.OrderByDescending(x => x.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        var offset = Pagination.GetOffset(page, pageSize, total);
+        var items = offset.HasValue
+            ? await q.OrderByDescending(x => x.Id)
+                .Skip(offset.Value)
+                .Take(pageSize)
+                .ToListAsync()
+            : [];
         return new PagedResult<TestMaterialDto>
         {
             Items = await ToDtos(items),
@@ -101,6 +108,12 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task<TestMaterialDto> CreateAsync(SaveTestMaterialRequest request)
     {
+        ValidateMaterialTextLengths(request);
+        var imageUrls = request.Images is null ? null : JoinImages(request.Images);
+        var normalizedImages = SplitImages(imageUrls);
+        await using IAsyncDisposable? imageLease = request.Images is null
+            ? null
+            : await _files.AcquireReferenceLeaseAsync(normalizedImages);
         await EnsureCanAssignDepartmentAsync(request.DepartmentId);
         await EnsureActiveDepartmentAsync(request.DepartmentId);
         await EnsureLocationExistsAsync(request.LocationId);
@@ -132,7 +145,7 @@ public class TestMaterialService : ITestMaterialService
                 CustodianId = request.CustodianId,
                 ReceivedDate = request.ReceivedDate,
                 Status = MaterialStatus.InUse,
-                ImageUrls = JoinImages(request.Images),
+                ImageUrls = imageUrls,
                 Remark = request.Remark?.Trim(),
                 CreatedAt = DateTime.UtcNow
         };
@@ -151,7 +164,17 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task<TestMaterialDto> UpdateAsync(int id, SaveTestMaterialRequest request)
     {
-        var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        ValidateMaterialTextLengths(request);
+        var imageUrls = request.Images is null ? null : JoinImages(request.Images);
+        var normalizedImages = SplitImages(imageUrls);
+        await using IAsyncDisposable? imageLease = request.Images is null
+            ? null
+            : await _files.AcquireReferenceLeaseAsync(normalizedImages);
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var m = await _db.TestMaterials
+            .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
@@ -180,7 +203,7 @@ public class TestMaterialService : ITestMaterialService
         m.LocationId = request.LocationId;
         m.ReceivedDate = request.ReceivedDate;
         m.Remark = request.Remark?.Trim();
-        if (request.Images is not null) m.ImageUrls = JoinImages(request.Images);
+        if (request.Images is not null) m.ImageUrls = imageUrls;
         m.RowVersion++;
         try
         {
@@ -194,12 +217,17 @@ public class TestMaterialService : ITestMaterialService
         {
             throw new BizException(4094, "同一项目下的料件名称已存在");
         }
+        await transaction.CommitAsync();
         return await GetAsync(id);
     }
 
     public async Task DeleteAsync(int id)
     {
-        var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var m = await _db.TestMaterials
+            .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
@@ -221,6 +249,7 @@ public class TestMaterialService : ITestMaterialService
         {
             throw new BizException(4094, "同一项目下的料件名称已存在");
         }
+        await transaction.CommitAsync();
     }
 
     public async Task RestoreAsync(int id)
@@ -275,7 +304,11 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task<TestMaterialDto> ReturnToVendorAsync(int id)
     {
-        var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var m = await _db.TestMaterials
+            .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
@@ -293,6 +326,7 @@ public class TestMaterialService : ITestMaterialService
         {
             throw new BizException(4090, "料件已被其他操作更新，请刷新后重试");
         }
+        await transaction.CommitAsync();
         return await GetAsync(id);
     }
 
@@ -505,6 +539,21 @@ public class TestMaterialService : ITestMaterialService
             DeletedAt = x.DeletedAt,
             HasPendingFlow = pendingSet.Contains(x.Id)
         }).ToList();
+    }
+
+    private static void ValidateMaterialTextLengths(SaveTestMaterialRequest request)
+    {
+        EnsureMaxLength(request.Name, 100, "料件名称");
+        EnsureMaxLength(request.VendorName, 100, "供应商");
+        EnsureMaxLength(request.Model, 100, "型号");
+        EnsureMaxLength(request.Brand, 100, "品牌");
+        EnsureMaxLength(request.Remark, 500, "备注");
+    }
+
+    private static void EnsureMaxLength(string? value, int maxLength, string field)
+    {
+        if (value?.Trim().Length > maxLength)
+            throw new BizException(4001, $"{field}不能超过 {maxLength} 个字符");
     }
 
     private static string? JoinImages(IEnumerable<string>? images) => ImageHelpers.Join(images);

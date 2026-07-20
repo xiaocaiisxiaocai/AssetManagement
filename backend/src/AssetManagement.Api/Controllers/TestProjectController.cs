@@ -24,6 +24,11 @@ public class TestProjectController : ControllerBase
     public async Task<ApiResult<List<TestProjectDto>>> List([FromQuery] string? deleteStatus)
         => ApiResult<List<TestProjectDto>>.Ok(await _service.ListAsync(deleteStatus, CurrentUserId()));
 
+    [HttpGet("page")]
+    [HasPermission("project:view")]
+    public async Task<ApiResult<PagedResult<TestProjectDto>>> ListPage([FromQuery] TestProjectPageQuery query)
+        => ApiResult<PagedResult<TestProjectDto>>.Ok(await _service.ListPageAsync(query, CurrentUserId()));
+
     [HttpGet("options")]
     [HasPermission("project:view")]
     public async Task<ApiResult<List<TestProjectOptionDto>>> Options([FromQuery] string? kind)

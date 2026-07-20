@@ -36,13 +36,19 @@ public class AuditLogController : ControllerBase
 
     [HttpGet("cleanup-preview")]
     [HasPermission("audit:cleanup")]
-    public async Task<ApiResult<AuditCleanupPreviewDto>> CleanupPreview([FromQuery] int retentionDays)
-        => ApiResult<AuditCleanupPreviewDto>.Ok(await _maintenanceService.PreviewCleanupAsync(retentionDays));
+    public async Task<ApiResult<AuditCleanupPreviewDto>> CleanupPreview(
+        [FromQuery] int retentionDays,
+        CancellationToken cancellationToken)
+        => ApiResult<AuditCleanupPreviewDto>.Ok(
+            await _maintenanceService.PreviewCleanupAsync(retentionDays, cancellationToken));
 
     [HttpDelete]
     [HasPermission("audit:cleanup")]
-    public async Task<ApiResult<AuditCleanupResultDto>> Cleanup([FromQuery] int retentionDays)
-        => ApiResult<AuditCleanupResultDto>.Ok(await _maintenanceService.CleanupAsync(retentionDays, CurrentUserId()));
+    public async Task<ApiResult<AuditCleanupResultDto>> Cleanup(
+        [FromQuery] int retentionDays,
+        CancellationToken cancellationToken)
+        => ApiResult<AuditCleanupResultDto>.Ok(
+            await _maintenanceService.CleanupAsync(retentionDays, CurrentUserId(), cancellationToken));
 
     [HttpPost("database-backup")]
     [HasPermission("backup:manage")]

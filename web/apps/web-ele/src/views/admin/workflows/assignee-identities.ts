@@ -77,24 +77,39 @@ export function serializeAssigneeSelection(
     candidateUsers: '',
   };
 
-  if (type === 'organizationManager') {
-    result.assignee =
-      typeof value === 'string' && value
-        ? organizationManagerIdentity(value)
-        : '';
-  } else if (
-    type === 'supervisor' ||
-    type === 'deptManager' ||
-    type === 'sectionManager' ||
-    type === 'departmentManager'
-  ) {
-    result.assignee = type;
-  } else if (type === 'username') {
-    result.assignee = typeof value === 'string' ? value : '';
-  } else if (type === 'usernames') {
-    result.candidateUsers = Array.isArray(value) ? value.join(',') : value;
-  } else if (type === 'roleName') {
-    result.candidateGroups = typeof value === 'string' ? value : '';
+  switch (type) {
+    case 'departmentManager':
+    case 'deptManager':
+    case 'sectionManager':
+    case 'supervisor': {
+      result.assignee = type;
+
+      break;
+    }
+    case 'organizationManager': {
+      result.assignee =
+        typeof value === 'string' && value
+          ? organizationManagerIdentity(value)
+          : '';
+
+      break;
+    }
+    case 'roleName': {
+      result.candidateGroups = typeof value === 'string' ? value : '';
+
+      break;
+    }
+    case 'username': {
+      result.assignee = typeof value === 'string' ? value : '';
+
+      break;
+    }
+    case 'usernames': {
+      result.candidateUsers = Array.isArray(value) ? value.join(',') : value;
+
+      break;
+    }
+    // No default
   }
 
   return result;

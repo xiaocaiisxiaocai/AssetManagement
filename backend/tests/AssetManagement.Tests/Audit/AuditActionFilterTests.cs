@@ -9,6 +9,7 @@ using AssetManagement.Application.Rbac;
 using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Infrastructure.Auth;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -130,6 +131,53 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
         latest.Detail.Should().Contain("\"Name\"");
         latest.Detail.Should().Contain("审计前名称");
         latest.Detail.Should().Contain("审计后名称");
+    }
+
+    [Fact]
+    public async Task Thrown_business_failure_is_audited_with_business_message()
+    {
+        await Login();
+        const string probePath = "/api/test-audit/throw-biz";
+
+        var response = await _client.PostAsJsonAsync(probePath, new { });
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var latest = db.AuditLogs.Where(x => x.Summary.Contains(probePath)).OrderByDescending(x => x.Id).First();
+        latest.Detail.Should().Contain("业务校验失败");
+        latest.Detail.Should().Contain("4092");
+    }
+
+    [Fact]
+    public async Task Unexpected_exception_audit_does_not_store_sensitive_exception_message()
+    {
+        await Login();
+        const string probePath = "/api/test-audit/throw-internal";
+
+        await _client.PostAsJsonAsync(probePath, new { });
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var latest = db.AuditLogs.Where(x => x.Summary.Contains(probePath)).OrderByDescending(x => x.Id).First();
+        latest.Detail.Should().Contain("服务器内部错误");
+        latest.Detail.Should().NotContain("Server=secret-db");
+    }
+
+    [Fact]
+    public async Task Permission_denied_write_is_audited_before_action_filter()
+    {
+        await Login();
+        const string probePath = "/api/test-audit/denied";
+
+        var response = await _client.PostAsJsonAsync(probePath, new { });
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.Forbidden);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var latest = db.AuditLogs.Where(x => x.Summary.Contains(probePath)).OrderByDescending(x => x.Id).First();
+        latest.ActionType.Should().Be("POST_denied");
+        latest.Detail.Should().Contain("4030");
     }
 
     [Fact]
@@ -357,6 +405,18 @@ public class AuditProbeController : ControllerBase
     [HttpPost("fail")]
     public ActionResult<ApiResult<object?>> Fail()
         => BadRequest(ApiResult<object?>.Fail(4001, "探针失败"));
+
+    [HttpPost("throw-biz")]
+    public ApiResult<object?> ThrowBiz()
+        => throw new BizException(4092, "业务校验失败");
+
+    [HttpPost("throw-internal")]
+    public ApiResult<object?> ThrowInternal()
+        => throw new InvalidOperationException("Server=secret-db;Password=do-not-store");
+
+    [HttpPost("denied")]
+    [HasPermission("test:permission-that-does-not-exist")]
+    public ApiResult<object?> Denied() => ApiResult<object?>.Ok(null);
 
     [HttpPut("roles/{id:int}/permissions")]
     public ApiResult<RoleDto> SetRolePermissions(int id)

@@ -9,6 +9,13 @@ namespace AssetManagement.Application.Files;
 public interface IFileStorageService
 {
     Task<FileUploadResult> SaveImageAsync(Stream content, string originalName, long length);
+    /// <summary>
+    /// 在业务实体持久化期间锁定图片生命周期，并确认每个 URL 都对应真实存储文件。
+    /// 调用方必须将返回的 lease 保持到数据库事务提交完成，防止孤儿清理与建立引用交错。
+    /// </summary>
+    Task<IAsyncDisposable> AcquireReferenceLeaseAsync(
+        IEnumerable<string>? imageUrls,
+        CancellationToken cancellationToken = default);
     StoredFile? Open(string storedName);
 }
 

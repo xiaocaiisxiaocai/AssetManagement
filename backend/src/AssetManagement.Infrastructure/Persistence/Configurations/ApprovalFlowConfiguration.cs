@@ -24,6 +24,7 @@ public class ApprovalFlowConfiguration : IEntityTypeConfiguration<ApprovalFlow>
         b.Property(x => x.Transferee).HasMaxLength(100);
         b.Property(x => x.TransfereeDept).HasMaxLength(100);
         b.Property(x => x.Reason).HasMaxLength(500);
+        b.Property(x => x.OriginalReturnDate).HasMaxLength(50);
         b.Property(x => x.ReturnDate).HasMaxLength(50);
         b.Property(x => x.Status).HasMaxLength(50).IsRequired();
         b.Property(x => x.ActiveScopeKey).HasMaxLength(100);
@@ -33,6 +34,10 @@ public class ApprovalFlowConfiguration : IEntityTypeConfiguration<ApprovalFlow>
         b.HasIndex(x => x.Status);
         b.HasIndex(x => x.ActiveScopeKey).IsUnique();
         b.Property(x => x.RowVersion).IsConcurrencyToken();
+        b.HasOne<AssetManagement.Domain.Entities.Workflow>().WithMany().HasForeignKey(x => x.WorkflowId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Asset>().WithMany().HasForeignKey(x => x.AssetId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.ApplicantId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.TransfereeId).OnDelete(DeleteBehavior.Restrict);
 
         // BPMN 当前活跃节点列表（JSON 序列化）
         b.Property(x => x.CurrentNodeIds)

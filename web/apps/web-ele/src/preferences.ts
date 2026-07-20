@@ -13,9 +13,13 @@ export const overridesPreferences = defineOverridesPreferences({
     enableCheckUpdates: false,
     // 检查更新的时间间隔，单位为分钟
     checkUpdatesInterval: 30,
+    locale: 'zh-CN',
     name: '资产管理系统',
   },
   logo: {
     source: '/images/saa.png',
+  },
+  widget: {
+    languageToggle: false,
   },
 });

@@ -1,8 +1,11 @@
+using AssetManagement.Application.Common;
+
 namespace AssetManagement.Application.TestMaterials;
 
 public interface ITestProjectService
 {
     Task<List<TestProjectDto>> ListAsync(string? deleteStatus, int currentUserId);
+    Task<PagedResult<TestProjectDto>> ListPageAsync(TestProjectPageQuery query, int currentUserId);
     Task<TestProjectDto> CreateAsync(SaveTestProjectRequest request);
     Task<TestProjectDto> UpdateAsync(int id, SaveTestProjectRequest request);
     Task DeleteAsync(int id);

@@ -19,16 +19,17 @@ public class AuditQueryService : IAuditQueryService
 
     public async Task<PagedResult<AuditLogDto>> QueryAsync(AuditLogQuery query)
     {
-        var page = Math.Max(query.Page, 1);
-        var pageSize = Math.Clamp(query.PageSize, 1, 200);
+        var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
         var logs = ApplyQuery(_db.AuditLogs.AsNoTracking(), query);
         var total = await logs.CountAsync();
-        var items = await logs
-            .OrderByDescending(x => x.OccurredAt)
-            .ThenByDescending(x => x.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
+        var offset = Pagination.GetOffset(page, pageSize, total);
+        var items = offset.HasValue
+            ? await logs.OrderByDescending(x => x.OccurredAt)
+                .ThenByDescending(x => x.Id)
+                .Skip(offset.Value)
+                .Take(pageSize)
+                .ToListAsync()
+            : [];
 
         return new PagedResult<AuditLogDto>
         {
@@ -45,7 +46,10 @@ public class AuditQueryService : IAuditQueryService
         {
             new[] { "时间", "操作人", "操作类型", "模块", "目标ID", "摘要", "IP", "客户端", "耗时(ms)" }
         };
-        var logs = await ApplyQuery(_db.AuditLogs.AsNoTracking(), query)
+        var exportQuery = ApplyQuery(_db.AuditLogs.AsNoTracking(), query);
+        if (await exportQuery.CountAsync() > AppConstants.MaxExportRows)
+            throw new BizException(4130, $"导出数据不能超过 {AppConstants.MaxExportRows} 行，请缩小筛选范围");
+        var logs = await exportQuery
             .OrderByDescending(x => x.OccurredAt)
             .ThenByDescending(x => x.Id)
             .ToListAsync();

@@ -16,5 +16,6 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         b.Property(x => x.IdempotencyKey).HasMaxLength(100);
         b.HasIndex(x => x.IdempotencyKey).IsUnique();
         b.HasIndex(x => new { x.UserId, x.IsRead });
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
     }
 }

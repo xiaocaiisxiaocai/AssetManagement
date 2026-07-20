@@ -6,6 +6,24 @@ interface ApiResult<T> {
   message: string;
 }
 
+export interface PagedResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface TestProjectPageQuery {
+  code?: string;
+  deleteStatus?: string;
+  name?: string;
+  ownerId?: number;
+  page: number;
+  pageSize: number;
+  progressCode?: string;
+  projectTypeCode?: string;
+}
+
 export interface TestProjectItem {
   id: number;
   name: string;
@@ -87,6 +105,14 @@ export const listTestProjectsApi = (deleteStatus?: string) =>
     requestClient.get<ApiResult<TestProjectItem[]>>('/test-projects', {
       params: { deleteStatus },
     }),
+  );
+
+export const listTestProjectsPageApi = (params: TestProjectPageQuery) =>
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<TestProjectItem>>>(
+      '/test-projects/page',
+      { params },
+    ),
   );
 
 export const createTestProjectApi = (data: SaveTestProjectPayload) =>
@@ -190,8 +216,8 @@ export interface TestProjectStats {
   closed: number;
   inProgress: number;
   landed: number;
-  typeDist: { label: string; count: number }[];
-  monthlyStat: { month: number; closedCount: number; followUpCount: number }[];
+  typeDist: { count: number; label: string }[];
+  monthlyStat: { closedCount: number; followUpCount: number; month: number }[];
 }
 
 export const getTestProjectStatsApi = () =>

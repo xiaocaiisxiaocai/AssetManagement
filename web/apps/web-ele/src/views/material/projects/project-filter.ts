@@ -14,12 +14,17 @@ function includesText(value: null | string | undefined, keyword: string) {
   return (value ?? '').toLowerCase().includes(text);
 }
 
-export function filterProjects(projects: TestProjectItem[], filter: ProjectFilter) {
-  return projects.filter((project) =>
-    includesText(project.code, filter.code) &&
-    includesText(project.name, filter.name) &&
-    (!filter.projectTypeCode || project.projectTypeCode === filter.projectTypeCode) &&
-    (!filter.progressCode || project.progressCode === filter.progressCode) &&
-    (!filter.ownerId || project.ownerId === filter.ownerId),
+export function filterProjects(
+  projects: TestProjectItem[],
+  filter: ProjectFilter,
+) {
+  return projects.filter(
+    (project) =>
+      includesText(project.code, filter.code) &&
+      includesText(project.name, filter.name) &&
+      (!filter.projectTypeCode ||
+        project.projectTypeCode === filter.projectTypeCode) &&
+      (!filter.progressCode || project.progressCode === filter.progressCode) &&
+      (!filter.ownerId || project.ownerId === filter.ownerId),
   );
 }

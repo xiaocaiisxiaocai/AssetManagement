@@ -1,5 +1,6 @@
 using AssetManagement.Application.Assets;
 using AssetManagement.Application.Common;
+using AssetManagement.Application.Files;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
 using AssetManagement.Infrastructure.Common;
@@ -17,28 +18,35 @@ public class AssetService : IAssetService
     private readonly AppDbContext _db;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IMemoryCache _cache;
+    private readonly IFileStorageService _fileStorage;
 
     // 部门树缓存键
     private const string DepartmentTreeCacheKey = "department_tree";
 
-    public AssetService(AppDbContext db, IHttpContextAccessor httpContextAccessor, IMemoryCache cache)
+    public AssetService(
+        AppDbContext db,
+        IHttpContextAccessor httpContextAccessor,
+        IMemoryCache cache,
+        IFileStorageService fileStorage)
     {
         _db = db;
         _httpContextAccessor = httpContextAccessor;
         _cache = cache;
+        _fileStorage = fileStorage;
     }
 
     public async Task<PagedResult<AssetDto>> QueryAsync(AssetQuery query)
     {
-        var page = Math.Max(query.Page, 1);
-        var pageSize = Math.Clamp(query.PageSize, 1, AppConstants.MaxPageSize);
+        var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
         var assets = ApplyQuery(_db.Assets.AsQueryable(), query);
         var total = await assets.CountAsync();
-        var pageItems = await assets
-            .OrderByDescending(x => x.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
+        var offset = Pagination.GetOffset(page, pageSize, total);
+        var pageItems = offset.HasValue
+            ? await assets.OrderByDescending(x => x.Id)
+                .Skip(offset.Value)
+                .Take(pageSize)
+                .ToListAsync()
+            : [];
 
         return new PagedResult<AssetDto>
         {
@@ -82,6 +90,7 @@ public class AssetService : IAssetService
                 Applicant = x.Applicant,
                 Transferee = x.Transferee,
                 Reason = x.Reason,
+                OriginalReturnDate = x.OriginalReturnDate,
                 ReturnDate = x.ReturnDate,
                 ApplyTime = x.ApplyTime,
                 ConfirmedAt = x.ConfirmedAt,
@@ -137,6 +146,11 @@ public class AssetService : IAssetService
             await LoadConditionOptionsAsync());
         var category = await _db.AssetCategories.SingleOrDefaultAsync(x => x.Id == request.CategoryId && !x.IsDeleted)
             ?? throw new BizException(4046, "资产分类不存在");
+        var imageUrls = request.Images is null ? null : JoinImages(request.Images);
+        var normalizedImages = SplitImages(imageUrls);
+        await using var imageLease = request.Images is null
+            ? null
+            : await _fileStorage.AcquireReferenceLeaseAsync(normalizedImages);
 
         for (var attempt = 0; ; attempt++)
         {
@@ -159,7 +173,7 @@ public class AssetService : IAssetService
                 RegistrationTime = request.RegistrationTime?.Date ?? BusinessClock.Today,
                 CurrentCondition = currentCondition,
                 Remark = request.Remark?.Trim(),
-                ImageUrls = JoinImages(request.Images),
+                ImageUrls = imageUrls,
                 CreatedAt = DateTime.UtcNow
             };
             _db.Assets.Add(asset);
@@ -195,6 +209,11 @@ public class AssetService : IAssetService
             throw new BizException(4046, "资产分类不存在");
         }
         await EnsureLocationExistsAsync(request.LocationId);
+        var imageUrls = request.Images is null ? null : JoinImages(request.Images);
+        var normalizedImages = SplitImages(imageUrls);
+        await using var imageLease = request.Images is null
+            ? null
+            : await _fileStorage.AcquireReferenceLeaseAsync(normalizedImages);
 
         asset.Name = request.Name.Trim();
         asset.CategoryId = request.CategoryId;
@@ -209,7 +228,7 @@ public class AssetService : IAssetService
         asset.Remark = request.Remark?.Trim();
         if (request.Images is not null)
         {
-            asset.ImageUrls = JoinImages(request.Images);
+            asset.ImageUrls = imageUrls;
         }
         asset.RowVersion++;
         try
@@ -222,6 +241,12 @@ public class AssetService : IAssetService
         }
         return await GetAsync(id);
     }
+
+    public async Task<Dictionary<int, int>> GetCategoryCountsAsync()
+        => await ApplyQuery(_db.Assets.AsNoTracking(), new AssetQuery())
+            .GroupBy(x => x.CategoryId)
+            .Select(group => new { CategoryId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(x => x.CategoryId, x => x.Count);
 
     public async Task DeleteAsync(int id)
     {
@@ -318,7 +343,10 @@ public class AssetService : IAssetService
         {
             new[] { "资产编号", "名称", "分类编码", "部门", "位置", "数量", "状态", "购入日期", "资产登记日期", "目前状况", "备注" }
         };
-        var assets = await ApplyQuery(_db.Assets.AsQueryable(), query)
+        var exportQuery = ApplyQuery(_db.Assets.AsQueryable(), query);
+        if (await exportQuery.CountAsync() > AppConstants.MaxExportRows)
+            throw new BizException(4130, $"导出数据不能超过 {AppConstants.MaxExportRows} 行，请缩小筛选范围");
+        var assets = await exportQuery
             .OrderBy(x => x.AssetNo)
             .ToListAsync();
         var dtos = await ToDtos(assets);
@@ -427,6 +455,12 @@ public class AssetService : IAssetService
         if (allowedDepartments != null)
         {
             queryable = queryable.Where(x => x.DepartmentId.HasValue && allowedDepartments.Contains(x.DepartmentId.Value));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Keyword))
+        {
+            var keyword = query.Keyword.Trim();
+            queryable = queryable.Where(x => x.AssetNo.Contains(keyword) || x.Name.Contains(keyword));
         }
 
         if (!string.IsNullOrWhiteSpace(query.AssetNo))
@@ -609,6 +643,19 @@ public class AssetService : IAssetService
         var departments = await _db.Departments.Where(x => departmentIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
         var locations = await _db.Locations.Where(x => locationIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
         var custodians = await _db.Users.Where(x => custodianIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
+        var assetIds = list.Select(x => x.Id).ToArray();
+        var activeBorrowFlows = await _db.ApprovalFlows.AsNoTracking()
+            .Where(x => assetIds.Contains(x.AssetId) &&
+                        x.BizType == "borrow" &&
+                        x.Status == "approved" &&
+                        x.ConfirmedAt == null &&
+                        x.ReturnDate != null)
+            .OrderByDescending(x => x.ApplyTime)
+            .Select(x => new { x.AssetId, x.ReturnDate })
+            .ToListAsync();
+        var returnDates = activeBorrowFlows
+            .GroupBy(x => x.AssetId)
+            .ToDictionary(group => group.Key, group => group.First().ReturnDate);
 
         return list.Select(x =>
         {
@@ -626,6 +673,7 @@ public class AssetService : IAssetService
                 LocationName = x.LocationId.HasValue && locations.TryGetValue(x.LocationId.Value, out var loc) ? loc : null,
                 CustodianId = x.CustodianId,
                 CustodianName = x.CustodianId.HasValue && custodians.TryGetValue(x.CustodianId.Value, out var custodian) ? custodian : null,
+                ReturnDate = returnDates.GetValueOrDefault(x.Id),
                 Quantity = x.Quantity,
                 Status = x.Status,
                 PurchaseDate = x.PurchaseDate,
@@ -670,7 +718,9 @@ public class AssetService : IAssetService
         var remark = Cell(cells, 5);
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(name)) errors.Add("名称必填");
+        else if (name.Length > 100) errors.Add("名称不能超过 100 个字符");
         if (string.IsNullOrWhiteSpace(categoryCode) || !categories.ContainsKey(categoryCode)) errors.Add("分类编码不存在");
+        if (remark.Length > 500) errors.Add("备注不能超过 500 个字符");
         var purchaseDate = ParseOptionalDate(purchaseDateText, "购入日期", errors);
         var registrationTime = ParseOptionalDate(registrationTimeText, "资产登记日期", errors);
         var currentCondition = string.IsNullOrWhiteSpace(currentConditionText)

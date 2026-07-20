@@ -21,4 +21,14 @@ public class HealthTests : IClassFixture<TestWebAppFactory>
         res!.Code.Should().Be(0);
         res.Data.Should().Be("healthy");
     }
+
+    [Fact]
+    public async Task Live_and_ready_endpoints_are_distinct_and_healthy()
+    {
+        var live = await _c.GetFromJsonAsync<ApiResult<string>>("/api/health/live");
+        var ready = await _c.GetFromJsonAsync<ApiResult<string>>("/api/health/ready");
+
+        live!.Code.Should().Be(0);
+        ready!.Code.Should().Be(0);
+    }
 }

@@ -55,6 +55,33 @@ namespace AssetManagement.Infrastructure.Migrations
             migrationBuilder.Sql("CALL `assert_harden_test_project_integrity`()");
             migrationBuilder.Sql("DROP PROCEDURE `assert_harden_test_project_integrity`");
 
+            migrationBuilder.Sql("DROP PROCEDURE IF EXISTS `reset_partial_test_project_integrity`");
+            migrationBuilder.Sql("""
+                CREATE PROCEDURE `reset_partial_test_project_integrity`()
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='test_materials' AND CONSTRAINT_NAME='FK_test_materials_test_projects_ProjectId') THEN
+                        ALTER TABLE `test_materials` DROP FOREIGN KEY `FK_test_materials_test_projects_ProjectId`;
+                    END IF;
+                    IF EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='test_project_followups' AND CONSTRAINT_NAME='FK_test_project_followups_test_projects_ProjectId') THEN
+                        ALTER TABLE `test_project_followups` DROP FOREIGN KEY `FK_test_project_followups_test_projects_ProjectId`;
+                    END IF;
+                    IF EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='test_projects' AND INDEX_NAME='IX_test_projects_Code') THEN
+                        DROP INDEX `IX_test_projects_Code` ON `test_projects`;
+                    END IF;
+                    IF EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='test_projects' AND INDEX_NAME='IX_test_projects_Name') THEN
+                        DROP INDEX `IX_test_projects_Name` ON `test_projects`;
+                    END IF;
+                    IF EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='test_materials' AND INDEX_NAME='IX_test_materials_ActiveNameKey') THEN
+                        DROP INDEX `IX_test_materials_ActiveNameKey` ON `test_materials`;
+                    END IF;
+                    IF EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='test_materials' AND COLUMN_NAME='ActiveNameKey') THEN
+                        ALTER TABLE `test_materials` DROP COLUMN `ActiveNameKey`;
+                    END IF;
+                END
+                """);
+            migrationBuilder.Sql("CALL `reset_partial_test_project_integrity`()");
+            migrationBuilder.Sql("DROP PROCEDURE `reset_partial_test_project_integrity`");
+
             migrationBuilder.AddColumn<string>(
                 name: "ActiveNameKey",
                 table: "test_materials",
@@ -65,19 +92,16 @@ namespace AssetManagement.Infrastructure.Migrations
                 stored: true)
                 .Annotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.CreateTable(
-                name: "business_sequences",
-                columns: table => new
-                {
-                    SequenceKey = table.Column<string>(type: "varchar(80)", maxLength: 80, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    NextValue = table.Column<int>(type: "int", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_business_sequences", x => x.SequenceKey);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
+            // CREATE TABLE 是单条原子 DDL，不存在“半张表”需要删除重建。
+            // 若上次已执行到最后、但迁移历史还未写入就断开，重入时必须保留
+            // 已分配的序列值，否则可能重用已预留的业务编号。
+            migrationBuilder.Sql("""
+                CREATE TABLE IF NOT EXISTS `business_sequences` (
+                    `SequenceKey` varchar(80) CHARACTER SET utf8mb4 NOT NULL,
+                    `NextValue` int NOT NULL,
+                    CONSTRAINT `PK_business_sequences` PRIMARY KEY (`SequenceKey`)
+                ) CHARACTER SET=utf8mb4
+                """);
 
             migrationBuilder.CreateIndex(
                 name: "IX_test_projects_Code",

@@ -11,6 +11,7 @@ import { defineStore } from 'pinia';
 
 import { getUserInfoApi, loginApi, logoutApi } from '#/api/core/auth';
 import { $t } from '#/locales';
+import { createSingleFlight } from '#/utils/single-flight';
 
 export const useAuthStore = defineStore('auth', () => {
   const accessStore = useAccessStore();
@@ -64,9 +65,13 @@ export const useAuthStore = defineStore('auth', () => {
     };
   }
 
-  async function logout(redirect: boolean = true) {
+  const logout = createSingleFlight(async (redirect: boolean = true) => {
+    const token = accessStore.accessToken || '';
+    const originalPath = router.currentRoute.value.fullPath;
+    // 先阻断新请求继续携带已失效的 token，并让并发 401 共用同一次退出。
+    accessStore.setAccessToken(null);
     try {
-      await logoutApi(accessStore.accessToken || '');
+      await logoutApi(token);
     } catch {
       // JWT 模式下退出以清理本地状态为准，后端通知失败不阻塞界面跳转。
     }
@@ -74,22 +79,23 @@ export const useAuthStore = defineStore('auth', () => {
     accessStore.setLoginExpired(false);
 
     // 回登录页带上当前路由地址
+    if (router.currentRoute.value.path === LOGIN_PATH) return;
     await router.replace({
       path: LOGIN_PATH,
       query: redirect
         ? {
-            redirect: encodeURIComponent(router.currentRoute.value.fullPath),
+            redirect: encodeURIComponent(originalPath),
           }
         : {},
     });
-  }
+  });
 
   async function fetchUserInfo() {
     let userInfo: null | UserInfo = null;
     userInfo = await getUserInfoApi();
     userStore.setUserInfo(userInfo);
     accessStore.setAccessCodes(
-      (userInfo as UserInfo & { permissions?: string[] }).permissions ||
+      (userInfo as { permissions?: string[] } & UserInfo).permissions ||
         userInfo.roles ||
         [],
     );

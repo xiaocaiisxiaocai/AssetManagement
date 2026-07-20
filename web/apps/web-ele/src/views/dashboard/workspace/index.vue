@@ -1,17 +1,10 @@
 <script lang="ts" setup>
 import type { AssetSummary, OverdueReportRow } from '#/api/report';
-import type { ApprovalFlow } from '#/api/workflow';
 
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAccess } from '@vben/access';
 
-import { getAssetSummaryApi, getOverdueReportApi } from '#/api/report';
-import {
-  getMineApprovalsApi,
-  getPendingApprovalsApi,
-  getPendingReturnsApi,
-} from '#/api/workflow';
+import { useAccess } from '@vben/access';
 
 import {
   ElButton,
@@ -23,6 +16,18 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { listMyFlowsPageApi, listPendingFlowsPageApi } from '#/api/material';
+import { getAssetSummaryApi, getOverdueReportApi } from '#/api/report';
+import {
+  getMineApprovalsPageApi,
+  getPendingApprovalsPageApi,
+  getPendingReturnsPageApi,
+} from '#/api/workflow';
+import { runHandled } from '#/utils/handled-promise';
+
+import { approvalDashboardCounts } from './approval-counts';
+import { myApplicationPath, pendingApprovalPath } from './approval-navigation';
+
 defineOptions({ name: 'Workspace' });
 
 const router = useRouter();
@@ -31,8 +36,36 @@ const canViewAssets = computed(() => hasAccessByCodes(['asset:view']));
 const canViewCategories = computed(() => hasAccessByCodes(['category:view']));
 const canViewLocations = computed(() => hasAccessByCodes(['location:view']));
 const canViewApprovals = computed(() => hasAccessByCodes(['approval:view']));
-const canHandleApprovals = computed(() => hasAccessByCodes(['approval:handle']));
-const canConfirmReturns = computed(() => hasAccessByCodes(['approval:confirm-return']));
+const canHandleApprovals = computed(() =>
+  hasAccessByCodes(['approval:handle']),
+);
+const canViewMaterialFlows = computed(() =>
+  hasAccessByCodes(['material-flow:view']),
+);
+const canHandleMaterialFlows = computed(() =>
+  hasAccessByCodes(['material-flow:approve']),
+);
+const canViewAnyApplications = computed(
+  () => canViewApprovals.value || canViewMaterialFlows.value,
+);
+const canHandleAnyApprovals = computed(
+  () => canHandleApprovals.value || canHandleMaterialFlows.value,
+);
+const approvalNavigationAccess = computed(() => ({
+  canHandleApprovals: canHandleApprovals.value,
+  canHandleMaterialFlows: canHandleMaterialFlows.value,
+  canViewApprovals: canViewApprovals.value,
+  canViewMaterialFlows: canViewMaterialFlows.value,
+}));
+const pendingApprovalTarget = computed(() =>
+  pendingApprovalPath(approvalNavigationAccess.value),
+);
+const myApplicationTarget = computed(() =>
+  myApplicationPath(approvalNavigationAccess.value),
+);
+const canConfirmReturns = computed(() =>
+  hasAccessByCodes(['approval:confirm-return']),
+);
 const canViewReports = computed(() => hasAccessByCodes(['report:view']));
 const loading = ref(false);
 const summary = ref<AssetSummary>({
@@ -43,88 +76,153 @@ const summary = ref<AssetSummary>({
   total: 0,
 });
 const overdueRows = ref<OverdueReportRow[]>([]);
-const pendingApprovals = ref<ApprovalFlow[]>([]);
-const myApprovals = ref<ApprovalFlow[]>([]);
-const pendingReturns = ref<ApprovalFlow[]>([]);
+const pendingApprovals = ref(0);
+const myPendingApprovals = ref(0);
+const pendingMaterialFlows = ref(0);
+const myPendingMaterialFlows = ref(0);
+const pendingReturns = ref(0);
 
 const seriousOverdueCount = computed(
   () => overdueRows.value.filter((row) => row.isSerious).length,
 );
-const pendingMineCount = computed(
-  () => myApprovals.value.filter((row) => row.status === 'pending').length,
+const approvalCounts = computed(() =>
+  approvalDashboardCounts(
+    pendingApprovals.value,
+    pendingMaterialFlows.value,
+    myPendingApprovals.value,
+    myPendingMaterialFlows.value,
+  ),
 );
+const pendingMineCount = computed(() => approvalCounts.value.minePending);
+const pendingApprovalCount = computed(() => approvalCounts.value.pending);
 const categoryTopRows = computed(() => summary.value.byCategory.slice(0, 5));
 
-const metricCards = computed(() => [
-  {
-    label: '资产总数',
-    value: summary.value.total,
-    tone: 'primary',
-    path: '/asset/list',
-    visible: canViewAssets.value && canViewReports.value,
-  },
-  {
-    label: '在库资产',
-    value: summary.value.available,
-    tone: 'success',
-    path: '/asset/list',
-    visible: canViewAssets.value && canViewReports.value,
-  },
-  {
-    label: '借出资产',
-    value: summary.value.borrowed,
-    tone: 'warning',
-    path: '/report/borrow',
-    visible: canViewReports.value,
-  },
-  {
-    label: '逾期资产',
-    value: overdueRows.value.length,
-    tone: overdueRows.value.length > 0 ? 'danger' : 'success',
-    path: '/report/overdue',
-    visible: canViewReports.value,
-  },
-].filter((item) => item.visible));
+const metricCards = computed(() =>
+  [
+    {
+      label: '资产总数',
+      value: summary.value.total,
+      tone: 'primary',
+      path: '/asset/list',
+      visible: canViewAssets.value && canViewReports.value,
+    },
+    {
+      label: '在库资产',
+      value: summary.value.available,
+      tone: 'success',
+      path: '/asset/list',
+      visible: canViewAssets.value && canViewReports.value,
+    },
+    {
+      label: '借出资产',
+      value: summary.value.borrowed,
+      tone: 'warning',
+      path: '/report/borrow',
+      visible: canViewReports.value,
+    },
+    {
+      label: '逾期资产',
+      value: overdueRows.value.length,
+      tone: overdueRows.value.length > 0 ? 'danger' : 'success',
+      path: '/report/overdue',
+      visible: canViewReports.value,
+    },
+  ].filter((item) => item.visible),
+);
 
-const shortcuts = computed(() => [
-  { label: '资产列表', path: '/asset/list', visible: canViewAssets.value },
-  { label: '资产分类', path: '/asset/categories', visible: canViewCategories.value },
-  { label: '存放位置', path: '/asset/locations', visible: canViewLocations.value },
-  { label: '待我审批', path: '/approval/pending', visible: canHandleApprovals.value },
-  { label: '我的申请', path: '/approval/mine', visible: canViewApprovals.value },
-  { label: '资产汇总', path: '/report/summary', visible: canViewReports.value },
-].filter((item) => item.visible));
+const shortcuts = computed(() =>
+  [
+    { label: '资产列表', path: '/asset/list', visible: canViewAssets.value },
+    {
+      label: '资产分类',
+      path: '/asset/categories',
+      visible: canViewCategories.value,
+    },
+    {
+      label: '存放位置',
+      path: '/asset/locations',
+      visible: canViewLocations.value,
+    },
+    {
+      label: '待我审批',
+      path: pendingApprovalTarget.value,
+      visible: !!pendingApprovalTarget.value,
+    },
+    {
+      label: '我的申请',
+      path: myApplicationTarget.value,
+      visible: !!myApplicationTarget.value,
+    },
+    {
+      label: '资产汇总',
+      path: '/report/summary',
+      visible: canViewReports.value,
+    },
+  ].filter((item) => item.visible),
+);
 
 async function loadData() {
   loading.value = true;
   try {
-    const [assetSummary, overdue, pending, mine, returns] = await Promise.all([
-      canViewReports.value ? getAssetSummaryApi() : Promise.resolve(summary.value),
+    const [
+      assetSummary,
+      overdue,
+      pending,
+      mine,
+      returns,
+      materialPending,
+      materialMine,
+    ] = await Promise.allSettled([
+      canViewReports.value
+        ? getAssetSummaryApi()
+        : Promise.resolve(summary.value),
       canViewReports.value ? getOverdueReportApi() : Promise.resolve([]),
-      canHandleApprovals.value ? getPendingApprovalsApi() : Promise.resolve([]),
-      canViewApprovals.value ? getMineApprovalsApi() : Promise.resolve([]),
-      canConfirmReturns.value ? getPendingReturnsApi() : Promise.resolve([]),
+      canHandleApprovals.value
+        ? getPendingApprovalsPageApi({ page: 1, pageSize: 1 })
+        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
+      canViewApprovals.value
+        ? getMineApprovalsPageApi({ page: 1, pageSize: 1, status: 'pending' })
+        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
+      canConfirmReturns.value
+        ? getPendingReturnsPageApi({ page: 1, pageSize: 1 })
+        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
+      canHandleMaterialFlows.value
+        ? listPendingFlowsPageApi({ page: 1, pageSize: 1 })
+        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
+      canViewMaterialFlows.value
+        ? listMyFlowsPageApi({ page: 1, pageSize: 1, status: 'pending' })
+        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
     ]);
-    summary.value = assetSummary;
-    overdueRows.value = overdue;
-    pendingApprovals.value = pending;
-    myApprovals.value = mine;
-    pendingReturns.value = returns;
+    if (assetSummary.status === 'fulfilled') summary.value = assetSummary.value;
+    if (overdue.status === 'fulfilled') overdueRows.value = overdue.value;
+    if (pending.status === 'fulfilled')
+      pendingApprovals.value = pending.value.total;
+    if (mine.status === 'fulfilled')
+      myPendingApprovals.value = mine.value.total;
+    if (returns.status === 'fulfilled')
+      pendingReturns.value = returns.value.total;
+    if (materialPending.status === 'fulfilled')
+      pendingMaterialFlows.value = materialPending.value.total;
+    if (materialMine.status === 'fulfilled')
+      myPendingMaterialFlows.value = materialMine.value.total;
   } finally {
     loading.value = false;
   }
 }
 
-function go(path: string) {
-  router.push(path);
+function go(path: null | string) {
+  if (!path) return;
+  runHandled(router.push(path));
 }
 
 function goCategoryAssets(categoryCode: string) {
   if (!categoryCode) return;
-  router.push({
-    path: '/asset/list',
-    query: { categoryCode },
-  });
+  runHandled(
+    router.push({
+      path: '/asset/list',
+      query: { categoryCode },
+    }),
+  );
 }
 
 onMounted(loadData);
@@ -147,8 +245,8 @@ onMounted(loadData);
             <button
               v-for="item in metricCards"
               :key="item.label"
-              class="stat-card workspace-stat-card"
               :class="`workspace-stat-${item.tone}`"
+              class="stat-card workspace-stat-card"
               type="button"
               @click="go(item.path)"
             >
@@ -175,17 +273,41 @@ onMounted(loadData);
               <strong>{{ seriousOverdueCount }}</strong>
             </div>
           </div>
-          <ElTable :data="categoryTopRows" class="workspace-table" border style="margin-top: 16px;">
+          <ElTable
+            :data="categoryTopRows"
+            border
+            class="workspace-table"
+            style="margin-top: 16px"
+          >
             <ElTableColumn label="分类" min-width="180">
               <template #default="{ row }">
-                <button class="category-code-link" type="button" @click="goCategoryAssets(row.categoryCode)">
+                <button
+                  class="category-code-link"
+                  type="button"
+                  @click="goCategoryAssets(row.categoryCode)"
+                >
                   {{ row.categoryCode }}
                 </button>
               </template>
             </ElTableColumn>
-            <ElTableColumn label="总数" prop="total" width="90" align="center" />
-            <ElTableColumn label="在库" prop="available" width="90" align="center" />
-            <ElTableColumn label="借出" prop="borrowed" width="90" align="center" />
+            <ElTableColumn
+              align="center"
+              label="总数"
+              prop="total"
+              width="90"
+            />
+            <ElTableColumn
+              align="center"
+              label="在库"
+              prop="available"
+              width="90"
+            />
+            <ElTableColumn
+              align="center"
+              label="借出"
+              prop="borrowed"
+              width="90"
+            />
           </ElTable>
         </ElCard>
 
@@ -194,25 +316,50 @@ onMounted(loadData);
             <template #header>
               <div class="workspace-card-header">
                 <span>待办提醒</span>
-                <ElButton v-if="canHandleApprovals" link type="primary" @click="go('/approval/pending')">
+                <ElButton
+                  v-if="canHandleApprovals"
+                  link
+                  type="primary"
+                  @click="go('/approval/pending')"
+                >
                   处理审批
                 </ElButton>
               </div>
             </template>
             <div class="workspace-todo-list">
-              <button v-if="canHandleApprovals" class="workspace-todo-item" type="button" @click="go('/approval/pending')">
+              <button
+                v-if="canHandleAnyApprovals"
+                class="workspace-todo-item"
+                type="button"
+                @click="go(pendingApprovalTarget)"
+              >
                 <span>待我审批</span>
-                <strong>{{ pendingApprovals.length }}</strong>
+                <strong>{{ pendingApprovalCount }}</strong>
               </button>
-              <button v-if="canViewApprovals" class="workspace-todo-item" type="button" @click="go('/approval/mine')">
+              <button
+                v-if="canViewAnyApplications"
+                class="workspace-todo-item"
+                type="button"
+                @click="go(myApplicationTarget)"
+              >
                 <span>我的审批中申请</span>
                 <strong>{{ pendingMineCount }}</strong>
               </button>
-              <button v-if="canConfirmReturns" class="workspace-todo-item" type="button" @click="go('/approval/confirm-return')">
+              <button
+                v-if="canConfirmReturns"
+                class="workspace-todo-item"
+                type="button"
+                @click="go('/approval/confirm-return')"
+              >
                 <span>待确认归还</span>
-                <strong>{{ pendingReturns.length }}</strong>
+                <strong>{{ pendingReturns }}</strong>
               </button>
-              <button v-if="canViewReports" class="workspace-todo-item" type="button" @click="go('/report/overdue')">
+              <button
+                v-if="canViewReports"
+                class="workspace-todo-item"
+                type="button"
+                @click="go('/report/overdue')"
+              >
                 <span>逾期未归还</span>
                 <strong>{{ overdueRows.length }}</strong>
               </button>
@@ -228,7 +375,7 @@ onMounted(loadData);
             <div class="workspace-shortcuts">
               <button
                 v-for="item in shortcuts"
-                :key="item.path"
+                :key="item.label"
                 class="workspace-shortcut-item"
                 type="button"
                 @click="go(item.path)"
@@ -249,10 +396,10 @@ onMounted(loadData);
             </div>
           </template>
           <ElTable
-            v-if="overdueRows.length"
+            v-if="overdueRows.length > 0"
             :data="overdueRows.slice(0, 5)"
-            class="workspace-table"
             border
+            class="workspace-table"
           >
             <ElTableColumn label="资产" min-width="180">
               <template #default="{ row }">
@@ -261,9 +408,12 @@ onMounted(loadData);
               </template>
             </ElTableColumn>
             <ElTableColumn label="借用人" prop="borrower" width="100" />
-            <ElTableColumn label="逾期天数" width="120" align="center">
+            <ElTableColumn align="center" label="逾期天数" width="120">
               <template #default="{ row }">
-                <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">
+                <ElTag
+                  :type="row.isSerious ? 'danger' : 'warning'"
+                  size="small"
+                >
                   {{ row.overdueDays }} 天
                 </ElTag>
               </template>

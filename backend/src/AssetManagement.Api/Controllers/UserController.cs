@@ -30,7 +30,10 @@ public class UserController : ControllerBase
 
     [HttpGet("options")]
     [Authorize]
-    public async Task<ApiResult<List<UserOptionDto>>> Options(string? keyword = null)
+    public async Task<ApiResult<PagedResult<UserOptionDto>>> Options(
+        string? keyword = null,
+        int page = 1,
+        int pageSize = 50)
     {
         var permissions = User.FindAll("perm").Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
         var allowedPermissions = new[]
@@ -39,15 +42,21 @@ public class UserController : ControllerBase
             "material-flow:transfer",
             "project:create",
             "project:edit",
+            "project:view",
             "material:create",
-            "material:edit"
+            "material:edit",
+            "asset:create",
+            "asset:edit",
+            "department:create",
+            "department:edit",
+            "report:view"
         };
         if (!allowedPermissions.Any(permissions.Contains))
         {
             throw new BizException(4030, "无权读取用户选项");
         }
 
-        return ApiResult<List<UserOptionDto>>.Ok(await _rbac.GetActiveUserOptionsAsync(keyword));
+        return ApiResult<PagedResult<UserOptionDto>>.Ok(await _rbac.GetActiveUserOptionsAsync(keyword, page, pageSize));
     }
 
     [HttpGet("approver-options")]

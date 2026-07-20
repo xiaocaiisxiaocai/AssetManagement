@@ -198,7 +198,10 @@ public class SourceConventionTests
         program.Should().NotContain("Request.Query.TryGetValue(\"token\"");
         assetApi.Should().NotContain("token=${");
         assetApi.Should().Contain("responseType: 'blob'");
-        assetApi.Should().Contain("url.startsWith('/api/') ? url.slice(4) : url");
+        assetApi.Should().Contain("normalizeAssetImageRequestUrl(url)");
+        assetApi.Should().Contain("SAFE_ASSET_IMAGE_URL");
+        assetApi.Should().NotContain("url.startsWith('/api/') ? url.slice(4) : url",
+            "通用前缀裁剪会重新允许任意受控路径，必须使用严格图片 URL 白名单");
         assetApi.Should().Contain("URL.createObjectURL");
     }
 

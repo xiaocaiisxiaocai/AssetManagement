@@ -2,7 +2,6 @@
 import type { AssetItem } from '#/api/asset';
 
 import { reactive, ref, watch } from 'vue';
-
 import { useRouter } from 'vue-router';
 
 import {
@@ -21,10 +20,12 @@ import {
   isFutureReturnDate,
 } from '#/utils/return-date';
 
+const props = defineProps<{ asset: AssetItem | null }>();
+
+const emit = defineEmits<{ submitted: [] }>();
+
 const router = useRouter();
 
-const props = defineProps<{ asset: AssetItem | null }>();
-const emit = defineEmits<{ submitted: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 
 const saving = ref(false);
@@ -85,13 +86,13 @@ async function submit() {
       <ElFormItem label="归还日期" required>
         <ElDatePicker
           v-model="form.returnDate"
-          clearable
           :disabled-date="disableNonFutureReturnDate"
+          clearable
           format="YYYY-MM-DD"
-          value-format="YYYY-MM-DD"
           placeholder="选择归还日期（必填）"
           style="width: 100%"
           type="date"
+          value-format="YYYY-MM-DD"
         />
       </ElFormItem>
       <ElFormItem label="借用原因" required>

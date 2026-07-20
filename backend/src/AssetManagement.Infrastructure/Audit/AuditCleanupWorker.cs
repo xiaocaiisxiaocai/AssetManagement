@@ -31,7 +31,7 @@ public class AuditCleanupWorker : BackgroundService
 
                 using var scope = _scopeFactory.CreateScope();
                 var service = scope.ServiceProvider.GetRequiredService<IAuditMaintenanceService>();
-                var result = await service.CleanupAsync(retentionDays);
+                var result = await service.CleanupAsync(retentionDays, cancellationToken: stoppingToken);
                 _logger.LogInformation("定时清理审计日志完成，保留 {Days} 天，删除 {Count} 条",
                     result.RetentionDays, result.DeletedCount);
             }

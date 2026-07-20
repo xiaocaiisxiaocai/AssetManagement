@@ -45,9 +45,39 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         });
         flow.Data!.DirectTransfer.Should().BeTrue();
         flow.Data.Status.Should().Be("approved");
+        (await UsedWorkflowId(flow.Data.Id)).Should().BeNull("直接转移不应使用 0 伪造流程外键");
 
         var got = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
         got!.Data!.CustodianId.Should().Be(transferee.Id);
+    }
+
+    [Fact]
+    public async Task Direct_transfer_and_disabling_transferee_cannot_commit_an_inactive_custodian()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var project = await CreateProject("并发停用项目");
+        var transferee = await CreateUser("race-user", "并发受让人");
+        var material = await CreateMaterial(project.Id, "并发停用样品");
+
+        var transferTask = _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id, TransfereeId = transferee.Id, Reason = "与停用并发"
+        });
+        var disableTask = _client.PostAsJsonAsync($"/api/users/{transferee.Id}/toggle-status", new { isActive = false });
+        await Task.WhenAll(transferTask, disableTask);
+        var transfer = await transferTask.Result.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+        var disable = await disableTask.Result.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        var currentMaterial = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
+        var users = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={transferee.EmployeeNo}");
+        var currentUser = users!.Data!.Items.Single(user => user.Id == transferee.Id);
+        var current = currentMaterial!.Data!;
+        var disableResult = disable!;
+
+        (transfer!.Code == 0 && disableResult.Code == 0).Should().BeFalse(
+            $"transfer={transfer.Code}/{transfer.Message}, disable={disableResult.Code}/{disableResult.Message}, " +
+            $"custodian={current.CustodianId}, userActive={currentUser.IsActive}");
+        (current.CustodianId == transferee.Id && !currentUser.IsActive).Should().BeFalse();
     }
 
     [Fact]
@@ -132,6 +162,68 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
         after!.Data!.CustodianId.Should().Be(transferee.Id);
         after.Data.HasPendingFlow.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Material_flow_page_endpoints_filter_before_count_and_support_flow_id()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var project = await CreateProject("料件分页项目");
+        var transferee = await CreateUser("page-user", "分页受让人");
+        var material = await CreateMaterial(project.Id, "分页目标样品");
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id, TransfereeId = transferee.Id, Reason = "分页目标"
+        });
+        var secondTransferee = await CreateUser("page-user-2", "分页受让人二");
+        var secondMaterial = await CreateMaterial(project.Id, "分页目标样品二");
+        await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = secondMaterial.Id, TransfereeId = secondTransferee.Id, Reason = "分页目标二"
+        });
+
+        var pending = await _client.GetFromJsonAsync<ApiResult<PagedResult<MaterialFlowDto>>>(
+            $"/api/material-flows/pending-page?page=1&pageSize=1&flowId={flow.Data!.Id}&keyword={material.Name}&status=pending&projectId={project.Id}");
+        var mine = await _client.GetFromJsonAsync<ApiResult<PagedResult<MaterialFlowDto>>>(
+            $"/api/material-flows/mine-page?page=1&pageSize=1&flowId={flow.Data.Id}&keyword={flow.Data.FlowNo}&status=pending&projectId={project.Id}");
+
+        pending!.Data!.Total.Should().Be(1);
+        pending.Data.Items.Should().ContainSingle().Which.Id.Should().Be(flow.Data.Id);
+        mine!.Data!.Total.Should().Be(1);
+        mine.Data.Items.Should().ContainSingle().Which.Id.Should().Be(flow.Data.Id);
+
+        _factory.CommandCounter.Reset();
+        var onePending = await _client.GetFromJsonAsync<ApiResult<PagedResult<MaterialFlowDto>>>(
+            $"/api/material-flows/pending-page?page=1&pageSize=1&flowId={flow.Data.Id}&projectId={project.Id}");
+        var onePendingQueries = _factory.CommandCounter.ReaderCount;
+        _factory.CommandCounter.Reset();
+        var twoPending = await _client.GetFromJsonAsync<ApiResult<PagedResult<MaterialFlowDto>>>(
+            $"/api/material-flows/pending-page?page=1&pageSize=2&keyword=分页目标样品&projectId={project.Id}");
+        var twoPendingQueries = _factory.CommandCounter.ReaderCount;
+        onePending!.Data!.Total.Should().Be(1);
+        twoPending!.Data!.Total.Should().Be(2);
+        twoPendingQueries.Should().BeLessThanOrEqualTo(onePendingQueries + 1,
+            "料件待办扫描应跨同模板同上下文流程复用审批人解析");
+
+        var extremePending = await _client.GetFromJsonAsync<ApiResult<PagedResult<MaterialFlowDto>>>(
+            $"/api/material-flows/pending-page?page={int.MaxValue}&pageSize=100&projectId={project.Id}");
+        extremePending!.Code.Should().Be(0);
+        extremePending.Data!.Items.Should().BeEmpty();
+        var extremeMine = await _client.GetFromJsonAsync<ApiResult<PagedResult<MaterialFlowDto>>>(
+            $"/api/material-flows/mine-page?page={int.MaxValue}&pageSize=100&projectId={project.Id}");
+        extremeMine!.Code.Should().Be(0);
+        extremeMine.Data!.Items.Should().BeEmpty();
+
+        using var scope = _factory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IMaterialFlowService>();
+        var transfereeMine = await service.MinePageAsync(transferee.Id, new MaterialFlowPageQuery
+        {
+            FlowId = flow.Data.Id,
+            Page = 1,
+            PageSize = 10
+        });
+        transfereeMine.Total.Should().Be(0, "mine-page 表示我的发起，受让人仅能通过详情查看与自己相关的流转");
     }
 
     [Fact]
@@ -629,7 +721,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             .SingleAsync();
     }
 
-    private async Task<int> UsedWorkflowId(int flowId)
+    private async Task<int?> UsedWorkflowId(int flowId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

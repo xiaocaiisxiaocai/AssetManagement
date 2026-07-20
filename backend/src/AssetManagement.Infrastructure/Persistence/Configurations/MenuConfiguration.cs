@@ -19,5 +19,6 @@ public class MenuConfiguration : IEntityTypeConfiguration<Menu>
         b.Property(x => x.PermissionCode).HasMaxLength(100);
         b.HasIndex(x => x.ParentId);
         b.HasIndex(x => x.PermissionCode);
+        b.HasOne<Menu>().WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
     }
 }

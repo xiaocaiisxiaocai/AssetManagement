@@ -1,14 +1,19 @@
 <script lang="ts" setup>
 import type { VxeGridPropTypes, VxePagerEvents } from 'vxe-table';
+
+import type { PurestGridProps } from './types';
+
+import { h, onMounted, reactive, ref, type VNode } from 'vue';
+
+import { useAccess } from '@vben/access';
+
 import { ElCard } from 'element-plus';
 import { VxeButton } from 'vxe-pc-ui';
-import type { PurestGridProps } from './types';
-import { h, onMounted, ref, type VNode } from 'vue';
-import { useAccess } from '@vben/access';
-import { $t } from '#/locales';
-import './style.css';
 
-const { hasAccessByCodes } = useAccess();
+import { $t } from '#/locales';
+import { runHandled } from '#/utils/handled-promise';
+
+import './style.css';
 
 const props = withDefaults(defineProps<PurestGridProps>(), {
   rowKey: `id`,
@@ -19,6 +24,9 @@ const props = withDefaults(defineProps<PurestGridProps>(), {
     pageSize: 15,
   }),
 });
+
+const { hasAccessByCodes } = useAccess();
+
 const formActions = [
   {
     itemRender: {
@@ -43,9 +51,9 @@ const formActions = [
     },
   },
 ];
-const items = props.searchOptions?.formItems.concat(formActions);
+const items = [...(props.searchOptions?.formItems ?? []), ...formActions];
 const operateColumns: VxeGridPropTypes.Columns<any> =
-  props.commonOperation == null || props.commonOperation == undefined
+  props.commonOperation === null || props.commonOperation === undefined
     ? []
     : [
         {
@@ -60,36 +68,10 @@ const operateColumns: VxeGridPropTypes.Columns<any> =
               if (props.commonOperation) {
                 Object.keys(props.commonOperation).forEach((key) => {
                   const operation =
-                    props.commonOperation![key as 'view' | 'edit' | 'delete'];
+                    props.commonOperation![key as 'delete' | 'edit' | 'view'];
                   if (hasAccessByCodes([operation!.permissionCode])) {
                     switch (key) {
-                      case 'view':
-                        buttons.push(
-                          h(VxeButton, {
-                            status: 'warning',
-                            mode: 'text',
-                            icon: 'vxe-icon-file-txt',
-                            content: $t('common.view'),
-                            onClick() {
-                              operation!.handleClick(row);
-                            },
-                          }),
-                        );
-                        break;
-                      case 'edit':
-                        buttons.push(
-                          h(VxeButton, {
-                            status: 'primary',
-                            icon: 'vxe-icon-edit',
-                            mode: 'text',
-                            content: $t('common.edit'),
-                            onClick() {
-                              operation!.handleClick(row);
-                            },
-                          }),
-                        );
-                        break;
-                      case 'delete':
+                      case 'delete': {
                         buttons.push(
                           h(VxeButton, {
                             status: 'danger',
@@ -102,6 +84,35 @@ const operateColumns: VxeGridPropTypes.Columns<any> =
                           }),
                         );
                         break;
+                      }
+                      case 'edit': {
+                        buttons.push(
+                          h(VxeButton, {
+                            status: 'primary',
+                            icon: 'vxe-icon-edit',
+                            mode: 'text',
+                            content: $t('common.edit'),
+                            onClick() {
+                              operation!.handleClick(row);
+                            },
+                          }),
+                        );
+                        break;
+                      }
+                      case 'view': {
+                        buttons.push(
+                          h(VxeButton, {
+                            status: 'warning',
+                            mode: 'text',
+                            icon: 'vxe-icon-file-txt',
+                            content: $t('common.view'),
+                            onClick() {
+                              operation!.handleClick(row);
+                            },
+                          }),
+                        );
+                        break;
+                      }
                     }
                   }
                 });
@@ -123,7 +134,7 @@ const toolbarConfig: VxeGridPropTypes.ToolbarConfig =
               props.commonOperation![key as 'add' | 'export' | 'import'];
             if (hasAccessByCodes([operation!.permissionCode])) {
               switch (key) {
-                case 'add':
+                case 'add': {
                   buttons.push(
                     h(VxeButton, {
                       icon: 'vxe-icon-add',
@@ -135,6 +146,7 @@ const toolbarConfig: VxeGridPropTypes.ToolbarConfig =
                     }),
                   );
                   break;
+                }
               }
             }
           });
@@ -145,73 +157,74 @@ const toolbarConfig: VxeGridPropTypes.ToolbarConfig =
     custom: true,
   };
 const treeOption = props.treeConfig ?? {};
-const data = ref<[]>([]);
+const data = ref<unknown[]>([]);
 const loading = ref(false);
+const pager = reactive({ ...props.customePager });
 
-const loadData = async (parmas?: any) => {
-  props
-    .request({
-      ...props.customePager,
+const loadData = async (params?: any) => {
+  loading.value = true;
+  try {
+    const result = await props.request({
+      ...pager,
       ...props.searchOptions?.formData,
-      ...parmas,
-    })
-    .then((result) => {
-      const { pageIndex, total, items } = result;
-      data.value = items;
-      props.customePager.total = total;
-      props.customePager.pageIndex = pageIndex;
+      ...params,
     });
+    const { pageIndex, total, items: resultItems } = result;
+    data.value = resultItems;
+    pager.total = total;
+    pager.pageIndex = pageIndex;
+  } finally {
+    loading.value = false;
+  }
 };
 const handlePageChange: VxePagerEvents.PageChange = ({
   currentPage,
   pageSize,
 }) => {
-  props.customePager.pageIndex = currentPage;
-  props.customePager.pageSize = pageSize;
-  loadData();
+  pager.pageIndex = currentPage;
+  pager.pageSize = pageSize;
+  runHandled(loadData());
 };
 onMounted(() => {
-  loadData();
+  runHandled(loadData());
 });
 defineExpose({ loadData });
 </script>
 <template>
   <div>
-    <el-card v-if="props.searchOptions">
+    <ElCard v-if="props.searchOptions">
       <vxe-form
-        ref="formRef"
-        :size="props.size"
         :data="props.searchOptions?.formData"
         :items="items"
-        @submit="props.searchOptions?.submit"
+        :size="props.size"
         @reset="props.searchOptions?.reset"
+        @submit="props.searchOptions?.submit"
       />
       <slot name="searchForm"></slot>
-    </el-card>
-    <el-card class="table-card">
+    </ElCard>
+    <ElCard class="table-card">
       <vxe-grid
-        :round="true"
         :columns="columns"
         :data="data"
         :height="props.height"
         :loading="loading"
         :max-height="650"
         :min-height="300"
-        :size="props.size"
-        :resizable="true"
-        :row-config="{ keyField: rowKey, isHover: true }"
-        :toolbar-config="toolbarConfig"
-        :tree-config="treeOption"
         :pager-config="{
           pageSizes: [15, 30, 50, 100, 300],
           size: props.size,
-          total: customePager.total,
-          pageSize: customePager.pageSize,
-          currentPage: customePager.pageIndex,
+          total: pager.total,
+          pageSize: pager.pageSize,
+          currentPage: pager.pageIndex,
         }"
+        :resizable="true"
+        :round="true"
+        :row-config="{ keyField: rowKey, isHover: true }"
+        :size="props.size"
+        :toolbar-config="toolbarConfig"
+        :tree-config="treeOption"
         @page-change="handlePageChange"
-      >
-      </vxe-grid>
-    </el-card>
+      />
+    </ElCard>
   </div>
 </template>

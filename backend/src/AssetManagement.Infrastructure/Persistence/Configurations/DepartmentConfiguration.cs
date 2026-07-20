@@ -13,11 +13,14 @@ public class DepartmentConfiguration : IEntityTypeConfiguration<Department>
         b.Property(x => x.Name).HasMaxLength(100).IsRequired();
         b.Property(x => x.Code).HasMaxLength(50).IsRequired();
         b.HasIndex(x => x.Code).IsUnique();
+        b.HasIndex(x => x.Name).IsUnique();
         b.HasIndex(x => x.ParentId);
         b.HasIndex(x => x.OrganizationLevelId);
         b.HasOne<OrganizationLevel>()
             .WithMany()
             .HasForeignKey(x => x.OrganizationLevelId)
             .OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Department>().WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.ManagerId).OnDelete(DeleteBehavior.Restrict);
     }
 }

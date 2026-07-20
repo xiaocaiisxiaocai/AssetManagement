@@ -51,7 +51,7 @@ const gatewayTypes = new Set([
 ]);
 
 export function resolveDiagramElement<T extends DiagramElementLike>(
-  element: T | null | undefined,
+  element: null | T | undefined,
 ) {
   return element?.labelTarget || element;
 }
@@ -133,14 +133,18 @@ export function getBranchLabelDelta(
   label: Rect,
   sourceCenter: Point,
 ) {
-  const segments = waypoints.slice(1).map((end, index) => {
-    const start = waypoints[index]!;
-    return {
-      end,
-      horizontal: Math.abs(end.y - start.y) < 1,
-      length: Math.hypot(end.x - start.x, end.y - start.y),
-      start,
-    };
+  const segments = waypoints.slice(1).flatMap((end, index) => {
+    const start = waypoints[index];
+    return start
+      ? [
+          {
+            end,
+            horizontal: Math.abs(end.y - start.y) < 1,
+            length: Math.hypot(end.x - start.x, end.y - start.y),
+            start,
+          },
+        ]
+      : [];
   });
   const candidates = segments.filter((segment) => segment.horizontal);
   const segment = (candidates.length > 0 ? candidates : segments).sort(
