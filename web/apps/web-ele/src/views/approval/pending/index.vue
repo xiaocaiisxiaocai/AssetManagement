@@ -73,6 +73,7 @@ import {
 } from '../approval-work-items';
 import {
   type ApprovalSource,
+  approvalListRequestFlowId,
   beginNotificationFlowAttempt,
   notificationSource,
   withoutNotificationFlowId,
@@ -149,8 +150,10 @@ async function loadData() {
       openedNotificationFlowKey.value,
     );
     const notificationKey = attempt.key;
-    const requestedFlowId =
-      viewMode.value === 'pending' ? attempt.requestedFlowId : 0;
+    const requestedFlowId = approvalListRequestFlowId(
+      viewMode.value,
+      attempt.requestedFlowId,
+    );
     if (requestedFlowId) {
       requestedNotificationKey = notificationKey;
       // 深链只尝试一次；即使目标已过期或无权限，也不能让 flowId 永久约束列表。

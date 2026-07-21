@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  approvalListRequestFlowId,
   beginNotificationFlowAttempt,
   notificationSource,
   withoutNotificationFlowId,
@@ -43,5 +44,11 @@ describe('审批通知深链消费', () => {
     expect(notificationSource(undefined, '/material/approvals')).toBe(
       'material',
     );
+  });
+
+  it('我已处理列表不发送 flowId=0 造成空结果', () => {
+    expect(approvalListRequestFlowId('handled', undefined)).toBeUndefined();
+    expect(approvalListRequestFlowId('handled', 42)).toBeUndefined();
+    expect(approvalListRequestFlowId('pending', 42)).toBe(42);
   });
 });

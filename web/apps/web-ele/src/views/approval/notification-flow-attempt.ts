@@ -1,4 +1,12 @@
 export type ApprovalSource = 'asset' | 'material';
+export type ApprovalListViewMode = 'handled' | 'pending';
+
+export function approvalListRequestFlowId(
+  viewMode: ApprovalListViewMode,
+  notificationFlowId: number | undefined,
+) {
+  return viewMode === 'pending' ? notificationFlowId : undefined;
+}
 
 export function notificationSource(
   source: unknown,
