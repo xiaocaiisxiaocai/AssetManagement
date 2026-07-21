@@ -17,6 +17,7 @@ export type AssetStatus = 0 | 1;
 
 export interface AssetItem {
   assetNo: string;
+  canManage: boolean;
   categoryCode: string;
   categoryId: number;
   createdAt: string;

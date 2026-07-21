@@ -65,17 +65,15 @@ public class AssetService : IAssetService
         {
             throw new BizException(4048, "资产不存在");
         }
-        EnsureCanAccess(asset);
         return (await ToDtos(new[] { asset })).Single();
     }
 
     public async Task<AssetDetailDto> GetDetailAsync(int id)
     {
         // 详情允许查看已删除资产(供主清单中已删除行的"详情"按钮使用),
-        // 故不经会拦截已删除的 GetAsync,自行加载实体并保留权限隔离。
+        // 故不经会拦截已删除资产的 GetAsync，自行加载实体；查看范围由 asset:view 权限统一控制。
         var entity = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
-        EnsureCanAccess(entity);
         var asset = (await ToDtos(new[] { entity })).Single();
         var initialCustodianName = entity.InitialCustodianId.HasValue
             ? await _db.Users
@@ -210,7 +208,7 @@ public class AssetService : IAssetService
         var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
         if (asset.IsDeleted) throw new BizException(4048, "资产不存在");
-        EnsureCanAccess(asset);
+        EnsureCanManage(asset);
         if (request.Status != asset.Status || request.CustodianId != asset.CustodianId || request.DepartmentId != asset.DepartmentId)
             throw new BizException(4095, "资产状态、保管人和归属部门只能通过审批流转变更");
         if (!await _db.AssetCategories.AnyAsync(x => x.Id == request.CategoryId && !x.IsDeleted))
@@ -269,7 +267,7 @@ public class AssetService : IAssetService
         {
             throw new BizException(4048, "资产不存在");
         }
-        EnsureCanAccess(asset);
+        EnsureCanManage(asset);
         if (asset.Status == AssetStatus.Borrowed)
         {
             throw new BizException(4092, "借出中资产不能删除");
@@ -297,7 +295,7 @@ public class AssetService : IAssetService
     {
         var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
-        EnsureCanAccess(asset);
+        EnsureCanManage(asset);
         if (!asset.IsDeleted)
         {
             throw new BizException(4097, "请先删除资产后再彻底删除");
@@ -323,7 +321,7 @@ public class AssetService : IAssetService
     {
         var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
-        EnsureCanAccess(asset);
+        EnsureCanManage(asset);
         if (!asset.IsDeleted)
         {
             throw new BizException(4099, "资产未删除，无需恢复");
@@ -459,13 +457,6 @@ public class AssetService : IAssetService
             _ => queryable.Where(x => !x.IsDeleted)
         };
 
-        // 部门数据权限隔离:部门主管只能查看本部门及子部门资产(系统管理员/普通员工不受限)
-        var allowedDepartments = AllowedDepartmentIds();
-        if (allowedDepartments != null)
-        {
-            queryable = queryable.Where(x => x.DepartmentId.HasValue && allowedDepartments.Contains(x.DepartmentId.Value));
-        }
-
         if (!string.IsNullOrWhiteSpace(query.Keyword))
         {
             var keyword = query.Keyword.Trim();
@@ -533,7 +524,7 @@ public class AssetService : IAssetService
         return ids.ToArray();
     }
 
-    // 返回当前用户允许访问的部门 ID 集合;null 表示不受限(超级管理员或普通员工共享池)
+    // 返回当前用户允许管理的部门 ID 集合；null 表示不受部门范围限制。
     private int[]? AllowedDepartmentIds()
     {
         var user = _httpContextAccessor.HttpContext?.User;
@@ -558,8 +549,8 @@ public class AssetService : IAssetService
         return null;
     }
 
-    // 校验当前用户是否有权访问指定资产(部门主管越权访问其他部门资产时抛出)
-    private void EnsureCanAccess(Asset asset)
+    // 查看权限由 asset:view 控制；编辑、删除、恢复等管理动作仍受部门范围隔离。
+    private void EnsureCanManage(Asset asset)
     {
         var allowed = AllowedDepartmentIds();
         if (allowed != null && (!asset.DepartmentId.HasValue || !allowed.Contains(asset.DepartmentId.Value)))
@@ -665,6 +656,7 @@ public class AssetService : IAssetService
         var returnDates = activeBorrowFlows
             .GroupBy(x => x.AssetId)
             .ToDictionary(group => group.Key, group => group.First().ReturnDate);
+        var manageableDepartmentIds = AllowedDepartmentIds();
 
         return list.Select(x =>
         {
@@ -682,6 +674,8 @@ public class AssetService : IAssetService
                 LocationName = x.LocationId.HasValue && locations.TryGetValue(x.LocationId.Value, out var loc) ? loc : null,
                 CustodianId = x.CustodianId,
                 CustodianName = x.CustodianId.HasValue && custodians.TryGetValue(x.CustodianId.Value, out var custodian) ? custodian : null,
+                CanManage = manageableDepartmentIds is null ||
+                            (x.DepartmentId.HasValue && manageableDepartmentIds.Contains(x.DepartmentId.Value)),
                 ReturnDate = returnDates.GetValueOrDefault(x.Id),
                 Quantity = x.Quantity,
                 Status = x.Status,

@@ -1059,7 +1059,7 @@ watch(detailVisible, (opened) => {
                         详情
                       </ElButton>
                       <ElButton
-                        v-if="assetRowActionAccess.canEdit"
+                        v-if="assetRowActionAccess.canEdit && row.canManage"
                         link
                         size="small"
                         type="primary"
@@ -1071,7 +1071,8 @@ watch(detailVisible, (opened) => {
                         v-if="
                           (canRunAvailableAssetAction(row) &&
                             (assetRowActionAccess.canBorrow ||
-                              assetRowActionAccess.canDelete)) ||
+                              (assetRowActionAccess.canDelete &&
+                                row.canManage))) ||
                           (assetRowActionAccess.canTransfer &&
                             canTransferAvailableAsset(row, currentUserId))
                         "
@@ -1103,6 +1104,7 @@ watch(detailVisible, (opened) => {
                             <ElDropdownItem
                               v-if="
                                 assetRowActionAccess.canDelete &&
+                                row.canManage &&
                                 canRunAvailableAssetAction(row)
                               "
                               :disabled="deletingAssetIds.includes(row.id)"
@@ -1126,7 +1128,9 @@ watch(detailVisible, (opened) => {
                         详情
                       </ElButton>
                       <ElDropdown
-                        v-if="canRestoreAsset || canPurgeAsset"
+                        v-if="
+                          row.canManage && (canRestoreAsset || canPurgeAsset)
+                        "
                         @command="(cmd) => onRowCommand(String(cmd), row)"
                       >
                         <ElButton link size="small" type="primary">
@@ -1135,13 +1139,13 @@ watch(detailVisible, (opened) => {
                         <template #dropdown>
                           <ElDropdownMenu>
                             <ElDropdownItem
-                              v-if="canRestoreAsset"
+                              v-if="canRestoreAsset && row.canManage"
                               command="restore"
                             >
                               撤销删除
                             </ElDropdownItem>
                             <ElDropdownItem
-                              v-if="canPurgeAsset"
+                              v-if="canPurgeAsset && row.canManage"
                               command="purge"
                               divided
                             >
@@ -1151,7 +1155,9 @@ watch(detailVisible, (opened) => {
                         </template>
                       </ElDropdown>
                       <span
-                        v-if="!canRestoreAsset && !canPurgeAsset"
+                        v-if="
+                          !row.canManage || (!canRestoreAsset && !canPurgeAsset)
+                        "
                         class="asset-no-permission"
                       >
                         无操作权限

@@ -21,7 +21,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task DeptAdmin_only_sees_own_department_assets()
+    public async Task Supervisor_can_view_assets_across_departments()
     {
         // 以管理员身份登录,创建两个部门
         var adminToken = await LoginAsAdmin();
@@ -80,20 +80,20 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         var token1 = await Login(deptAdmin1.Data.EmployeeNo, "TestPass123");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token1);
 
-        // 查询资产列表,应该只能看到研发部的资产
+        // 查询资产列表：主管需要浏览共享资产池，不应因管理范围丢失其他部门资产。
         var list1 = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>("/api/assets");
-        list1!.Data!.Items.Should().Contain(a => a.Id == asset1.Data!.Id);
-        list1.Data.Items.Should().NotContain(a => a.Id == asset2.Data!.Id);
+        list1!.Data!.Items.Should().Contain(a => a.Id == asset1.Data!.Id && a.CanManage);
+        list1.Data.Items.Should().Contain(a => a.Id == asset2.Data!.Id && !a.CanManage);
 
         // 作为市场部部门管理员登录
         deptAdmin2.Data.Should().NotBeNull();
         var token2 = await Login(deptAdmin2.Data.EmployeeNo, "TestPass123");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token2);
 
-        // 查询资产列表,应该只能看到市场部的资产
+        // 另一部门主管也应看到完整共享资产池。
         var list2 = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>("/api/assets");
-        list2!.Data!.Items.Should().Contain(a => a.Id == asset2.Data!.Id);
-        list2.Data.Items.Should().NotContain(a => a.Id == asset1.Data!.Id);
+        list2!.Data!.Items.Should().Contain(a => a.Id == asset2.Data!.Id && a.CanManage);
+        list2.Data.Items.Should().Contain(a => a.Id == asset1.Data!.Id && !a.CanManage);
 
         // 作为超级管理员登录
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
@@ -104,9 +104,9 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         listAdmin.Data.Items.Should().Contain(a => a.Id == asset2.Data!.Id);
     }
 
-    // P0-1:部门管理员不得通过详情/编辑/删除越权访问其他部门资产(IDOR)
+    // 主管可跨部门查看共享资产，但不得通过编辑/删除越权管理其他部门资产。
     [Fact]
-    public async Task DeptAdmin_cannot_access_other_department_asset()
+    public async Task Supervisor_can_view_but_cannot_manage_other_department_asset()
     {
         var adminToken = await LoginAsAdmin();
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
@@ -140,12 +140,18 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
             DepartmentId = dept2.Data!.Id
         });
 
-        // 以研发部管理员登录,尝试越权访问市场部资产
+        // 以研发部主管登录：可以查看市场部资产，但不能管理。
         var token1 = await Login(deptAdmin1.Data!.EmployeeNo, "TestPass123");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token1);
 
+        var asset = await _client.GetFromJsonAsync<ApiResult<AssetDto>>($"/api/assets/{asset2.Data!.Id}");
+        asset!.Code.Should().Be(0);
+        asset.Data!.Id.Should().Be(asset2.Data.Id);
+        asset.Data.CanManage.Should().BeFalse();
+
         var detail = await _client.GetFromJsonAsync<ApiResult<AssetDetailDto>>($"/api/assets/{asset2.Data!.Id}/detail");
-        detail!.Code.Should().NotBe(0, "部门管理员不应能查看其他部门资产详情");
+        detail!.Code.Should().Be(0, "拥有 asset:view 权限的主管应能查看共享资产详情");
+        detail.Data!.Asset.Id.Should().Be(asset2.Data.Id);
 
         var updateRes = await _client.PutAsJsonAsync($"/api/assets/{asset2.Data.Id}", new UpdateAssetRequest
         {

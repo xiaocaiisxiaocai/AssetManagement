@@ -16,6 +16,8 @@ public record AssetDto
     public string? LocationName { get; init; }
     public int? CustodianId { get; init; }
     public string? CustodianName { get; init; }
+    /// <summary>当前调用人是否处于该资产的部门管理范围；具体操作仍需对应权限码。</summary>
+    public bool CanManage { get; init; }
     /// <summary>当前借用周期的原应归还日期；转让不会改变该日期。</summary>
     public string? ReturnDate { get; init; }
     public int Quantity { get; init; }

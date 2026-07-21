@@ -148,11 +148,11 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 ### 多部门数据隔离(已实现)
 
 - **JWT增强**:登录时将用户的 `DepartmentId` 写入 JWT token 的 `departmentId` claim。
-- **数据隔离逻辑**(`AssetService.ApplyQuery`):
-  - 超级管理员(`admin` 角色):无限制,查看全部资产
-  - 部门主管(`supervisor` 角色且非 `admin`):自动过滤,只能查看本部门+子部门的资产
-  - 普通员工:无限制(共享资产池模式)
-- **实现方式**:通过 `IHttpContextAccessor` 获取当前用户的角色和部门信息,在 EF 查询条件中自动附加 `DepartmentId` 过滤。
+- **数据隔离逻辑**:
+  - 资产查看：拥有 `asset:view` 即可浏览全部资产清单和详情，形成共享资产池
+  - 资产管理：部门主管(`supervisor` 角色且非 `admin`)只能编辑、删除、恢复本部门+子部门的资产；管理员不受部门范围限制
+  - 普通员工通常只有查看和申请权限，具体操作仍由权限码控制
+- **实现方式**:`AssetService.ApplyQuery` 不按当前用户部门裁剪查看结果；管理动作通过 `IHttpContextAccessor` 读取角色和 `departmentId`，由 `EnsureCanManage`/`EnsureCanAssignDepartment` 强制校验部门范围。`AssetDto.CanManage` 供前端隐藏跨部门管理入口。
 - 参考设计文档:`docs/多部门预留设计.md`。
 
 ### 资产/分类删除模型(软删除 + 撤销/彻底删除)
@@ -456,7 +456,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)
 - ✅ 资产详情页及流转时间线(`GET /api/assets/{id}/detail`)
 - ✅ 资产照片附件上传与回显(`Asset.ImageUrls` + `FileStorageService`)
-- ✅ 多部门数据权限隔离(部门管理员仅看本部门资产,JWT 携带 `departmentId`)
+- ✅ 多部门数据权限隔离(共享资产全局可查看，部门主管仅管理本部门及子部门资产，JWT 携带 `departmentId`)
 - ✅ **BPMN 2.0 工作流引擎升级**(从简单线性引擎升级到标准 BPMN,支持并行网关/包容网关/排他网关)
 - ✅ P0/P1/P2 优化任务全部完成,关键业务与权限边界均有自动化回归测试
 - ✅ 前端 UI 统一优化(样式规范与布局改进、登录跳转修复)
