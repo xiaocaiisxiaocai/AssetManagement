@@ -11,6 +11,16 @@ export const quantityAxisLabel = {
   formatter: (value: number) => `${value}个`,
 };
 
+export function buildStatusDistribution(
+  stats: Pick<TestProjectStats, 'closed' | 'inProgress' | 'landed'>,
+) {
+  return [
+    { label: '计划/测试中', value: stats.inProgress },
+    { label: '结案', value: stats.closed },
+    { label: '落地跟进', value: stats.landed },
+  ];
+}
+
 export function buildMonthlySeriesData(monthlyStat: MonthlyStat[]) {
   const byMonth = new Map(
     monthlyStat
@@ -26,4 +36,13 @@ export function buildMonthlySeriesData(monthlyStat: MonthlyStat[]) {
       return byMonth.get(index + 1)?.followUpCount ?? 0;
     }),
   };
+}
+
+export function buildMonthlyTableRows(monthlyStat: MonthlyStat[]) {
+  const { closedData, followUpData } = buildMonthlySeriesData(monthlyStat);
+  return monthLabels.map((month, index) => ({
+    closedCount: closedData[index] ?? 0,
+    followUpCount: followUpData[index] ?? 0,
+    month,
+  }));
 }

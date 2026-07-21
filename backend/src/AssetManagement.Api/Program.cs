@@ -111,7 +111,7 @@ builder.Services.AddControllers(o => o.Filters.Add<AuditActionFilter>())
                 .Select(error => error.ErrorMessage)
                 .FirstOrDefault(error => !string.IsNullOrWhiteSpace(error))
                 ?? "请求参数不正确";
-            return new Microsoft.AspNetCore.Mvc.OkObjectResult(
+            return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(
                 ApiResult<object?>.Fail(4001, message));
         };
     });

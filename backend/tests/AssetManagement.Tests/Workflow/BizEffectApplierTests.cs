@@ -216,7 +216,7 @@ public class BizEffectApplierTests : MySqlFixtureBase
             ApplicantId = originalBorrower.Id,
             Applicant = originalBorrower.Name,
             SourceCustodianId = sourceCustodian.Id,
-            ReturnDate = DateOnly.FromDateTime(DateTime.Today.AddDays(7)).ToString("yyyy-MM-dd"),
+            ReturnDate = DateOnly.FromDateTime(DateTime.Today.AddDays(7)),
             ApplyTime = DateTime.UtcNow.AddDays(-2),
             Deadline = DateTime.UtcNow.AddDays(1)
         };

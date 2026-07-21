@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router';
 import { useAccess } from '@vben/access';
 
 import {
+  ElAlert,
   ElButton,
   ElCard,
   ElEmpty,
@@ -25,8 +26,9 @@ import {
 } from '#/api/workflow';
 import { runHandled } from '#/utils/handled-promise';
 
-import { approvalDashboardCounts } from './approval-counts';
+import { combineAvailableCounts } from './approval-counts';
 import { myApplicationPath, pendingApprovalPath } from './approval-navigation';
+import { mergeSettledValue } from './dashboard-load-state';
 
 defineOptions({ name: 'Workspace' });
 
@@ -68,62 +70,97 @@ const canConfirmReturns = computed(() =>
 );
 const canViewReports = computed(() => hasAccessByCodes(['report:view']));
 const loading = ref(false);
-const summary = ref<AssetSummary>({
-  available: 0,
-  borrowed: 0,
-  byCategory: [],
-  byDept: [],
-  total: 0,
-});
-const overdueRows = ref<OverdueReportRow[]>([]);
-const pendingApprovals = ref(0);
-const myPendingApprovals = ref(0);
-const pendingMaterialFlows = ref(0);
-const myPendingMaterialFlows = ref(0);
-const pendingReturns = ref(0);
+const hasLoadedOnce = ref(false);
+const summary = ref<AssetSummary | null>(null);
+const overdueRows = ref<null | OverdueReportRow[]>(null);
+const pendingApprovals = ref<null | number>(null);
+const myPendingApprovals = ref<null | number>(null);
+const pendingMaterialFlows = ref<null | number>(null);
+const myPendingMaterialFlows = ref<null | number>(null);
+const pendingReturns = ref<null | number>(null);
+
+type DashboardLoadKey =
+  | 'assetSummary'
+  | 'materialMine'
+  | 'materialPending'
+  | 'mine'
+  | 'overdue'
+  | 'pending'
+  | 'returns';
+
+const loadErrors = ref<Partial<Record<DashboardLoadKey, null | string>>>({});
+const loadErrorLabels: Record<DashboardLoadKey, string> = {
+  assetSummary: '资产概况',
+  materialMine: '我的料件申请',
+  materialPending: '待审料件流转',
+  mine: '我的资产申请',
+  overdue: '逾期资产',
+  pending: '待审资产申请',
+  returns: '待确认归还',
+};
+const failedLoadLabels = computed(() =>
+  (Object.keys(loadErrorLabels) as DashboardLoadKey[])
+    .filter((key) => Boolean(loadErrors.value[key]))
+    .map((key) => loadErrorLabels[key]),
+);
+const initialLoading = computed(() => loading.value && !hasLoadedOnce.value);
+
+function formatCount(value: null | number) {
+  return value ?? '—';
+}
 
 const seriousOverdueCount = computed(
-  () => overdueRows.value.filter((row) => row.isSerious).length,
+  () => overdueRows.value?.filter((row) => row.isSerious).length ?? null,
 );
-const approvalCounts = computed(() =>
-  approvalDashboardCounts(
-    pendingApprovals.value,
-    pendingMaterialFlows.value,
-    myPendingApprovals.value,
-    myPendingMaterialFlows.value,
-  ),
+const pendingMineCount = computed(() =>
+  combineAvailableCounts([
+    { enabled: canViewApprovals.value, value: myPendingApprovals.value },
+    {
+      enabled: canViewMaterialFlows.value,
+      value: myPendingMaterialFlows.value,
+    },
+  ]),
 );
-const pendingMineCount = computed(() => approvalCounts.value.minePending);
-const pendingApprovalCount = computed(() => approvalCounts.value.pending);
-const categoryTopRows = computed(() => summary.value.byCategory.slice(0, 5));
+const pendingApprovalCount = computed(() =>
+  combineAvailableCounts([
+    { enabled: canHandleApprovals.value, value: pendingApprovals.value },
+    {
+      enabled: canHandleMaterialFlows.value,
+      value: pendingMaterialFlows.value,
+    },
+  ]),
+);
+const categoryTopRows = computed(
+  () => summary.value?.byCategory.slice(0, 5) ?? [],
+);
 
 const metricCards = computed(() =>
   [
     {
       label: '资产总数',
-      value: summary.value.total,
+      value: formatCount(summary.value?.total ?? null),
       tone: 'primary',
       path: '/asset/list',
       visible: canViewAssets.value && canViewReports.value,
     },
     {
       label: '在库资产',
-      value: summary.value.available,
+      value: formatCount(summary.value?.available ?? null),
       tone: 'success',
       path: '/asset/list',
       visible: canViewAssets.value && canViewReports.value,
     },
     {
       label: '借出资产',
-      value: summary.value.borrowed,
+      value: formatCount(summary.value?.borrowed ?? null),
       tone: 'warning',
       path: '/report/borrow',
       visible: canViewReports.value,
     },
     {
       label: '逾期资产',
-      value: overdueRows.value.length,
-      tone: overdueRows.value.length > 0 ? 'danger' : 'success',
+      value: formatCount(overdueRows.value?.length ?? null),
+      tone: (overdueRows.value?.length ?? 0) > 0 ? 'danger' : 'success',
       path: '/report/overdue',
       visible: canViewReports.value,
     },
@@ -162,6 +199,7 @@ const shortcuts = computed(() =>
 );
 
 async function loadData() {
+  if (loading.value) return;
   loading.value = true;
   try {
     const [
@@ -176,36 +214,80 @@ async function loadData() {
       canViewReports.value
         ? getAssetSummaryApi()
         : Promise.resolve(summary.value),
-      canViewReports.value ? getOverdueReportApi() : Promise.resolve([]),
+      canViewReports.value
+        ? getOverdueReportApi()
+        : Promise.resolve(overdueRows.value),
       canHandleApprovals.value
-        ? getPendingApprovalsPageApi({ page: 1, pageSize: 1 })
-        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
+        ? getPendingApprovalsPageApi({ page: 1, pageSize: 1 }).then(
+            (result) => result.total,
+          )
+        : Promise.resolve(pendingApprovals.value),
       canViewApprovals.value
-        ? getMineApprovalsPageApi({ page: 1, pageSize: 1, status: 'pending' })
-        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
+        ? getMineApprovalsPageApi({
+            page: 1,
+            pageSize: 1,
+            status: 'pending',
+          }).then((result) => result.total)
+        : Promise.resolve(myPendingApprovals.value),
       canConfirmReturns.value
-        ? getPendingReturnsPageApi({ page: 1, pageSize: 1 })
-        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
+        ? getPendingReturnsPageApi({ page: 1, pageSize: 1 }).then(
+            (result) => result.total,
+          )
+        : Promise.resolve(pendingReturns.value),
       canHandleMaterialFlows.value
-        ? listPendingFlowsPageApi({ page: 1, pageSize: 1 })
-        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
+        ? listPendingFlowsPageApi({ page: 1, pageSize: 1 }).then(
+            (result) => result.total,
+          )
+        : Promise.resolve(pendingMaterialFlows.value),
       canViewMaterialFlows.value
-        ? listMyFlowsPageApi({ page: 1, pageSize: 1, status: 'pending' })
-        : Promise.resolve({ items: [], page: 1, pageSize: 1, total: 0 }),
+        ? listMyFlowsPageApi({ page: 1, pageSize: 1, status: 'pending' }).then(
+            (result) => result.total,
+          )
+        : Promise.resolve(myPendingMaterialFlows.value),
     ]);
-    if (assetSummary.status === 'fulfilled') summary.value = assetSummary.value;
-    if (overdue.status === 'fulfilled') overdueRows.value = overdue.value;
-    if (pending.status === 'fulfilled')
-      pendingApprovals.value = pending.value.total;
-    if (mine.status === 'fulfilled')
-      myPendingApprovals.value = mine.value.total;
-    if (returns.status === 'fulfilled')
-      pendingReturns.value = returns.value.total;
-    if (materialPending.status === 'fulfilled')
-      pendingMaterialFlows.value = materialPending.value.total;
-    if (materialMine.status === 'fulfilled')
-      myPendingMaterialFlows.value = materialMine.value.total;
+    const nextErrors = { ...loadErrors.value };
+    if (canViewReports.value) {
+      const nextSummary = mergeSettledValue(summary.value, assetSummary);
+      summary.value = nextSummary.value;
+      nextErrors.assetSummary = nextSummary.error;
+      const nextOverdue = mergeSettledValue(overdueRows.value, overdue);
+      overdueRows.value = nextOverdue.value;
+      nextErrors.overdue = nextOverdue.error;
+    }
+    if (canHandleApprovals.value) {
+      const nextPending = mergeSettledValue(pendingApprovals.value, pending);
+      pendingApprovals.value = nextPending.value;
+      nextErrors.pending = nextPending.error;
+    }
+    if (canViewApprovals.value) {
+      const nextMine = mergeSettledValue(myPendingApprovals.value, mine);
+      myPendingApprovals.value = nextMine.value;
+      nextErrors.mine = nextMine.error;
+    }
+    if (canConfirmReturns.value) {
+      const nextReturns = mergeSettledValue(pendingReturns.value, returns);
+      pendingReturns.value = nextReturns.value;
+      nextErrors.returns = nextReturns.error;
+    }
+    if (canHandleMaterialFlows.value) {
+      const nextMaterialPending = mergeSettledValue(
+        pendingMaterialFlows.value,
+        materialPending,
+      );
+      pendingMaterialFlows.value = nextMaterialPending.value;
+      nextErrors.materialPending = nextMaterialPending.error;
+    }
+    if (canViewMaterialFlows.value) {
+      const nextMaterialMine = mergeSettledValue(
+        myPendingMaterialFlows.value,
+        materialMine,
+      );
+      myPendingMaterialFlows.value = nextMaterialMine.value;
+      nextErrors.materialMine = nextMaterialMine.error;
+    }
+    loadErrors.value = nextErrors;
   } finally {
+    hasLoadedOnce.value = true;
     loading.value = false;
   }
 }
@@ -231,7 +313,24 @@ onMounted(loadData);
 <template>
   <re-page>
     <div class="workspace-container">
-      <ElSkeleton :loading="loading" animated>
+      <ElAlert
+        v-if="failedLoadLabels.length > 0"
+        :closable="false"
+        show-icon
+        type="warning"
+      >
+        <template #title>
+          部分数据加载失败：{{ failedLoadLabels.join('、') }}
+        </template>
+        <div class="workspace-load-error">
+          <span>已保留最近一次成功数据，未成功加载的指标显示为“—”。</span>
+          <ElButton :loading="loading" link type="warning" @click="loadData">
+            重新加载
+          </ElButton>
+        </div>
+      </ElAlert>
+
+      <ElSkeleton :loading="initialLoading" animated>
         <template #template>
           <div class="stat-cards">
             <div v-for="index in 4" :key="index" class="stat-card">
@@ -270,10 +369,11 @@ onMounted(loadData);
           <div class="workspace-summary">
             <div class="workspace-summary-item">
               <span>严重逾期</span>
-              <strong>{{ seriousOverdueCount }}</strong>
+              <strong>{{ formatCount(seriousOverdueCount) }}</strong>
             </div>
           </div>
           <ElTable
+            v-if="summary"
             :data="categoryTopRows"
             border
             class="workspace-table"
@@ -309,6 +409,7 @@ onMounted(loadData);
               width="90"
             />
           </ElTable>
+          <ElEmpty v-else description="资产概况暂不可用" />
         </ElCard>
 
         <div class="workspace-side">
@@ -334,7 +435,7 @@ onMounted(loadData);
                 @click="go(pendingApprovalTarget)"
               >
                 <span>待我审批</span>
-                <strong>{{ pendingApprovalCount }}</strong>
+                <strong>{{ formatCount(pendingApprovalCount) }}</strong>
               </button>
               <button
                 v-if="canViewAnyApplications"
@@ -343,7 +444,7 @@ onMounted(loadData);
                 @click="go(myApplicationTarget)"
               >
                 <span>我的审批中申请</span>
-                <strong>{{ pendingMineCount }}</strong>
+                <strong>{{ formatCount(pendingMineCount) }}</strong>
               </button>
               <button
                 v-if="canConfirmReturns"
@@ -352,7 +453,7 @@ onMounted(loadData);
                 @click="go('/approval/confirm-return')"
               >
                 <span>待确认归还</span>
-                <strong>{{ pendingReturns }}</strong>
+                <strong>{{ formatCount(pendingReturns) }}</strong>
               </button>
               <button
                 v-if="canViewReports"
@@ -361,7 +462,7 @@ onMounted(loadData);
                 @click="go('/report/overdue')"
               >
                 <span>逾期未归还</span>
-                <strong>{{ overdueRows.length }}</strong>
+                <strong>{{ formatCount(overdueRows?.length ?? null) }}</strong>
               </button>
             </div>
           </ElCard>
@@ -396,7 +497,7 @@ onMounted(loadData);
             </div>
           </template>
           <ElTable
-            v-if="overdueRows.length > 0"
+            v-if="overdueRows && overdueRows.length > 0"
             :data="overdueRows.slice(0, 5)"
             border
             class="workspace-table"
@@ -419,7 +520,8 @@ onMounted(loadData);
               </template>
             </ElTableColumn>
           </ElTable>
-          <ElEmpty v-else description="暂无逾期资产" />
+          <ElEmpty v-else-if="overdueRows" description="暂无逾期资产" />
+          <ElEmpty v-else description="逾期数据暂不可用" />
         </ElCard>
       </section>
     </div>
@@ -432,6 +534,13 @@ onMounted(loadData);
   flex-direction: column;
   gap: 20px;
   padding: 20px;
+}
+
+.workspace-load-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 /* 统计卡片特殊样式 */

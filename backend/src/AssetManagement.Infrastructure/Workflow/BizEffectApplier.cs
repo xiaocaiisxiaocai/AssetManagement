@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using AssetManagement.Application.Workflow;
@@ -82,13 +81,9 @@ public class BizEffectApplier : IBizEffectApplier
                 if (asset.Status != AssetStatus.Borrowed || asset.CustodianId != flow.ApplicantId)
                     throw new BizException(4090, "资产状态或当前借用人已变化，无法完成延期审批");
                 await LockActiveUserAsync(flow.ApplicantId, "延期申请人不存在或已停用，请撤回后重新发起");
-                if (string.IsNullOrWhiteSpace(flow.OriginalReturnDate) || string.IsNullOrWhiteSpace(flow.ReturnDate))
+                if (!flow.OriginalReturnDate.HasValue || !flow.ReturnDate.HasValue)
                     throw new BizException(4001, "延期申请缺少原归还日期或新归还日期");
-                if (!DateOnly.TryParseExact(flow.OriginalReturnDate, "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                        DateTimeStyles.None, out var originalDate) ||
-                    !DateOnly.TryParseExact(flow.ReturnDate, "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                        DateTimeStyles.None, out var requestedDate) ||
-                    requestedDate <= originalDate)
+                if (flow.ReturnDate.Value <= flow.OriginalReturnDate.Value)
                     throw new BizException(4001, "延期申请的新归还日期必须晚于原应归还日期");
                 var activeBorrow = await _db.ApprovalFlows.AsTracking()
                     .Where(candidate => candidate.Id != flow.Id &&
@@ -99,7 +94,7 @@ public class BizEffectApplier : IBizEffectApplier
                     .OrderByDescending(candidate => candidate.ApplyTime)
                     .FirstOrDefaultAsync()
                     ?? throw new BizException(4090, "当前有效借用记录已不存在，无法完成延期审批");
-                if (!string.Equals(activeBorrow.ReturnDate, flow.OriginalReturnDate, StringComparison.Ordinal))
+                if (activeBorrow.ReturnDate != flow.OriginalReturnDate)
                     throw new BizException(4090, "原借用期限已变化，请撤回后重新发起延期申请");
                 activeBorrow.ReturnDate = flow.ReturnDate;
                 activeBorrow.RowVersion++;

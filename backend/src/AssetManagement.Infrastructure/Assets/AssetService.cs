@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using MySqlConnector;
+using System.Globalization;
 using System.Security.Claims;
 
 namespace AssetManagement.Infrastructure.Assets;
@@ -82,22 +83,22 @@ public class AssetService : IAssetService
                 .SingleOrDefaultAsync()
             : null;
 
-        var flows = await _db.ApprovalFlows
+        var flowData = await _db.ApprovalFlows
             .Where(x => x.AssetId == id)
             .OrderByDescending(x => x.ApplyTime)
-            .Select(x => new AssetFlowDto
+            .Select(x => new
             {
-                Id = x.Id,
-                FlowNo = x.FlowNo,
-                BizType = x.BizType,
-                Status = x.Status,
-                Applicant = x.Applicant,
-                Transferee = x.Transferee,
-                Reason = x.Reason,
-                OriginalReturnDate = x.OriginalReturnDate,
-                ReturnDate = x.ReturnDate,
-                ApplyTime = x.ApplyTime,
-                ConfirmedAt = x.ConfirmedAt,
+                x.Id,
+                x.FlowNo,
+                x.BizType,
+                x.Status,
+                x.Applicant,
+                x.Transferee,
+                x.Reason,
+                x.OriginalReturnDate,
+                x.ReturnDate,
+                x.ApplyTime,
+                x.ConfirmedAt,
                 WithdrawnAt = _db.FlowRecords
                     .Where(record => record.FlowId == x.Id && record.Action == "withdraw")
                     .OrderByDescending(record => record.OperatedAt)
@@ -105,6 +106,21 @@ public class AssetService : IAssetService
                     .FirstOrDefault()
             })
             .ToListAsync();
+        var flows = flowData.Select(x => new AssetFlowDto
+        {
+            Id = x.Id,
+            FlowNo = x.FlowNo,
+            BizType = x.BizType,
+            Status = x.Status,
+            Applicant = x.Applicant,
+            Transferee = x.Transferee,
+            Reason = x.Reason,
+            OriginalReturnDate = FormatDate(x.OriginalReturnDate),
+            ReturnDate = FormatDate(x.ReturnDate),
+            ApplyTime = x.ApplyTime,
+            ConfirmedAt = x.ConfirmedAt,
+            WithdrawnAt = x.WithdrawnAt
+        }).ToList();
 
         var idText = id.ToString();
         var flowIdTexts = flows.Select(x => x.Id.ToString()).ToArray();
@@ -676,7 +692,7 @@ public class AssetService : IAssetService
                 CustodianName = x.CustodianId.HasValue && custodians.TryGetValue(x.CustodianId.Value, out var custodian) ? custodian : null,
                 CanManage = manageableDepartmentIds is null ||
                             (x.DepartmentId.HasValue && manageableDepartmentIds.Contains(x.DepartmentId.Value)),
-                ReturnDate = returnDates.GetValueOrDefault(x.Id),
+                ReturnDate = FormatDate(returnDates.GetValueOrDefault(x.Id)),
                 Quantity = x.Quantity,
                 Status = x.Status,
                 PurchaseDate = x.PurchaseDate,
@@ -692,6 +708,9 @@ public class AssetService : IAssetService
     }
 
     private static string? JoinImages(IEnumerable<string>? images) => ImageHelpers.Join(images);
+
+    private static string? FormatDate(DateOnly? value)
+        => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static List<string> SplitImages(string? imageUrls) => ImageHelpers.Split(imageUrls);
 

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -93,7 +94,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             Name = Unique("循环子部门")
         });
 
-        var result = await Put<ApiResult<DepartmentNodeDto>>(
+        var response = await _client.PutAsJsonAsync(
             $"/api/departments/{parent.Data.Id}",
             new UpdateDepartmentRequest
             {
@@ -101,8 +102,10 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
                 Name = parent.Data.Name,
                 IsActive = true
             });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var result = await response.Content.ReadFromJsonAsync<ApiResult<DepartmentNodeDto>>();
 
-        result.Code.Should().Be(4001);
+        result!.Code.Should().Be(4001);
         result.Message.Should().Contain("子部门");
     }
 
@@ -185,12 +188,12 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             Name = Unique("待改名部门")
         });
 
-        var duplicatedCreate = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        var duplicatedCreateResponse = await _client.PostAsJsonAsync("/api/departments", new CreateDepartmentRequest
         {
             ManagerId = createManager.Id,
             Name = name
         });
-        var duplicatedUpdate = await Put<ApiResult<DepartmentNodeDto>>(
+        var duplicatedUpdateResponse = await _client.PutAsJsonAsync(
             $"/api/departments/{target.Data!.Id}",
             new UpdateDepartmentRequest
             {
@@ -198,10 +201,14 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
                 Name = name,
                 IsActive = true
             });
+        duplicatedCreateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        duplicatedUpdateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var duplicatedCreate = await duplicatedCreateResponse.Content.ReadFromJsonAsync<ApiResult<DepartmentNodeDto>>();
+        var duplicatedUpdate = await duplicatedUpdateResponse.Content.ReadFromJsonAsync<ApiResult<DepartmentNodeDto>>();
 
-        duplicatedCreate.Code.Should().Be(4094);
+        duplicatedCreate!.Code.Should().Be(4094);
         duplicatedCreate.Message.Should().Be("部门名称已存在");
-        duplicatedUpdate.Code.Should().Be(4094);
+        duplicatedUpdate!.Code.Should().Be(4094);
         duplicatedUpdate.Message.Should().Be("部门名称已存在");
     }
 
@@ -222,12 +229,12 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             Name = Unique("待换负责人")
         });
 
-        var duplicatedCreate = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        var duplicatedCreateResponse = await _client.PostAsJsonAsync("/api/departments", new CreateDepartmentRequest
         {
             ManagerId = manager.Id,
             Name = Unique("重复负责人")
         });
-        var duplicatedUpdate = await Put<ApiResult<DepartmentNodeDto>>(
+        var duplicatedUpdateResponse = await _client.PutAsJsonAsync(
             $"/api/departments/{target.Data!.Id}",
             new UpdateDepartmentRequest
             {
@@ -235,10 +242,14 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
                 Name = target.Data.Name,
                 IsActive = true
             });
+        duplicatedCreateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        duplicatedUpdateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var duplicatedCreate = await duplicatedCreateResponse.Content.ReadFromJsonAsync<ApiResult<DepartmentNodeDto>>();
+        var duplicatedUpdate = await duplicatedUpdateResponse.Content.ReadFromJsonAsync<ApiResult<DepartmentNodeDto>>();
 
-        duplicatedCreate.Code.Should().Be(4094);
+        duplicatedCreate!.Code.Should().Be(4094);
         duplicatedCreate.Message.Should().Be("负责人已负责其他部门");
-        duplicatedUpdate.Code.Should().Be(4094);
+        duplicatedUpdate!.Code.Should().Be(4094);
         duplicatedUpdate.Message.Should().Be("负责人已负责其他部门");
     }
 
@@ -348,25 +359,29 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
                 CodeSeg = "AB"
             });
 
-            var invalidLength = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+            var invalidLengthResponse = await _client.PostAsJsonAsync("/api/categories", new CreateCategoryRequest
             {
                 ParentId = root.Data!.Id,
                 CodeSeg = "12"
             });
-            var invalidRegex = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+            var invalidRegexResponse = await _client.PostAsJsonAsync("/api/categories", new CreateCategoryRequest
             {
                 ParentId = root.Data.Id,
                 CodeSeg = "ABC"
             });
+            invalidLengthResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            invalidRegexResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            var invalidLength = await invalidLengthResponse.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
+            var invalidRegex = await invalidRegexResponse.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
             var valid = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
             {
                 ParentId = root.Data.Id,
                 CodeSeg = "12345"
             });
 
-            invalidLength.Code.Should().Be(4001);
+            invalidLength!.Code.Should().Be(4001);
             invalidLength.Message.Should().Contain("二级分类编码段必须是 3-5 位");
-            invalidRegex.Code.Should().Be(4001);
+            invalidRegex!.Code.Should().Be(4001);
             invalidRegex.Message.Should().Contain("二级分类编码段格式不正确");
             valid.Code.Should().Be(0);
             valid.Data!.Code.Should().Be("AB-12345");
@@ -394,14 +409,17 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             CodeSeg = UniqueCodeSeg()
         });
 
-        var result = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        var response = await _client.PostAsJsonAsync("/api/categories", new CreateCategoryRequest
         {
             ParentId = root.Data!.Id,
             CodeSeg = UniqueCodeSeg(),
             Remark = new string('备', 501)
         });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var result = await response.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
 
-        result.Code.Should().Be(4001);
+        result!.Code.Should().Be(4001);
+        result.Message.Should().Be("The field Remark must be a string or array type with a maximum length of '500'.");
     }
 
     [Fact]
@@ -467,9 +485,9 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             CodeSeg = UniqueThirdLevelCodeSeg()
         });
 
-        res.EnsureSuccessStatusCode();
+        res.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var body = await res.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
-        body!.Code.Should().NotBe(0);
+        body!.Code.Should().Be(4096);
         body.Message.Should().Contain("最多维护三级");
     }
 
@@ -488,7 +506,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             CodeSeg = codeSeg
         });
 
-        res.EnsureSuccessStatusCode();
+        res.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var body = await res.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
         body!.Code.Should().Be(4094);
         body.Message.Should().Contain("已存在对应编码段");
@@ -528,9 +546,9 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             CodeSeg = second.Data.CodeSeg
         });
 
-        res.EnsureSuccessStatusCode();
+        res.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var body = await res.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
-        body!.Code.Should().NotBe(0);
+        body!.Code.Should().Be(4096);
         body.Message.Should().Contain("最多维护三级");
     }
 
@@ -569,12 +587,14 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             Name = name
         });
 
-        var duplicated = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        var duplicatedResponse = await _client.PostAsJsonAsync("/api/locations", new CreateLocationRequest
         {
             Name = name
         });
+        duplicatedResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var duplicated = await duplicatedResponse.Content.ReadFromJsonAsync<ApiResult<LocationNodeDto>>();
 
-        duplicated.Code.Should().Be(4094);
+        duplicated!.Code.Should().Be(4094);
         duplicated.Message.Should().Be("存放位置已存在");
     }
 
@@ -583,12 +603,14 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
 
-        var result = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
+        var response = await _client.PostAsJsonAsync("/api/locations", new CreateLocationRequest
         {
             Name = "   ",
         });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var result = await response.Content.ReadFromJsonAsync<ApiResult<LocationNodeDto>>();
 
-        result.Code.Should().Be(4001);
+        result!.Code.Should().Be(4001);
         result.Message.Should().Contain("位置名称");
     }
 
@@ -605,12 +627,14 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             Name = Unique("库位")
         });
 
-        var duplicated = await Put<ApiResult<LocationNodeDto>>($"/api/locations/{target.Data!.Id}", new UpdateLocationRequest
+        var duplicatedResponse = await _client.PutAsJsonAsync($"/api/locations/{target.Data!.Id}", new UpdateLocationRequest
         {
             Name = existing.Data!.Name
         });
+        duplicatedResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var duplicated = await duplicatedResponse.Content.ReadFromJsonAsync<ApiResult<LocationNodeDto>>();
 
-        duplicated.Code.Should().Be(4094);
+        duplicated!.Code.Should().Be(4094);
         duplicated.Message.Should().Be("存放位置已存在");
     }
 
@@ -669,9 +693,11 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             DepartmentId = assetDepartment.Data!.Id
         });
 
-        var assetDepartmentDeleted = await Delete<ApiResult<object?>>($"/api/departments/{assetDepartment.Data.Id}");
+        var assetDepartmentDeleteResponse = await _client.DeleteAsync($"/api/departments/{assetDepartment.Data.Id}");
+        assetDepartmentDeleteResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var assetDepartmentDeleted = await assetDepartmentDeleteResponse.Content.ReadFromJsonAsync<ApiResult<object?>>();
 
-        assetDepartmentDeleted.Code.Should().Be(4094);
+        assetDepartmentDeleted!.Code.Should().Be(4094);
         assetDepartmentDeleted.Message.Should().Contain("部门已被资产使用");
 
         var materialDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
@@ -687,9 +713,11 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             DepartmentId = materialDepartment.Data!.Id
         });
 
-        var materialDepartmentDeleted = await Delete<ApiResult<object?>>($"/api/departments/{materialDepartment.Data.Id}");
+        var materialDepartmentDeleteResponse = await _client.DeleteAsync($"/api/departments/{materialDepartment.Data.Id}");
+        materialDepartmentDeleteResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var materialDepartmentDeleted = await materialDepartmentDeleteResponse.Content.ReadFromJsonAsync<ApiResult<object?>>();
 
-        materialDepartmentDeleted.Code.Should().Be(4094);
+        materialDepartmentDeleted!.Code.Should().Be(4094);
         materialDepartmentDeleted.Message.Should().Contain("部门已被测试料件使用");
     }
 
@@ -709,9 +737,11 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             LocationId = assetLocation.Data!.Id
         });
 
-        var assetLocationDeleted = await Delete<ApiResult<object?>>($"/api/locations/{assetLocation.Data.Id}");
+        var assetLocationDeleteResponse = await _client.DeleteAsync($"/api/locations/{assetLocation.Data.Id}");
+        assetLocationDeleteResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var assetLocationDeleted = await assetLocationDeleteResponse.Content.ReadFromJsonAsync<ApiResult<object?>>();
 
-        assetLocationDeleted.Code.Should().Be(4094);
+        assetLocationDeleted!.Code.Should().Be(4094);
         assetLocationDeleted.Message.Should().Contain("位置已被资产使用");
 
         var materialLocation = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
@@ -726,9 +756,11 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
             LocationId = materialLocation.Data!.Id
         });
 
-        var materialLocationDeleted = await Delete<ApiResult<object?>>($"/api/locations/{materialLocation.Data.Id}");
+        var materialLocationDeleteResponse = await _client.DeleteAsync($"/api/locations/{materialLocation.Data.Id}");
+        materialLocationDeleteResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var materialLocationDeleted = await materialLocationDeleteResponse.Content.ReadFromJsonAsync<ApiResult<object?>>();
 
-        materialLocationDeleted.Code.Should().Be(4094);
+        materialLocationDeleted!.Code.Should().Be(4094);
         materialLocationDeleted.Message.Should().Contain("位置已被测试料件使用");
     }
 
@@ -767,10 +799,12 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
                 Description = "不应新增"
             }
         });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await response.Content.ReadFromJsonAsync<ApiResult<List<SystemSettingDto>>>();
         var after = await _client.GetFromJsonAsync<ApiResult<List<SystemSettingDto>>>("/api/settings");
 
         body!.Code.Should().Be(4001);
+        body.Message.Should().Contain("不存在");
         after!.Data!.Select(x => x.Key).Should().BeEquivalentTo(before!.Data!.Select(x => x.Key));
     }
 
@@ -799,6 +833,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
                 Description = "非法值不应保存"
             }
         });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await response.Content.ReadFromJsonAsync<ApiResult<List<SystemSettingDto>>>();
 
         body!.Code.Should().Be(4001);
@@ -818,6 +853,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
                 Value = new string('路', 501)
             }
         });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await response.Content.ReadFromJsonAsync<ApiResult<List<SystemSettingDto>>>();
 
         var longOptions = Enumerable.Range(1, 20)
@@ -831,6 +867,7 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
                 Value = JsonSerializer.Serialize(longOptions)
             }
         });
+        dictionaryResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var dictionaryBody = await dictionaryResponse.Content
             .ReadFromJsonAsync<ApiResult<List<SystemSettingDto>>>();
 
@@ -937,13 +974,6 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     private async Task<T> Put<T>(string url, object body)
     {
         var res = await _client.PutAsJsonAsync(url, body);
-        res.EnsureSuccessStatusCode();
-        return (await res.Content.ReadFromJsonAsync<T>())!;
-    }
-
-    private async Task<T> Delete<T>(string url)
-    {
-        var res = await _client.DeleteAsync(url);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }

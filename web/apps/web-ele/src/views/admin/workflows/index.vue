@@ -28,7 +28,10 @@ import {
   setWorkflowStatusApi,
   type WorkflowItem,
 } from '#/api/workflow';
+import { createSingleFlight } from '#/utils/single-flight';
 import { buildWorkflowActionAccess } from '#/views/permissions/action-access';
+
+import { isWorkflowDesignerBusy } from './designer-save-state';
 
 defineOptions({ name: 'AdminWorkflows' });
 
@@ -44,6 +47,11 @@ const dialogVisible = ref(false);
 const currentWorkflow = ref<null | WorkflowItem>(null);
 const formDialogVisible = ref(false);
 const formSaving = ref(false);
+const designSaving = ref(false);
+const designerExporting = ref(false);
+const designerBusy = computed(() =>
+  isWorkflowDesignerBusy(designerExporting.value, designSaving.value),
+);
 const editingWorkflow = ref<null | WorkflowItem>(null);
 const workflowForm = ref<SaveWorkflowPayload>({
   bizType: '',
@@ -78,6 +86,7 @@ const loadWorkflows = async () => {
 
 const openDesigner = (workflow: WorkflowItem) => {
   currentWorkflow.value = workflow;
+  designerExporting.value = false;
   dialogVisible.value = true;
 };
 
@@ -167,11 +176,13 @@ const handleToggleStatus = async (workflow: WorkflowItem) => {
   } catch {}
 };
 
-const handleSave = async (bpmnXml: string) => {
-  if (!currentWorkflow.value) return;
+const runDesignSave = createSingleFlight(async (bpmnXml: string) => {
+  const workflow = currentWorkflow.value;
+  if (!workflow) return;
 
+  designSaving.value = true;
   try {
-    const previousId = currentWorkflow.value.id;
+    const previousId = workflow.id;
     const saved = await saveWorkflowDesignApi(previousId, bpmnXml);
     ElMessage.success(
       saved.id === previousId
@@ -182,7 +193,26 @@ const handleSave = async (bpmnXml: string) => {
     await loadWorkflows();
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    designSaving.value = false;
   }
+});
+
+const handleSave = async (bpmnXml: string, onComplete: () => void) => {
+  try {
+    await runDesignSave(bpmnXml);
+  } finally {
+    onComplete();
+    designerExporting.value = false;
+  }
+};
+
+const handleDesignerBeforeClose = (done: () => void) => {
+  if (designerBusy.value) {
+    ElMessage.warning('正在保存流程，请稍候');
+    return;
+  }
+  done();
 };
 
 const bizTypeLabel = (workflow: WorkflowItem) =>
@@ -356,7 +386,10 @@ onMounted(() => {
       <!-- BPMN 设计器对话框 -->
       <ElDialog
         v-model="dialogVisible"
+        :before-close="handleDesignerBeforeClose"
         :close-on-click-modal="false"
+        :close-on-press-escape="!designerBusy"
+        :show-close="!designerBusy"
         :title="`流程设计 - ${currentWorkflow?.name}`"
         class="workflow-designer-dialog"
         destroy-on-close
@@ -365,7 +398,9 @@ onMounted(() => {
         <BpmnModeler
           v-if="dialogVisible && currentWorkflow"
           :initial-xml="currentWorkflow.bpmnXml || undefined"
+          :saving="designSaving"
           :workflow-id="currentWorkflow.id"
+          @exporting-change="designerExporting = $event"
           @save="handleSave"
         />
       </ElDialog>

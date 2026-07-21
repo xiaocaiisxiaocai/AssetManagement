@@ -152,9 +152,10 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             "/api/test-materials",
             NewMaterialRequest(project.Id, name, department.Data!.Id, location.Data!.Id));
 
-        var duplicateCreate = await Post<ApiResult<TestMaterialDto>>(
+        var duplicateCreate = await PostError<TestMaterialDto>(
             "/api/test-materials",
-            NewMaterialRequest(project.Id, name, department.Data.Id, location.Data.Id));
+            NewMaterialRequest(project.Id, name, department.Data.Id, location.Data.Id),
+            HttpStatusCode.Conflict);
         var sameNameInOtherProject = await Post<ApiResult<TestMaterialDto>>(
             "/api/test-materials",
             NewMaterialRequest(otherProject.Id, name, department.Data.Id, location.Data.Id));
@@ -164,6 +165,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var duplicateUpdateResponse = await _client.PutAsJsonAsync(
             $"/api/test-materials/{updateTarget.Data!.Id}",
             NewMaterialRequest(project.Id, name, department.Data.Id, location.Data.Id));
+        duplicateUpdateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var duplicateUpdate = await duplicateUpdateResponse.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
 
         duplicateCreate.Code.Should().Be(4094);
@@ -423,7 +425,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Project_owner_can_update_progress_only_and_outsider_is_denied()
+    public async Task Project_owner_and_admin_can_update_progress_but_outsider_is_denied()
     {
         await Login();
         var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "进展负责人");
@@ -468,6 +470,20 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             });
         var denied = await deniedResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
         denied!.Code.Should().Be(4031);
+
+        await Login();
+        var adminResponse = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{project.Data.Id}/progress",
+            new
+            {
+                ProgressCode = "testing",
+                ClosedDate = (DateTime?)null,
+                TestStatus = "管理员调整项目进展"
+            });
+        var adminUpdated = await adminResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+
+        adminUpdated!.Code.Should().Be(0);
+        adminUpdated.Data!.TestStatus.Should().Be("管理员调整项目进展");
     }
 
     [Fact]
@@ -484,19 +500,23 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             "/api/test-projects",
             NewProjectRequest($"{name}-其他", code: $"{code}-OTHER"));
 
-        var duplicateCode = await Post<ApiResult<TestProjectDto>>(
+        var duplicateCode = await PostError<TestProjectDto>(
             "/api/test-projects",
-            NewProjectRequest($"{name}-新名称", code: code));
-        var duplicateName = await Post<ApiResult<TestProjectDto>>(
+            NewProjectRequest($"{name}-新名称", code: code),
+            HttpStatusCode.Conflict);
+        var duplicateName = await PostError<TestProjectDto>(
             "/api/test-projects",
-            NewProjectRequest(name, code: $"{code}-NEW"));
+            NewProjectRequest(name, code: $"{code}-NEW"),
+            HttpStatusCode.Conflict);
         var duplicateCodeOnUpdateResponse = await _client.PutAsJsonAsync(
             $"/api/test-projects/{another.Data!.Id}",
             NewProjectRequest($"{name}-更新编号", code: code));
+        duplicateCodeOnUpdateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var duplicateCodeOnUpdate = await duplicateCodeOnUpdateResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
         var duplicateNameOnUpdateResponse = await _client.PutAsJsonAsync(
             $"/api/test-projects/{another.Data.Id}",
             NewProjectRequest(name, code: $"{code}-UPDATE"));
+        duplicateNameOnUpdateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var duplicateNameOnUpdate = await duplicateNameOnUpdateResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
 
         duplicateCode.Code.Should().Be(4094);
@@ -520,6 +540,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             Name = $"必填校验-{Guid.NewGuid():N}"[..20],
             FollowUpIntervalDays = 14
         });
+        create.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var createBody = await create.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
 
         var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
@@ -539,6 +560,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             Name = project.Data.Name,
             FollowUpIntervalDays = 14
         });
+        update.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var updateBody = await update.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
 
         createBody!.Code.Should().Be(4001);
@@ -555,17 +577,20 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var reversedRequest = NewProjectRequest("时间倒置项目");
         reversedRequest.StartDate = new DateTime(2026, 7, 2);
         reversedRequest.PlannedFinishDate = new DateTime(2026, 7, 1);
-        var reversed = await Post<ApiResult<TestProjectDto>>(
+        var reversed = await PostError<TestProjectDto>(
             "/api/test-projects",
-            reversedRequest);
-        var closedWithoutDate = await Post<ApiResult<TestProjectDto>>(
+            reversedRequest,
+            HttpStatusCode.BadRequest);
+        var closedWithoutDate = await PostError<TestProjectDto>(
             "/api/test-projects",
-            NewProjectRequest("无结案日期项目", progressCode: "closed"));
+            NewProjectRequest("无结案日期项目", progressCode: "closed"),
+            HttpStatusCode.BadRequest);
         var testingWithClosedDateRequest = NewProjectRequest("测试中误填结案日期");
         testingWithClosedDateRequest.ClosedDate = new DateTime(2026, 7, 1);
-        var testingWithClosedDate = await Post<ApiResult<TestProjectDto>>(
+        var testingWithClosedDate = await PostError<TestProjectDto>(
             "/api/test-projects",
-            testingWithClosedDateRequest);
+            testingWithClosedDateRequest,
+            HttpStatusCode.BadRequest);
 
         reversed.Code.Should().Be(4001);
         reversed.Message.Should().Contain("计划完成时间不能早于开始时间");
@@ -589,14 +614,14 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             IsActive = true
         });
 
-        var duplicated = await Post<ApiResult<TestProjectOptionDto>>("/api/test-projects/options", new SaveTestProjectOptionRequest
+        var duplicated = await PostError<TestProjectOptionDto>("/api/test-projects/options", new SaveTestProjectOptionRequest
         {
             Kind = "project_type",
             Code = code,
             Label = "重复配置",
             Sort = 2,
             IsActive = true
-        });
+        }, HttpStatusCode.Conflict);
 
         duplicated.Code.Should().Be(4094);
         duplicated.Message.Should().Be("配置编码已存在");
@@ -619,6 +644,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             NewProjectRequest("引用项目配置项", projectTypeCode: option.Data!.Code));
 
         var deleted = await _client.DeleteAsync($"/api/test-projects/options/{option.Data.Id}");
+        deleted.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var body = await deleted.Content.ReadFromJsonAsync<ApiResult<object?>>();
 
         body!.Code.Should().Be(4094);
@@ -641,7 +667,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             "/api/test-projects",
             NewProjectRequest("配置保护项目", projectTypeCode: option.Data!.Code));
 
-        var disabled = await Put<ApiResult<TestProjectOptionDto>>(
+        var disabled = await PutError<TestProjectOptionDto>(
             $"/api/test-projects/options/{option.Data.Id}",
             new SaveTestProjectOptionRequest
             {
@@ -650,8 +676,8 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
                 Label = option.Data.Label,
                 Sort = option.Data.Sort,
                 IsActive = false
-            });
-        var rekeyed = await Put<ApiResult<TestProjectOptionDto>>(
+            }, HttpStatusCode.Conflict);
+        var rekeyed = await PutError<TestProjectOptionDto>(
             $"/api/test-projects/options/{option.Data.Id}",
             new SaveTestProjectOptionRequest
             {
@@ -660,7 +686,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
                 Label = option.Data.Label,
                 Sort = option.Data.Sort,
                 IsActive = true
-            });
+            }, HttpStatusCode.Conflict);
 
         disabled.Code.Should().Be(4094);
         disabled.Message.Should().Contain("不能停用");
@@ -677,8 +703,9 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var landing = options!.Data!.Single(x => x.Code == "landing");
 
         var deleted = await _client.DeleteAsync($"/api/test-projects/options/{landing.Id}");
+        deleted.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var deletedBody = await deleted.Content.ReadFromJsonAsync<ApiResult<object?>>();
-        var disabled = await Put<ApiResult<TestProjectOptionDto>>(
+        var disabled = await PutError<TestProjectOptionDto>(
             $"/api/test-projects/options/{landing.Id}",
             new SaveTestProjectOptionRequest
             {
@@ -687,8 +714,8 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
                 Label = landing.Label,
                 Sort = landing.Sort,
                 IsActive = false
-            });
-        var rekeyed = await Put<ApiResult<TestProjectOptionDto>>(
+            }, HttpStatusCode.Conflict);
+        var rekeyed = await PutError<TestProjectOptionDto>(
             $"/api/test-projects/options/{landing.Id}",
             new SaveTestProjectOptionRequest
             {
@@ -697,7 +724,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
                 Label = landing.Label,
                 Sort = landing.Sort,
                 IsActive = true
-            });
+            }, HttpStatusCode.Conflict);
 
         deletedBody!.Code.Should().Be(4094);
         disabled.Code.Should().Be(4094);
@@ -716,17 +743,16 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             ProjectId = project.Id
         });
         var transferee = await CreateUserInDb($"tf{Guid.NewGuid():N}"[..12], "流转接收人");
-        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
         {
             MaterialId = material.Data!.Id,
             TransfereeId = transferee.Id,
             Reason = "保留历史"
         });
-        await Post<ApiResult<MaterialFlowDto>>($"/api/material-flows/{flow.Data!.Id}/reject",
-            new MaterialRejectRequest { NodeId = "dept_manager", Reason = "结束流程" });
         await _client.DeleteAsync($"/api/test-materials/{material.Data.Id}");
 
         var purged = await _client.DeleteAsync($"/api/test-materials/{material.Data.Id}/purge");
+        purged.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var body = await purged.Content.ReadFromJsonAsync<ApiResult<object?>>();
 
         body!.Code.Should().Be(4094);
@@ -1081,5 +1107,19 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var res = await _client.PutAsJsonAsync(url, payload);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<ApiResult<T>> PostError<T>(string url, object payload, HttpStatusCode expectedStatus)
+    {
+        var response = await _client.PostAsJsonAsync(url, payload);
+        response.StatusCode.Should().Be(expectedStatus);
+        return (await response.Content.ReadFromJsonAsync<ApiResult<T>>())!;
+    }
+
+    private async Task<ApiResult<T>> PutError<T>(string url, object payload, HttpStatusCode expectedStatus)
+    {
+        var response = await _client.PutAsJsonAsync(url, payload);
+        response.StatusCode.Should().Be(expectedStatus);
+        return (await response.Content.ReadFromJsonAsync<ApiResult<T>>())!;
     }
 }

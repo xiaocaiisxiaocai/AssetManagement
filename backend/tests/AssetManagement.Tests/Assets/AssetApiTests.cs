@@ -416,21 +416,28 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         await Login();
         var category = await CreateCategory();
 
-        var invalidLocation = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        var invalidLocationResponse = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
         {
             Name = "无效库位资产",
             CategoryId = category.Id,
             LocationId = int.MaxValue
         });
-        var invalidCustodian = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        invalidLocationResponse.StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
+        var invalidLocation = await invalidLocationResponse.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
+
+        var invalidCustodianResponse = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
         {
             Name = "无效保管人资产",
             CategoryId = category.Id,
             CustodianId = int.MaxValue
         });
+        invalidCustodianResponse.StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
+        var invalidCustodian = await invalidCustodianResponse.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
 
-        invalidLocation.Code.Should().Be(4045);
-        invalidCustodian.Code.Should().Be(4041);
+        invalidLocation!.Code.Should().Be(4045);
+        invalidLocation.Message.Should().Be("存放位置不存在");
+        invalidCustodian!.Code.Should().Be(4041);
+        invalidCustodian.Message.Should().Be("保管人不存在或已停用");
     }
 
     [Fact]

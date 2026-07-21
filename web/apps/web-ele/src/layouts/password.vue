@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import type { VxeFormItemProps, VxeFormPropTypes } from 'vxe-pc-ui';
+import type { FormInstance, FormRules } from 'element-plus';
 
-import { computed, ref } from 'vue';
+import { nextTick, reactive, ref, watch } from 'vue';
 
-import { ElMessage } from 'element-plus';
+import {
+  ElButton,
+  ElDialog,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElMessage,
+} from 'element-plus';
 
 import { changePassword } from '#/api/core/auth';
 import {
@@ -11,18 +18,25 @@ import {
   PASSWORD_RULE_PATTERN,
 } from '#/utils/password-policy';
 
+import {
+  closePasswordDialogUnlessSubmitting,
+  PASSWORD_DIALOG_WIDTH,
+} from './password-dialog';
+
 const emit = defineEmits<{ changed: [] }>();
+const showPopup = defineModel<boolean>('open', { default: false });
 interface FormDataVO {
   oldPassword: string;
   newPassword: string;
   confirmPassword: string;
 }
-const fromData = ref<FormDataVO>({
+const formRef = ref<FormInstance>();
+const formData = reactive<FormDataVO>({
   oldPassword: '',
   newPassword: '',
   confirmPassword: '',
 });
-const formRules = ref<VxeFormPropTypes.Rules<FormDataVO>>({
+const formRules: FormRules<FormDataVO> = {
   oldPassword: [{ required: true, message: '旧密码不能为空' }],
   newPassword: [
     {
@@ -38,89 +52,103 @@ const formRules = ref<VxeFormPropTypes.Rules<FormDataVO>>({
       message: PASSWORD_RULE_MESSAGE,
     },
     {
-      validator({ itemValue }) {
-        if (itemValue !== fromData.value.newPassword) {
-          return new Error('两次输入的密码不一致，请重新输入！');
+      validator(_rule, value, callback) {
+        if (value !== formData.newPassword) {
+          callback(new Error('两次输入的密码不一致，请重新输入！'));
+          return;
         }
+        callback();
       },
+      trigger: 'blur',
     },
   ],
-});
-const fromItems = computed<VxeFormItemProps<any>[]>(() => [
-  {
-    field: 'oldPassword',
-    title: '旧密码',
-    span: 24,
-    itemRender: {
-      name: 'VxeInput',
-      props: { type: 'password', placeholder: '请输入旧密码' },
-    },
-  },
-  {
-    field: 'newPassword',
-    title: '新密码',
-    span: 24,
-    itemRender: {
-      name: 'VxeInput',
-      props: { type: 'password', placeholder: '请输入新密码' },
-    },
-  },
-  {
-    field: 'confirmPassword',
-    title: '确认密码',
-    span: 24,
-    itemRender: {
-      name: 'VxeInput',
-      props: { type: 'password', placeholder: '请再次输入新密码' },
-    },
-  },
-  {
-    align: 'center',
-    span: 24,
-    itemRender: {
-      name: 'VxeButtonGroup',
-      options: [
-        { type: 'submit', content: '提交', status: 'primary' },
-        { type: 'reset', content: '取消' },
-      ],
-    },
-  },
-]);
-const showPopup = ref(false);
+};
+const submitting = ref(false);
+const handleBeforeClose = (done: () => void) =>
+  closePasswordDialogUnlessSubmitting(submitting.value, done);
 const handleSubmit = async () => {
-  const { oldPassword, newPassword } = fromData.value;
-  await changePassword({ oldPassword, newPassword });
-  showPopup.value = false;
-  ElMessage.success('密码修改成功，请重新登录');
-  emit('changed');
+  if (!formRef.value || submitting.value) return;
+  const valid = await formRef.value.validate().catch(() => false);
+  if (!valid) return;
+
+  submitting.value = true;
+  try {
+    const { oldPassword, newPassword } = formData;
+    await changePassword({ oldPassword, newPassword });
+    showPopup.value = false;
+    ElMessage.success('密码修改成功，请重新登录');
+    emit('changed');
+  } finally {
+    submitting.value = false;
+  }
 };
-const showPasswordPopup = () => {
-  fromData.value = {
-    oldPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-  };
-  showPopup.value = true;
-};
-defineExpose({ showPasswordPopup });
+watch(
+  showPopup,
+  (open) => {
+    if (!open) return;
+    formData.oldPassword = '';
+    formData.newPassword = '';
+    formData.confirmPassword = '';
+    nextTick(() => formRef.value?.clearValidate());
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
-  <div>
-    <vxe-modal v-model="showPopup" :height="300" :width="500" title="修改密码">
-      <template #default>
-        <vxe-form
-          :data="fromData"
-          :items="fromItems"
-          :rules="formRules"
-          :valid-config="{ theme: 'normal' }"
-          title-width="100"
-          @reset="showPopup = false"
-          @submit="handleSubmit"
+  <ElDialog
+    v-model="showPopup"
+    :before-close="handleBeforeClose"
+    :close-on-click-modal="false"
+    :close-on-press-escape="!submitting"
+    :show-close="!submitting"
+    title="修改密码"
+    :width="PASSWORD_DIALOG_WIDTH"
+  >
+    <ElForm
+      ref="formRef"
+      :model="formData"
+      :rules="formRules"
+      label-position="top"
+      @submit.prevent="handleSubmit"
+    >
+      <ElFormItem label="旧密码" prop="oldPassword">
+        <ElInput
+          v-model="formData.oldPassword"
+          autocomplete="current-password"
+          placeholder="请输入旧密码"
+          show-password
+          type="password"
         />
-      </template>
-    </vxe-modal>
-  </div>
-</template>
+      </ElFormItem>
+      <ElFormItem label="新密码" prop="newPassword">
+        <ElInput
+          v-model="formData.newPassword"
+          autocomplete="new-password"
+          placeholder="请输入新密码"
+          show-password
+          type="password"
+        />
+      </ElFormItem>
+      <ElFormItem label="确认密码" prop="confirmPassword">
+        <ElInput
+          v-model="formData.confirmPassword"
+          autocomplete="new-password"
+          placeholder="请再次输入新密码"
+          show-password
+          type="password"
+          @keyup.enter="handleSubmit"
+        />
+      </ElFormItem>
+    </ElForm>
 
-<style lang="scss" scoped></style>
+    <template #footer>
+      <ElButton :disabled="submitting" @click="showPopup = false">
+        取消
+      </ElButton>
+      <ElButton :loading="submitting" type="primary" @click="handleSubmit">
+        提交
+      </ElButton>
+    </template>
+  </ElDialog>
+</template>

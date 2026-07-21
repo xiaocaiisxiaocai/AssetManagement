@@ -602,6 +602,13 @@ public class RbacService : IRbacService
     public async Task<List<PermissionDto>> GetPermissionsAsync()
         => await _db.Permissions.OrderBy(x => x.Module).ThenBy(x => x.Code).Select(x => ToPermissionDto(x)).ToListAsync();
 
+    public async Task<RoleAccessOptionsDto> GetRoleAccessOptionsAsync()
+        => new()
+        {
+            Permissions = await GetPermissionsAsync(),
+            Menus = await GetMenusAsync()
+        };
+
     public async Task<PermissionDto> CreatePermissionAsync(PermissionDto request)
     {
         EnsureRequiredText(request.Code, 100, "权限编码");

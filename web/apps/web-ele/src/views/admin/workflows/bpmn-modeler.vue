@@ -20,6 +20,7 @@ import 'bpmn-js/dist/assets/diagram-js.css';
 interface Props {
   workflowId: number;
   initialXml?: string;
+  saving?: boolean;
 }
 
 defineOptions({ name: 'BpmnModeler' });
@@ -27,16 +28,23 @@ defineOptions({ name: 'BpmnModeler' });
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
-  save: [bpmnXml: string];
+  'exporting-change': [exporting: boolean];
+  save: [bpmnXml: string, onComplete: () => void];
 }>();
 
 const loading = ref(false);
-const saving = ref(false);
+const exporting = ref(false);
+const savePending = computed(() => exporting.value || props.saving);
 const containerRef = ref<HTMLDivElement>();
 const modeler = shallowRef<any>();
 const selectedElement = shallowRef<any>(null); // 当前选中的元素
 let branchNormalizationQueued = false;
 let isNormalizingBranches = false;
+
+function setExporting(value: boolean) {
+  exporting.value = value;
+  emit('exporting-change', value);
+}
 
 const elementTypeText = computed(() => {
   const type = selectedElement.value?.businessObject?.$type;
@@ -393,19 +401,23 @@ async function initModeler() {
 }
 
 async function handleSave() {
-  if (!modeler.value) return;
+  if (!modeler.value || savePending.value) return;
 
-  saving.value = true;
+  setExporting(true);
+  let handedOff = false;
   try {
     normalizeGatewayBranchLabels();
     if (!validateGatewayBranches()) return;
     const { xml } = await modeler.value.saveXML({ format: true });
-    emit('save', xml);
+    handedOff = true;
+    emit('save', xml, () => {
+      setExporting(false);
+    });
   } catch (error: any) {
     console.error('保存 BPMN XML 失败:', error);
     ElMessage.error(error.message || '保存失败');
   } finally {
-    saving.value = false;
+    if (!handedOff) setExporting(false);
   }
 }
 
@@ -522,7 +534,12 @@ onUnmounted(() => {
           <ElButton @click="handleZoomIn">放大</ElButton>
         </ElButtonGroup>
         <ElButton @click="handleDownload"> 下载 </ElButton>
-        <ElButton :loading="saving" type="primary" @click="handleSave">
+        <ElButton
+          :disabled="loading || savePending"
+          :loading="savePending"
+          type="primary"
+          @click="handleSave"
+        >
           保存
         </ElButton>
       </div>

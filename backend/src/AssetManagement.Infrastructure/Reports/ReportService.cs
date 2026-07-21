@@ -171,26 +171,26 @@ public class ReportService : IReportService
 
     public async Task<List<OverdueReportRow>> QueryOverdueAsync()
     {
+        var today = BusinessClock.TodayDateOnly;
         var flows = ApplyFlowScope(_db.ApprovalFlows.AsNoTracking())
             .Where(x => x.BizType == "borrow" && x.Status == "approved"
                         && x.ConfirmedAt == null && x.ReturnDate != null
+                        && x.ReturnDate < today
                         && _db.Assets.Any(asset => asset.Id == x.AssetId
                             && !asset.IsDeleted
                             && asset.Status == AssetStatus.Borrowed))
-            .OrderByDescending(x => x.ApplyTime);
-        var today = BusinessClock.Today;
-        var overdue = new List<(ApprovalFlow Flow, DateTime Due, int Days)>();
-        await foreach (var flow in flows.AsAsyncEnumerable())
+            .OrderByDescending(x => x.ApplyTime)
+            .Take(AppConstants.MaxExportRows + 1);
+        var overdueFlows = await flows.ToListAsync();
+        if (overdueFlows.Count > AppConstants.MaxExportRows)
+            throw new BizException(4130,
+                $"逾期数据不能超过 {AppConstants.MaxExportRows} 行，请先缩小数据范围");
+
+        var overdue = overdueFlows.Select(flow =>
         {
-            var due = ParseDate(flow.ReturnDate);
-            if (!due.HasValue || due.Value.Date >= today) continue;
-            overdue.Add((flow, due.Value.Date, (today - due.Value.Date).Days));
-            if (overdue.Count > AppConstants.MaxExportRows)
-            {
-                throw new BizException(4130,
-                    $"逾期数据不能超过 {AppConstants.MaxExportRows} 行，请先缩小数据范围");
-            }
-        }
+            var due = flow.ReturnDate!.Value;
+            return (Flow: flow, Due: due, Days: today.DayNumber - due.DayNumber);
+        }).ToList();
 
         return await ToOverdueRows(overdue);
     }
@@ -365,14 +365,14 @@ public class ReportService : IReportService
                 BorrowerId = hasCurrentCustodian ? currentCustodian!.Id : x.ApplicantId,
                 Borrower = hasCurrentCustodian ? currentCustodian!.Name : x.Applicant,
                 BorrowerDept = hasCurrentCustodian ? currentCustodian!.DepartmentName : x.ApplicantDept,
-                ReturnDate = x.ReturnDate,
+                ReturnDate = FormatDate(x.ReturnDate),
                 ApplyTime = x.ApplyTime,
                 Status = x.ConfirmedAt.HasValue ? "returned" : "borrowed"
             };
         }).ToList();
     }
 
-    private async Task<List<OverdueReportRow>> ToOverdueRows(List<(ApprovalFlow Flow, DateTime Due, int Days)> overdue)
+    private async Task<List<OverdueReportRow>> ToOverdueRows(List<(ApprovalFlow Flow, DateOnly Due, int Days)> overdue)
     {
         var assetIds = overdue.Select(x => x.Flow.AssetId).Distinct().ToArray();
         var assets = await ApplyAssetScope(_db.Assets.AsNoTracking())
@@ -397,7 +397,7 @@ public class ReportService : IReportService
                 BorrowerId = hasCurrentCustodian ? currentCustodian!.Id : x.Flow.ApplicantId,
                 Borrower = hasCurrentCustodian ? currentCustodian!.Name : x.Flow.Applicant,
                 BorrowerDept = hasCurrentCustodian ? currentCustodian!.DepartmentName : x.Flow.ApplicantDept,
-                ReturnDate = x.Due.ToString("yyyy-MM-dd"),
+                ReturnDate = FormatDate(x.Due)!,
                 OverdueDays = x.Days,
                 IsSerious = x.Days > 10
             };
@@ -450,8 +450,8 @@ public class ReportService : IReportService
         return current;
     }
 
-    private static DateTime? ParseDate(string? text)
-        => DateTime.TryParse(text, CultureInfo.InvariantCulture, out var date) ? date.Date : null;
+    private static string? FormatDate(DateOnly? value)
+        => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private async Task<Dictionary<int, CurrentCustodianDisplay>> CurrentCustodiansByAssetAsync(
         IEnumerable<Asset> assets)

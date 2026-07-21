@@ -89,17 +89,15 @@ namespace AssetManagement.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
-                    b.Property<string>("OriginalReturnDate")
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
+                    b.Property<DateOnly?>("OriginalReturnDate")
+                        .HasColumnType("date");
 
                     b.Property<string>("Reason")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
-                    b.Property<string>("ReturnDate")
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
+                    b.Property<DateOnly?>("ReturnDate")
+                        .HasColumnType("date");
 
                     b.Property<uint>("RowVersion")
                         .IsConcurrencyToken()
@@ -135,6 +133,8 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.HasIndex("ApplicantId");
 
                     b.HasIndex("AssetId");
+
+                    b.HasIndex("BizType", "Status", "ConfirmedAt", "ReturnDate");
 
                     b.HasIndex("FlowNo")
                         .IsUnique();
@@ -734,7 +734,11 @@ namespace AssetManagement.Infrastructure.Migrations
                     b.HasIndex("IdempotencyKey")
                         .IsUnique();
 
+                    b.HasIndex("UserId", "CreatedAt", "Id");
+
                     b.HasIndex("UserId", "IsRead");
+
+                    b.HasIndex("UserId", "IsRead", "CreatedAt", "Id");
 
                     b.ToTable("notifications", (string)null);
                 });

@@ -185,7 +185,7 @@ public class WorkflowService : IWorkflowService
         if (workflow.BizType == "transfer" && request.TransfereeId == applicantId)
             throw new BizException(4001, "接收人不能与申请人相同");
         var returnDate = ValidateReturnDate(workflow.BizType, request.ReturnDate);
-        string? originalReturnDate = null;
+        DateOnly? originalReturnDate = null;
         var transferee = request.TransfereeId.HasValue
             ? await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.TransfereeId.Value && x.IsActive)
             : null;
@@ -245,10 +245,7 @@ public class WorkflowService : IWorkflowService
                 .FirstOrDefaultAsync();
             if (originalReturnDate is null)
                 throw new BizException(4055, "未找到当前有效借用记录，无法申请延期");
-            if (!DateOnly.TryParseExact(originalReturnDate, "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                    DateTimeStyles.None, out var originalDate))
-                throw new BizException(4090, "原借用记录的归还日期无效，请联系管理员处理");
-            if (DateOnly.ParseExact(returnDate!, "yyyy-MM-dd", CultureInfo.InvariantCulture) <= originalDate)
+            if (returnDate <= originalReturnDate)
                 throw new BizException(4001, "新归还日期必须晚于原应归还日期");
         }
 
@@ -308,17 +305,8 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4056, "该资产已有进行中的审批,请勿重复发起");
         }
         await AddRecord(flow.Id, "start", applicant.Id, applicant.Name, request.Reason);
+        await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{asset.Name} 的{BizTypeLabel(workflow.BizType)}申请");
         await tx.CommitAsync();
-
-        // 业务已提交，通知失败只记告警，避免把成功发起回滚成接口失败。
-        try
-        {
-            await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{asset.Name} 的{BizTypeLabel(workflow.BizType)}申请");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "通知发送失败，不影响审批发起结果");
-        }
 
         return await ToFlowDtoAsync(flow);
     }
@@ -560,47 +548,41 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
         }
         await AddRecord(id, "approve", user.Id, user.Name, $"节点 {nodeId}: {request.Opinion}", nodeId);
-        await tx.CommitAsync();
 
         // 流程完成 → 通知申请人；未完成 → 通知下一审批节点的审批人
-        try
+        if (flow.Status == "approved")
         {
-            if (flow.Status == "approved")
+            var notifications = new List<CreateNotificationRequest>
             {
-                var notifications = new List<CreateNotificationRequest>
+                new()
                 {
-                    new()
-                    {
-                        Type = "approval_approved",
-                        Title = $"审批通过：{flow.AssetName}",
-                        Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请已通过审批。",
-                        FlowId = id,
-                        UserId = flow.ApplicantId,
-                    }
-                };
-                if (flow.BizType == "transfer" && flow.TransfereeId.HasValue && flow.TransfereeId.Value != flow.ApplicantId)
-                {
-                    notifications.Add(new CreateNotificationRequest
-                    {
-                        Type = "transfer_received",
-                        Title = $"资产已转让给您：{flow.AssetName}",
-                        Body = $"资产 {flow.AssetNo}（{flow.AssetName}）已完成转让审批，当前保管人为您。",
-                        FlowId = id,
-                        UserId = flow.TransfereeId.Value,
-                        IdempotencyKey = $"transfer_received_{id}_{flow.TransfereeId.Value}"
-                    });
+                    Type = "approval_approved",
+                    Title = $"审批通过：{flow.AssetName}",
+                    Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请已通过审批。",
+                    FlowId = id,
+                    UserId = flow.ApplicantId,
+                    IdempotencyKey = $"approval_approved_{id}_{flow.ApplicantId}"
                 }
-                await _notifications.CreateBatchAsync(notifications);
-            }
-            else if (flow.Status == "pending")
+            };
+            if (flow.BizType == "transfer" && flow.TransfereeId.HasValue && flow.TransfereeId.Value != flow.ApplicantId)
             {
-                await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{flow.AssetName} 的{BizTypeLabel(flow.BizType)}申请");
+                notifications.Add(new CreateNotificationRequest
+                {
+                    Type = "transfer_received",
+                    Title = $"资产已转让给您：{flow.AssetName}",
+                    Body = $"资产 {flow.AssetNo}（{flow.AssetName}）已完成转让审批，当前保管人为您。",
+                    FlowId = id,
+                    UserId = flow.TransfereeId.Value,
+                    IdempotencyKey = $"transfer_received_{id}_{flow.TransfereeId.Value}"
+                });
             }
+            await _notifications.CreateBatchAsync(notifications);
         }
-        catch (Exception ex)
+        else if (flow.Status == "pending")
         {
-            _logger.LogWarning(ex, "通知发送失败，不影响审批结果");
+            await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{flow.AssetName} 的{BizTypeLabel(flow.BizType)}申请");
         }
+        await tx.CommitAsync();
 
         return await ToFlowDtoAsync(flow);
     }
@@ -642,29 +624,21 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
         }
         await AddRecord(id, "reject", user.Id, user.Name, request.Reason, nodeId);
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "approval_rejected",
+            Title = $"审批驳回：{flow.AssetName}",
+            Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请被驳回。原因：{request.Reason}",
+            FlowId = id,
+            UserId = flow.ApplicantId,
+            IdempotencyKey = $"approval_rejected_{id}_{flow.ApplicantId}"
+        });
         await tx.CommitAsync();
-
-        // 通知申请人审批被驳回
-        try
-        {
-            await _notifications.CreateAsync(new CreateNotificationRequest
-            {
-                Type = "approval_rejected",
-                Title = $"审批驳回：{flow.AssetName}",
-                Body = $"您发起的 {flow.AssetName}（{flow.AssetNo}）{BizTypeLabel(flow.BizType)}申请被驳回。原因：{request.Reason}",
-                FlowId = id,
-                UserId = flow.ApplicantId,
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "通知发送失败，不影响审批结果");
-        }
 
         return await ToFlowDtoAsync(flow);
     }
 
-    private static string? ValidateReturnDate(string bizType, string? value)
+    private static DateOnly? ValidateReturnDate(string bizType, string? value)
     {
         if (bizType is not ("borrow" or "extension")) return null;
         if (string.IsNullOrWhiteSpace(value))
@@ -676,7 +650,7 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4001, "归还日期格式必须为 yyyy-MM-dd");
         if (returnDate <= BusinessClock.TodayDateOnly)
             throw new BizException(4001, "归还日期必须晚于今天");
-        return returnDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        return returnDate;
     }
 
     private static void ValidateAssetCanStartFlow(Asset asset, string bizType, int applicantId)
@@ -783,28 +757,21 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
         }
         await AddRecord(id, "add_sign", user.Id, user.Name, $"节点 {nodeId}: 加签 {signUser.Name}", nodeId);
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "approval_pending",
+            Title = $"待审批加签：{flow.AssetName}",
+            Body = $"{user.Name} 已将您加签到资产 {flow.AssetNo}（{flow.AssetName}）的审批节点，请及时处理。",
+            FlowId = flow.Id,
+            UserId = signUser.Id,
+            IdempotencyKey = NotificationIdempotencyKeys.PendingApproval(
+                "approval_pending",
+                flow.Id,
+                nodeId,
+                signUser.Id,
+                addSignNotificationVersion),
+        });
         await tx.CommitAsync();
-        try
-        {
-            await _notifications.CreateAsync(new CreateNotificationRequest
-            {
-                Type = "approval_pending",
-                Title = $"待审批加签：{flow.AssetName}",
-                Body = $"{user.Name} 已将您加签到资产 {flow.AssetNo}（{flow.AssetName}）的审批节点，请及时处理。",
-                FlowId = flow.Id,
-                UserId = signUser.Id,
-                IdempotencyKey = NotificationIdempotencyKeys.PendingApproval(
-                    "approval_pending",
-                    flow.Id,
-                    nodeId,
-                    signUser.Id,
-                    addSignNotificationVersion),
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "加签通知发送失败，不影响加签结果");
-        }
         return await ToFlowDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
@@ -853,11 +820,8 @@ public class WorkflowService : IWorkflowService
         return await ToFlowDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
-    public async Task<ApprovalFlowDto> TransferSignAsync(int id, TransferSignRequest request, int userId)
-    {
-        // 转签功能暂不支持
-        throw new BizException(4054, "BPMN 模式下暂不支持转签功能");
-    }
+    public Task<ApprovalFlowDto> TransferSignAsync(int id, TransferSignRequest request, int userId)
+        => Task.FromException<ApprovalFlowDto>(new BizException(4054, "BPMN 模式下暂不支持转签功能"));
 
     public async Task<ApprovalFlowDto> ConfirmReturnAsync(int id, int userId)
     {
@@ -916,24 +880,16 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4090, "操作冲突，该归还单已被处理，请刷新后重试");
         }
         await AddRecord(id, "confirm_return", user.Id, user.Name, "确认归还接收");
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "return_confirmed",
+            Title = $"归还接收确认：{flow.AssetName}",
+            Body = $"您借用的 {flow.AssetName}（{flow.AssetNo}）已确认接收归还。",
+            FlowId = id,
+            UserId = returningCustodianId ?? flow.ApplicantId,
+            IdempotencyKey = $"return_confirmed_{id}_{returningCustodianId ?? flow.ApplicantId}"
+        });
         await tx.CommitAsync();
-
-        // 通知借用人资产已确认归还
-        try
-        {
-            await _notifications.CreateAsync(new CreateNotificationRequest
-            {
-                Type = "return_confirmed",
-                Title = $"归还接收确认：{flow.AssetName}",
-                Body = $"您借用的 {flow.AssetName}（{flow.AssetNo}）已确认接收归还。",
-                FlowId = id,
-                UserId = returningCustodianId ?? flow.ApplicantId,
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "通知发送失败，不影响接收确认结果");
-        }
 
         return await ToFlowDtoAsync(flow);
     }
@@ -963,10 +919,10 @@ public class WorkflowService : IWorkflowService
         }
         if (!string.IsNullOrWhiteSpace(filter.ReturnDate))
         {
-            var returnDate = filter.ReturnDate.Trim();
-            if (!DateOnly.TryParseExact(returnDate, "yyyy-MM-dd",
+            var returnDateText = filter.ReturnDate.Trim();
+            if (!DateOnly.TryParseExact(returnDateText, "yyyy-MM-dd",
                     System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.None, out _))
+                    System.Globalization.DateTimeStyles.None, out var returnDate))
                 throw new BizException(4001, "归还日期格式必须为 yyyy-MM-dd");
             query = query.Where(flow => flow.ReturnDate == returnDate);
         }
@@ -1691,6 +1647,9 @@ public class WorkflowService : IWorkflowService
     internal static string? Truncate(string? value, int maxLength)
         => string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value[..maxLength];
 
+    private static string? FormatDate(DateOnly? value)
+        => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
     private static WorkflowDto ToWorkflowDto(WorkflowEntity w)
     {
         var errors = ValidateWorkflowBpmnForStatus(w.BpmnXml);
@@ -2044,8 +2003,8 @@ public class WorkflowService : IWorkflowService
         Transferee = f.Transferee,
         TransfereeDept = f.TransfereeDept,
         Reason = f.Reason,
-        OriginalReturnDate = f.OriginalReturnDate,
-        ReturnDate = f.ReturnDate,
+        OriginalReturnDate = FormatDate(f.OriginalReturnDate),
+        ReturnDate = FormatDate(f.ReturnDate),
         Status = f.Status,
         CurrentNodeIds = f.CurrentNodeIds,
         ActionableNodeIds = actionableNodeIds?.ToList() ?? new List<string>(),

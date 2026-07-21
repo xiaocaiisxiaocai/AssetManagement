@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `backend/` — **正式后端**:ASP.NET Core 8 + EF Core + MySQL 5.7,DDD 四层架构,JWT + 权限码鉴权,可配置审批工作流引擎。当前活跃开发对象。
 - `web/` — **正式前端**:基于 vue-vben-admin 5.x 的 monorepo(pnpm + turbo)。实际开发的应用是 `apps/web-ele`(Vue 3 + Element Plus);`web-antd`、`web-naive` 为上游模板自带,**不使用**。
-- `docs/` — 需求/设计/实施规划文档(`.md` 与 `.pdf` 并存,**修改以 `.md` 为准**)。审批与多部门设计见 `docs/审批工作流设计.md`、`docs/多部门预留设计.md`;路线图见 `docs/全栈实施规划.md` 与 `docs/plans/`。**注意**:`docs/` 下有大量过程性报告(`BPMN-*报告.md`、`*-报告-2026-06-2x.md`、`*测试报告*.md` 等)属历史快照,**仅供追溯,勿当作现行规范**;权威设计以 `审批工作流设计.md`、`架构设计文档.md`、`全栈实施规划.md` 与 `docs/plans/` 为准。
+- `docs/` — 需求/设计文档(`.md` 与 `.pdf` 并存,**修改以 `.md` 为准**)。现行业务口径以 `需求文档.md`、`审批工作流设计.md`、`多部门预留设计.md` 为准，现行运行与部署口径以本文件和 `deploy/README-部署.md` 为准。`docs/全栈实施规划.md`、`docs/plans/`、过程性报告及测试报告均是特定日期的历史快照，**仅供追溯,勿当作当前技术栈、完成度或测试基线**。
 - `prototype/` — 早期纯静态 HTML 原型(零依赖),仅作参考,新功能不在此实现。
 - `deploy/` — 内网部署说明、生产配置样例、数据库备份脚本(部署方案见 `deploy/README-部署.md`)。
 
@@ -344,7 +344,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ### 数据库备份
 
-- **`IDatabaseBackupService`/`DatabaseBackupService`**:调用 `mysqldump`(可执行文件路径可配,默认 `mysqldump`)导出 `assetmgmt_<时间戳>.sql`,再由 **`DatabaseBackupPackageBuilder`** 打包成含 `database/*.sql` + `attachments/`(复用 `Attachment:Path` 上传目录,默认 `App_Data/uploads`)的完整 ZIP 备份包 `assetmgmt_<时间戳>.zip`。备份目录取系统参数 `database_backup_path`(默认 `Backups/`,即 `AssetManagement.Api/Backups`)。
+- **`IDatabaseBackupService`/`DatabaseBackupService`**:调用 `mysqldump`(可执行文件路径可配,默认 `mysqldump`)生成临时 SQL,再由 **`DatabaseBackupPackageBuilder`** 打包成含 `database/*.sql` + `attachments/`(复用 `Attachment:Path` 上传目录,默认 `App_Data/uploads`)的完整 ZIP 备份包 `assetmgmt_<时间戳>.zip`;ZIP 成功发布后立即删除临时明文 SQL。备份目录取系统参数 `database_backup_path`(默认 `Backups/`,即 `AssetManagement.Api/Backups`)。
 - **`DatabaseBackupWorker`**(`BackgroundService`):按 `database_backup_time`(默认 `02:00`)每日定时备份,`database_backup_enabled` 可关闭。
 - **`DatabaseBackupController`**(`api/database-backups`,全部 `[HasPermission("backup:manage")]`):`GET` 列出备份文件、`POST` 立即备份、`GET /{fileName}/download` 下载。
 
@@ -357,7 +357,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 ### 权限码、后台任务与前端
 
 - **新增权限码**:`backup:manage`(数据库备份)、`audit:export`(导出审计)、`audit:cleanup`(清理审计);连同已有 `audit:view` 由 `DbSeeder` 授予 `admin`。
-- **`Program.cs` 共注册四个 `BackgroundService`**:`OverdueNotificationWorker`、`PendingApprovalReminderWorker`、`DatabaseBackupWorker`、`AuditCleanupWorker`。
+- **`Program.cs` 共注册五个 `BackgroundService`**:`OverdueNotificationWorker`、`PendingApprovalReminderWorker`、`DatabaseBackupWorker`、`AuditCleanupWorker`、`OrphanImageCleanupWorker`。
 - **前端**:`views/admin/backups/index.vue`(备份列表 + 立即备份 + 下载);审计日志查询/导出/清理入口在 `views/admin/audit`。
 
 ## 后端测试
@@ -451,7 +451,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通。2026-07-19 全链路并发、权限、时区和数据完整性加固后，后端 **359 个**测试、前端 **359 个**单元测试及类型检查均通过。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通。截至 2026-07-21，可靠性、HTTP 错误语义、权限边界、MySQL 5.7 数据迁移与前端交互加固后，后端 **521 个**测试、前端 **471 个**单元测试及全仓类型检查均通过；后端集成测试要求提供独立 MySQL 测试库配置。
 
 最新里程碑(2026-06-17 ~ 2026-06-30):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)

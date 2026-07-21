@@ -28,16 +28,17 @@ public class LoginRateLimitTests : IClassFixture<TestWebAppFactory>
         {
             var response = await client.PostAsJsonAsync("/api/auth/login", new
             {
-                employeeNo = $"missing-{i}",
-                password = "invalid"
+                employeeNo = "1001",
+                password = "123456"
             });
-            response.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+            response.StatusCode.Should().Be(HttpStatusCode.OK,
+                "前 10 次有效登录应由端点固定窗口限流器放行");
         }
 
         var limited = await client.PostAsJsonAsync("/api/auth/login", new
         {
-            employeeNo = "missing-final",
-            password = "invalid"
+            employeeNo = "1001",
+            password = "123456"
         });
 
         limited.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);

@@ -15,7 +15,11 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         b.Property(x => x.Body).HasMaxLength(500).IsRequired();
         b.Property(x => x.IdempotencyKey).HasMaxLength(100);
         b.HasIndex(x => x.IdempotencyKey).IsUnique();
+        // MySQL/InnoDB may bind the UserId foreign key to this physical index.
+        // Keep it even though the wider query index has the same left prefix.
         b.HasIndex(x => new { x.UserId, x.IsRead });
+        b.HasIndex(x => new { x.UserId, x.CreatedAt, x.Id });
+        b.HasIndex(x => new { x.UserId, x.IsRead, x.CreatedAt, x.Id });
         b.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
     }
 }

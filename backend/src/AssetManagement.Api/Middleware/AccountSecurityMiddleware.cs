@@ -33,13 +33,19 @@ public sealed class AccountSecurityMiddleware
             return;
         }
 
+        // 这里只需要刷新声明，不应为每个请求构造完整且被跟踪的用户/RBAC 实体图。
+        // 使用只读投影可显著减少传输列、对象分配和 ChangeTracker 压力，同时仍保持权限即时撤销语义。
         var user = await db.Users
-            .AsSplitQuery()
-            .Include(x => x.UserRoles)
-            .ThenInclude(x => x.Role)
-            .ThenInclude(x => x.RolePermissions)
-            .ThenInclude(x => x.Permission)
-            .SingleOrDefaultAsync(x => x.Id == userId && x.IsActive);
+            .AsNoTracking()
+            .Where(x => x.Id == userId && x.IsActive)
+            .Select(x => new
+            {
+                x.Id,
+                x.EmployeeNo,
+                x.DepartmentId,
+                x.TokenVersion,
+            })
+            .SingleOrDefaultAsync();
         if (user is null)
         {
             await RejectAsync(context, StatusCodes.Status401Unauthorized, 4011, "账号不存在或已禁用");
@@ -53,17 +59,18 @@ public sealed class AccountSecurityMiddleware
             return;
         }
 
-        var activeRoles = user.UserRoles
-            .Select(x => x.Role)
-            .Where(x => x.IsActive)
-            .ToList();
-        if (activeRoles.Count == 0)
+        var roleCodes = await db.UserRoles
+            .AsNoTracking()
+            .Where(x => x.UserId == userId && x.Role.IsActive)
+            .Select(x => x.Role.Code)
+            .Distinct()
+            .ToArrayAsync();
+        if (roleCodes.Length == 0)
         {
             await RejectAsync(context, StatusCodes.Status401Unauthorized, 4012, "账号角色已禁用，请重新登录");
             return;
         }
 
-        var roleCodes = activeRoles.Select(x => x.Code).Distinct(StringComparer.Ordinal).ToArray();
         if (!roleCodes.Contains("admin", StringComparer.Ordinal)
             && roleCodes.Contains("supervisor", StringComparer.Ordinal)
             && (!user.DepartmentId.HasValue
@@ -73,10 +80,15 @@ public sealed class AccountSecurityMiddleware
             return;
         }
 
+        var permissionCodes = await db.UserRoles
+            .AsNoTracking()
+            .Where(x => x.UserId == userId && x.Role.IsActive)
+            .SelectMany(x => x.Role.RolePermissions.Select(permission => permission.Permission.Code))
+            .Distinct()
+            .ToArrayAsync();
+
         RefreshPrincipal(context, user.Id, user.EmployeeNo, user.DepartmentId, user.TokenVersion, roleCodes,
-            activeRoles.SelectMany(x => x.RolePermissions)
-                .Select(x => x.Permission.Code)
-                .Distinct(StringComparer.Ordinal));
+            permissionCodes);
 
         await _next(context);
     }

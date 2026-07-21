@@ -57,7 +57,7 @@ public class AuthService : IAuthService
         if (credential is null || !passwordMatches || !credential.IsActive)
         {
             RecordLoginFailure(accountKey, ipKey);
-            throw new BizException(4011, "工号或密码错误");
+            throw new BizException(4011, "工号或密码错误", 401);
         }
 
         // 历史标准 bcrypt 哈希在首次成功登录时无感升级为带标记的 SHA-384 预哈希格式。
@@ -72,7 +72,7 @@ public class AuthService : IAuthService
             if (upgraded != 1)
             {
                 RecordLoginFailure(accountKey, ipKey);
-                throw new BizException(4011, "工号或密码错误");
+                throw new BizException(4011, "工号或密码错误", 401);
             }
             verifiedPasswordHash = upgradedHash;
         }
@@ -91,7 +91,7 @@ public class AuthService : IAuthService
         if (user is null)
         {
             RecordLoginFailure(accountKey, ipKey);
-            throw new BizException(4011, "工号或密码错误");
+            throw new BizException(4011, "工号或密码错误", 401);
         }
 
         // 登录成功，清除失败计数
@@ -107,14 +107,14 @@ public class AuthService : IAuthService
             .ToList();
         if (activeRoles.Count == 0)
         {
-            throw new BizException(4012, "账号角色已禁用，请联系系统管理员");
+            throw new BizException(4012, "账号角色已禁用，请联系系统管理员", 401);
         }
         if (!activeRoles.Any(x => x.Code == "admin")
             && activeRoles.Any(x => x.Code == "supervisor")
             && (!user.DepartmentId.HasValue
                 || !await _db.Departments.AnyAsync(x => x.Id == user.DepartmentId.Value && x.IsActive)))
         {
-            throw new BizException(4013, "所属部门已停用，请联系系统管理员");
+            throw new BizException(4013, "所属部门已停用，请联系系统管理员", 403);
         }
 
         var roleCodes = activeRoles

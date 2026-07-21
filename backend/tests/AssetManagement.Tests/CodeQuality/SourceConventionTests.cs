@@ -87,21 +87,33 @@ public class SourceConventionTests
     }
 
     [Fact]
-    public void Post_commit_notifications_are_guarded_and_logged()
+    public void Transactional_notifications_are_written_before_commit_and_not_swallowed()
     {
         var root = FindRepositoryRoot();
         var workflowSource = File.ReadAllText(Path.Combine(root, "backend", "src", "AssetManagement.Infrastructure", "Workflow", "WorkflowService.cs"));
         var materialSource = File.ReadAllText(Path.Combine(root, "backend", "src", "AssetManagement.Infrastructure", "TestMaterials", "MaterialFlowService.cs"));
 
-        ExtractMethod(workflowSource, "public async Task<ApprovalFlowDto> StartAsync")
-            .Should().Contain("try")
-            .And.Contain("NotifyCurrentApproversAsync")
-            .And.Contain("_logger.LogWarning", "发起审批已提交后，通知失败只能记录告警，不能反向打失败业务接口");
+        var workflowStart = ExtractMethod(workflowSource, "public async Task<ApprovalFlowDto> StartAsync");
+        workflowStart.Should().Contain("NotifyCurrentApproversAsync").And.Contain("await tx.CommitAsync()");
+        workflowStart.IndexOf("NotifyCurrentApproversAsync", StringComparison.Ordinal)
+            .Should().BeLessThan(workflowStart.IndexOf("await tx.CommitAsync()", StringComparison.Ordinal),
+                "审批单、记录和通知必须由同一事务原子提交");
+        workflowStart.Should().NotContain("catch (Exception",
+            "通知写入失败必须向外传播并回滚业务事务，不能降级为仅记录告警");
 
-        ExtractMethod(materialSource, "public async Task<MaterialFlowDto> InitiateTransferAsync")
-            .Should().Contain("try")
+        var materialStart = ExtractMethod(materialSource, "public async Task<MaterialFlowDto> InitiateTransferAsync");
+        materialStart.Should().Contain("_notifications.CreateAsync")
+            .And.Contain("await tx.CommitAsync()")
             .And.Contain("NotifyCurrentApproversAsync")
-            .And.Contain("_logger.LogWarning", "料件流转已提交后，通知失败只能记录告警，不能反向打失败业务接口");
+            .And.Contain("await bpmnTx.CommitAsync()");
+        materialStart.IndexOf("_notifications.CreateAsync", StringComparison.Ordinal)
+            .Should().BeLessThan(materialStart.IndexOf("await tx.CommitAsync()", StringComparison.Ordinal),
+                "直接流转与接收通知必须由同一事务原子提交");
+        materialStart.IndexOf("NotifyCurrentApproversAsync", StringComparison.Ordinal)
+            .Should().BeLessThan(materialStart.IndexOf("await bpmnTx.CommitAsync()", StringComparison.Ordinal),
+                "审批流转与待办通知必须由同一事务原子提交");
+        materialStart.Should().NotContain("catch (Exception",
+            "通知写入失败必须向外传播并回滚业务事务，不能降级为仅记录告警");
     }
 
     [Fact]
@@ -230,6 +242,25 @@ public class SourceConventionTests
     }
 
     [Fact]
+    public void Action_attribute_parser_ignores_comments_without_losing_the_action_block()
+    {
+        const string source = """
+            [HttpPut("{id:int}/progress")]
+            // [HasPermission("fake:permission")] 不能让注释伪装成真实授权属性。
+            [Authorize]
+            public async Task<object> UpdateProgress(int id)
+                => await Task.FromResult<object>(id);
+            """;
+
+        var block = ExtractActionAttributeBlocks(source).Should().ContainSingle().Subject;
+
+        block.Should().Contain("[HttpPut(");
+        block.Should().Contain("[Authorize]");
+        block.Should().NotContain("fake:permission");
+        ActionName(block).Should().Be("UpdateProgress");
+    }
+
+    [Fact]
     public void Business_controller_actions_do_not_use_plain_authorize_without_permission_code()
     {
         var root = FindRepositoryRoot();
@@ -253,7 +284,8 @@ public class SourceConventionTests
             "TestMaterialController.cs:Update",
             "TestProjectController.cs:CreateFollowup",
             "TestProjectController.cs:UpdateFollowup",
-            "TestProjectController.cs:DeleteFollowup"
+            "TestProjectController.cs:DeleteFollowup",
+            "TestProjectController.cs:UpdateProgress"
         };
 
         var offenders = Directory
@@ -322,9 +354,33 @@ public class SourceConventionTests
     {
         var lines = source.Replace("\r\n", "\n").Split('\n');
         var buffer = new List<string>();
+        var inBlockComment = false;
         foreach (var line in lines)
         {
             var trimmed = line.TrimStart();
+            if (buffer.Count > 0)
+            {
+                if (inBlockComment)
+                {
+                    if (trimmed.Contains("*/", StringComparison.Ordinal))
+                    {
+                        inBlockComment = false;
+                    }
+                    continue;
+                }
+
+                if (trimmed.StartsWith("/*", StringComparison.Ordinal))
+                {
+                    inBlockComment = !trimmed.Contains("*/", StringComparison.Ordinal);
+                    continue;
+                }
+
+                if (trimmed.Length == 0 || trimmed.StartsWith("//", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+            }
+
             if (trimmed.StartsWith("[", StringComparison.Ordinal))
             {
                 buffer.Add(line);

@@ -26,6 +26,12 @@ public class RoleController : ControllerBase
     public async Task<ApiResult<RoleDto>> Get(int id)
         => ApiResult<RoleDto>.Ok(await _rbac.GetRoleAsync(id));
 
+    [HttpGet("access-options")]
+    [HasPermission("role:assign-permission")]
+    [HasPermission("role:assign-menu")]
+    public async Task<ApiResult<RoleAccessOptionsDto>> AccessOptions()
+        => ApiResult<RoleAccessOptionsDto>.Ok(await _rbac.GetRoleAccessOptionsAsync());
+
     [HttpPost]
     [HasPermission("role:create")]
     public async Task<ApiResult<RoleDto>> Create(CreateRoleRequest request)

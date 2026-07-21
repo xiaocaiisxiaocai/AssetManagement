@@ -61,8 +61,11 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
         deleted!.Code.Should().Be(0);
         deleted.Data.Should().BeTrue();
 
-        var getDeleted = await _client.GetFromJsonAsync<ApiResult<WorkflowDto>>($"/api/workflows/{created.Data.Id}");
+        var getDeletedResponse = await _client.GetAsync($"/api/workflows/{created.Data.Id}");
+        getDeletedResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var getDeleted = await getDeletedResponse.Content.ReadFromJsonAsync<ApiResult<WorkflowDto>>();
         getDeleted!.Code.Should().Be(4049);
+        getDeleted.Message.Should().Be("流程不存在");
     }
 
     [Fact]
@@ -117,19 +120,25 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Theory]
-    [InlineData(101, 1)]
-    [InlineData(1, 51)]
-    public async Task Workflow_create_rejects_text_longer_than_database_limit(int nameLength, int bizTypeLength)
+    [InlineData(101, 1, "The field Name must be a string or array type with a maximum length of '100'.")]
+    [InlineData(1, 51, "The field BizType must be a string or array type with a maximum length of '50'.")]
+    public async Task Workflow_create_rejects_text_longer_than_database_limit(
+        int nameLength,
+        int bizTypeLength,
+        string expectedMessage)
     {
         await Login();
 
-        var result = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        var response = await _client.PostAsJsonAsync("/api/workflows", new SaveWorkflowRequest
         {
             Name = new string('流', nameLength),
             BizType = new string('b', bizTypeLength)
         });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var result = await response.Content.ReadFromJsonAsync<ApiResult<WorkflowDto>>();
 
-        result.Code.Should().Be(4001);
+        result!.Code.Should().Be(4001);
+        result.Message.Should().Be(expectedMessage);
     }
 
     [Fact]
@@ -137,14 +146,16 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
 
-        var result = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        var response = await _client.PostAsJsonAsync("/api/workflows", new SaveWorkflowRequest
         {
             Name = Unique("超长BPMN"),
             BizType = Unique("large_bpmn"),
             BpmnXml = new string('中', 21_846)
         });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var result = await response.Content.ReadFromJsonAsync<ApiResult<WorkflowDto>>();
 
-        result.Code.Should().Be(4001);
+        result!.Code.Should().Be(4001);
         result.Message.Should().Contain("65535");
     }
 
@@ -252,15 +263,17 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
             Name = Unique("仅创建元数据"),
             BizType = Unique("create_only")
         });
-        var embeddedDesign = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        var embeddedDesignResponse = await _client.PostAsJsonAsync("/api/workflows", new SaveWorkflowRequest
         {
             Name = Unique("越权流程图"),
             BizType = Unique("design_bypass"),
             BpmnXml = SimpleBpmn()
         });
+        embeddedDesignResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var embeddedDesign = await embeddedDesignResponse.Content.ReadFromJsonAsync<ApiResult<WorkflowDto>>();
 
         metadataOnly.Code.Should().Be(0);
-        embeddedDesign.Code.Should().Be(4030);
+        embeddedDesign!.Code.Should().Be(4030);
         embeddedDesign.Message.Should().Contain("流程设计权限");
     }
 
@@ -335,13 +348,15 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
             BizType = bizType
         });
 
-        var reEnableFirst = await Post<ApiResult<WorkflowDto>>($"/api/workflows/{first.Data.Id}/status", new
+        var reEnableFirstResponse = await _client.PostAsJsonAsync($"/api/workflows/{first.Data.Id}/status", new
         {
             isActive = true
         });
+        reEnableFirstResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var reEnableFirst = await reEnableFirstResponse.Content.ReadFromJsonAsync<ApiResult<WorkflowDto>>();
 
         second.Code.Should().Be(0);
-        reEnableFirst.Code.Should().Be(4094);
+        reEnableFirst!.Code.Should().Be(4094);
         reEnableFirst.Message.Should().Contain("业务类型已有启用流程");
     }
 
@@ -386,13 +401,15 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
             BizType = Unique("name1")
         });
 
-        var duplicated = await Post<ApiResult<WorkflowDto>>("/api/workflows", new SaveWorkflowRequest
+        var duplicatedResponse = await _client.PostAsJsonAsync("/api/workflows", new SaveWorkflowRequest
         {
             Name = name,
             BizType = Unique("name2")
         });
+        duplicatedResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var duplicated = await duplicatedResponse.Content.ReadFromJsonAsync<ApiResult<WorkflowDto>>();
 
-        duplicated.Code.Should().Be(4094);
+        duplicated!.Code.Should().Be(4094);
         duplicated.Message.Should().Be("流程名称已存在");
     }
 
@@ -412,13 +429,15 @@ public class WorkflowCrudApiTests : IClassFixture<TestWebAppFactory>
             BizType = Unique("edit2")
         });
 
-        var duplicated = await Put<ApiResult<WorkflowDto>>($"/api/workflows/{second.Data!.Id}", new SaveWorkflowRequest
+        var duplicatedResponse = await _client.PutAsJsonAsync($"/api/workflows/{second.Data!.Id}", new SaveWorkflowRequest
         {
             Name = first.Data!.Name,
             BizType = second.Data.BizType
         });
+        duplicatedResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var duplicated = await duplicatedResponse.Content.ReadFromJsonAsync<ApiResult<WorkflowDto>>();
 
-        duplicated.Code.Should().Be(4094);
+        duplicated!.Code.Should().Be(4094);
         duplicated.Message.Should().Be("流程名称已存在");
     }
 

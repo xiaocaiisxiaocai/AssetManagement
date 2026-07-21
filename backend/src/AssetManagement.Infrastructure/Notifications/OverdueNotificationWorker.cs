@@ -55,13 +55,16 @@ public class OverdueNotificationWorker : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var today = BusinessClock.TodayDateOnly;
+        var tomorrow = today.AddDays(1);
+        var inThreeDays = today.AddDays(3);
 
-        // 查询所有审批通过、未入库、有归还日期的借用流程（排除已删除资产）
+        // 只在数据库筛选已逾期、明日到期和 3 天后到期的借用流程。
         var flows = await db.ApprovalFlows
             .Where(f => f.BizType == "borrow"
                      && f.Status == "approved"
                      && f.ConfirmedAt == null
                      && f.ReturnDate != null
+                     && (f.ReturnDate < today || f.ReturnDate == tomorrow || f.ReturnDate == inThreeDays)
                      && db.Assets.Any(a => a.Id == f.AssetId &&
                          !a.IsDeleted && a.Status == AssetStatus.Borrowed))
             .Select(f => new
@@ -83,9 +86,8 @@ public class OverdueNotificationWorker : BackgroundService
 
         foreach (var flow in flows)
         {
-            if (!DateOnly.TryParse(flow.ReturnDate, out var returnDate)) continue;
-
-            var daysLeft = (returnDate.ToDateTime(TimeOnly.MinValue) - BusinessClock.Today).Days;
+            var returnDate = flow.ReturnDate!.Value;
+            var daysLeft = returnDate.DayNumber - today.DayNumber;
 
             string? type = daysLeft switch
             {

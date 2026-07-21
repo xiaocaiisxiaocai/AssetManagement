@@ -24,8 +24,8 @@ public class ApprovalFlowConfiguration : IEntityTypeConfiguration<ApprovalFlow>
         b.Property(x => x.Transferee).HasMaxLength(100);
         b.Property(x => x.TransfereeDept).HasMaxLength(100);
         b.Property(x => x.Reason).HasMaxLength(500);
-        b.Property(x => x.OriginalReturnDate).HasMaxLength(50);
-        b.Property(x => x.ReturnDate).HasMaxLength(50);
+        b.Property(x => x.OriginalReturnDate).HasColumnType("date");
+        b.Property(x => x.ReturnDate).HasColumnType("date");
         b.Property(x => x.Status).HasMaxLength(50).IsRequired();
         b.Property(x => x.ActiveScopeKey).HasMaxLength(100);
         b.HasIndex(x => x.FlowNo).IsUnique();
@@ -33,6 +33,7 @@ public class ApprovalFlowConfiguration : IEntityTypeConfiguration<ApprovalFlow>
         b.HasIndex(x => x.ApplicantId);
         b.HasIndex(x => x.SourceCustodianId);
         b.HasIndex(x => x.Status);
+        b.HasIndex(x => new { x.BizType, x.Status, x.ConfirmedAt, x.ReturnDate });
         b.HasIndex(x => x.ActiveScopeKey).IsUnique();
         b.Property(x => x.RowVersion).IsConcurrencyToken();
         b.HasOne<AssetManagement.Domain.Entities.Workflow>().WithMany().HasForeignKey(x => x.WorkflowId).OnDelete(DeleteBehavior.Restrict);

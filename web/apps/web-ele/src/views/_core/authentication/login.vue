@@ -17,6 +17,7 @@ const formSchema = computed((): VbenFormSchema[] => {
     {
       component: 'VbenInput',
       componentProps: {
+        autocomplete: 'username',
         placeholder: $t('authentication.usernameTip'),
       },
       fieldName: 'account',
@@ -26,6 +27,7 @@ const formSchema = computed((): VbenFormSchema[] => {
     {
       component: 'VbenInputPassword',
       componentProps: {
+        autocomplete: 'current-password',
         placeholder: $t('authentication.password'),
       },
       fieldName: 'password',

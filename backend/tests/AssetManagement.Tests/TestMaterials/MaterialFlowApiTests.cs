@@ -8,9 +8,13 @@ using AssetManagement.Application.Rbac;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Tests.Notifications;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
@@ -169,6 +173,50 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
         after!.Data!.CustodianId.Should().Be(transferee.Id);
         after.Data.HasPendingFlow.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Material_approval_and_custodian_change_roll_back_when_notification_write_fails()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var project = await CreateProject("料件通知事务项目");
+        var transferee = await CreateUser("atomic-user", "事务接收人");
+        var material = await CreateMaterial(project.Id, "通知事务料件");
+        var originalCustodianId = material.CustodianId;
+        var started = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "验证通知与料件流转共享事务"
+        });
+        var flowId = started.Data!.Id;
+        var approverToken = await LoginToken("1001", "123456");
+
+        using var failingFactory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<INotificationService>();
+                services.AddScoped<INotificationService, FailingNotificationService>();
+            }));
+        using var failingClient = failingFactory.CreateClient();
+        failingClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", approverToken);
+
+        var response = await failingClient.PostAsJsonAsync($"/api/material-flows/{flowId}/approve",
+            new MaterialApprovalRequest { Opinion = "同意，但通知写入失败" });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        body!.Code.Should().Be(500);
+        using var verifyScope = _factory.Services.CreateScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var savedFlow = await db.MaterialFlows.AsNoTracking().SingleAsync(item => item.Id == flowId);
+        savedFlow.Status.Should().Be("pending", "通知写入失败时料件审批状态不能单独提交");
+        var savedMaterial = await db.TestMaterials.AsNoTracking().SingleAsync(item => item.Id == material.Id);
+        savedMaterial.CustodianId.Should().Be(originalCustodianId, "保管人变更必须与通知原子提交");
+        (await db.MaterialFlowRecords.AsNoTracking().AnyAsync(record =>
+            record.FlowId == flowId && record.Action == "approve")).Should().BeFalse();
+        (await db.Notifications.AsNoTracking().AnyAsync(notification =>
+            notification.FlowId == flowId && notification.Type == "material_approved")).Should().BeFalse();
     }
 
     [Fact]

@@ -24,7 +24,7 @@ const staticRoutes: RouteRecordRaw[] = [];
 const externalRoutes: RouteRecordRaw[] = [];
 
 // 后端菜单按单一权限码授权，无法表达“资产审批或料件审批”这一类复合入口。
-// 这两个隐藏路由只负责让已登录的料件用户进入全局列表；接口仍执行细粒度权限校验。
+// 这两个隐藏路由由前端守卫校验与页面 API 一致的料件权限码。
 const hiddenAuthenticatedRoutes: RouteRecordRaw[] = [
   {
     component: BasicLayout,
@@ -34,17 +34,36 @@ const hiddenAuthenticatedRoutes: RouteRecordRaw[] = [
     children: [
       {
         component: () => import('#/views/approval/pending/index.vue'),
-        meta: { hideInMenu: true, title: '料件待我审批' },
+        meta: {
+          hideInMenu: true,
+          requiredAccessCodes: ['material-flow:approve'],
+          title: '料件待我审批',
+        },
         name: 'MaterialFlowPendingGlobal',
         path: '/material/approvals',
       },
       {
         component: () => import('#/views/approval/mine/index.vue'),
-        meta: { hideInMenu: true, title: '我的料件申请' },
+        meta: {
+          hideInMenu: true,
+          requiredAccessCodes: ['material-flow:view'],
+          title: '我的料件申请',
+        },
         name: 'MaterialFlowMineGlobal',
         path: '/material/applications',
       },
     ],
+  },
+  {
+    component: () => import('#/views/_core/fallback/forbidden.vue'),
+    meta: {
+      hideInBreadcrumb: true,
+      hideInMenu: true,
+      hideInTab: true,
+      title: '403',
+    },
+    name: 'FallbackForbidden',
+    path: '/403',
   },
 ];
 

@@ -67,6 +67,39 @@ public class NotificationServiceTests : MySqlFixtureBase
     }
 
     [Fact]
+    public async Task Notification_list_uses_id_as_stable_tie_breaker_for_same_created_time()
+    {
+        var service = new NotificationService(_db);
+        var userId = (await AddUsersAsync(1))[0];
+        var createdAt = DateTime.UtcNow;
+        var first = new Notification
+        {
+            Type = "approval_pending",
+            Title = "同时间第一条",
+            Body = "测试稳定排序",
+            FlowId = 201,
+            UserId = userId,
+            CreatedAt = createdAt
+        };
+        var second = new Notification
+        {
+            Type = "approval_pending",
+            Title = "同时间第二条",
+            Body = "测试稳定排序",
+            FlowId = 202,
+            UserId = userId,
+            CreatedAt = createdAt
+        };
+        _db.Notifications.AddRange(first, second);
+        await _db.SaveChangesAsync();
+
+        var notifications = await service.GetMyNotificationsAsync(userId);
+
+        notifications.Select(notification => notification.Id)
+            .Should().ContainInOrder(second.Id, first.Id);
+    }
+
+    [Fact]
     public async Task Clear_removes_only_current_users_notifications()
     {
         var service = new NotificationService(_db);

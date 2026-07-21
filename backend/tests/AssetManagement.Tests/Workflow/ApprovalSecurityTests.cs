@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AssetManagement.Application.Assets;
@@ -65,12 +66,17 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         Auth(await LoginToken(empNo, "TestPass123"));
         var res = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/approve",
             new ApprovalActionRequest { Opinion = "越权同意" });
+        res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var body = await res.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
 
-        body!.Code.Should().NotBe(0, "非当前节点审批人不应能处理他人工单");
+        body!.Code.Should().Be(4016, "非当前节点审批人不应能处理他人工单");
+        body.Message.Should().Be("您无权审批此节点");
 
-        var detail = await _client.GetFromJsonAsync<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}");
-        detail!.Code.Should().NotBe(0, "非申请人、接收人、审批人或管辖部门管理员不应读取他人工单详情");
+        var detailResponse = await _client.GetAsync($"/api/approvals/{flow.Data.Id}");
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var detail = await detailResponse.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        detail!.Code.Should().Be(4030, "非申请人、接收人、审批人或管辖部门管理员不应读取他人工单详情");
+        detail.Message.Should().Be("无权查看该审批单");
     }
 
     [Fact]
@@ -93,13 +99,17 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
 
         var rejected = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/reject",
             new RejectRequest { Reason = "管理员越级驳回" });
+        rejected.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var rejectedBody = await rejected.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         rejectedBody!.Code.Should().Be(4016);
+        rejectedBody.Message.Should().Be("您无权审批此节点");
 
         var approved = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data.Id}/approve",
             new ApprovalActionRequest { Opinion = "管理员越级通过" });
+        approved.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var approvedBody = await approved.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         approvedBody!.Code.Should().Be(4016);
+        approvedBody.Message.Should().Be("您无权审批此节点");
 
         var detail = await _client.GetFromJsonAsync<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}");
         detail!.Code.Should().Be(0, "管理员仍可查看流程详情");
@@ -129,25 +139,22 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         var id = flow.Data!.Id;
 
         Auth(await LoginToken("TEST-SUPERVISOR", "123456"));
-        // 循环审批直到完成
-        int maxAttempts = 10;
-        for (int i = 0; i < maxAttempts; i++)
-        {
-            var statusRes = await _client.GetFromJsonAsync<ApiResult<ApprovalFlowDto>>($"/api/approvals/{id}");
-            if (statusRes?.Data?.Status == "approved") break;
-
-            var approveRes = await _client.PostAsJsonAsync($"/api/approvals/{id}/approve",
-                new ApprovalActionRequest { Opinion = "ok" });
-            if (!approveRes.IsSuccessStatusCode) break;
-        }
+        var approveRes = await _client.PostAsJsonAsync($"/api/approvals/{id}/approve",
+            new ApprovalActionRequest { Opinion = "ok" });
+        approveRes.EnsureSuccessStatusCode();
+        var approvedFlow = await approveRes.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+        approvedFlow!.Code.Should().Be(0);
+        approvedFlow.Data!.Status.Should().Be("approved");
 
         Auth(await LoginToken("1001", "123456"));
         var done = await _client.GetFromJsonAsync<ApiResult<ApprovalFlowDto>>($"/api/approvals/{id}");
         done!.Data!.Status.Should().Be("approved", "流程应该已完成");
 
         var res = await _client.PostAsJsonAsync($"/api/approvals/{id}/reject", new RejectRequest { Reason = "想翻盘" });
+        res.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var body = await res.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
-        body!.Code.Should().NotBe(0, "已结束流程不应允许驳回");
+        body!.Code.Should().Be(4013, "已结束流程不应允许驳回");
+        body.Message.Should().Be("该工单已结束，无法操作");
 
         var after = await _client.GetFromJsonAsync<ApiResult<ApprovalFlowDto>>($"/api/approvals/{id}");
         after!.Data!.Status.Should().Be("approved", "驳回应被拒绝,状态保持通过");

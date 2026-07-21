@@ -22,7 +22,7 @@ $env:ASSET_ADMIN_PASSWORD = '<管理员初始密码>'
 dotnet run --project backend/src/AssetManagement.Api
 ```
 
-健康检查：`http://localhost:5000/api/health` 或按控制台输出端口访问。
+健康检查：`http://localhost:5292/api/health` 或按控制台输出端口访问。
 
 前端：
 

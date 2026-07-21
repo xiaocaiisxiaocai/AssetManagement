@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.IO.Compression;
@@ -60,7 +61,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             RoleIds = new[] { await CreateRoleId() }
         });
 
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await response.Content.ReadFromJsonAsync<ApiResult<object?>>();
         body!.Code.Should().Be(4001);
         body.Message.Should().NotBeNullOrWhiteSpace();
@@ -220,6 +221,59 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Delegated_role_access_editor_reads_assignment_catalog_without_management_permissions()
+    {
+        await Login();
+        var permissions = (await _client.GetFromJsonAsync<ApiResult<List<PermissionDto>>>("/api/permissions"))!
+            .Data!;
+        var delegatedPermissionIds = permissions
+            .Where(x => x.Code is "role:view" or "role:assign-permission" or "role:assign-menu")
+            .Select(x => x.Id)
+            .ToArray();
+        delegatedPermissionIds.Should().HaveCount(3);
+
+        var role = await Post<ApiResult<RoleDto>>("/api/roles", new CreateRoleRequest
+        {
+            Code = Unique("delegated-access"),
+            Name = "委派授权配置员",
+            IsActive = true
+        });
+        await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data!.Id}/access", new SetRoleAccessRequest
+        {
+            PermissionIds = delegatedPermissionIds,
+            MenuIds = Array.Empty<int>()
+        });
+        const string password = "Deleg123!";
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("delegated"),
+            Name = "委派授权用户",
+            Password = password,
+            RoleIds = new[] { role.Data.Id }
+        });
+        user.Code.Should().Be(0, user.Message);
+        user.Data.Should().NotBeNull();
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo = user.Data!.EmployeeNo,
+            password
+        });
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login.Data!.Token);
+
+        var catalog = await _client.GetFromJsonAsync<ApiResult<RoleAccessOptionsDto>>(
+            "/api/roles/access-options");
+        var permissionManagement = await _client.GetAsync("/api/permissions");
+        var menuManagement = await _client.GetAsync("/api/menus");
+
+        catalog!.Code.Should().Be(0);
+        catalog.Data!.Permissions.Should().NotBeEmpty();
+        catalog.Data.Menus.Should().NotBeEmpty();
+        permissionManagement.StatusCode.Should().Be(System.Net.HttpStatusCode.Forbidden);
+        menuManagement.StatusCode.Should().Be(System.Net.HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
     public async Task Changing_role_access_invalidates_member_tokens()
     {
         await Login();
@@ -268,12 +322,12 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             Module = "security"
         });
 
-        var changed = await Put<ApiResult<PermissionDto>>($"/api/permissions/{permission.Data!.Id}", new PermissionDto
+        var changed = await PutError<PermissionDto>($"/api/permissions/{permission.Data!.Id}", new PermissionDto
         {
             Code = Unique("changed:permission"),
             Name = "试图改编码",
             Module = "security"
-        });
+        }, HttpStatusCode.Conflict);
 
         changed.Code.Should().Be(4094);
         changed.Message.Should().Contain("不能修改");
@@ -599,7 +653,10 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             new[] { new string('A', 1_100_000), "压缩炸弹", "", "", "普通员工" }
         });
 
-        var preview = await PostFile<ApiResult<UserImportResultDto>>("/api/users/import/validate", file);
+        var preview = await PostFileError<UserImportResultDto>(
+            "/api/users/import/validate",
+            file,
+            HttpStatusCode.UnsupportedMediaType);
 
         preview.Code.Should().Be(4153);
         preview.Message.Should().Contain("压缩比");
@@ -949,17 +1006,17 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             IsActive = true
         });
 
-        var duplicatedCreate = await Post<ApiResult<RoleDto>>("/api/roles", new RoleDto
+        var duplicatedCreate = await PostError<RoleDto>("/api/roles", new RoleDto
         {
             Code = Unique("role"),
             Name = name,
             IsActive = true
-        });
-        var duplicatedUpdate = await Put<ApiResult<RoleDto>>($"/api/roles/{target.Data!.Id}", new
+        }, HttpStatusCode.Conflict);
+        var duplicatedUpdate = await PutError<RoleDto>($"/api/roles/{target.Data!.Id}", new
         {
             name,
             isActive = true
-        });
+        }, HttpStatusCode.Conflict);
 
         duplicatedCreate.Code.Should().Be(4094);
         duplicatedCreate.Message.Should().Be("角色名称已存在");
@@ -1197,11 +1254,11 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             PermissionCode = permission.Data!.Code
         });
 
-        var rejected = await Put<ApiResult<RoleDto>>($"/api/roles/{role.Data!.Id}/access", new
+        var rejected = await PutError<RoleDto>($"/api/roles/{role.Data!.Id}/access", new
         {
             permissionIds = Array.Empty<int>(),
             menuIds = new[] { menu.Data!.Id }
-        });
+        }, HttpStatusCode.BadRequest);
         var unchanged = await _client.GetFromJsonAsync<ApiResult<RoleDto>>($"/api/roles/{role.Data.Id}");
 
         rejected.Code.Should().Be(4001);
@@ -1809,19 +1866,19 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var adminRole = (await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100"))!
             .Data!.Items.Single(x => x.Code == "admin");
 
-        var disabledUser = await Post<ApiResult<object?>>($"/api/users/{admin.Id}/toggle-status", new
+        var disabledUser = await PostError<object?>($"/api/users/{admin.Id}/toggle-status", new
         {
             isActive = false
-        });
-        var disabledRole = await Put<ApiResult<RoleDto>>($"/api/roles/{adminRole.Id}", adminRole with
+        }, HttpStatusCode.Conflict);
+        var disabledRole = await PutError<RoleDto>($"/api/roles/{adminRole.Id}", adminRole with
         {
             IsActive = false
-        });
-        var strippedRole = await Put<ApiResult<RoleDto>>($"/api/roles/{adminRole.Id}/access", new
+        }, HttpStatusCode.Conflict);
+        var strippedRole = await PutError<RoleDto>($"/api/roles/{adminRole.Id}/access", new
         {
             permissionIds = Array.Empty<int>(),
             menuIds = Array.Empty<int>()
-        });
+        }, HttpStatusCode.Conflict);
 
         disabledUser.Code.Should().Be(4094);
         disabledRole.Code.Should().Be(4094);
@@ -1863,7 +1920,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             Type = "menu"
         });
 
-        var result = await Put<ApiResult<MenuDto>>($"/api/menus/{parent.Data.Id}", new MenuDto
+        var result = await PutError<MenuDto>($"/api/menus/{parent.Data.Id}", new MenuDto
         {
             ParentId = child.Data!.Id,
             Name = parent.Data.Name,
@@ -1871,7 +1928,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             Path = parent.Data.Path,
             Component = parent.Data.Component,
             Type = parent.Data.Type
-        });
+        }, HttpStatusCode.BadRequest);
 
         result.Code.Should().Be(4001);
         result.Message.Should().Contain("子菜单");
@@ -1913,11 +1970,11 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             password = "TestPass123"
         });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
-        var updated = await Put<ApiResult<UserDto>>($"/api/users/{user.Data!.Id}", new UpdateUserRequest
+        var updated = await PutError<UserDto>($"/api/users/{user.Data!.Id}", new UpdateUserRequest
         {
             Name = "自改角色用户",
             RoleIds = new[] { adminRole.Id }
-        });
+        }, HttpStatusCode.Conflict);
 
         updated.Code.Should().Be(4094);
         updated.Message.Should().Be("不能修改自己的角色");
@@ -1975,11 +2032,11 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             password = "TestPass123"
         });
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
-        var updated = await Put<ApiResult<UserDto>>($"/api/users/{target.Data!.Id}", new UpdateUserRequest
+        var updated = await PutError<UserDto>($"/api/users/{target.Data!.Id}", new UpdateUserRequest
         {
             Name = "被改角色用户",
             RoleIds = new[] { adminRole.Id }
-        });
+        }, HttpStatusCode.Forbidden);
 
         updated.Code.Should().Be(4031);
         updated.Message.Should().Be("没有分配用户角色权限");
@@ -2081,6 +2138,29 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var res = await _client.PostAsync(url, form);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<ApiResult<T>> PostError<T>(string url, object body, HttpStatusCode expectedStatus)
+    {
+        var response = await _client.PostAsJsonAsync(url, body);
+        response.StatusCode.Should().Be(expectedStatus);
+        return (await response.Content.ReadFromJsonAsync<ApiResult<T>>())!;
+    }
+
+    private async Task<ApiResult<T>> PutError<T>(string url, object body, HttpStatusCode expectedStatus)
+    {
+        var response = await _client.PutAsJsonAsync(url, body);
+        response.StatusCode.Should().Be(expectedStatus);
+        return (await response.Content.ReadFromJsonAsync<ApiResult<T>>())!;
+    }
+
+    private async Task<ApiResult<T>> PostFileError<T>(string url, byte[] bytes, HttpStatusCode expectedStatus)
+    {
+        using var form = new MultipartFormDataContent();
+        form.Add(new ByteArrayContent(bytes), "file", "users.xlsx");
+        var response = await _client.PostAsync(url, form);
+        response.StatusCode.Should().Be(expectedStatus);
+        return (await response.Content.ReadFromJsonAsync<ApiResult<T>>())!;
     }
 
     private static string Unique(string prefix)

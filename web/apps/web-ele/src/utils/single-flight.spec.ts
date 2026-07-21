@@ -26,4 +26,36 @@ describe('single flight', () => {
     await run();
     expect(task).toHaveBeenCalledTimes(2);
   });
+
+  it('上一次失败后也允许再次执行', async () => {
+    const task = vi
+      .fn<() => Promise<number>>()
+      .mockRejectedValueOnce(new Error('logout failed'))
+      .mockResolvedValueOnce(1);
+    const run = createSingleFlight(task);
+
+    await expect(run()).rejects.toThrow('logout failed');
+    await expect(run()).resolves.toBe(1);
+    expect(task).toHaveBeenCalledTimes(2);
+  });
+
+  it('重复保存时不会用后来的参数再启动任务', async () => {
+    let resolve!: (value: string) => void;
+    const task = vi.fn((xml: string) =>
+      new Promise<string>((done) => {
+        resolve = done;
+      }).then(() => xml),
+    );
+    const run = createSingleFlight(task);
+    const first = run('<first />');
+    const duplicate = run('<duplicate />');
+
+    expect(task).toHaveBeenCalledOnce();
+    expect(task).toHaveBeenCalledWith('<first />');
+    resolve('done');
+    await expect(Promise.all([first, duplicate])).resolves.toEqual([
+      '<first />',
+      '<first />',
+    ]);
+  });
 });

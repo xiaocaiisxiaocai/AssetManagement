@@ -205,7 +205,7 @@ public class ReportServiceTests : MySqlFixtureBase
             WorkflowId = workflowId,
             Applicant = "张三",
             ApplicantDept = "IT部",
-            ReturnDate = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd"),
+            ReturnDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1)),
             ApplyTime = DateTime.UtcNow.AddDays(-10),
             CurrentNodeIds = new List<string>(),
             BpmnTokens = new Dictionary<string, BpmnToken>()
@@ -242,7 +242,7 @@ public class ReportServiceTests : MySqlFixtureBase
         _db.Assets.Add(asset);
         await _db.SaveChangesAsync();
         var (applicantId, workflowId) = await CreateFlowReferencesAsync("overdue-cap");
-        var futureDate = DateTime.UtcNow.AddDays(30).ToString("yyyy-MM-dd");
+        var futureDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30));
         _db.ApprovalFlows.AddRange(Enumerable.Range(1, 10_001).Select(index => new ApprovalFlow
         {
             FlowNo = $"CAP-{index:00000}",
@@ -293,7 +293,7 @@ public class ReportServiceTests : MySqlFixtureBase
             ApplicantId = applicantId,
             WorkflowId = workflowId,
             Applicant = "借用人",
-            ReturnDate = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd"),
+            ReturnDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-2)),
             ApplyTime = DateTime.UtcNow.AddDays(-5),
             CurrentNodeIds = new List<string>(),
             BpmnTokens = new Dictionary<string, BpmnToken>()
@@ -345,7 +345,7 @@ public class ReportServiceTests : MySqlFixtureBase
             ApplicantId = applicantId,
             WorkflowId = workflowId,
             Applicant = "李四",
-            ReturnDate = DateTime.UtcNow.AddDays(-15).ToString("yyyy-MM-dd"),
+            ReturnDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-15)),
             ApplyTime = DateTime.UtcNow.AddDays(-20),
             CurrentNodeIds = new List<string>(),
             BpmnTokens = new Dictionary<string, BpmnToken>()
@@ -388,7 +388,7 @@ public class ReportServiceTests : MySqlFixtureBase
                 ApplicantId = applicantId,
                 WorkflowId = workflowId,
                 Applicant = "张三",
-                ReturnDate = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd"),
+                ReturnDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(7)),
                 ApplyTime = DateTime.UtcNow.AddDays(-1),
                 CurrentNodeIds = new List<string>(),
                 BpmnTokens = new Dictionary<string, BpmnToken>()
@@ -404,7 +404,7 @@ public class ReportServiceTests : MySqlFixtureBase
                 ApplicantId = applicantId,
                 WorkflowId = workflowId,
                 Applicant = "李四",
-                ReturnDate = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd"),
+                ReturnDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(7)),
                 ApplyTime = DateTime.UtcNow.AddDays(-2),
                 ConfirmedAt = DateTime.UtcNow.AddDays(-1),
                 CurrentNodeIds = new List<string>(),
@@ -479,7 +479,7 @@ public class ReportServiceTests : MySqlFixtureBase
             FlowNo = $"REM-{Guid.NewGuid():N}", BizType = "borrow", Status = "approved",
             WorkflowId = workflowId, AssetId = asset.Id, AssetNo = asset.AssetNo, AssetName = asset.Name,
             ApplicantId = applicantId, Applicant = "借用人", ApplyTime = DateTime.UtcNow.AddDays(-5),
-            Deadline = DateTime.UtcNow.AddDays(-4), ReturnDate = DateTime.UtcNow.AddDays(-2).ToString("yyyy-MM-dd"),
+            Deadline = DateTime.UtcNow.AddDays(-4), ReturnDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-2)),
         });
         await _db.SaveChangesAsync();
 

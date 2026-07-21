@@ -16,7 +16,11 @@ public class NotificationService : INotificationService
     {
         var q = _db.Notifications.Where(x => x.UserId == userId);
         if (unreadOnly) q = q.Where(x => !x.IsRead);
-        var list = await q.OrderByDescending(x => x.CreatedAt).Take(50).ToListAsync();
+        var list = await q
+            .OrderByDescending(x => x.CreatedAt)
+            .ThenByDescending(x => x.Id)
+            .Take(50)
+            .ToListAsync();
         return list.Select(ToDto).ToList();
     }
 

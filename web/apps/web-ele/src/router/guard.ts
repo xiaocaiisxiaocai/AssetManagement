@@ -13,6 +13,7 @@ import {
 import { useAuthStore } from '#/store';
 
 import { generateAccess } from './access';
+import { hasRequiredRouteAccess } from './route-permission';
 import { safeInternalRedirect } from './safe-redirect';
 
 /**
@@ -93,6 +94,14 @@ function setupAccessGuard(router: Router) {
 
     // 是否已经生成过动态路由
     if (accessStore.isAccessChecked) {
+      if (
+        !hasRequiredRouteAccess(
+          to.meta.requiredAccessCodes,
+          accessStore.accessCodes,
+        )
+      ) {
+        return { path: '/403', replace: true };
+      }
       return true;
     }
 

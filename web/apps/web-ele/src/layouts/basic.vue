@@ -1,7 +1,14 @@
 <script lang="ts" setup>
 import type { NotificationItem } from '@vben/layouts';
 
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import {
+  computed,
+  defineAsyncComponent,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+} from 'vue';
 import { useRouter } from 'vue-router';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
@@ -29,14 +36,16 @@ import LoginForm from '#/views/_core/authentication/login.vue';
 
 import { formatNotificationDate } from './notification-date';
 import { resolveNotificationRoute } from './notification-route';
-import Password from './password.vue';
+import { createNotificationSyncGuard } from './notification-sync-guard';
+const Password = defineAsyncComponent(() => import('./password.vue'));
 
-const passwordRef = ref<InstanceType<typeof Password>>();
+const passwordVisible = ref(false);
 const passkeyIcon = createIconifyIcon('material-symbols:passkey-rounded');
 const router = useRouter();
 const userStore = useUserStore();
 const authStore = useAuthStore();
 const accessStore = useAccessStore();
+const notificationSyncGuard = createNotificationSyncGuard();
 // 通知数据（从后端获取）
 const rawNotifications = ref<NotificationDto[]>([]);
 const notifications = computed<NotificationItem[]>(() =>
@@ -67,11 +76,16 @@ function typeIcon(type: string): string {
 }
 
 async function loadNotifications() {
+  const generation = notificationSyncGuard.beginRefresh();
+  if (generation === null) return;
+
   try {
-    rawNotifications.value = await getNotificationsApi();
+    const nextNotifications = await getNotificationsApi();
+    if (notificationSyncGuard.canCommitRefresh(generation)) {
+      rawNotifications.value = nextNotifications;
+    }
   } catch {
-    // 请求失败时清空旧通知，避免把过期数据继续展示为当前状态。
-    rawNotifications.value = [];
+    // 轮询失败保留上次成功结果，下一轮继续尝试。
   }
 }
 
@@ -89,6 +103,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
+  notificationSyncGuard.invalidate();
 });
 
 const { destroyWatermark, updateWatermark } = useWatermark();
@@ -103,7 +118,7 @@ async function handlePasswordChanged() {
 const menus = computed(() => [
   {
     handler: () => {
-      passwordRef.value?.showPasswordPopup();
+      passwordVisible.value = true;
     },
     icon: passkeyIcon,
     text: '修改密码',
@@ -120,8 +135,10 @@ async function handleLogout() {
 
 async function handleNoticeClear() {
   try {
-    await clearNotificationsApi();
-    rawNotifications.value = [];
+    await notificationSyncGuard.enqueueMutation(async () => {
+      await clearNotificationsApi();
+      rawNotifications.value = [];
+    });
   } catch {
     // 静默失败
   }
@@ -129,11 +146,13 @@ async function handleNoticeClear() {
 
 async function handleMakeAll() {
   try {
-    await markAllReadApi();
-    rawNotifications.value = rawNotifications.value.map((n) => ({
-      ...n,
-      isRead: true,
-    }));
+    await notificationSyncGuard.enqueueMutation(async () => {
+      await markAllReadApi();
+      rawNotifications.value = rawNotifications.value.map((n) => ({
+        ...n,
+        isRead: true,
+      }));
+    });
   } catch {
     // 静默失败
   }
@@ -142,9 +161,11 @@ async function handleMakeAll() {
 async function handleNoticeRead(item: NotificationItem) {
   if (item.id && !item.isRead) {
     try {
-      await markReadApi(item.id as number);
-      const target = rawNotifications.value.find((n) => n.id === item.id);
-      if (target) target.isRead = true;
+      await notificationSyncGuard.enqueueMutation(async () => {
+        await markReadApi(item.id as number);
+        const target = rawNotifications.value.find((n) => n.id === item.id);
+        if (target) target.isRead = true;
+      });
     } catch {
       // 已读状态失败不阻止用户进入业务页面
     }
@@ -243,5 +264,9 @@ watch(
       <LockScreen :avatar="avatar" @to-login="handleLogout" />
     </template>
   </BasicLayout>
-  <Password ref="passwordRef" @changed="handlePasswordChanged" />
+  <Password
+    v-if="passwordVisible"
+    v-model:open="passwordVisible"
+    @changed="handlePasswordChanged"
+  />
 </template>

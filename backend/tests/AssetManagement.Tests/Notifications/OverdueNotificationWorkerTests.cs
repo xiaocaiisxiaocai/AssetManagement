@@ -48,7 +48,7 @@ public class OverdueNotificationWorkerTests : MySqlFixtureBase
             ApplicantId = user.Id,
             Applicant = user.Name,
             Status = "approved",
-            ReturnDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-1)).ToString("yyyy-MM-dd"),
+            ReturnDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-1)),
             ApplyTime = DateTime.UtcNow.AddDays(-2),
             Deadline = DateTime.UtcNow,
         });

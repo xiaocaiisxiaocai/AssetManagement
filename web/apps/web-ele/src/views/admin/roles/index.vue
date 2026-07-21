@@ -30,8 +30,7 @@ import {
 import {
   createRoleApi,
   deleteRoleApi,
-  getMenusApi,
-  getPermissionsApi,
+  getRoleAccessOptionsApi,
   getRoleListApi,
   setRoleAccessApi,
   updateRoleApi,
@@ -233,12 +232,9 @@ async function loadData() {
 
 async function loadPermissionsAndMenus() {
   if (!canConfigureAccess.value) return;
-  const [perms, menus_data] = await Promise.all([
-    getPermissionsApi(),
-    getMenusApi(),
-  ]);
-  permissions.value = perms;
-  menus.value = sortBuiltInMenus(menus_data);
+  const options = await getRoleAccessOptionsApi();
+  permissions.value = options.permissions;
+  menus.value = sortBuiltInMenus(options.menus);
 }
 
 function openCreate() {
@@ -559,7 +555,8 @@ onMounted(async () => {
       <ElDialog
         v-model="accessDialogVisible"
         :title="`授权配置 · ${accessForm.roleName}`"
-        width="1180px"
+        class="role-access-dialog"
+        width="min(1180px, calc(100vw - 24px))"
       >
         <ElAlert
           :closable="false"
@@ -765,6 +762,16 @@ onMounted(async () => {
 /* ========== 权限分配面板 ========== */
 .role-access-alert {
   margin-bottom: 16px;
+}
+
+.role-access-dialog {
+  max-height: calc(100vh - 24px);
+  margin-top: 12px;
+}
+
+.role-access-dialog :deep(.el-dialog__body) {
+  max-height: calc(100vh - 164px);
+  overflow-y: auto;
 }
 
 .role-access-shell {
@@ -1016,5 +1023,67 @@ onMounted(async () => {
 :deep(.el-textarea__inner) {
   font-size: 14px;
   line-height: 20px;
+}
+
+@media (max-width: 1024px) {
+  .role-access-shell {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .role-menu-tree {
+    max-height: 240px;
+  }
+
+  .role-permission-shell {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .role-access-dialog :deep(.el-dialog__header) {
+    padding: 16px;
+  }
+
+  .role-access-dialog :deep(.el-dialog__body) {
+    max-height: calc(100vh - 144px);
+    padding: 16px;
+  }
+
+  .role-access-dialog :deep(.el-dialog__footer) {
+    padding: 12px 16px;
+  }
+
+  .role-permission-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .role-permission-sidebar {
+    flex-direction: row;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .role-module-item {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 44px;
+    padding-left: 10px !important;
+  }
+
+  .role-permission-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .role-permission-tool-actions {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .role-permission-list {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: none;
+  }
 }
 </style>

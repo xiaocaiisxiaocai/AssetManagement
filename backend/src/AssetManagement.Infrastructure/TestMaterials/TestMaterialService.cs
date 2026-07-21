@@ -145,7 +145,7 @@ public class TestMaterialService : ITestMaterialService
             .SingleOrDefaultAsync();
         if (project is null || project.IsDeleted)
             throw new BizException(4046, "测试项目不存在");
-        await EnsureCanWriteMaterialAsync(project, "material:create");
+        EnsureCanWriteMaterial(project, "material:create");
         await EnsureMaterialNameAvailableAsync(request.ProjectId, name);
         var m = new TestMaterial
         {
@@ -202,7 +202,7 @@ public class TestMaterialService : ITestMaterialService
         await EnsureLocationExistsAsync(request.LocationId);
         var originalProject = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == m.ProjectId && !x.IsDeleted)
             ?? throw new BizException(4046, "测试项目不存在");
-        await EnsureCanWriteMaterialAsync(originalProject, "material:edit");
+        EnsureCanWriteMaterial(originalProject, "material:edit");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能编辑");
         var name = request.Name.Trim();
@@ -483,7 +483,7 @@ public class TestMaterialService : ITestMaterialService
         }
     }
 
-    private async Task EnsureCanWriteMaterialAsync(TestProject project, string permission)
+    private void EnsureCanWriteMaterial(TestProject project, string permission)
     {
         // 料件维护既允许拥有菜单权限的角色操作，也允许项目负责人维护自己负责项目下的料件。
         var user = _http.HttpContext?.User;

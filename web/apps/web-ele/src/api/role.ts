@@ -46,6 +46,11 @@ export interface MenuDto {
   children?: MenuDto[];
 }
 
+export interface RoleAccessOptionsDto {
+  menus: MenuDto[];
+  permissions: PermissionDto[];
+}
+
 export type RolePayload = {
   code?: string;
   description?: null | string;
@@ -103,6 +108,11 @@ export const setRoleAccessApi = (
       menuIds,
       permissionIds,
     }),
+  );
+
+export const getRoleAccessOptionsApi = () =>
+  unwrap(
+    requestClient.get<ApiResult<RoleAccessOptionsDto>>('/roles/access-options'),
   );
 
 export const getPermissionsApi = () =>

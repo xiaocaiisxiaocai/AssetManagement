@@ -40,8 +40,8 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             ManagerId = 1,
             Name = "报表部门"
         });
-        await CreateAsset(category.Id, department.Data!.Id, "报表资产A", AssetStatus.Available);
-        await CreateAsset(category.Id, department.Data.Id, "报表资产B", AssetStatus.Borrowed);
+        await CreateAsset(category.Id, department.Data!.Id, "报表资产A");
+        await CreateAsset(category.Id, department.Data.Id, "报表资产B");
 
         var summary = await _client.GetFromJsonAsync<ApiResult<AssetSummaryDto>>("/api/reports/summary");
 
@@ -68,7 +68,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var category = await CreateCategory();
-        var asset = await CreateAsset(category.Id, null, "借用报表资产", AssetStatus.Available);
+        var asset = await CreateAsset(category.Id, null, "借用报表资产");
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
@@ -115,15 +115,11 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             RoleIds = new[] { employeeRole.Id }
         });
         var category = await CreateCategory();
-        var asset = await CreateAsset(category.Id, seededSupervisor.DepartmentId, "逾期资产", AssetStatus.Available);
-        await Put<ApiResult<AssetDto>>($"/api/assets/{asset.Id}", new UpdateAssetRequest
-        {
-            Name = asset.Name,
-            CategoryId = category.Id,
-            Quantity = 1,
-            Status = AssetStatus.Available,
-            CustodianId = borrower.Data!.Id
-        });
+        var asset = await CreateAsset(
+            category.Id,
+            seededSupervisor.DepartmentId,
+            "逾期资产",
+            borrower.Data!.Id);
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await LoginToken(borrowerNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {
@@ -152,7 +148,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var storedFlow = await db.ApprovalFlows.AsTracking().SingleAsync(x => x.Id == flow.Data.Id);
-            storedFlow.ReturnDate = DateTime.Today.AddDays(-1).ToString("yyyy-MM-dd");
+            storedFlow.ReturnDate = DateOnly.FromDateTime(DateTime.Today.AddDays(-1));
             await db.SaveChangesAsync();
         }
 
@@ -188,9 +184,10 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         preview.Data.CutoffTime.Should().Be(BusinessClock.ToUtc(BusinessClock.Today.AddDays(-7)));
 
         var invalid = await _client.DeleteAsync("/api/audit-logs?retentionDays=10");
-        invalid.EnsureSuccessStatusCode();
+        invalid.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
         var invalidBody = await invalid.Content.ReadFromJsonAsync<ApiResult<object>>();
-        invalidBody!.Code.Should().NotBe(0);
+        invalidBody!.Code.Should().Be(400);
+        invalidBody.Message.Should().Be("审计日志保留天数只能选择 7、14、30 天");
 
         var cleanup = await _client.DeleteAsync("/api/audit-logs?retentionDays=7");
         cleanup.EnsureSuccessStatusCode();
@@ -268,28 +265,20 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
         return child.Data!;
     }
 
-    private async Task<AssetDto> CreateAsset(int categoryId, int? departmentId, string name, AssetStatus status)
+    private async Task<AssetDto> CreateAsset(
+        int categoryId,
+        int? departmentId,
+        string name,
+        int? custodianId = null)
     {
         var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
             Name = name,
             CategoryId = categoryId,
             DepartmentId = departmentId,
+            CustodianId = custodianId,
         });
-        if (status == AssetStatus.Available)
-        {
-            return created.Data!;
-        }
-
-        var updated = await Put<ApiResult<AssetDto>>($"/api/assets/{created.Data!.Id}", new UpdateAssetRequest
-        {
-            Name = created.Data.Name,
-            CategoryId = categoryId,
-            DepartmentId = departmentId,
-            Quantity = 1,
-            Status = status
-        });
-        return updated.Data!;
+        return created.Data!;
     }
 
     private async Task Login()

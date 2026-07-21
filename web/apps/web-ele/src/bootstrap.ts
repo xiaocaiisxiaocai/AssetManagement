@@ -1,7 +1,7 @@
-import { createApp, watch, watchEffect } from 'vue';
+import { createApp, watchEffect } from 'vue';
 
 import { registerAccessDirective } from '@vben/access';
-import { preferences, usePreferences } from '@vben/preferences';
+import { preferences } from '@vben/preferences';
 import { initStores } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/ele';
@@ -15,20 +15,8 @@ import { initComponentAdapter } from './adapter/component';
 import App from './app.vue';
 import { router } from './router';
 
-// 全局vxe
-import VxeUI from 'vxe-pc-ui';
-import enUS from 'vxe-pc-ui/lib/language/en-US';
-import zhCN from 'vxe-pc-ui/lib/language/zh-CN';
-import VxeUITable from 'vxe-table';
-
-import 'vxe-pc-ui/lib/style.css';
-import 'vxe-table/lib/style.css';
-
 // 自定义组件
 import { Page } from '@vben/common-ui';
-
-import { ReVxeGrid } from './components/grid';
-import { ReModal } from './components/modal';
 
 // 引入统一设计系统样式
 import './styles/design-system.css';
@@ -41,13 +29,8 @@ async function bootstrap(namespace: string) {
   // 注册Element Plus提供的v-loading指令
   app.directive('loading', ElLoading.directive);
 
-  // 注册vxe
-  app.use(VxeUI).use(VxeUITable);
-
   // 注册自定义的组件
   app.component('RePage', Page);
-  app.component('ReVxeGrid', ReVxeGrid);
-  app.component('ReModal', ReModal);
 
   // 国际化 i18n 配置
   await setupI18n(app);
@@ -65,24 +48,6 @@ async function bootstrap(namespace: string) {
   if (import.meta.env.DEV || (window as any).__playwright_active__) {
     (window as any).$router = router;
   }
-
-  const preference = usePreferences();
-  const localMap = {
-    'zh-CN': zhCN,
-    'en-US': enUS,
-  };
-
-  watch(
-    [() => preference.theme.value, () => preference.locale.value],
-    ([theme, locale]) => {
-      VxeUI.setTheme(theme === 'dark' ? 'dark' : 'light');
-      VxeUI.setI18n(locale, localMap[locale]);
-      VxeUI.setLanguage(locale);
-    },
-    {
-      immediate: true,
-    },
-  );
 
   // 动态更新标题
   watchEffect(() => {

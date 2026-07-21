@@ -10,7 +10,6 @@ using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Workflow;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Infrastructure.TestMaterials;
@@ -19,15 +18,13 @@ public class MaterialFlowService : IMaterialFlowService
 {
     private readonly AppDbContext _db;
     private readonly INotificationService _notifications;
-    private readonly ILogger<MaterialFlowService> _logger;
     public const string ApprovalSwitchKey = "material.transfer.approval.enabled";
     public const string MaterialBizType = "material_transfer";
 
-    public MaterialFlowService(AppDbContext db, INotificationService notifications, ILogger<MaterialFlowService> logger)
+    public MaterialFlowService(AppDbContext db, INotificationService notifications)
     {
         _db = db;
         _notifications = notifications;
-        _logger = logger;
     }
 
     public async Task<MaterialFlowDto> InitiateTransferAsync(InitiateTransferRequest request, int applicantId)
@@ -109,25 +106,16 @@ public class MaterialFlowService : IMaterialFlowService
                 }
                 await AddRecord(directFlow.Id, "direct_transfer", applicant.Id, applicant.Name,
                     $"直接转移给 {transferee.Name}: {request.Reason}");
+                await _notifications.CreateAsync(new CreateNotificationRequest
+                {
+                    Type = "material_transferred",
+                    Title = $"料件已转移给您：{material.Name}",
+                    Body = $"料件 {material.MaterialNo}（{material.Name}）已由 {applicant.Name} 直接转移给您。备注：{request.Reason}",
+                    FlowId = directFlow.Id,
+                    UserId = transferee.Id,
+                    IdempotencyKey = $"material_transferred_{directFlow.Id}_{transferee.Id}"
+                });
                 await tx.CommitAsync();
-
-                // 通知接收人（直接转移，无需审批）
-                try
-                {
-                    await _notifications.CreateAsync(new CreateNotificationRequest
-                    {
-                        Type = "material_transferred",
-                        Title = $"料件已转移给您：{material.Name}",
-                        Body = $"料件 {material.MaterialNo}（{material.Name}）已由 {applicant.Name} 直接转移给您。备注：{request.Reason}",
-                        FlowId = directFlow.Id,
-                        UserId = transferee.Id,
-                        IdempotencyKey = $"material_transferred_{directFlow.Id}_{transferee.Id}"
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "通知发送失败，不影响料件直接转移结果");
-                }
 
                 return await ToDtoAsync(directFlow, currentUserId: applicantId);
             }
@@ -196,18 +184,9 @@ public class MaterialFlowService : IMaterialFlowService
                 continue;
             }
             await AddRecord(flow.Id, "start", applicant.Id, applicant.Name, request.Reason);
+            await NotifyCurrentApproversAsync(flow, process,
+                $"您有新的料件流转待审批：{material.Name}（{material.MaterialNo}）转移给 {transferee.Name}");
             await bpmnTx.CommitAsync();
-
-            // 业务已提交，通知失败只记告警，避免把成功发起回滚成接口失败。
-            try
-            {
-                await NotifyCurrentApproversAsync(flow, process,
-                    $"您有新的料件流转待审批：{material.Name}（{material.MaterialNo}）转移给 {transferee.Name}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "通知发送失败，不影响料件流转发起结果");
-            }
 
             return await ToDtoAsync(flow, currentUserId: applicantId);
         }
@@ -378,51 +357,42 @@ public class MaterialFlowService : IMaterialFlowService
             throw new BizException(4090, "操作冲突，该流转单已被他人处理，请刷新后重试");
         }
         await AddRecord(id, "approve", user.Id, user.Name, $"节点 {nodeId}: {request.Opinion}", nodeId);
-        await tx.CommitAsync();
 
         // 流程完成 → 通知申请人；未完成 → 通知下一审批节点审批人
-        try
+        if (flow.Status == "approved")
         {
-            if (flow.Status == "approved")
+            var notifications = new List<CreateNotificationRequest>
             {
-                var notifications = new List<CreateNotificationRequest>
+                new()
                 {
-                    new()
-                    {
-                        Type = "material_approved",
-                        Title = $"料件流转审批通过：{flow.MaterialName}",
-                        Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请已通过审批。",
-                        FlowId = id,
-                        UserId = flow.ApplicantId,
-                        IdempotencyKey = $"material_approved_{id}_{flow.ApplicantId}"
-                    }
-                };
-                if (flow.TransfereeId is int transfereeId && transfereeId != flow.ApplicantId)
-                {
-                    notifications.Add(new CreateNotificationRequest
-                    {
-                        Type = "material_transferred",
-                        Title = $"料件已转移给您：{flow.MaterialName}",
-                        Body = $"料件 {flow.MaterialNo}（{flow.MaterialName}）已完成转移审批，当前保管人为您。",
-                        FlowId = id,
-                        UserId = transfereeId,
-                        IdempotencyKey = $"material_transferred_{id}_{transfereeId}"
-                    });
+                    Type = "material_approved",
+                    Title = $"料件流转审批通过：{flow.MaterialName}",
+                    Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请已通过审批。",
+                    FlowId = id,
+                    UserId = flow.ApplicantId,
+                    IdempotencyKey = $"material_approved_{id}_{flow.ApplicantId}"
                 }
-                await _notifications.CreateBatchAsync(notifications);
-            }
-            else if (flow.Status == "pending")
+            };
+            if (flow.TransfereeId is int transfereeId && transfereeId != flow.ApplicantId)
             {
-                var wf = await LoadWorkflow(flow.WorkflowId);
-                var proc = BpmnParser.Parse(wf.BpmnXml!);
-                await NotifyCurrentApproversAsync(flow, proc,
-                    $"您有新的料件流转待审批：{flow.MaterialName}（{flow.MaterialNo}）转移给 {flow.Transferee}");
+                notifications.Add(new CreateNotificationRequest
+                {
+                    Type = "material_transferred",
+                    Title = $"料件已转移给您：{flow.MaterialName}",
+                    Body = $"料件 {flow.MaterialNo}（{flow.MaterialName}）已完成转移审批，当前保管人为您。",
+                    FlowId = id,
+                    UserId = transfereeId,
+                    IdempotencyKey = $"material_transferred_{id}_{transfereeId}"
+                });
             }
+            await _notifications.CreateBatchAsync(notifications);
         }
-        catch (Exception ex)
+        else if (flow.Status == "pending")
         {
-            _logger.LogWarning(ex, "通知发送失败，不影响料件流转审批结果");
+            await NotifyCurrentApproversAsync(flow, process,
+                $"您有新的料件流转待审批：{flow.MaterialName}（{flow.MaterialNo}）转移给 {flow.Transferee}");
         }
+        await tx.CommitAsync();
 
         return await ToDtoAsync(flow, currentUserId: userId);
     }
@@ -450,24 +420,16 @@ public class MaterialFlowService : IMaterialFlowService
             throw new BizException(4090, "操作冲突，该流转单已被他人处理，请刷新后重试");
         }
         await AddRecord(id, "reject", user.Id, user.Name, request.Reason, nodeId);
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "material_rejected",
+            Title = $"料件流转审批驳回：{flow.MaterialName}",
+            Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请被驳回。原因：{request.Reason}",
+            FlowId = id,
+            UserId = flow.ApplicantId,
+            IdempotencyKey = $"material_rejected_{id}_{flow.ApplicantId}"
+        });
         await tx.CommitAsync();
-
-        // 通知申请人被驳回
-        try
-        {
-            await _notifications.CreateAsync(new CreateNotificationRequest
-            {
-                Type = "material_rejected",
-                Title = $"料件流转审批驳回：{flow.MaterialName}",
-                Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请被驳回。原因：{request.Reason}",
-                FlowId = id,
-                UserId = flow.ApplicantId,
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "通知发送失败，不影响料件流转驳回结果");
-        }
 
         return await ToDtoAsync(flow, currentUserId: userId);
     }

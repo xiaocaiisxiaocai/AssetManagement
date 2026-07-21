@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import {
   EchartsUI,
@@ -7,25 +7,31 @@ import {
   useEcharts,
 } from '@vben/plugins/echarts';
 
+import { ElAlert, ElButton } from 'element-plus';
+
 import {
   getTestProjectStatsApi,
   type TestProjectStats,
 } from '#/api/test-project';
+import { runHandled } from '#/utils/handled-promise';
 
 import {
   buildMonthlySeriesData,
+  buildMonthlyTableRows,
+  buildStatusDistribution,
   monthLabels,
   quantityAxisLabel,
 } from './chart-options';
 
-const stats = ref<TestProjectStats>({
-  total: 0,
-  closed: 0,
-  inProgress: 0,
-  landed: 0,
-  typeDist: [],
-  monthlyStat: [],
-});
+const stats = ref<null | TestProjectStats>(null);
+const statsLoading = ref(false);
+const statsError = ref('');
+const statusDistribution = computed(() =>
+  stats.value ? buildStatusDistribution(stats.value) : [],
+);
+const monthlyTableRows = computed(() =>
+  stats.value ? buildMonthlyTableRows(stats.value.monthlyStat) : [],
+);
 
 // 饼图：测评类型分布
 const typeChartRef = ref<EchartsUIType>();
@@ -71,6 +77,11 @@ function renderCharts(data: TestProjectStats) {
 
   // 类型分布饼图
   renderTypeChart({
+    aria: {
+      enabled: true,
+      decal: { show: true },
+      label: { description: '测评类型分布饼图' },
+    },
     backgroundColor: 'transparent',
     title: {
       text: '测评类型分布',
@@ -105,6 +116,11 @@ function renderCharts(data: TestProjectStats) {
 
   // 状态分布饼图
   renderStatusChart({
+    aria: {
+      enabled: true,
+      decal: { show: true },
+      label: { description: '测评项目进度状态分布饼图' },
+    },
     backgroundColor: 'transparent',
     title: {
       text: '进度状态分布',
@@ -131,19 +147,13 @@ function renderCharts(data: TestProjectStats) {
           fontSize: 12,
           color: theme.muted,
         },
-        data: [
-          {
-            name: '计划/测试中',
-            value: data.inProgress,
-            itemStyle: { color: '#1890ff' },
-          },
-          { name: '结案', value: data.closed, itemStyle: { color: '#7b68ee' } },
-          {
-            name: '落地跟进',
-            value: data.landed,
-            itemStyle: { color: '#13c2c2' },
-          },
-        ].filter((x) => x.value > 0),
+        data: buildStatusDistribution(data)
+          .map((item, index) => ({
+            name: item.label,
+            value: item.value,
+            itemStyle: { color: ['#1890ff', '#7b68ee', '#13c2c2'][index] },
+          }))
+          .filter((item) => item.value > 0),
       },
     ],
   });
@@ -151,6 +161,11 @@ function renderCharts(data: TestProjectStats) {
   // 柱线组合图
   const { closedData, followUpData } = buildMonthlySeriesData(data.monthlyStat);
   renderBarChart({
+    aria: {
+      enabled: true,
+      decal: { show: true },
+      label: { description: '全年结案数量与跟进记录数量统计图' },
+    },
     backgroundColor: 'transparent',
     title: {
       text: '结案与跟进记录统计',
@@ -199,19 +214,41 @@ function renderCharts(data: TestProjectStats) {
   });
 }
 
-onMounted(async () => {
-  const data = await getTestProjectStatsApi();
-  if (disposed) return;
-  stats.value = data;
-  await nextTick();
-  if (disposed) return;
-  renderCharts(data);
-  themeObserver = new MutationObserver(() => renderCharts(stats.value));
+function ensureThemeObserver() {
+  if (themeObserver) return;
+  themeObserver = new MutationObserver(() => {
+    if (stats.value) renderCharts(stats.value);
+  });
   themeObserver.observe(document.documentElement, {
     attributeFilter: ['class', 'data-theme', 'style'],
     attributes: true,
   });
-});
+}
+
+async function loadStats() {
+  if (statsLoading.value) return;
+  statsLoading.value = true;
+  try {
+    const data = await getTestProjectStatsApi();
+    if (disposed) return;
+    stats.value = data;
+    statsError.value = '';
+    await nextTick();
+    if (disposed) return;
+    renderCharts(data);
+    ensureThemeObserver();
+  } catch (error) {
+    if (disposed) return;
+    statsError.value =
+      error instanceof Error && error.message.trim()
+        ? error.message
+        : '统计数据加载失败';
+  } finally {
+    if (!disposed) statsLoading.value = false;
+  }
+}
+
+onMounted(() => runHandled(loadStats()));
 
 onBeforeUnmount(() => {
   disposed = true;
@@ -222,39 +259,153 @@ onBeforeUnmount(() => {
 <template>
   <re-page>
     <div class="material-home-page p-4">
+      <ElAlert
+        v-if="statsError"
+        :closable="false"
+        show-icon
+        title="统计数据暂时无法更新"
+        type="warning"
+      >
+        <div class="stats-error-content">
+          <span>已保留最近一次成功数据；未成功加载的指标显示为“—”。</span>
+          <ElButton
+            :loading="statsLoading"
+            link
+            type="warning"
+            @click="loadStats"
+          >
+            重新加载
+          </ElButton>
+        </div>
+      </ElAlert>
+
       <!-- 顶部统计卡片 -->
       <div class="summary-grid">
         <div class="summary-card summary-card-blue">
-          <div class="stat-num text-blue-500">{{ stats.total }}</div>
+          <div class="stat-num text-blue-500">{{ stats?.total ?? '—' }}</div>
           <div class="stat-label">总测评数</div>
         </div>
         <div class="summary-card summary-card-green">
-          <div class="stat-num text-green-500">{{ stats.closed }}</div>
+          <div class="stat-num text-green-500">{{ stats?.closed ?? '—' }}</div>
           <div class="stat-label">已结案</div>
         </div>
         <div class="summary-card summary-card-purple">
-          <div class="stat-num text-purple-500">{{ stats.inProgress }}</div>
+          <div class="stat-num text-purple-500">
+            {{ stats?.inProgress ?? '—' }}
+          </div>
           <div class="stat-label">计划/测试中</div>
         </div>
         <div class="summary-card summary-card-red">
-          <div class="stat-num text-red-500">{{ stats.landed }}</div>
+          <div class="stat-num text-red-500">{{ stats?.landed ?? '—' }}</div>
           <div class="stat-label">落地跟进</div>
         </div>
       </div>
 
       <!-- 中间两个饼图 -->
       <div class="grid grid-cols-2 gap-4">
-        <div class="chart-card">
-          <EchartsUI ref="typeChartRef" style="height: 260px" />
+        <div v-loading="statsLoading" class="chart-card">
+          <EchartsUI
+            ref="typeChartRef"
+            aria-label="测评类型分布图"
+            role="img"
+            style="height: 260px"
+          />
+          <details class="chart-data-details">
+            <summary>查看测评类型分布数据表</summary>
+            <div class="chart-data-table-wrap">
+              <table class="chart-data-table">
+                <caption>
+                  测评类型分布
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">类型</th>
+                    <th scope="col">数量</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in stats?.typeDist ?? []" :key="item.label">
+                    <th scope="row">{{ item.label }}</th>
+                    <td>{{ item.count }}</td>
+                  </tr>
+                  <tr v-if="!stats?.typeDist.length">
+                    <td colspan="2">暂无数据</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
         </div>
-        <div class="chart-card">
-          <EchartsUI ref="statusChartRef" style="height: 260px" />
+        <div v-loading="statsLoading" class="chart-card">
+          <EchartsUI
+            ref="statusChartRef"
+            aria-label="测评项目进度状态分布图"
+            role="img"
+            style="height: 260px"
+          />
+          <details class="chart-data-details">
+            <summary>查看进度状态分布数据表</summary>
+            <div class="chart-data-table-wrap">
+              <table class="chart-data-table">
+                <caption>
+                  测评项目进度状态分布
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">状态</th>
+                    <th scope="col">数量</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in statusDistribution" :key="item.label">
+                    <th scope="row">{{ item.label }}</th>
+                    <td>{{ item.value }}</td>
+                  </tr>
+                  <tr v-if="statusDistribution.length === 0">
+                    <td colspan="2">暂无数据</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
         </div>
       </div>
 
       <!-- 底部柱线组合图 -->
-      <div class="chart-card">
-        <EchartsUI ref="barChartRef" style="height: 280px" />
+      <div v-loading="statsLoading" class="chart-card">
+        <EchartsUI
+          ref="barChartRef"
+          aria-label="全年结案与跟进记录统计图"
+          role="img"
+          style="height: 280px"
+        />
+        <details class="chart-data-details">
+          <summary>查看全年结案与跟进数据表</summary>
+          <div class="chart-data-table-wrap">
+            <table class="chart-data-table">
+              <caption>
+                全年结案与跟进记录统计
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">月份</th>
+                  <th scope="col">结案数量</th>
+                  <th scope="col">跟进记录数</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in monthlyTableRows" :key="item.month">
+                  <th scope="row">{{ item.month }}</th>
+                  <td>{{ item.closedCount }}</td>
+                  <td>{{ item.followUpCount }}</td>
+                </tr>
+                <tr v-if="monthlyTableRows.length === 0">
+                  <td colspan="3">暂无数据</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
     </div>
   </re-page>
@@ -276,6 +427,12 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   flex-shrink: 0;
+}
+.stats-error-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .summary-card {
@@ -307,6 +464,37 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
+}
+.chart-data-details {
+  margin-top: 8px;
+  color: var(--asset-page-text-secondary);
+  font-size: 14px;
+}
+.chart-data-details summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--el-color-primary);
+}
+.chart-data-table-wrap {
+  overflow-x: auto;
+}
+.chart-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--asset-page-text);
+}
+.chart-data-table caption {
+  padding: 8px;
+  font-weight: 600;
+  text-align: left;
+}
+.chart-data-table th,
+.chart-data-table td {
+  padding: 8px 12px;
+  border: 1px solid var(--asset-page-border);
+  text-align: left;
 }
 
 @media (max-width: 1024px) {

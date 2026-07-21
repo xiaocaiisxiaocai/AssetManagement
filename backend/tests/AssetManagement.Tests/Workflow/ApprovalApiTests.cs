@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AssetManagement.Application.Assets;
@@ -10,10 +11,13 @@ using AssetManagement.Application.Workflow;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Tests.Notifications;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AssetManagement.Tests.Workflow;
 
@@ -125,6 +129,32 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Return_date_is_stored_as_date_only_but_api_stays_iso_string()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        var expectedDate = DateOnly.FromDateTime(DateTime.Today.AddDays(9));
+        var expectedText = expectedDate.ToString("yyyy-MM-dd");
+
+        var started = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "日期建模回归",
+            ReturnDate = expectedText
+        });
+
+        started.Data!.ReturnDate.Should().Be(expectedText);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var storedDate = await db.ApprovalFlows.AsNoTracking()
+            .Where(flow => flow.Id == started.Data.Id)
+            .Select(flow => flow.ReturnDate)
+            .SingleAsync();
+        storedDate.Should().Be(expectedDate);
+    }
+
+    [Fact]
     public async Task Approval_page_endpoints_filter_before_count_and_support_flow_id()
     {
         await Login();
@@ -155,14 +185,18 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         Auth(await LoginToken(approverNo, "123456"));
         var pending = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
             $"/api/approvals/pending-page?page=1&pageSize=1&flowId={target.Id}&keyword={target.AssetNo}&bizType=borrow&status=pending");
-        var invalidDate = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+        var invalidDateResponse = await _client.GetAsync(
             "/api/approvals/pending-return-page?returnDate=2026-2-30");
+        invalidDateResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var invalidDate = await invalidDateResponse.Content
+            .ReadFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>();
 
         mine!.Data!.Total.Should().Be(1);
         mine.Data.Items.Should().ContainSingle().Which.Id.Should().Be(target.Id);
         pending!.Data!.Total.Should().Be(1);
         pending.Data.Items.Should().ContainSingle().Which.Id.Should().Be(target.Id);
         invalidDate!.Code.Should().Be(4001);
+        invalidDate.Message.Should().Contain("日期格式");
 
         _factory.CommandCounter.Reset();
         var onePending = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
@@ -257,15 +291,16 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         await Login();
         var asset = await CreateAsset();
 
-        var result = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        var result = await PostError<ApprovalFlowDto>("/api/approvals", new StartApprovalRequest
         {
             BizType = "borrow",
             AssetId = asset.Id,
             Reason = "日期校验回归测试",
             ReturnDate = returnDate
-        });
+        }, HttpStatusCode.BadRequest);
 
         result.Code.Should().Be(4001);
+        result.Message.Should().Contain("归还日期");
     }
 
     [Fact]
@@ -275,13 +310,13 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         foreach (var returnDate in new[] { DateTime.Today.AddDays(-1), DateTime.Today })
         {
             var asset = await CreateAsset();
-            var result = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+            var result = await PostError<ApprovalFlowDto>("/api/approvals", new StartApprovalRequest
             {
                 BizType = "borrow",
                 AssetId = asset.Id,
                 Reason = "日期校验回归测试",
                 ReturnDate = returnDate.ToString("yyyy-MM-dd")
-            });
+            }, HttpStatusCode.BadRequest);
             result.Code.Should().Be(4001);
             result.Message.Should().Be("归还日期必须晚于今天");
         }
@@ -314,7 +349,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var beforeApproval = await db.ApprovalFlows.AsNoTracking()
                 .SingleAsync(flow => flow.Id == originalBorrowId);
-            beforeApproval.ReturnDate.Should().Be(originalReturnDate,
+            beforeApproval.ReturnDate.Should().Be(DateOnly.ParseExact(originalReturnDate, "yyyy-MM-dd"),
                 "延期审批通过前不能提前修改原借用期限");
         }
 
@@ -335,7 +370,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var afterApproval = await db.ApprovalFlows.AsNoTracking()
                 .SingleAsync(flow => flow.Id == originalBorrowId);
-            afterApproval.ReturnDate.Should().Be(newReturnDate,
+            afterApproval.ReturnDate.Should().Be(DateOnly.ParseExact(newReturnDate, "yyyy-MM-dd"),
                 "延期审批通过后应更新当前有效的原借用记录");
         }
 
@@ -352,24 +387,24 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var originalReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd");
         var (asset, _) = await CreateBorrowedAsset(originalReturnDate);
 
-        var sameDate = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        var sameDate = await PostError<ApprovalFlowDto>("/api/approvals", new StartApprovalRequest
         {
             BizType = "extension",
             AssetId = asset.Id,
             Reason = "日期没有延后",
             ReturnDate = originalReturnDate
-        });
+        }, HttpStatusCode.BadRequest);
         sameDate.Code.Should().Be(4001);
         sameDate.Message.Should().Contain("晚于原应归还日期");
 
         var availableAsset = await CreateAsset();
-        var notBorrowed = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        var notBorrowed = await PostError<ApprovalFlowDto>("/api/approvals", new StartApprovalRequest
         {
             BizType = "extension",
             AssetId = availableAsset.Id,
             Reason = "在库资产不能延期",
             ReturnDate = DateTime.Today.AddDays(14).ToString("yyyy-MM-dd")
-        });
+        }, HttpStatusCode.UnprocessableEntity);
         notBorrowed.Code.Should().Be(4055);
         notBorrowed.Message.Should().Contain("当前借用人");
     }
@@ -395,7 +430,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
-        response.EnsureSuccessStatusCode();
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var duplicated = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         duplicated.Should().NotBeNull();
         duplicated!.Code.Should().Be(4056);
@@ -430,7 +465,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
-        response.EnsureSuccessStatusCode();
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         var result = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         result!.Code.Should().Be(4051);
         result.Message.Should().Contain("未配置直属主管");
@@ -459,7 +494,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             Reason = "测试停用流程"
         });
 
-        response.EnsureSuccessStatusCode();
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         var result = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         result!.Code.Should().Be(4057);
         result.Message.Should().Contain("流程已停用");
@@ -479,7 +514,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
         });
 
-        response.EnsureSuccessStatusCode();
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var flow = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         flow.Should().NotBeNull();
         flow!.Data.Should().NotBeNull();
@@ -507,6 +542,45 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             approved.Data.Status.Should().Be("pending");
             approved.Data.CurrentNodeIds.Should().NotBeEmpty("应该有新的活跃节点");
         }
+    }
+
+    [Fact]
+    public async Task Approval_state_rolls_back_when_notification_write_fails()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        var started = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "通知事务回归测试",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
+        });
+        var flowId = started.Data!.Id;
+        var approverToken = await LoginToken("TEST-SUPERVISOR", "123456");
+
+        using var failingFactory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<INotificationService>();
+                services.AddScoped<INotificationService, FailingNotificationService>();
+            }));
+        using var failingClient = failingFactory.CreateClient();
+        failingClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", approverToken);
+
+        var response = await failingClient.PostAsJsonAsync($"/api/approvals/{flowId}/approve",
+            new ApprovalActionRequest { Opinion = "同意，但通知写入失败" });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
+
+        body!.Code.Should().Be(500);
+        using var verifyScope = _factory.Services.CreateScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var savedFlow = await db.ApprovalFlows.AsNoTracking().SingleAsync(item => item.Id == flowId);
+        savedFlow.Status.Should().Be("pending", "通知写入失败时审批状态不能单独提交");
+        (await db.FlowRecords.AsNoTracking().AnyAsync(record =>
+            record.FlowId == flowId && record.Action == "approve")).Should().BeFalse();
+        (await db.Notifications.AsNoTracking().AnyAsync(notification =>
+            notification.FlowId == flowId && notification.Type == "approval_approved")).Should().BeFalse();
     }
 
     [Fact]
@@ -629,7 +703,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
                 ApplicantId = applicant.Data.Id,
                 Applicant = applicant.Data.Name,
                 ApplicantDept = sourceDept.Data.Name,
-                ReturnDate = expectedReturnDate,
+                ReturnDate = DateOnly.ParseExact(expectedReturnDate, "yyyy-MM-dd"),
                 Status = "approved",
                 ApplyTime = DateTime.UtcNow.AddDays(-2),
                 Deadline = DateTime.UtcNow.AddDays(1)
@@ -721,7 +795,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             Reason = "非保管人尝试转让"
         });
 
-        response.EnsureSuccessStatusCode();
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         var result = await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         result.Should().NotBeNull();
         result!.Code.Should().Be(4055);
@@ -754,7 +828,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
 
         Auth(await LoginToken(otherEmployeeNo, "TestPass123"));
         var forbiddenResponse = await _client.PostAsJsonAsync($"/api/approvals/{flow.Data!.Id}/withdraw", new { });
-        forbiddenResponse.EnsureSuccessStatusCode();
+        forbiddenResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var forbidden = await forbiddenResponse.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>();
         forbidden!.Code.Should().Be(4031);
         forbidden.Message.Should().Contain("申请人本人");
@@ -888,7 +962,10 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             "/api/approvals/pending-return");
         adminPending!.Data.Should().NotContain(x => x.Id == flow.Data.Id,
             "系统管理员没有管理该资产所属组织，不能代替业务负责人确认归还");
-        var denied = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/confirm-return", new { });
+        var denied = await PostError<ApprovalFlowDto>(
+            $"/api/approvals/{flow.Data.Id}/confirm-return",
+            new { },
+            HttpStatusCode.Forbidden);
         denied.Code.Should().Be(4030);
         denied.Message.Should().Contain("资产所属组织负责人");
 
@@ -922,14 +999,14 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     <bpmn:userTask id=""Task_TechDept"" name=""技术部审批"">
       <bpmn:extensionElements>
         <camunda:properties>
-          <camunda:property name=""assignee"" value=""1001"" />
+          <camunda:property name=""assignee"" value=""user:1"" />
         </camunda:properties>
       </bpmn:extensionElements>
     </bpmn:userTask>
     <bpmn:userTask id=""Task_AdminDept"" name=""行政部审批"">
       <bpmn:extensionElements>
         <camunda:properties>
-          <camunda:property name=""assignee"" value=""1001"" />
+          <camunda:property name=""assignee"" value=""user:1"" />
         </camunda:properties>
       </bpmn:extensionElements>
     </bpmn:userTask>
@@ -938,9 +1015,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     <bpmn:sequenceFlow id=""Flow_Tech"" sourceRef=""Gateway_Dept"" targetRef=""Task_TechDept"">
       <bpmn:conditionExpression>${applicantDept} == &quot;技术部&quot;</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id=""Flow_Admin"" sourceRef=""Gateway_Dept"" targetRef=""Task_AdminDept"">
-      <bpmn:conditionExpression>${applicantDept} == &quot;行政部&quot;</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id=""Flow_Admin"" sourceRef=""Gateway_Dept"" targetRef=""Task_AdminDept"" />
     <bpmn:sequenceFlow id=""Flow_TechEnd"" sourceRef=""Task_TechDept"" targetRef=""End"" />
     <bpmn:sequenceFlow id=""Flow_AdminEnd"" sourceRef=""Task_AdminDept"" targetRef=""End"" />
   </bpmn:process>
@@ -953,7 +1028,9 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             BizType = "test-condition",
             BpmnXml = conditionalBpmn
         });
-        saveResponse.EnsureSuccessStatusCode();
+        var saveResult = await saveResponse.Content.ReadFromJsonAsync<ApiResult<WorkflowDto>>();
+        saveResponse.StatusCode.Should().Be(HttpStatusCode.OK, saveResult?.Message);
+        saveResult!.Code.Should().Be(0, saveResult.Message);
 
         // 验证 BPMN 解析成功
         var act = () => BpmnParser.Parse(conditionalBpmn);
@@ -962,11 +1039,12 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var process = BpmnParser.Parse(conditionalBpmn);
         process.Nodes.Should().Contain(n => n.Type == BpmnNodeType.ExclusiveGateway);
 
-        // 验证网关有两个出边,每个都有条件表达式
+        // 验证网关有两个出边：一个条件分支，一个无条件默认分支
         var gateway = process.Nodes.First(n => n.Type == BpmnNodeType.ExclusiveGateway);
         var outgoingFlows = process.GetOutgoingFlows(gateway.Id);
         outgoingFlows.Should().HaveCount(2);
-        outgoingFlows.Should().OnlyContain(f => !string.IsNullOrEmpty(f.ConditionExpression));
+        outgoingFlows.Should().ContainSingle(f => !string.IsNullOrEmpty(f.ConditionExpression));
+        outgoingFlows.Should().ContainSingle(f => string.IsNullOrEmpty(f.ConditionExpression));
     }
 
     private async Task Login()
@@ -1032,7 +1110,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             AssetName = asset.Name,
             ApplicantId = admin.Id,
             Applicant = admin.Name,
-            ReturnDate = returnDate,
+            ReturnDate = DateOnly.ParseExact(returnDate, "yyyy-MM-dd"),
             Status = "approved",
             ApplyTime = DateTime.UtcNow.AddDays(-1),
             Deadline = DateTime.UtcNow.AddDays(1)
@@ -1047,6 +1125,13 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var res = await _client.PostAsJsonAsync(url, body);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<ApiResult<T>> PostError<T>(string url, object body, HttpStatusCode expectedStatus)
+    {
+        var response = await _client.PostAsJsonAsync(url, body);
+        response.StatusCode.Should().Be(expectedStatus);
+        return (await response.Content.ReadFromJsonAsync<ApiResult<T>>())!;
     }
 
     private async Task<T> Put<T>(string url, object body)

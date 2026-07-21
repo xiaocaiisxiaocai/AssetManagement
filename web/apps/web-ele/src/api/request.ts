@@ -14,6 +14,8 @@ import { ElMessage } from 'element-plus';
 
 import { useAuthStore } from '#/store';
 
+import { isLoginRequestUrl } from './auth-response';
+
 // import { refreshTokenApi } from './core';
 
 const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
@@ -128,7 +130,7 @@ function createRequestClient(baseURL: string) {
         throw error;
       }
       const {
-        response: { data },
+        response: { config, data },
         status,
       } = error;
       const { validationErrors } = error;
@@ -148,6 +150,10 @@ function createRequestClient(baseURL: string) {
           break;
         }
         case HttpStatusCode.Unauthorized: {
+          if (isLoginRequestUrl(config?.url)) {
+            ElMessage.warning(responseMessage(data));
+            break;
+          }
           const authStore = useAuthStore();
           void authStore.logout().catch(() => {
             // 本地状态已在 logout 中清理，路由跳转失败不应形成未处理 Promise。

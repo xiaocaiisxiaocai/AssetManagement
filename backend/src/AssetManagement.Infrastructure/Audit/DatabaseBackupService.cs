@@ -79,7 +79,8 @@ public class DatabaseBackupService : IDatabaseBackupService
                 filePath,
                 ResolveAttachmentPath(),
                 packagePath,
-                cancellationToken);
+                cancellationToken,
+                ex => _logger.LogWarning(ex, "清理已有 ZIP 对应的历史明文 SQL 失败"));
             CleanupOldBackups(backupPath, settings, cancellationToken);
             var file = new FileInfo(packagePath);
             return new DatabaseBackupResultDto
@@ -275,7 +276,8 @@ public class DatabaseBackupService : IDatabaseBackupService
         string sqlFilePath,
         string attachmentPath,
         string packageFilePath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<Exception>? legacyCleanupWarning = null)
     {
         try
         {
@@ -284,11 +286,48 @@ public class DatabaseBackupService : IDatabaseBackupService
                 attachmentPath,
                 packageFilePath,
                 cancellationToken);
+            // SQL 仅作为生成完整备份包的临时文件。删除失败时不能把备份报告为成功，
+            // 否则同一份数据库会继续以明文 SQL 和 ZIP 长期重复落盘。
+            File.Delete(sqlFilePath);
         }
         catch
         {
             CleanupFailedBackup(sqlFilePath, packageFilePath);
             throw;
+        }
+
+        // 历史重复文件清理属于维护动作，失败不能反向删除本次已经成功生成的备份包。
+        try
+        {
+            CleanupDuplicateSqlBackups(Path.GetDirectoryName(packageFilePath)!);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                legacyCleanupWarning?.Invoke(ex);
+            }
+            catch
+            {
+                // 日志提供器异常也不能破坏已经成功生成的备份包。
+            }
+        }
+    }
+
+    internal static void CleanupDuplicateSqlBackups(string backupDirectory)
+    {
+        if (!Directory.Exists(backupDirectory)) return;
+
+        foreach (var sqlPath in Directory.EnumerateFiles(
+                     backupDirectory,
+                     "assetmgmt_*.sql",
+                     SearchOption.TopDirectoryOnly))
+        {
+            var packagePath = Path.ChangeExtension(sqlPath, ".zip");
+            if (File.Exists(packagePath))
+            {
+                File.Delete(sqlPath);
+            }
         }
     }
 

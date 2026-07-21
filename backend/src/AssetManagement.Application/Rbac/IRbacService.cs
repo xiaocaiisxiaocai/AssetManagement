@@ -25,6 +25,7 @@ public interface IRbacService
     Task<RoleDto> SetRolePermissionsAsync(int id, int[] permissionIds);
     Task<RoleDto> SetRoleMenusAsync(int id, int[] menuIds);
     Task<RoleDto> SetRoleAccessAsync(int id, int[] permissionIds, int[] menuIds);
+    Task<RoleAccessOptionsDto> GetRoleAccessOptionsAsync();
 
     Task<List<PermissionDto>> GetPermissionsAsync();
     Task<PermissionDto> CreatePermissionAsync(PermissionDto request);

@@ -141,7 +141,10 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
 
         var response = await _client.PostAsJsonAsync(probePath, new { });
 
-        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.Conflict);
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<object?>>();
+        body!.Code.Should().Be(4092);
+        body.Message.Should().Be("业务校验失败");
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var latest = db.AuditLogs.Where(x => x.Summary.Contains(probePath)).OrderByDescending(x => x.Id).First();
