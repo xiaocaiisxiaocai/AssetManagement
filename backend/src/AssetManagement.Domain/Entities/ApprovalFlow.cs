@@ -14,6 +14,8 @@ public class ApprovalFlow : IBpmnFlowInstance
     public int ApplicantId { get; set; }
     public string Applicant { get; set; } = "";
     public string? ApplicantDept { get; set; }
+    /// <summary>借用申请发起时的当前保管人，用于归还时恢复实物责任人。</summary>
+    public int? SourceCustodianId { get; set; }
     public int? TransfereeId { get; set; }
     public string? Transferee { get; set; }
     public string? TransfereeDept { get; set; }

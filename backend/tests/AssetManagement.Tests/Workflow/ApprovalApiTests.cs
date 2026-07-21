@@ -86,7 +86,13 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     public async Task Borrow_flow_creates_pending_flow()
     {
         await Login();
-        var asset = await CreateAsset();
+        int adminId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            adminId = await db.Users.Where(user => user.EmployeeNo == "1001").Select(user => user.Id).SingleAsync();
+        }
+        var asset = await CreateAsset(null, adminId);
 
         var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
         {
@@ -110,6 +116,12 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         flow.Data.AssetId.Should().Be(asset.Id);
         // BPMN 模式下，流程应该已经启动并推进到第一个 UserTask
         flow.Data.CurrentNodeIds.Should().NotBeEmpty();
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var savedFlow = await verifyDb.ApprovalFlows.AsNoTracking().SingleAsync(item => item.Id == flow.Data.Id);
+        savedFlow.SourceCustodianId.Should().Be(adminId,
+            "借用发起时必须固化借出前保管人，不能在归还时临时猜测");
     }
 
     [Fact]
@@ -887,6 +899,11 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var confirmed = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/confirm-return", new { });
         confirmed.Code.Should().Be(0);
         confirmed.Data!.ConfirmedAt.Should().NotBeNull();
+
+        var returnedAsset = await _client.GetFromJsonAsync<ApiResult<AssetDto>>($"/api/assets/{asset.Id}");
+        returnedAsset!.Data!.Status.Should().Be(AssetStatus.Available);
+        returnedAsset.Data.CustodianId.Should().Be(manager.Data.Id,
+            "借出前没有保管人时，应由实际确认入库的资产所属组织负责人接管");
     }
 
     [Fact]

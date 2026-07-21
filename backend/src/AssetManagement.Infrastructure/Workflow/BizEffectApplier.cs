@@ -42,6 +42,8 @@ public class BizEffectApplier : IBizEffectApplier
             case "borrow":
                 if (asset.Status != AssetStatus.Available)
                     throw new BizException(4090, "资产状态已变化，无法完成借用审批");
+                if (asset.CustodianId != flow.SourceCustodianId)
+                    throw new BizException(4090, "资产借出前保管人已变化，请撤回后重新发起");
                 await LockActiveUserAsync(flow.ApplicantId, "借用申请人不存在或已停用，请撤回后重新发起");
                 asset.Status = AssetStatus.Borrowed;
                 asset.CustodianId = flow.ApplicantId;
@@ -59,8 +61,6 @@ public class BizEffectApplier : IBizEffectApplier
             case "return":
                 if (asset.Status != AssetStatus.Borrowed || asset.CustodianId != flow.ApplicantId)
                     throw new BizException(4090, "资产状态或保管人已变化，无法完成归还审批");
-                asset.Status = AssetStatus.Available;
-                asset.CustodianId = null;
                 var borrowFlow = await _db.ApprovalFlows.AsTracking()
                     .Where(candidate => candidate.Id != flow.Id &&
                                         candidate.AssetId == flow.AssetId &&
@@ -69,6 +69,9 @@ public class BizEffectApplier : IBizEffectApplier
                                         candidate.ConfirmedAt == null)
                     .OrderByDescending(candidate => candidate.ApplyTime)
                     .FirstOrDefaultAsync();
+                asset.CustodianId = await ResolveReturnCustodianIdAsync(
+                    asset, borrowFlow?.SourceCustodianId, operatorUserId);
+                asset.Status = AssetStatus.Available;
                 if (borrowFlow is not null)
                 {
                     borrowFlow.ConfirmedAt = DateTime.UtcNow;
@@ -127,6 +130,35 @@ public class BizEffectApplier : IBizEffectApplier
         });
     }
 
+    public async Task<int> ResolveReturnCustodianIdAsync(
+        Asset asset,
+        int? sourceCustodianId,
+        int? fallbackManagerId)
+    {
+        if (sourceCustodianId.HasValue)
+        {
+            var source = await LockUserAsync(sourceCustodianId.Value);
+            if (source is { IsActive: true } &&
+                (!asset.DepartmentId.HasValue || source.DepartmentId == asset.DepartmentId))
+            {
+                return source.Id;
+            }
+        }
+
+        if (!fallbackManagerId.HasValue)
+            throw new BizException(4090, "借出前保管人不可用，请由资产所属组织负责人确认接收入库");
+
+        var fallback = await LockUserAsync(fallbackManagerId.Value);
+        if (fallback is not { IsActive: true })
+            throw new BizException(4090, "接收入库负责人不存在或已停用");
+        if (asset.DepartmentId.HasValue &&
+            !await ManagesDepartmentAsync(fallback.Id, asset.DepartmentId.Value))
+        {
+            throw new BizException(4030, "借出前保管人不可用，仅资产所属组织负责人可接收入库");
+        }
+        return fallback.Id;
+    }
+
     private async Task<User> LockActiveUserAsync(int userId, string errorMessage)
     {
         var user = await _db.Users
@@ -135,6 +167,29 @@ public class BizEffectApplier : IBizEffectApplier
             .SingleOrDefaultAsync();
         if (user is null || !user.IsActive) throw new BizException(4041, errorMessage);
         return user;
+    }
+
+    private async Task<User?> LockUserAsync(int userId)
+        => await _db.Users
+            .FromSqlInterpolated($"SELECT * FROM users WHERE Id = {userId} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync();
+
+    private async Task<bool> ManagesDepartmentAsync(int userId, int departmentId)
+    {
+        var departments = await _db.Departments.AsNoTracking()
+            .Select(department => new { department.Id, department.ParentId, department.ManagerId })
+            .ToListAsync();
+        var byId = departments.ToDictionary(department => department.Id);
+        var visited = new HashSet<int>();
+        var currentId = departmentId;
+        while (visited.Add(currentId) && byId.TryGetValue(currentId, out var department))
+        {
+            if (department.ManagerId == userId) return true;
+            if (!department.ParentId.HasValue) break;
+            currentId = department.ParentId.Value;
+        }
+        return false;
     }
 
     private static Dictionary<string, object?> Snapshot(Asset asset)

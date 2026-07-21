@@ -32,4 +32,8 @@ public interface IWorkflowService
 public interface IBizEffectApplier
 {
     Task ApplyAsync(AssetManagement.Domain.Entities.ApprovalFlow flow, int? operatorUserId = null);
+    Task<int> ResolveReturnCustodianIdAsync(
+        AssetManagement.Domain.Entities.Asset asset,
+        int? sourceCustodianId,
+        int? fallbackManagerId);
 }

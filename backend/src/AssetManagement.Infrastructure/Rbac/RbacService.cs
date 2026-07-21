@@ -856,7 +856,8 @@ public class RbacService : IRbacService
         {
             throw new BizException(4094, "用户已被测试料件保管人使用，不能删除");
         }
-        if (await _db.ApprovalFlows.AnyAsync(x => x.ApplicantId == id || x.TransfereeId == id))
+        if (await _db.ApprovalFlows.AnyAsync(x =>
+                x.ApplicantId == id || x.TransfereeId == id || x.SourceCustodianId == id))
         {
             throw new BizException(4094, "用户已被资产流转记录使用，不能删除");
         }

@@ -277,6 +277,7 @@ public class WorkflowService : IWorkflowService
             ApplicantId = applicant.Id,
             Applicant = applicant.Name,
             ApplicantDept = await DepartmentName(applicant.DepartmentId),
+            SourceCustodianId = workflow.BizType == "borrow" ? asset.CustodianId : null,
             TransfereeId = transferee?.Id,
             Transferee = transferee?.Name,
             TransfereeDept = await DepartmentName(transferee?.DepartmentId),
@@ -901,7 +902,8 @@ public class WorkflowService : IWorkflowService
             if (asset.IsDeleted || asset.Status != AssetStatus.Borrowed || !asset.CustodianId.HasValue)
                 throw new BizException(4090, "资产当前状态与该归还单不一致，请刷新后重试");
             asset.Status = AssetStatus.Available;
-            asset.CustodianId = null;
+            asset.CustodianId = await _bizEffectApplier.ResolveReturnCustodianIdAsync(
+                asset, flow.SourceCustodianId, user.Id);
             asset.RowVersion++;
         }
         flow.RowVersion++;

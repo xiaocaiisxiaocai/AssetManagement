@@ -181,6 +181,7 @@ public class BizEffectApplierTests : MySqlFixtureBase
     [Fact]
     public async Task Return_by_transferee_closes_the_original_borrow_record()
     {
+        var sourceCustodian = await CreateUserAsync("借出前保管人");
         var originalBorrower = await CreateUserAsync("原借用人");
         var transferee = await CreateUserAsync("转让接收人");
         var category = new AssetCategory { CodeSeg = "RET", Code = $"RET-{Guid.NewGuid():N}" };
@@ -214,6 +215,7 @@ public class BizEffectApplierTests : MySqlFixtureBase
             AssetName = asset.Name,
             ApplicantId = originalBorrower.Id,
             Applicant = originalBorrower.Name,
+            SourceCustodianId = sourceCustodian.Id,
             ReturnDate = DateOnly.FromDateTime(DateTime.Today.AddDays(7)).ToString("yyyy-MM-dd"),
             ApplyTime = DateTime.UtcNow.AddDays(-2),
             Deadline = DateTime.UtcNow.AddDays(1)
@@ -233,13 +235,84 @@ public class BizEffectApplierTests : MySqlFixtureBase
             ApplyTime = DateTime.UtcNow
         };
 
-        await _applier.ApplyAsync(returnFlow);
+        await _applier.ApplyAsync(returnFlow, operatorUserId: transferee.Id);
         await _db.SaveChangesAsync();
 
         asset.Status.Should().Be(AssetStatus.Available);
-        asset.CustodianId.Should().BeNull();
+        asset.CustodianId.Should().Be(sourceCustodian.Id,
+            "资产归还后应恢复给借出前的原保管人");
         originalBorrow.ConfirmedAt.Should().NotBeNull(
             "接收人归还后必须关闭保存原应归还日期的借用记录");
+    }
+
+    [Fact]
+    public async Task Return_without_valid_source_assigns_receiving_department_manager()
+    {
+        var manager = await CreateUserAsync("接收入库主管");
+        var borrower = await CreateUserAsync("无来源借用人");
+        var category = new AssetCategory { CodeSeg = "FBK", Code = $"FBK-{Guid.NewGuid():N}" };
+        var workflow = new Domain.Entities.Workflow
+        {
+            Name = "借用审批兜底测试",
+            BizType = "borrow",
+            IsActive = true
+        };
+        var department = new Department
+        {
+            Name = "归还兜底部门",
+            Code = $"FBK-{Guid.NewGuid():N}"[..16],
+            ManagerId = manager.Id
+        };
+        _db.AddRange(category, workflow, department);
+        await _db.SaveChangesAsync();
+        manager.DepartmentId = department.Id;
+        borrower.DepartmentId = department.Id;
+        var asset = new Asset
+        {
+            AssetNo = $"FBK-{Guid.NewGuid():N}",
+            Name = "无来源保管人归还资产",
+            CategoryId = category.Id,
+            DepartmentId = department.Id,
+            Status = AssetStatus.Borrowed,
+            CustodianId = borrower.Id,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.Assets.Add(asset);
+        await _db.SaveChangesAsync();
+        var borrowFlow = new ApprovalFlow
+        {
+            FlowNo = $"BOR-{Guid.NewGuid():N}",
+            BizType = "borrow",
+            WorkflowId = workflow.Id,
+            Status = "approved",
+            AssetId = asset.Id,
+            AssetNo = asset.AssetNo,
+            AssetName = asset.Name,
+            ApplicantId = borrower.Id,
+            Applicant = borrower.Name,
+            ApplyTime = DateTime.UtcNow.AddDays(-1)
+        };
+        _db.ApprovalFlows.Add(borrowFlow);
+        await _db.SaveChangesAsync();
+        var returnFlow = new ApprovalFlow
+        {
+            FlowNo = $"RETURN-{Guid.NewGuid():N}",
+            BizType = "return",
+            Status = "approved",
+            AssetId = asset.Id,
+            AssetNo = asset.AssetNo,
+            AssetName = asset.Name,
+            ApplicantId = borrower.Id,
+            Applicant = borrower.Name,
+            ApplyTime = DateTime.UtcNow
+        };
+
+        await _applier.ApplyAsync(returnFlow, operatorUserId: manager.Id);
+        await _db.SaveChangesAsync();
+
+        asset.Status.Should().Be(AssetStatus.Available);
+        asset.CustodianId.Should().Be(manager.Id,
+            "没有有效借出前保管人时，应由实际确认入库的部门主管接管");
     }
 
     private async Task<User> CreateUserAsync(string name)
