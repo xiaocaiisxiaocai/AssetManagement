@@ -155,7 +155,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         {
             permissionIds = new[] { permission.Id },
         });
-        var password = "OptionAccess123!";
+        var password = "Option123!";
         var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = Unique("optuser"), Name = "选项访问用户", Password = password,
@@ -1528,7 +1528,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = employeeNo,
             Name = "重置密码用户",
-            Password = "OldPassword123",
+            Password = "OldPass123",
             RoleIds = new[] { roleId }
         });
 
