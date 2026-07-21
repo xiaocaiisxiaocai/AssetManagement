@@ -77,6 +77,10 @@ public record ApprovalFlowDto
     public DateTime ApplyTime { get; init; }
     public DateTime Deadline { get; init; }
     public DateTime? ConfirmedAt { get; init; }
+    /// <summary>当前调用人最近一次审批动作：approve / reject。</summary>
+    public string? MyApprovalAction { get; init; }
+    public string? MyApprovalNodeId { get; init; }
+    public DateTime? MyApprovalTime { get; init; }
     public List<WorkflowProgressStepDto> ProgressSteps { get; init; } = new();
     public List<WorkflowProgressStepDto> CurrentSteps { get; init; } = new();
     public List<WorkflowProgressStepDto> NextSteps { get; init; } = new();

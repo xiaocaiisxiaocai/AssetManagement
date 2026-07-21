@@ -179,6 +179,10 @@ public class MaterialFlowDto
     public bool DirectTransfer { get; set; }
     /// <summary>当前调用人是否可撤回该流转申请。</summary>
     public bool CanWithdraw { get; set; }
+    /// <summary>当前调用人最近一次审批动作：approve / reject。</summary>
+    public string? MyApprovalAction { get; set; }
+    public string? MyApprovalNodeId { get; set; }
+    public DateTime? MyApprovalTime { get; set; }
     public List<WorkflowProgressStepDto> ProgressSteps { get; set; } = new();
     public List<WorkflowProgressStepDto> CurrentSteps { get; set; } = new();
     public List<WorkflowProgressStepDto> NextSteps { get; set; } = new();

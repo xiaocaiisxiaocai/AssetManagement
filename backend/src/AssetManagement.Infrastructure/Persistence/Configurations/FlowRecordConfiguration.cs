@@ -11,10 +11,13 @@ public class FlowRecordConfiguration : IEntityTypeConfiguration<FlowRecord>
         b.ToTable("flow_records");
         b.HasKey(x => x.Id);
         b.Property(x => x.Action).HasMaxLength(50).IsRequired();
+        b.Property(x => x.NodeId).HasMaxLength(100);
         b.Property(x => x.Operator).HasMaxLength(100);
         b.Property(x => x.Comment).HasMaxLength(500);
         b.HasIndex(x => x.FlowId);
+        b.HasIndex(x => new { x.OperatorUserId, x.Action, x.OperatedAt });
         b.HasIndex(x => x.OperatedAt);
         b.HasOne<ApprovalFlow>().WithMany().HasForeignKey(x => x.FlowId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<User>().WithMany().HasForeignKey(x => x.OperatorUserId).OnDelete(DeleteBehavior.Restrict);
     }
 }

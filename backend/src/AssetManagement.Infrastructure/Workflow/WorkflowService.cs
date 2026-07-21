@@ -306,7 +306,7 @@ public class WorkflowService : IWorkflowService
             _logger.LogWarning(ex, "创建审批单发生唯一键冲突，资产 {AssetId}", asset.Id);
             throw new BizException(4056, "该资产已有进行中的审批,请勿重复发起");
         }
-        await AddRecord(flow.Id, "start", applicant.Name, request.Reason);
+        await AddRecord(flow.Id, "start", applicant.Id, applicant.Name, request.Reason);
         await tx.CommitAsync();
 
         // 业务已提交，通知失败只记告警，避免把成功发起回滚成接口失败。
@@ -368,6 +368,51 @@ public class WorkflowService : IWorkflowService
         var items = new List<ApprovalFlowDto>(pageFlows.Count);
         foreach (var item in selected) items.Add(await ToFlowDtoAsync(item.Flow, item.Nodes, renderContext));
         return new PagedResult<ApprovalFlowDto> { Items = items, Total = actionableTotal, Page = page, PageSize = pageSize };
+    }
+
+    public async Task<PagedResult<ApprovalFlowDto>> HandledPageAsync(int userId, ApprovalFlowPageQuery query)
+    {
+        var (page, pageSize) = NormalizePage(query.Page, query.PageSize);
+        await LoadUser(userId);
+        var handledFlowIds = _db.FlowRecords.AsNoTracking()
+            .Where(record => record.OperatorUserId == userId &&
+                             (record.Action == "approve" || record.Action == "reject"))
+            .Select(record => record.FlowId)
+            .Distinct();
+        var flowsQuery = ApplyApprovalPageFilters(
+            _db.ApprovalFlows.AsNoTracking().Where(flow => handledFlowIds.Contains(flow.Id)), query);
+        var total = await flowsQuery.CountAsync();
+        var pageOffset = PageOffset(page, pageSize);
+        if (pageOffset >= total)
+            return new PagedResult<ApprovalFlowDto> { Total = total, Page = page, PageSize = pageSize };
+
+        var flows = await flowsQuery.OrderByDescending(flow => flow.Id)
+            .Skip((int)pageOffset).Take(pageSize).ToListAsync();
+        await HydrateParticipantNamesAsync(flows);
+        var flowIds = flows.Select(flow => flow.Id).ToArray();
+        var latestRecords = (await _db.FlowRecords.AsNoTracking()
+                .Where(record => flowIds.Contains(record.FlowId) &&
+                                 record.OperatorUserId == userId &&
+                                 (record.Action == "approve" || record.Action == "reject"))
+                .OrderByDescending(record => record.OperatedAt)
+                .ThenByDescending(record => record.Id)
+                .ToListAsync())
+            .GroupBy(record => record.FlowId)
+            .ToDictionary(group => group.Key, group => group.First());
+        var renderContext = await BuildProgressRenderContextAsync(flows);
+        var items = new List<ApprovalFlowDto>(flows.Count);
+        foreach (var flow in flows)
+        {
+            var dto = await ToFlowDtoAsync(flow, renderContext: renderContext);
+            var record = latestRecords[flow.Id];
+            items.Add(dto with
+            {
+                MyApprovalAction = record.Action,
+                MyApprovalNodeId = record.NodeId,
+                MyApprovalTime = record.OperatedAt
+            });
+        }
+        return new PagedResult<ApprovalFlowDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
 
     public async Task<List<ApprovalFlowDto>> MineAsync(int userId)
@@ -513,7 +558,7 @@ public class WorkflowService : IWorkflowService
         {
             throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
         }
-        await AddRecord(id, "approve", user.Name, $"节点 {nodeId}: {request.Opinion}");
+        await AddRecord(id, "approve", user.Id, user.Name, $"节点 {nodeId}: {request.Opinion}", nodeId);
         await tx.CommitAsync();
 
         // 流程完成 → 通知申请人；未完成 → 通知下一审批节点的审批人
@@ -595,7 +640,7 @@ public class WorkflowService : IWorkflowService
         {
             throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
         }
-        await AddRecord(id, "reject", user.Name, request.Reason);
+        await AddRecord(id, "reject", user.Id, user.Name, request.Reason, nodeId);
         await tx.CommitAsync();
 
         // 通知申请人审批被驳回
@@ -669,7 +714,7 @@ public class WorkflowService : IWorkflowService
         {
             throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
         }
-        await AddRecord(id, "withdraw", applicant.Name, "申请人主动撤回");
+        await AddRecord(id, "withdraw", applicant.Id, applicant.Name, "申请人主动撤回");
         await tx.CommitAsync();
 
         return await ToFlowDtoAsync(flow);
@@ -736,7 +781,7 @@ public class WorkflowService : IWorkflowService
         {
             throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
         }
-        await AddRecord(id, "add_sign", user.Name, $"节点 {nodeId}: 加签 {signUser.Name}");
+        await AddRecord(id, "add_sign", user.Id, user.Name, $"节点 {nodeId}: 加签 {signUser.Name}", nodeId);
         await tx.CommitAsync();
         try
         {
@@ -802,7 +847,7 @@ public class WorkflowService : IWorkflowService
         {
             throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
         }
-        await AddRecord(id, "cancel_add_sign", user.Name, $"节点 {nodeId}: 取消加签 {signUser?.Name ?? signKey}");
+        await AddRecord(id, "cancel_add_sign", user.Id, user.Name, $"节点 {nodeId}: 取消加签 {signUser?.Name ?? signKey}", nodeId);
         await tx.CommitAsync();
         return await ToFlowDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
     }
@@ -868,7 +913,7 @@ public class WorkflowService : IWorkflowService
         {
             throw new BizException(4090, "操作冲突，该归还单已被处理，请刷新后重试");
         }
-        await AddRecord(id, "confirm_return", user.Name, "确认归还接收");
+        await AddRecord(id, "confirm_return", user.Id, user.Name, "确认归还接收");
         await tx.CommitAsync();
 
         // 通知借用人资产已确认归还
@@ -1620,12 +1665,20 @@ public class WorkflowService : IWorkflowService
         return applicant?.DepartmentId;
     }
 
-    private async Task AddRecord(int flowId, string action, string actor, string? remark)
+    private async Task AddRecord(
+        int flowId,
+        string action,
+        int? operatorUserId,
+        string actor,
+        string? remark,
+        string? nodeId = null)
     {
         _db.FlowRecords.Add(new FlowRecord
         {
             FlowId = flowId,
             Action = action,
+            OperatorUserId = operatorUserId,
+            NodeId = nodeId,
             Operator = actor,
             Comment = Truncate(remark, 500),
             OperatedAt = DateTime.UtcNow

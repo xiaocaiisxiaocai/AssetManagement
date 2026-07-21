@@ -14,6 +14,7 @@ public interface IWorkflowService
     Task<ApprovalFlowDto> StartAsync(StartApprovalRequest request, int applicantId);
     Task<List<ApprovalFlowDto>> PendingAsync(int userId);
     Task<PagedResult<ApprovalFlowDto>> PendingPageAsync(int userId, ApprovalFlowPageQuery query);
+    Task<PagedResult<ApprovalFlowDto>> HandledPageAsync(int userId, ApprovalFlowPageQuery query);
     Task<List<ApprovalFlowDto>> PendingReturnsAsync(int userId);
     Task<PagedResult<ApprovalFlowDto>> PendingReturnsPageAsync(int userId, ApprovalFlowPageQuery query);
     Task<List<ApprovalFlowDto>> MineAsync(int userId);

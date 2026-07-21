@@ -32,6 +32,11 @@ public class ApprovalController : ControllerBase
     public async Task<ApiResult<PagedResult<ApprovalFlowDto>>> PendingPage([FromQuery] ApprovalFlowPageQuery query)
         => ApiResult<PagedResult<ApprovalFlowDto>>.Ok(await _service.PendingPageAsync(CurrentUserId(), query));
 
+    [HttpGet("handled-page")]
+    [HasPermission("approval:handle")]
+    public async Task<ApiResult<PagedResult<ApprovalFlowDto>>> HandledPage([FromQuery] ApprovalFlowPageQuery query)
+        => ApiResult<PagedResult<ApprovalFlowDto>>.Ok(await _service.HandledPageAsync(CurrentUserId(), query));
+
     [HttpGet("mine")]
     [HasPermission("approval:view")]
     public async Task<ApiResult<List<ApprovalFlowDto>>> Mine()

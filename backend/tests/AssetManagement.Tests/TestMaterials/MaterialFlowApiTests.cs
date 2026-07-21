@@ -159,6 +159,13 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             $"/api/material-flows/{flow.Data.Id}/approve", new MaterialApprovalRequest { Opinion = "同意" });
         approved.Data!.Status.Should().Be("approved");
 
+        var handled = await _client.GetFromJsonAsync<ApiResult<PagedResult<MaterialFlowDto>>>(
+            $"/api/material-flows/handled-page?page=1&pageSize=20&flowId={flow.Data.Id}");
+        var handledRecord = handled!.Data!.Items.Should().ContainSingle().Which;
+        handledRecord.MyApprovalAction.Should().Be("approve");
+        handledRecord.MyApprovalNodeId.Should().NotBeNullOrWhiteSpace();
+        handledRecord.MyApprovalTime.Should().NotBeNull();
+
         var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
         after!.Data!.CustodianId.Should().Be(transferee.Id);
         after.Data.HasPendingFlow.Should().BeFalse();

@@ -24,6 +24,8 @@ import {
   ElMessageBox,
   ElOption,
   ElPagination,
+  ElRadioButton,
+  ElRadioGroup,
   ElSelect,
   ElTable,
   ElTableColumn,
@@ -34,6 +36,7 @@ import {
 
 import {
   approveFlowApi as approveMaterialFlowApi,
+  listHandledFlowsPageApi,
   listPendingFlowsPageApi,
   rejectFlowApi as rejectMaterialFlowApi,
 } from '#/api/material';
@@ -43,6 +46,7 @@ import {
   approveFlowApi,
   BpmnTokenStatus,
   cancelAddSignFlowApi,
+  getHandledApprovalsPageApi,
   getPendingApprovalsPageApi,
   rejectFlowApi,
 } from '#/api/workflow';
@@ -92,7 +96,10 @@ const cancelAddSignLoadingKey = ref('');
 const detailVisible = ref(false);
 const addSignVisible = ref(false);
 const selected = ref<ApprovalFlow | null>(null);
+const handledSelected = ref<ApprovalWorkItem | null>(null);
+const handledDetailVisible = ref(false);
 const activeSource = ref<ApprovalSource>('asset');
+const viewMode = ref<'handled' | 'pending'>('pending');
 const assetFlows = ref<ApprovalWorkItem[]>([]);
 const materialFlows = ref<ApprovalWorkItem[]>([]);
 const assetTotal = ref(0);
@@ -142,14 +149,19 @@ async function loadData() {
       openedNotificationFlowKey.value,
     );
     const notificationKey = attempt.key;
-    const requestedFlowId = attempt.requestedFlowId;
+    const requestedFlowId =
+      viewMode.value === 'pending' ? attempt.requestedFlowId : 0;
     if (requestedFlowId) {
       requestedNotificationKey = notificationKey;
       // 深链只尝试一次；即使目标已过期或无权限，也不能让 flowId 永久约束列表。
       openedNotificationFlowKey.value = attempt.consumedKey;
     }
     if (activeSource.value === 'asset') {
-      const result = await getPendingApprovalsPageApi({
+      const request =
+        viewMode.value === 'pending'
+          ? getPendingApprovalsPageApi
+          : getHandledApprovalsPageApi;
+      const result = await request({
         bizType: requestedFlowId ? undefined : query.bizType || undefined,
         flowId: requestedFlowId,
         keyword: requestedFlowId
@@ -170,7 +182,11 @@ async function loadData() {
       );
       assetTotal.value = result.total;
     } else if (canHandleMaterialFlow.value) {
-      const result = await listPendingFlowsPageApi({
+      const request =
+        viewMode.value === 'pending'
+          ? listPendingFlowsPageApi
+          : listHandledFlowsPageApi;
+      const result = await request({
         flowId: requestedFlowId,
         keyword: requestedFlowId
           ? undefined
@@ -239,6 +255,11 @@ function openDetail(item: ApprovalWorkItem) {
   addSignUser.value = '';
   selectedNodeId.value = flow.actionableNodeIds[0] || '';
   detailVisible.value = true;
+}
+
+function openHandledDetail(item: ApprovalWorkItem) {
+  handledSelected.value = item;
+  handledDetailVisible.value = true;
 }
 
 // 获取当前活跃节点信息
@@ -535,6 +556,27 @@ function onSourceChange() {
   runHandled(loadData());
 }
 
+function onViewModeChange() {
+  assetPage.page = 1;
+  materialPage.page = 1;
+  runHandled(loadData());
+}
+
+function approvalActionLabel(action: null | string | undefined) {
+  return action === 'reject' ? '已驳回' : '已通过';
+}
+
+function flowStatusLabel(status: string) {
+  return (
+    {
+      approved: '已通过',
+      pending: '流转中',
+      rejected: '已驳回',
+      withdrawn: '已撤回',
+    }[status] || status
+  );
+}
+
 function getBizTypeLabel(type: string) {
   const map: Record<string, string> = {
     borrow: '借用',
@@ -559,6 +601,20 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="pending-page">
+      <div class="pending-view-switch" aria-label="审批记录范围">
+        <ElRadioGroup v-model="viewMode" @change="onViewModeChange">
+          <ElRadioButton value="pending">待我处理</ElRadioButton>
+          <ElRadioButton value="handled">我已处理</ElRadioButton>
+        </ElRadioGroup>
+        <span class="pending-view-tip">
+          {{
+            viewMode === 'pending'
+              ? '仅显示当前需要您处理的审批任务'
+              : '显示您已经通过或驳回的审批记录'
+          }}
+        </span>
+      </div>
+
       <div class="filter-panel">
         <ElForm class="filter-form" inline>
           <ElFormItem label="关键字">
@@ -676,10 +732,45 @@ onMounted(async () => {
               />
             </template>
           </ElTableColumn>
+          <ElTableColumn
+            v-if="viewMode === 'handled'"
+            align="center"
+            label="我的处理"
+            width="110"
+          >
+            <template #default="{ row }">
+              <ElTag
+                :type="row.myApprovalAction === 'reject' ? 'danger' : 'success'"
+                effect="plain"
+                size="small"
+              >
+                {{ approvalActionLabel(row.myApprovalAction) }}
+              </ElTag>
+            </template>
+          </ElTableColumn>
+          <ElTableColumn
+            v-if="viewMode === 'handled'"
+            class-name="hide-on-mobile"
+            label="处理时间"
+            width="170"
+          >
+            <template #default="{ row }">
+              {{ formatDateTime(row.myApprovalTime) }}
+            </template>
+          </ElTableColumn>
           <ElTableColumn align="center" fixed="right" label="操作" width="150">
             <template #default="{ row }">
               <ElButton
-                v-if="row.source === 'asset'"
+                v-if="viewMode === 'handled'"
+                link
+                size="small"
+                type="primary"
+                @click="openHandledDetail(row)"
+              >
+                查看记录
+              </ElButton>
+              <ElButton
+                v-else-if="row.source === 'asset'"
                 link
                 size="small"
                 type="primary"
@@ -885,6 +976,56 @@ onMounted(async () => {
         </template>
       </ElDialog>
 
+      <ElDialog v-model="handledDetailVisible" title="审批记录" width="680px">
+        <ElDescriptions v-if="handledSelected" :column="2" border>
+          <ElDescriptionsItem label="流程单号">
+            {{ handledSelected.flowNo }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="当前状态">
+            {{ flowStatusLabel(handledSelected.status) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="业务类型">
+            {{ handledSelected.typeLabel }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="审批对象">
+            {{ handledSelected.objectName }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="申请人">
+            {{ handledSelected.applicant }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="我的处理">
+            <ElTag
+              :type="
+                handledSelected.myApprovalAction === 'reject'
+                  ? 'danger'
+                  : 'success'
+              "
+              effect="plain"
+              size="small"
+            >
+              {{ approvalActionLabel(handledSelected.myApprovalAction) }}
+            </ElTag>
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="申请时间">
+            {{ formatDateTime(handledSelected.applyTime) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem label="处理时间">
+            {{ formatDateTime(handledSelected.myApprovalTime) }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem :span="2" label="申请理由">
+            {{ handledSelected.reason || '-' }}
+          </ElDescriptionsItem>
+          <ElDescriptionsItem :span="2" label="完整审批记录">
+            <WorkflowProgressDetail
+              :steps="handledSelected.raw.progressSteps || []"
+            />
+          </ElDescriptionsItem>
+        </ElDescriptions>
+        <template #footer>
+          <ElButton @click="handledDetailVisible = false">关闭</ElButton>
+        </template>
+      </ElDialog>
+
       <!-- 加签对话框 -->
       <ElDialog
         v-model="addSignVisible"
@@ -926,6 +1067,17 @@ onMounted(async () => {
   flex-direction: column;
   gap: 20px;
   padding: 20px;
+}
+
+.pending-view-switch {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pending-view-tip {
+  font-size: 13px;
+  color: var(--asset-page-muted);
 }
 
 /* ========== 表格面板 ========== */
@@ -1034,5 +1186,13 @@ onMounted(async () => {
 :deep(.el-textarea__inner) {
   font-size: 14px;
   line-height: 20px;
+}
+
+@media (max-width: 640px) {
+  .pending-view-switch {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
 }
 </style>

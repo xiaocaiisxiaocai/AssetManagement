@@ -107,7 +107,7 @@ public class MaterialFlowService : IMaterialFlowService
                     _db.Entry(material).State = EntityState.Detached;
                     continue;
                 }
-                await AddRecord(directFlow.Id, "direct_transfer", applicant.Name,
+                await AddRecord(directFlow.Id, "direct_transfer", applicant.Id, applicant.Name,
                     $"直接转移给 {transferee.Name}: {request.Reason}");
                 await tx.CommitAsync();
 
@@ -195,7 +195,7 @@ public class MaterialFlowService : IMaterialFlowService
                 _db.Entry(material).State = EntityState.Detached;
                 continue;
             }
-            await AddRecord(flow.Id, "start", applicant.Name, request.Reason);
+            await AddRecord(flow.Id, "start", applicant.Id, applicant.Name, request.Reason);
             await bpmnTx.CommitAsync();
 
             // 业务已提交，通知失败只记告警，避免把成功发起回滚成接口失败。
@@ -261,6 +261,48 @@ public class MaterialFlowService : IMaterialFlowService
         var result = new List<MaterialFlowDto>(selected.Count);
         foreach (var item in selected) result.Add(await ToDtoAsync(item.Flow, item.Nodes, userId, renderContext));
         return new PagedResult<MaterialFlowDto> { Items = result, Total = actionableTotal, Page = page, PageSize = pageSize };
+    }
+
+    public async Task<PagedResult<MaterialFlowDto>> HandledPageAsync(int userId, MaterialFlowPageQuery filter)
+    {
+        var (page, pageSize) = NormalizePage(filter.Page, filter.PageSize);
+        await LoadUser(userId);
+        var handledFlowIds = _db.MaterialFlowRecords.AsNoTracking()
+            .Where(record => record.OperatorUserId == userId &&
+                             (record.Action == "approve" || record.Action == "reject"))
+            .Select(record => record.FlowId)
+            .Distinct();
+        var query = ApplyMaterialFlowPageFilters(
+            _db.MaterialFlows.AsNoTracking().Where(flow => handledFlowIds.Contains(flow.Id)), filter);
+        var total = await query.CountAsync();
+        var pageOffset = PageOffset(page, pageSize);
+        if (pageOffset >= total)
+            return new PagedResult<MaterialFlowDto> { Total = total, Page = page, PageSize = pageSize };
+
+        var flows = await query.OrderByDescending(flow => flow.Id)
+            .Skip((int)pageOffset).Take(pageSize).ToListAsync();
+        var flowIds = flows.Select(flow => flow.Id).ToArray();
+        var latestRecords = (await _db.MaterialFlowRecords.AsNoTracking()
+                .Where(record => flowIds.Contains(record.FlowId) &&
+                                 record.OperatorUserId == userId &&
+                                 (record.Action == "approve" || record.Action == "reject"))
+                .OrderByDescending(record => record.OperatedAt)
+                .ThenByDescending(record => record.Id)
+                .ToListAsync())
+            .GroupBy(record => record.FlowId)
+            .ToDictionary(group => group.Key, group => group.First());
+        var renderContext = await BuildProgressRenderContextAsync(flows);
+        var result = new List<MaterialFlowDto>(flows.Count);
+        foreach (var flow in flows)
+        {
+            var dto = await ToDtoAsync(flow, currentUserId: userId, renderContext: renderContext);
+            var record = latestRecords[flow.Id];
+            dto.MyApprovalAction = record.Action;
+            dto.MyApprovalNodeId = record.NodeId;
+            dto.MyApprovalTime = record.OperatedAt;
+            result.Add(dto);
+        }
+        return new PagedResult<MaterialFlowDto> { Items = result, Total = total, Page = page, PageSize = pageSize };
     }
 
     public async Task<List<MaterialFlowDto>> MineAsync(int userId, int? projectId = null)
@@ -335,7 +377,7 @@ public class MaterialFlowService : IMaterialFlowService
         {
             throw new BizException(4090, "操作冲突，该流转单已被他人处理，请刷新后重试");
         }
-        await AddRecord(id, "approve", user.Name, $"节点 {nodeId}: {request.Opinion}");
+        await AddRecord(id, "approve", user.Id, user.Name, $"节点 {nodeId}: {request.Opinion}", nodeId);
         await tx.CommitAsync();
 
         // 流程完成 → 通知申请人；未完成 → 通知下一审批节点审批人
@@ -407,7 +449,7 @@ public class MaterialFlowService : IMaterialFlowService
         {
             throw new BizException(4090, "操作冲突，该流转单已被他人处理，请刷新后重试");
         }
-        await AddRecord(id, "reject", user.Name, request.Reason);
+        await AddRecord(id, "reject", user.Id, user.Name, request.Reason, nodeId);
         await tx.CommitAsync();
 
         // 通知申请人被驳回
@@ -450,7 +492,7 @@ public class MaterialFlowService : IMaterialFlowService
         {
             throw new BizException(4090, "操作冲突，该流转单已被他人处理，请刷新后重试");
         }
-        await AddRecord(id, "withdraw", applicant.Name, "申请人主动撤回");
+        await AddRecord(id, "withdraw", applicant.Id, applicant.Name, "申请人主动撤回");
         await tx.CommitAsync();
 
         return await ToDtoAsync(flow, currentUserId: userId);
@@ -930,12 +972,20 @@ public class MaterialFlowService : IMaterialFlowService
         return context;
     }
 
-    private async Task AddRecord(int flowId, string action, string actor, string? remark)
+    private async Task AddRecord(
+        int flowId,
+        string action,
+        int? operatorUserId,
+        string actor,
+        string? remark,
+        string? nodeId = null)
     {
         _db.MaterialFlowRecords.Add(new MaterialFlowRecord
         {
             FlowId = flowId,
             Action = Truncate(action, 50)!,
+            OperatorUserId = operatorUserId,
+            NodeId = Truncate(nodeId, 100),
             Operator = Truncate(actor, 100),
             Comment = Truncate(remark, 500),
             OperatedAt = DateTime.UtcNow

@@ -8,6 +8,7 @@ public interface IMaterialFlowService
     Task<MaterialFlowDto> InitiateTransferAsync(InitiateTransferRequest request, int applicantId);
     Task<List<MaterialFlowDto>> PendingAsync(int userId, int? projectId = null);
     Task<PagedResult<MaterialFlowDto>> PendingPageAsync(int userId, MaterialFlowPageQuery query);
+    Task<PagedResult<MaterialFlowDto>> HandledPageAsync(int userId, MaterialFlowPageQuery query);
     Task<List<MaterialFlowDto>> MineAsync(int userId, int? projectId = null);
     Task<PagedResult<MaterialFlowDto>> MinePageAsync(int userId, MaterialFlowPageQuery query);
     Task<MaterialFlowDto> GetAsync(int id, int userId);

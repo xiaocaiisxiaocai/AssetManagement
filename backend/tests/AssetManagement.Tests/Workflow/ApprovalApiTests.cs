@@ -197,6 +197,43 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         extremeReturn.Data!.Items.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Approver_can_query_flow_after_handling_own_node()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        var started = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "审批记录追溯",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
+        });
+        var approverNo = started.Data!.CurrentSteps.SelectMany(step => step.Assignees).First().EmployeeNo;
+        Auth(await LoginToken(approverNo, "123456"));
+        var pending = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/pending-page?page=1&pageSize=20&flowId={started.Data.Id}");
+        var actionable = pending!.Data!.Items.Should().ContainSingle().Which;
+        var nodeId = actionable.ActionableNodeIds.First();
+
+        var handledBefore = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/handled-page?page=1&pageSize=20&flowId={started.Data.Id}");
+        handledBefore!.Data!.Items.Should().BeEmpty();
+
+        var approved = await Post<ApiResult<ApprovalFlowDto>>(
+            $"/api/approvals/{started.Data.Id}/approve",
+            new ApprovalActionRequest { NodeId = nodeId, Opinion = "同意，保留审批记录" });
+        approved.Code.Should().Be(0, approved.Message);
+
+        var handledAfter = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/handled-page?page=1&pageSize=20&flowId={started.Data.Id}");
+        var record = handledAfter!.Data!.Items.Should().ContainSingle().Which;
+        record.MyApprovalAction.Should().Be("approve");
+        record.MyApprovalNodeId.Should().Be(nodeId);
+        record.MyApprovalTime.Should().NotBeNull();
+        record.ProgressSteps.Should().Contain(step => step.NodeId == nodeId && step.State == "completed");
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

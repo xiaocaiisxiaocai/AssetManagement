@@ -76,6 +76,21 @@ describe('审批工作项适配', () => {
     });
   });
 
+  it('保留当前用户的审批结果与处理时间', () => {
+    expect(
+      normalizeAssetApproval({
+        ...assetFlow,
+        myApprovalAction: 'approve',
+        myApprovalNodeId: 'Task_manager',
+        myApprovalTime: '2026-07-08T11:00:00Z',
+      }),
+    ).toMatchObject({
+      myApprovalAction: 'approve',
+      myApprovalNodeId: 'Task_manager',
+      myApprovalTime: '2026-07-08T11:00:00Z',
+    });
+  });
+
   it('延期审批显示为延期业务', () => {
     expect(
       normalizeAssetApproval({ ...assetFlow, bizType: 'extension' }),

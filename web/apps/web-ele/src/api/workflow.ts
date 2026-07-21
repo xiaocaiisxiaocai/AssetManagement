@@ -119,6 +119,9 @@ export interface ApprovalFlow {
   reason?: null | string;
   returnDate?: null | string;
   status: string;
+  myApprovalAction?: null | string;
+  myApprovalNodeId?: null | string;
+  myApprovalTime?: null | string;
   transferee?: null | string;
   transfereeDept?: null | string;
 }
@@ -205,6 +208,14 @@ export const getPendingApprovalsPageApi = (params: ApprovalPageQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<ApprovalFlow>>>(
       '/approvals/pending-page',
+      { params },
+    ),
+  );
+
+export const getHandledApprovalsPageApi = (params: ApprovalPageQuery) =>
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<ApprovalFlow>>>(
+      '/approvals/handled-page',
       { params },
     ),
   );

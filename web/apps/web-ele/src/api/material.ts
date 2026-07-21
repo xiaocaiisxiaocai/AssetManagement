@@ -101,6 +101,9 @@ export interface MaterialFlowItem {
   directTransfer: boolean;
   /** 是否允许当前登录用户撤回；以服务端申请人身份判断为准。 */
   canWithdraw?: boolean;
+  myApprovalAction?: null | string;
+  myApprovalNodeId?: null | string;
+  myApprovalTime?: null | string;
 }
 
 export interface MaterialFlowRecordItem {
@@ -188,6 +191,14 @@ export const listPendingFlowsPageApi = (params: MaterialFlowPageQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<MaterialFlowItem>>>(
       '/material-flows/pending-page',
+      { params },
+    ),
+  );
+
+export const listHandledFlowsPageApi = (params: MaterialFlowPageQuery) =>
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<MaterialFlowItem>>>(
+      '/material-flows/handled-page',
       { params },
     ),
   );
