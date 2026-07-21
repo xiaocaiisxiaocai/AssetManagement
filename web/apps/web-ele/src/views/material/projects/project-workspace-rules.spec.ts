@@ -3,11 +3,27 @@ import type { MaterialFlowItem } from '#/api/material';
 import { describe, expect, it } from 'vitest';
 
 import {
+  canUpdateProjectProgress,
   canWithdrawMaterialFlow,
   projectFollowUpStatusMeta,
 } from './project-workspace-rules';
 
 describe('测试项目工作台规则', () => {
+  it('只有未删除项目的负责人可以更新项目进展', () => {
+    expect(
+      canUpdateProjectProgress({ isDeleted: false, ownerId: 25 }, 25),
+    ).toBe(true);
+    expect(
+      canUpdateProjectProgress({ isDeleted: false, ownerId: 25 }, 26),
+    ).toBe(false);
+    expect(canUpdateProjectProgress({ isDeleted: true, ownerId: 25 }, 25)).toBe(
+      false,
+    );
+    expect(
+      canUpdateProjectProgress({ isDeleted: false, ownerId: null }, 25),
+    ).toBe(false);
+  });
+
   it('只有后端明确授权的待审批料件流程才显示撤回', () => {
     const flow = { status: 'pending' } as MaterialFlowItem;
     expect(canWithdrawMaterialFlow(flow)).toBe(false);

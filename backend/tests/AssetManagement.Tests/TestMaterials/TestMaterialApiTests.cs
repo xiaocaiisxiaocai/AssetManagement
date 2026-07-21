@@ -423,6 +423,54 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_owner_can_update_progress_only_and_outsider_is_denied()
+    {
+        await Login();
+        var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "进展负责人");
+        var outsider = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "无关员工");
+        var project = await Post<ApiResult<TestProjectDto>>(
+            "/api/test-projects",
+            NewProjectRequest("负责人更新进展项目", owner.Id));
+        var closedDate = new DateTime(2026, 7, 20);
+
+        await Login(owner.EmployeeNo, "123456");
+        var updatedResponse = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{project.Data!.Id}/progress",
+            new
+            {
+                ProgressCode = "closed",
+                ClosedDate = closedDate,
+                TestStatus = "负责人确认测试完成"
+            });
+        updatedResponse.EnsureSuccessStatusCode();
+        var updated = await updatedResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+
+        updated!.Data!.ProgressCode.Should().Be("closed");
+        updated.Data.ClosedDate.Should().Be(closedDate);
+        updated.Data.TestStatus.Should().Be("负责人确认测试完成");
+        updated.Data.Name.Should().Be(project.Data.Name);
+        updated.Data.Code.Should().Be(project.Data.Code);
+        updated.Data.OwnerId.Should().Be(owner.Id);
+
+        var fullUpdate = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{project.Data.Id}",
+            NewProjectRequest("负责人不应修改基础信息", owner.Id));
+        fullUpdate.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        await Login(outsider.EmployeeNo, "123456");
+        var deniedResponse = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{project.Data.Id}/progress",
+            new
+            {
+                ProgressCode = "testing",
+                ClosedDate = (DateTime?)null,
+                TestStatus = "无关员工不应修改"
+            });
+        var denied = await deniedResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+        denied!.Code.Should().Be(4031);
+    }
+
+    [Fact]
     public async Task Project_rejects_duplicate_code_and_name_with_business_message()
     {
         await Login();

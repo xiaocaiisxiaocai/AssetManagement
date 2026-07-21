@@ -8,6 +8,7 @@ public interface ITestProjectService
     Task<PagedResult<TestProjectDto>> ListPageAsync(TestProjectPageQuery query, int currentUserId);
     Task<TestProjectDto> CreateAsync(SaveTestProjectRequest request);
     Task<TestProjectDto> UpdateAsync(int id, SaveTestProjectRequest request);
+    Task<TestProjectDto> UpdateProgressAsync(int id, UpdateTestProjectProgressRequest request, int currentUserId);
     Task DeleteAsync(int id);
     Task RestoreAsync(int id);
     Task PurgeAsync(int id);

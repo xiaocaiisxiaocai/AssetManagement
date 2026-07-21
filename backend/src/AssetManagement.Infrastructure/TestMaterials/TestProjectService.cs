@@ -180,6 +180,50 @@ public class TestProjectService : ITestProjectService
         return (await ToDtos(new[] { project }, new Dictionary<int, int> { [id] = count }, null)).Single();
     }
 
+    public async Task<TestProjectDto> UpdateProgressAsync(
+        int id,
+        UpdateTestProjectProgressRequest request,
+        int currentUserId)
+    {
+        var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+            ?? throw new BizException(4046, "测试项目不存在");
+        if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
+        if (project.OwnerId != currentUserId && !await IsAdmin(currentUserId))
+            throw new BizException(4031, "只有项目负责人或管理员可以更新项目进展");
+
+        var progressCode = request.ProgressCode?.Trim();
+        if (string.IsNullOrWhiteSpace(progressCode))
+            throw new BizException(4001, "项目进度不能为空");
+        if (!await _db.TestProjectOptions.AnyAsync(x =>
+                x.Kind == OptionKindProgress && x.Code == progressCode && x.IsActive))
+            throw new BizException(4002, "项目进度不存在或已停用");
+
+        var closedDate = request.ClosedDate?.Date;
+        ValidateProjectProgressTimeline(project.StartDate, progressCode, closedDate);
+        var testStatus = request.TestStatus?.Trim();
+        if (testStatus?.Length > 1000)
+            throw new BizException(4001, "测试情况不能超过1000个字符");
+
+        project.ProgressCode = progressCode;
+        project.ClosedDate = closedDate;
+        project.TestStatus = testStatus;
+        project.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该项目已被他人修改，请刷新后重试");
+        }
+
+        var count = await _db.TestMaterials.CountAsync(x => !x.IsDeleted && x.ProjectId == id);
+        return (await ToDtos(
+            new[] { project },
+            new Dictionary<int, int> { [id] = count },
+            currentUserId)).Single();
+    }
+
     public async Task DeleteAsync(int id)
     {
         await using var transaction = await _db.Database.BeginTransactionAsync();
@@ -576,6 +620,20 @@ public class TestProjectService : ITestProjectService
         if (plannedFinishDate < startDate)
             throw new BizException(4001, "计划完成时间不能早于开始时间");
         if (closedDate.HasValue && closedDate.Value < startDate)
+            throw new BizException(4001, "结案时间不能早于开始时间");
+        if (isClosed && !closedDate.HasValue)
+            throw new BizException(4001, "已结案项目必须填写结案时间");
+        if (!isClosed && closedDate.HasValue)
+            throw new BizException(4001, "只有已结案项目才能填写结案时间");
+    }
+
+    private static void ValidateProjectProgressTimeline(
+        DateTime? startDate,
+        string progressCode,
+        DateTime? closedDate)
+    {
+        var isClosed = string.Equals(progressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase);
+        if (startDate.HasValue && closedDate.HasValue && closedDate.Value < startDate.Value.Date)
             throw new BizException(4001, "结案时间不能早于开始时间");
         if (isClosed && !closedDate.HasValue)
             throw new BizException(4001, "已结案项目必须填写结案时间");

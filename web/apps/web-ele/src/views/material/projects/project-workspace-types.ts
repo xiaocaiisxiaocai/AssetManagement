@@ -20,3 +20,9 @@ export type ProjectFormState = {
   startDate: string;
   testStatus: string;
 };
+
+export type ProjectProgressFormState = {
+  closedDate: string;
+  progressCode: string;
+  testStatus: string;
+};

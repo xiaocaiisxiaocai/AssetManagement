@@ -17,7 +17,10 @@ import {
 
 import { formatDate } from '#/utils/date-format';
 
-import { projectFollowUpStatusMeta } from './project-workspace-rules';
+import {
+  canUpdateProjectProgress,
+  projectFollowUpStatusMeta,
+} from './project-workspace-rules';
 
 type ProjectActionAccess = {
   canCreate: boolean;
@@ -30,6 +33,7 @@ type ProjectActionAccess = {
 
 defineProps<{
   access: ProjectActionAccess;
+  currentUserId: number;
   filteredTotal: number;
   loading: boolean;
   ownerOptions: { id: number; name: string }[];
@@ -45,6 +49,7 @@ const emit = defineEmits<{
   edit: [project: TestProjectItem];
   open: [project: TestProjectItem];
   options: [];
+  progress: [project: TestProjectItem];
   pageChange: [];
   pageSizeChange: [];
   purge: [project: TestProjectItem];
@@ -256,6 +261,15 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
               @click="emit('edit', row)"
             >
               编辑
+            </ElButton>
+            <ElButton
+              v-else-if="canUpdateProjectProgress(row, currentUserId)"
+              link
+              size="small"
+              type="primary"
+              @click="emit('progress', row)"
+            >
+              更新进展
             </ElButton>
             <ElButton
               v-if="access.canDelete"

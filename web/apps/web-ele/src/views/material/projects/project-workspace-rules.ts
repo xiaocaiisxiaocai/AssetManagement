@@ -5,6 +5,17 @@ export function canWithdrawMaterialFlow(flow: MaterialFlowItem) {
   return flow.status === 'pending' && flow.canWithdraw === true;
 }
 
+export function canUpdateProjectProgress(
+  project: Pick<TestProjectItem, 'isDeleted' | 'ownerId'>,
+  currentUserId: number,
+) {
+  return (
+    !project.isDeleted &&
+    currentUserId > 0 &&
+    Number(project.ownerId) === currentUserId
+  );
+}
+
 export function projectFollowUpStatusMeta(
   project: Pick<TestProjectItem, 'closedDate' | 'followUpStatus' | 'isDeleted'>,
 ) {

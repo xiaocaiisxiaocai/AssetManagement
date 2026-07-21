@@ -88,6 +88,12 @@ public class TestProjectController : ControllerBase
     public async Task<ApiResult<TestProjectDto>> Update(int id, SaveTestProjectRequest request)
         => ApiResult<TestProjectDto>.Ok(await _service.UpdateAsync(id, request));
 
+    [HttpPut("{id:int}/progress")]
+    // 项目负责人可维护执行结果，基础信息仍由 project:edit 权限控制。
+    [Authorize]
+    public async Task<ApiResult<TestProjectDto>> UpdateProgress(int id, UpdateTestProjectProgressRequest request)
+        => ApiResult<TestProjectDto>.Ok(await _service.UpdateProgressAsync(id, request, CurrentUserId()));
+
     [HttpDelete("{id:int}")]
     [HasPermission("project:delete")]
     public async Task<ApiResult<object?>> Delete(int id)

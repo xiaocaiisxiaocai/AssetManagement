@@ -63,6 +63,12 @@ export interface SaveTestProjectPayload {
   followUpIntervalDays: number;
 }
 
+export interface UpdateTestProjectProgressPayload {
+  closedDate?: null | string;
+  progressCode: string;
+  testStatus?: null | string;
+}
+
 export interface TestProjectOption {
   id: number;
   kind: 'project_progress' | 'project_type';
@@ -126,6 +132,17 @@ export const updateTestProjectApi = (
 ) =>
   unwrap(
     requestClient.put<ApiResult<TestProjectItem>>(`/test-projects/${id}`, data),
+  );
+
+export const updateTestProjectProgressApi = (
+  id: number,
+  data: UpdateTestProjectProgressPayload,
+) =>
+  unwrap(
+    requestClient.put<ApiResult<TestProjectItem>>(
+      `/test-projects/${id}/progress`,
+      data,
+    ),
   );
 
 export const deleteTestProjectApi = (id: number) =>

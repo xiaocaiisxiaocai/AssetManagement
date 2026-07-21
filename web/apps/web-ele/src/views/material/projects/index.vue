@@ -5,6 +5,7 @@ import type {
   FlatOption,
   OptionKind,
   ProjectFormState,
+  ProjectProgressFormState,
 } from './project-workspace-types';
 
 import type { DepartmentOptionNode, LocationNode } from '#/api/base-data';
@@ -59,6 +60,7 @@ import {
   purgeTestProjectApi,
   restoreTestProjectApi,
   updateTestProjectApi,
+  updateTestProjectProgressApi,
   updateTestProjectFollowupApi,
   updateTestProjectOptionApi,
 } from '#/api/test-project';
@@ -94,6 +96,7 @@ import ProjectFollowupsTab from './ProjectFollowupsTab.vue';
 import ProjectFormDialog from './ProjectFormDialog.vue';
 import ProjectMaterialsTab from './ProjectMaterialsTab.vue';
 import ProjectOptionDialog from './ProjectOptionDialog.vue';
+import ProjectProgressDialog from './ProjectProgressDialog.vue';
 import ProjectTable from './ProjectTable.vue';
 
 defineOptions({ name: 'MaterialProjects' });
@@ -186,6 +189,16 @@ const form = reactive<ProjectFormState>({
   testStatus: '',
 });
 const formModel = reactiveObjectModel(form);
+
+const progressDialogVisible = ref(false);
+const progressEditingProject = ref<null | TestProjectItem>(null);
+const progressSaving = ref(false);
+const progressForm = reactive<ProjectProgressFormState>({
+  closedDate: '',
+  progressCode: '',
+  testStatus: '',
+});
+const progressFormModel = reactiveObjectModel(progressForm);
 
 const optionDialogVisible = ref(false);
 const optionSaving = ref(false);
@@ -483,6 +496,16 @@ function openEdit(row: TestProjectItem) {
   runHandled(Promise.all([loadUsers(), loadBaseOptions()]));
 }
 
+function openProgress(row: TestProjectItem) {
+  progressEditingProject.value = row;
+  Object.assign(progressForm, {
+    closedDate: row.closedDate ? row.closedDate.slice(0, 10) : '',
+    progressCode: row.progressCode ?? '',
+    testStatus: row.testStatus ?? '',
+  });
+  progressDialogVisible.value = true;
+}
+
 function buildProjectPayload(): SaveTestProjectPayload {
   return {
     closedDate: form.closedDate || null,
@@ -518,6 +541,43 @@ async function save() {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
     saving.value = false;
+  }
+}
+
+async function saveProgress() {
+  const project = progressEditingProject.value;
+  if (!project) return;
+  if (!progressForm.progressCode) {
+    ElMessage.warning('请选择项目进度');
+    return;
+  }
+  if (progressForm.progressCode === 'closed' && !progressForm.closedDate) {
+    ElMessage.warning('已结案项目必须填写结案时间');
+    return;
+  }
+  if (
+    progressForm.closedDate &&
+    project.startDate &&
+    progressForm.closedDate < project.startDate.slice(0, 10)
+  ) {
+    ElMessage.warning('结案时间不能早于开始时间');
+    return;
+  }
+  if (progressSaving.value) return;
+  progressSaving.value = true;
+  try {
+    await updateTestProjectProgressApi(project.id, {
+      closedDate: progressForm.closedDate || null,
+      progressCode: progressForm.progressCode,
+      testStatus: normalizeText(progressForm.testStatus),
+    });
+    ElMessage.success('项目进展已更新');
+    progressDialogVisible.value = false;
+    await loadData();
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    progressSaving.value = false;
   }
 }
 
@@ -1212,6 +1272,7 @@ watch(materialDetailVisible, (opened) => {
         v-model:filter="projectFilterModel"
         v-model:query="projectQueryModel"
         :access="projectActionAccess"
+        :current-user-id="currentUserId"
         :filtered-total="projectTotal"
         :loading="loading"
         :owner-options="projectOwnerOptions"
@@ -1227,6 +1288,7 @@ watch(materialDetailVisible, (opened) => {
         @page-change="loadData"
         @page-size-change="onProjectPageSizeChange"
         @purge="purge"
+        @progress="openProgress"
         @remove="remove"
         @reset="resetProjectFilter"
         @restore="restore"
@@ -1246,6 +1308,14 @@ watch(materialDetailVisible, (opened) => {
         :user-options-loading="userOptionsLoading"
         :users="users"
         @save="save"
+      />
+
+      <ProjectProgressDialog
+        v-model:form="progressFormModel"
+        v-model:visible="progressDialogVisible"
+        :progress-options="progressOptions"
+        :saving="progressSaving"
+        @save="saveProgress"
       />
 
       <ProjectOptionDialog

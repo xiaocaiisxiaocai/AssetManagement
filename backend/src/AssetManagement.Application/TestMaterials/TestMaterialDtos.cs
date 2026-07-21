@@ -52,6 +52,15 @@ public class SaveTestProjectRequest
     public int FollowUpIntervalDays { get; set; } = 14;
 }
 
+public class UpdateTestProjectProgressRequest
+{
+    [Required(ErrorMessage = "项目进度不能为空"), StringLength(50)]
+    public string? ProgressCode { get; set; }
+    public DateTime? ClosedDate { get; set; }
+    [StringLength(1000)]
+    public string? TestStatus { get; set; }
+}
+
 public class TestProjectOptionDto
 {
     public int Id { get; set; }
