@@ -512,6 +512,11 @@ public class AssetService : IAssetService
             queryable = queryable.Where(x => x.CustodianId == query.CustodianId.Value);
         }
 
+        if (query.ExcludeCustodianId.HasValue)
+        {
+            queryable = queryable.Where(x => x.CustodianId != query.ExcludeCustodianId.Value);
+        }
+
         return queryable;
     }
 

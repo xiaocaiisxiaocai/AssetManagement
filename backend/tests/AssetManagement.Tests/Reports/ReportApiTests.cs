@@ -119,7 +119,7 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             category.Id,
             seededSupervisor.DepartmentId,
             "逾期资产",
-            borrower.Data!.Id);
+            seededSupervisor.Id);
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await LoginToken(borrowerNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {

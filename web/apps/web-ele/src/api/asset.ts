@@ -48,6 +48,7 @@ export interface AssetQuery {
   deleteStatus?: 'active' | 'all' | 'deleted';
   departmentId?: null | number;
   deletedOnly?: boolean;
+  excludeCustodianId?: null | number;
   name?: string;
   keyword?: string;
   page?: number;

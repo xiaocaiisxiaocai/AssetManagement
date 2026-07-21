@@ -35,6 +35,20 @@ export function canRunAvailableAssetAction(asset: {
   return !asset.isDeleted && asset.status === 0;
 }
 
+export function canBorrowAvailableAsset(
+  asset: {
+    custodianId?: null | number;
+    isDeleted: boolean;
+    status: number;
+  },
+  currentUserId: number,
+) {
+  return (
+    canRunAvailableAssetAction(asset) &&
+    asset.custodianId !== currentUserId
+  );
+}
+
 export function canTransferAvailableAsset(
   asset: {
     custodianId?: null | number;

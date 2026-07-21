@@ -29,7 +29,10 @@ export function buildApprovalAssetQuery(
     page: 1,
     pageSize: 50,
   };
-  if (type === 'borrow') query.status = 0;
+  if (type === 'borrow') {
+    query.excludeCustodianId = currentUserId;
+    query.status = 0;
+  }
   if (type === 'return' || type === 'extension') {
     query.custodianId = currentUserId;
     query.status = 1;

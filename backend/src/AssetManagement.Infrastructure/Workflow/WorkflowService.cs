@@ -657,6 +657,8 @@ public class WorkflowService : IWorkflowService
     {
         if (bizType == "borrow" && asset.Status != AssetStatus.Available)
             throw new BizException(4055, "资产当前不可用,无法发起借用流程");
+        if (bizType == "borrow" && asset.CustodianId == applicantId)
+            throw new BizException(4055, "当前保管人不能借用自己保管的资产");
         if (bizType == "transfer" && asset.Status is not (AssetStatus.Available or AssetStatus.Borrowed))
             throw new BizException(4055, "维护或报废状态的资产无法发起转让流程");
         if (bizType == "return" &&

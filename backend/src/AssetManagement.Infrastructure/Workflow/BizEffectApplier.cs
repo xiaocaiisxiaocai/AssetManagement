@@ -43,6 +43,8 @@ public class BizEffectApplier : IBizEffectApplier
                     throw new BizException(4090, "资产状态已变化，无法完成借用审批");
                 if (asset.CustodianId != flow.SourceCustodianId)
                     throw new BizException(4090, "资产借出前保管人已变化，请撤回后重新发起");
+                if (flow.SourceCustodianId == flow.ApplicantId)
+                    throw new BizException(4090, "当前保管人不能借用自己保管的资产");
                 await LockActiveUserAsync(flow.ApplicantId, "借用申请人不存在或已停用，请撤回后重新发起");
                 asset.Status = AssetStatus.Borrowed;
                 asset.CustodianId = flow.ApplicantId;

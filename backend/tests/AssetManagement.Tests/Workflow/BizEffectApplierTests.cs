@@ -179,6 +179,37 @@ public class BizEffectApplierTests : MySqlFixtureBase
     }
 
     [Fact]
+    public async Task ApplyAsync_rejects_borrow_when_applicant_is_source_custodian()
+    {
+        var applicant = await CreateUserAsync("本人保管资产借用人");
+        var category = new AssetCategory { CodeSeg = "SELF", Code = $"SELF-{Guid.NewGuid():N}" };
+        _db.AssetCategories.Add(category);
+        await _db.SaveChangesAsync();
+        var asset = new Asset
+        {
+            AssetNo = $"SELF-{Guid.NewGuid():N}", Name = "本人保管资产", CategoryId = category.Id,
+            Status = AssetStatus.Available, CustodianId = applicant.Id, CreatedAt = DateTime.UtcNow
+        };
+        _db.Assets.Add(asset);
+        await _db.SaveChangesAsync();
+        var flow = new ApprovalFlow
+        {
+            FlowNo = $"SELF-{Guid.NewGuid():N}", BizType = "borrow", Status = "approved",
+            AssetId = asset.Id, AssetNo = asset.AssetNo, AssetName = asset.Name,
+            ApplicantId = applicant.Id, Applicant = applicant.Name,
+            SourceCustodianId = applicant.Id, ApplyTime = DateTime.UtcNow
+        };
+
+        var error = await FluentActions.Invoking(() => _applier.ApplyAsync(flow))
+            .Should().ThrowAsync<BizException>();
+
+        error.Which.Code.Should().Be(4090);
+        error.Which.Message.Should().Be("当前保管人不能借用自己保管的资产");
+        asset.Status.Should().Be(AssetStatus.Available);
+        asset.CustodianId.Should().Be(applicant.Id);
+    }
+
+    [Fact]
     public async Task Return_by_transferee_closes_the_original_borrow_record()
     {
         var sourceCustodian = await CreateUserAsync("借出前保管人");

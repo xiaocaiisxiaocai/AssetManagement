@@ -9,6 +9,7 @@ import {
 describe('审批资产远程选项', () => {
   it('借用只请求一页在库资产并携带远程关键字', () => {
     expect(buildApprovalAssetQuery('borrow', 7, ' ZC-001 ')).toEqual({
+      excludeCustodianId: 7,
       keyword: 'ZC-001',
       page: 1,
       pageSize: 50,

@@ -172,6 +172,30 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Exclude_custodian_filter_omits_matching_assets()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var excluded = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "本人保管资产",
+            CategoryId = category.Id,
+            CustodianId = 1,
+        });
+        var included = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "其他可借资产",
+            CategoryId = category.Id,
+        });
+
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>(
+            $"/api/assets?categoryId={category.Id}&excludeCustodianId=1");
+
+        list!.Data!.Items.Should().ContainSingle(x => x.Id == included.Data!.Id);
+        list.Data.Items.Should().NotContain(x => x.Id == excluded.Data!.Id);
+    }
+
+    [Fact]
     public async Task Borrowed_asset_cannot_be_deleted()
     {
         await Login();

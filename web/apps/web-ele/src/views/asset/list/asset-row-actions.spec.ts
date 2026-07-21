@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildAssetRowActionAccess,
+  canBorrowAvailableAsset,
   canRunAvailableAssetAction,
   canTransferAvailableAsset,
 } from './asset-row-actions';
@@ -55,6 +56,27 @@ describe('资产状态操作', () => {
     expect(canRunAvailableAssetAction({ isDeleted: true, status: 0 })).toBe(
       false,
     );
+  });
+
+  it('当前保管人不能借用自己保管的在库资产', () => {
+    expect(
+      canBorrowAvailableAsset(
+        { custodianId: 10, isDeleted: false, status: 0 },
+        10,
+      ),
+    ).toBe(false);
+    expect(
+      canBorrowAvailableAsset(
+        { custodianId: 10, isDeleted: false, status: 0 },
+        11,
+      ),
+    ).toBe(true);
+    expect(
+      canBorrowAvailableAsset(
+        { custodianId: null, isDeleted: false, status: 0 },
+        10,
+      ),
+    ).toBe(true);
   });
 
   it('当前保管人可以转让未删除的在库或借用中资产', () => {

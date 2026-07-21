@@ -91,12 +91,20 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         int adminId;
+        int sourceCustodianId;
+        int? sourceDepartmentId;
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             adminId = await db.Users.Where(user => user.EmployeeNo == "1001").Select(user => user.Id).SingleAsync();
+            var sourceCustodian = await db.Users
+                .Where(user => user.Id != adminId && user.IsActive)
+                .Select(user => new { user.Id, user.DepartmentId })
+                .FirstAsync();
+            sourceCustodianId = sourceCustodian.Id;
+            sourceDepartmentId = sourceCustodian.DepartmentId;
         }
-        var asset = await CreateAsset(null, adminId);
+        var asset = await CreateAsset(sourceDepartmentId, sourceCustodianId);
 
         var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
         {
@@ -124,8 +132,35 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
         var savedFlow = await verifyDb.ApprovalFlows.AsNoTracking().SingleAsync(item => item.Id == flow.Data.Id);
-        savedFlow.SourceCustodianId.Should().Be(adminId,
+        savedFlow.SourceCustodianId.Should().Be(sourceCustodianId,
             "借用发起时必须固化借出前保管人，不能在归还时临时猜测");
+    }
+
+    [Fact]
+    public async Task Borrow_flow_rejects_current_custodian_as_applicant()
+    {
+        await Login();
+        int adminId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            adminId = await db.Users
+                .Where(user => user.EmployeeNo == "1001")
+                .Select(user => user.Id)
+                .SingleAsync();
+        }
+        var asset = await CreateAsset(null, adminId);
+
+        var result = await PostError<ApprovalFlowDto>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "禁止本人借用本人保管资产",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
+        }, HttpStatusCode.UnprocessableEntity);
+
+        result.Code.Should().Be(4055);
+        result.Message.Should().Be("当前保管人不能借用自己保管的资产");
     }
 
     [Fact]
@@ -454,7 +489,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             Password = "TestPass123",
             RoleIds = new[] { employeeRole.Id }
         });
-        var asset = await CreateAsset(null, applicant.Data!.Id);
+        var asset = await CreateAsset();
 
         Auth(await LoginToken(employeeNo, "TestPass123"));
         var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
@@ -888,7 +923,7 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             RoleIds = new[] { employeeRole.Id }
         });
 
-        var asset = await CreateAsset(dept.Data.Id, applicant.Data!.Id);
+        var asset = await CreateAsset(dept.Data.Id, manager.Data!.Id);
         Auth(await LoginToken(applicantNo, "TestPass123"));
         var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
         {

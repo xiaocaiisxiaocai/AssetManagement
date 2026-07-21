@@ -71,6 +71,7 @@ import {
 
 import {
   buildAssetRowActionAccess,
+  canBorrowAvailableAsset,
   canRunAvailableAssetAction,
   canTransferAvailableAsset,
 } from './asset-row-actions';
@@ -640,6 +641,10 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 function openBorrowDialog(row: AssetItem) {
+  if (!canBorrowAvailableAsset(row, currentUserId.value)) {
+    ElMessage.warning('当前保管人不能借用自己保管的资产');
+    return;
+  }
   currentAssetForAction.value = row;
   borrowDialogVisible.value = true;
 }
@@ -1069,10 +1074,11 @@ watch(detailVisible, (opened) => {
                       </ElButton>
                       <ElDropdown
                         v-if="
-                          (canRunAvailableAssetAction(row) &&
-                            (assetRowActionAccess.canBorrow ||
-                              (assetRowActionAccess.canDelete &&
-                                row.canManage))) ||
+                          (assetRowActionAccess.canBorrow &&
+                            canBorrowAvailableAsset(row, currentUserId)) ||
+                          (assetRowActionAccess.canDelete &&
+                            row.canManage &&
+                            canRunAvailableAssetAction(row)) ||
                           (assetRowActionAccess.canTransfer &&
                             canTransferAvailableAsset(row, currentUserId))
                         "
@@ -1086,7 +1092,7 @@ watch(detailVisible, (opened) => {
                             <ElDropdownItem
                               v-if="
                                 assetRowActionAccess.canBorrow &&
-                                canRunAvailableAssetAction(row)
+                                canBorrowAvailableAsset(row, currentUserId)
                               "
                               command="borrow"
                             >
