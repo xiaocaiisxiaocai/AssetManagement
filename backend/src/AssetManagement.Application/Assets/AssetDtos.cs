@@ -104,6 +104,8 @@ public record ImportConfirmResult
 public record AssetDetailDto
 {
     public AssetDto Asset { get; init; } = new();
+    public int? InitialCustodianId { get; init; }
+    public string? InitialCustodianName { get; init; }
     public List<AssetFlowDto> Flows { get; init; } = new();
     public List<AssetAuditLogDto> RecentLogs { get; init; } = new();
 }

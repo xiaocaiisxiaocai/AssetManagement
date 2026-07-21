@@ -115,6 +115,8 @@ export interface AssetAuditLog {
 export interface AssetDetail {
   asset: AssetItem;
   flows: AssetFlow[];
+  initialCustodianId?: null | number;
+  initialCustodianName?: null | string;
   recentLogs: AssetAuditLog[];
 }
 

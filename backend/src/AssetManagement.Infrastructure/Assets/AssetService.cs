@@ -77,6 +77,12 @@ public class AssetService : IAssetService
             ?? throw new BizException(4048, "资产不存在");
         EnsureCanAccess(entity);
         var asset = (await ToDtos(new[] { entity })).Single();
+        var initialCustodianName = entity.InitialCustodianId.HasValue
+            ? await _db.Users
+                .Where(x => x.Id == entity.InitialCustodianId.Value)
+                .Select(x => x.Name)
+                .SingleOrDefaultAsync()
+            : null;
 
         var flows = await _db.ApprovalFlows
             .Where(x => x.AssetId == id)
@@ -129,6 +135,8 @@ public class AssetService : IAssetService
         return new AssetDetailDto
         {
             Asset = asset,
+            InitialCustodianId = entity.InitialCustodianId,
+            InitialCustodianName = initialCustodianName,
             Flows = flows,
             RecentLogs = recentLogs
         };
@@ -167,6 +175,7 @@ public class AssetService : IAssetService
                 DepartmentId = request.DepartmentId,
                 LocationId = request.LocationId,
                 CustodianId = request.CustodianId,
+                InitialCustodianId = request.CustodianId,
                 Quantity = Math.Max(request.Quantity, 1),
                 Status = AssetStatus.Available,
                 PurchaseDate = request.PurchaseDate,

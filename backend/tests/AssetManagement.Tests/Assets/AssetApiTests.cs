@@ -457,12 +457,22 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var category = await CreateCategory();
+        var initialCustodian = await CreateUser();
         var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
             Name = "详情资产",
             CategoryId = category.Id,
+            CustodianId = initialCustodian.Id,
         });
         var id = created.Data!.Id;
+
+        // 当前保管人会随借用/转让/归还变化，初始保管记录必须保持不变。
+        using (var scope = _factory.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<AppDbContext>().Assets
+                .Where(x => x.Id == id)
+                .ExecuteUpdateAsync(update => update.SetProperty(x => x.CustodianId, (int?)null));
+        }
 
         // 触发一次更新 → 产生带 TargetId 的资产审计日志
         await Put<ApiResult<AssetDto>>($"/api/assets/{id}", new UpdateAssetRequest
@@ -484,6 +494,9 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var detail = await _client.GetFromJsonAsync<ApiResult<AssetDetailDto>>($"/api/assets/{id}/detail");
 
         detail!.Data!.Asset.Id.Should().Be(id);
+        detail.Data.Asset.CustodianId.Should().BeNull();
+        detail.Data.InitialCustodianId.Should().Be(initialCustodian.Id);
+        detail.Data.InitialCustodianName.Should().Be(initialCustodian.Name);
         detail.Data.Flows.Should().Contain(f => f.BizType == "borrow" && f.Applicant.Length > 0);
         detail.Data.RecentLogs.Should().Contain(l => l.ActionType == "PUT" && l.TargetId == id.ToString());
         detail.Data.RecentLogs.Should().Contain(l => l.TargetType == "Approval");

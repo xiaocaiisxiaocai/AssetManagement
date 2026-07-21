@@ -840,6 +840,10 @@ public class RbacService : IRbacService
         {
             throw new BizException(4094, "用户已被资产保管人使用，不能删除");
         }
+        if (await _db.Assets.AnyAsync(x => x.InitialCustodianId == id))
+        {
+            throw new BizException(4094, "用户已被资产初始保管记录使用，不能删除");
+        }
         if (await _db.TestProjects.AnyAsync(x => x.OwnerId == id))
         {
             throw new BizException(4094, "用户已被项目负责人使用，不能删除");

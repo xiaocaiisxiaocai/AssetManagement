@@ -22,6 +22,11 @@ import {
 import { loadAssetImageObjectUrl } from '#/api/asset';
 import { formatDate, formatDateTime } from '#/utils/date-format';
 
+import {
+  custodyTimelineCount,
+  flowParticipantText,
+} from './asset-detail-timeline';
+
 const props = defineProps<{
   detail: AssetDetail | null;
   loading: boolean;
@@ -223,7 +228,7 @@ function summaryText(summary: null | string | undefined) {
                 <ElDescriptionsItem label="存放位置">
                   {{ detail.asset.locationName ?? '—' }}
                 </ElDescriptionsItem>
-                <ElDescriptionsItem label="保管人">
+                <ElDescriptionsItem label="当前保管人">
                   {{ detail.asset.custodianName ?? '—' }}
                 </ElDescriptionsItem>
                 <ElDescriptionsItem label="数量">
@@ -292,10 +297,13 @@ function summaryText(summary: null | string | undefined) {
             </div>
           </ElTabPane>
 
-          <ElTabPane :label="`流转记录 ${detail.flows.length}`" name="flows">
+          <ElTabPane
+            :label="`流转记录 ${custodyTimelineCount(detail.flows.length)}`"
+            name="flows"
+          >
             <div class="ad-tab-content">
               <section class="ad-section ad-timeline-section">
-                <ElTimeline v-if="detail.flows.length > 0">
+                <ElTimeline>
                   <ElTimelineItem
                     v-for="flow in detail.flows"
                     :key="flow.id"
@@ -310,9 +318,8 @@ function summaryText(summary: null | string | undefined) {
                   >
                     <div class="text-sm">
                       <span class="font-medium">{{ flowTitle(flow) }}</span>
-                      <span class="text-gray-500"> · {{ flow.applicant }}</span>
-                      <span v-if="flow.transferee" class="text-gray-500">
-                        → {{ flow.transferee }}
+                      <span class="text-gray-500">
+                        · {{ flowParticipantText(flow) }}
                       </span>
                     </div>
                     <div v-if="flow.reason" class="text-xs text-gray-400">
@@ -332,8 +339,24 @@ function summaryText(summary: null | string | undefined) {
                       应归还：{{ formatDate(flow.returnDate) }}
                     </div>
                   </ElTimelineItem>
+                  <ElTimelineItem
+                    :timestamp="
+                      formatDateTime(detail.asset.createdAt, { empty: '—' })
+                    "
+                    hollow
+                    type="primary"
+                  >
+                    <div class="ad-initial-title">
+                      <span class="font-medium">资产登记 · 初始保管</span>
+                      <ElTag effect="plain" size="small" type="primary">
+                        起点
+                      </ElTag>
+                    </div>
+                    <div class="ad-initial-custodian">
+                      初始保管人：{{ detail.initialCustodianName ?? '未指定' }}
+                    </div>
+                  </ElTimelineItem>
                 </ElTimeline>
-                <ElEmpty v-else :image-size="56" description="暂无流转记录" />
               </section>
             </div>
           </ElTabPane>
@@ -485,6 +508,19 @@ function summaryText(summary: null | string | undefined) {
 
 .ad-timeline-section {
   padding: 6px 12px 0 4px;
+}
+
+.ad-initial-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.ad-initial-custodian {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .ad-section {

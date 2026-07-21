@@ -17,6 +17,8 @@ public class Asset
     public int? DepartmentId { get; set; }
     public int? LocationId { get; set; }
     public int? CustodianId { get; set; }
+    /// <summary>资产首次登记时的保管人，作为保管轨迹的永久起点。</summary>
+    public int? InitialCustodianId { get; set; }
     public string? Model { get; set; }
     public string? Brand { get; set; }
     public int Quantity { get; set; } = 1;
