@@ -36,6 +36,7 @@ import {
   approveFlowApi,
   deleteMaterialApi,
   getMaterialDetailApi,
+  listHandledFlowsPageApi,
   listMaterialsApi,
   listMyFlowsPageApi,
   listPendingFlowsPageApi,
@@ -223,6 +224,7 @@ const followupRequestGuard = createLatestRequestGuard();
 const projectListRequestGuard = createLatestRequestGuard();
 const materialRequestGuard = createLatestRequestGuard();
 const pendingFlowRequestGuard = createLatestRequestGuard();
+const handledFlowRequestGuard = createLatestRequestGuard();
 const myFlowRequestGuard = createLatestRequestGuard();
 const materialDetailRequestGuard = createLatestRequestGuard();
 const transferVisible = ref(false);
@@ -243,10 +245,13 @@ const materialPageSizeOptions = ref(createPageSizeOptions(20));
 
 const flowActiveTab = ref('mine');
 const pendingFlowLoading = ref(false);
+const handledFlowLoading = ref(false);
 const myFlowLoading = ref(false);
 const pendingFlows = ref<MaterialFlowItem[]>([]);
+const handledFlows = ref<MaterialFlowItem[]>([]);
 const myFlows = ref<MaterialFlowItem[]>([]);
 const pendingFlowTotal = ref(0);
+const handledFlowTotal = ref(0);
 const myFlowTotal = ref(0);
 const pendingFlowQuery = reactive({
   page: 1,
@@ -256,7 +261,12 @@ const myFlowQuery = reactive({
   page: 1,
   pageSize: 10,
 });
+const handledFlowQuery = reactive({
+  page: 1,
+  pageSize: 10,
+});
 const pendingFlowQueryModel = reactiveObjectModel(pendingFlowQuery);
+const handledFlowQueryModel = reactiveObjectModel(handledFlowQuery);
 const myFlowQueryModel = reactiveObjectModel(myFlowQuery);
 const flowPageSizeOptions = ref(createPageSizeOptions(20));
 
@@ -654,14 +664,17 @@ async function openFollowups(row: TestProjectItem) {
   followupRequestGuard.invalidate();
   materialRequestGuard.invalidate();
   pendingFlowRequestGuard.invalidate();
+  handledFlowRequestGuard.invalidate();
   myFlowRequestGuard.invalidate();
   currentProject.value = row;
   pendingFlows.value = [];
+  handledFlows.value = [];
   myFlows.value = [];
   flowActiveTab.value = currentMaterialActionAccess.value.canApprove
     ? 'pending'
     : 'mine';
   pendingFlowQuery.page = 1;
+  handledFlowQuery.page = 1;
   myFlowQuery.page = 1;
   resetMaterialQuery();
   activeProjectTab.value = 'materials';
@@ -1008,16 +1021,28 @@ async function afterMaterialChanged() {
 async function loadProjectFlows(projectId = currentProject.value?.id) {
   if (!projectId) return;
   const loadMine = flowActiveTab.value === 'mine';
+  const loadHandled = flowActiveTab.value === 'handled';
   if (!loadMine && !materialActionAccess.value.canApprove) return;
   if (loadMine) myFlowLoading.value = true;
+  else if (loadHandled) handledFlowLoading.value = true;
   else pendingFlowLoading.value = true;
-  const requestGuard = loadMine ? myFlowRequestGuard : pendingFlowRequestGuard;
+  const requestGuard = loadMine
+    ? myFlowRequestGuard
+    : loadHandled
+      ? handledFlowRequestGuard
+      : pendingFlowRequestGuard;
   const requestGeneration = requestGuard.next();
   try {
-    const query = loadMine ? myFlowQuery : pendingFlowQuery;
+    const query = loadMine
+      ? myFlowQuery
+      : loadHandled
+        ? handledFlowQuery
+        : pendingFlowQuery;
     const result = await (loadMine
       ? listMyFlowsPageApi({ ...query, projectId })
-      : listPendingFlowsPageApi({ ...query, projectId }));
+      : loadHandled
+        ? listHandledFlowsPageApi({ ...query, projectId })
+        : listPendingFlowsPageApi({ ...query, projectId }));
     if (
       !requestGuard.isLatest(requestGeneration) ||
       !followupDrawerVisible.value ||
@@ -1034,6 +1059,9 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
     if (loadMine) {
       myFlows.value = result.items;
       myFlowTotal.value = result.total;
+    } else if (loadHandled) {
+      handledFlows.value = result.items;
+      handledFlowTotal.value = result.total;
     } else {
       pendingFlows.value = result.items;
       pendingFlowTotal.value = result.total;
@@ -1041,6 +1069,7 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
   } finally {
     if (requestGuard.isLatest(requestGeneration)) {
       if (loadMine) myFlowLoading.value = false;
+      else if (loadHandled) handledFlowLoading.value = false;
       else pendingFlowLoading.value = false;
     }
   }
@@ -1130,6 +1159,11 @@ function onPendingFlowPageSizeChange() {
   runHandled(loadProjectFlows());
 }
 
+function onHandledFlowPageSizeChange() {
+  handledFlowQuery.page = 1;
+  runHandled(loadProjectFlows());
+}
+
 function onMyFlowPageSizeChange() {
   myFlowQuery.page = 1;
   runHandled(loadProjectFlows());
@@ -1140,6 +1174,7 @@ onMounted(async () => {
   projectQuery.pageSize = defaultPageSize;
   materialQuery.pageSize = defaultPageSize;
   pendingFlowQuery.pageSize = defaultPageSize;
+  handledFlowQuery.pageSize = defaultPageSize;
   myFlowQuery.pageSize = defaultPageSize;
   pageSizeOptions.value = createPageSizeOptions(defaultPageSize);
   materialPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
@@ -1152,10 +1187,12 @@ watch(followupDrawerVisible, (opened) => {
   followupRequestGuard.invalidate();
   materialRequestGuard.invalidate();
   pendingFlowRequestGuard.invalidate();
+  handledFlowRequestGuard.invalidate();
   myFlowRequestGuard.invalidate();
   followupLoading.value = false;
   materialLoading.value = false;
   pendingFlowLoading.value = false;
+  handledFlowLoading.value = false;
   myFlowLoading.value = false;
 });
 
@@ -1293,9 +1330,13 @@ watch(materialDetailVisible, (opened) => {
 
             <ProjectFlowsTab
               v-model:active-tab="flowActiveTab"
+              v-model:handled-query="handledFlowQueryModel"
               v-model:my-query="myFlowQueryModel"
               v-model:pending-query="pendingFlowQueryModel"
               :can-approve="currentMaterialActionAccess.canApprove"
+              :handled-count="handledFlowTotal"
+              :handled-flows="handledFlows"
+              :handled-loading="handledFlowLoading"
               :my-count="myFlowTotal"
               :my-flows="myFlows"
               :my-loading="myFlowLoading"
@@ -1305,6 +1346,7 @@ watch(materialDetailVisible, (opened) => {
               :pending-loading="pendingFlowLoading"
               :read-only="isCurrentProjectReadOnly"
               @approve="approveFlow"
+              @handled-page-size-change="onHandledFlowPageSizeChange"
               @my-page-size-change="onMyFlowPageSizeChange"
               @page-change="loadProjectFlows"
               @pending-page-size-change="onPendingFlowPageSizeChange"
