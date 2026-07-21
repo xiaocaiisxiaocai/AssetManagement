@@ -212,6 +212,7 @@ public class MaterialFlowPageQuery
 
 public class MaterialFlowRecordDto
 {
+    public string Key { get; set; } = "";
     public int Id { get; set; }
     public string Action { get; set; } = "";
     public string? Operator { get; set; }

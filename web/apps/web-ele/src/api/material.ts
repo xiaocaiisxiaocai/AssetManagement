@@ -108,6 +108,7 @@ export interface MaterialFlowItem {
 
 export interface MaterialFlowRecordItem {
   id: number;
+  key: string;
   action: string;
   operator?: null | string;
   comment?: null | string;

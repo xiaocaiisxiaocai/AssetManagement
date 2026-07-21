@@ -182,6 +182,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **`TestProjectOption`**(项目选项字典):`Kind`(分组,如项目类型 `project_type`/进度状态 `project_progress`)、`Code`/`Label`/`Sort`/`IsActive`。为项目类型、进度等下拉提供可维护字典项。
 - **`TestProjectFollowup`**(项目跟进记录):`ProjectId`、`DueDate`(跟进到期日)、`Content`、`FilledById`/`FilledAt`。按 `FollowUpIntervalDays` 周期性跟进。
 - **`TestMaterial`**(测试料件):`MaterialNo`(自动生成 `TM-YYYYMMDD-XXX`)、`Name`(必填)、`ProjectId`(必填,外键到 `TestProject`)、`VendorName`(厂商)、`Model`/`Brand`/`Quantity`、`DepartmentId`/`LocationId`/`CustodianId`(可选)、`ReceivedDate`(接收日期)、`Status`(0=在用、1=已退回厂商)、`Images`(JSON 数组,复用 `FileStorageService`)、`Remark`、软删除字段、`HasPendingFlow`(计算属性,标识有待审批流转)。
+- **`TestMaterialRecord`**(料件生命周期操作记录):`MaterialId`、`Action`(当前含 `return_to_vendor`)、`OperatorUserId`/`Operator`、`Comment`、`OperatedAt`;独立于人员流转审批单，确保退回厂商等动作可追溯。
 - **`MaterialFlow`**(流转记录):`FlowNo`(流转单号 `MF-YYYYMMDD-XXX`)、`MaterialId`、`ApplicantId`/`TransfereeId`(受让人)、`Reason`、`Status`(pending/approved/rejected)、`DirectTransfer`(布尔,标识绕过审批直接转移)、`BpmnTokens`(BPMN 引擎状态,JSON)、`CurrentNodeIds`(活跃节点列表,JSON)。
 - **`MaterialFlowRecord`**(流转操作记录):`FlowId`、`Action`(start/approve/reject/direct_transfer)、`Operator`(操作人名)、`Comment`、`OperatedAt`。
 
@@ -192,7 +193,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 #### 服务与接口
 
 - **`TestProjectService`**:项目 CRUD + 软删除三态(active/all/deleted)+ 撤销/彻底删除(删除项目前检查下辖料件);项目**选项字典**(`TestProjectOption`)增删改查;项目**跟进记录**(`TestProjectFollowup`)增删改查;**统计**(`GetStatsAsync` → `TestProjectStatsDto`:总数/结案/进行中/落地 + 类型分布 `typeDist` + 月度统计 `monthlyStat`,供总览仪表盘)。
-- **`TestMaterialService`**:CRUD + 软删除三态 + 详情(含流转历史 `MaterialFlows` 与操作记录 `MaterialFlowRecords`)+ 退回厂商(`ReturnToVendorAsync`,置 `Status=1`)。`CreateAsync` 自动生成 `MaterialNo`。
+- **`TestMaterialService`**:CRUD + 软删除三态 + 详情(合并展示流转操作 `MaterialFlowRecords` 与生命周期操作 `TestMaterialRecords`)+ 退回厂商(`ReturnToVendorAsync`,在同一事务内置 `Status=1` 并记录操作人/时间)。`CreateAsync` 自动生成 `MaterialNo`。
 - **`MaterialFlowService`**:
   - `InitiateTransferAsync`:发起流转;若全局开关 `material.transfer.approval.enabled=false`(默认),直接转移(`DirectTransfer=true`,立刻改 `CustodianId`);否则创建 pending 流转并启动 BPMN 引擎(`material_transfer` 工作流模板)。
   - `ApproveAsync`/`RejectAsync`:审批;通过时触发 `BizEffectApplier.ApplyMaterialTransfer`,改 `CustodianId` 并记录操作。

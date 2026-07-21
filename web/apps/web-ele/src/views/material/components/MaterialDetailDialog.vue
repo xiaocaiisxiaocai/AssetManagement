@@ -18,6 +18,8 @@ import {
 import { loadAssetImageObjectUrl } from '#/api/asset';
 import { formatDate, formatDateTime } from '#/utils/date-format';
 
+import { materialRecordActionText } from './material-records';
+
 const props = defineProps<{
   detail: MaterialDetail | null;
   loading: boolean;
@@ -77,14 +79,6 @@ watch(
 const statusText: Record<MaterialStatus, string> = {
   0: '在用',
   1: '已退回厂商',
-};
-
-const actionText: Record<string, string> = {
-  approve: '审批通过',
-  direct_transfer: '直接转移',
-  reject: '驳回',
-  start: '发起流转',
-  withdraw: '撤回申请',
 };
 </script>
 
@@ -201,12 +195,12 @@ const actionText: Record<string, string> = {
           >
             <ElTimelineItem
               v-for="record in detail.records"
-              :key="record.id"
+              :key="record.key"
               :timestamp="formatDateTime(record.operatedAt, { seconds: true })"
             >
               <div class="material-flow-record">
                 <span class="font-medium">
-                  {{ actionText[record.action] ?? record.action }}
+                  {{ materialRecordActionText(record.action) }}
                 </span>
                 <span v-if="record.operator" class="ml-2 text-gray-500">
                   {{ record.operator }}

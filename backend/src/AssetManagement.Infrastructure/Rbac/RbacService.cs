@@ -862,9 +862,10 @@ public class RbacService : IRbacService
             throw new BizException(4094, "用户已被资产流转记录使用，不能删除");
         }
         if (await _db.FlowRecords.AnyAsync(x => x.OperatorUserId == id) ||
-            await _db.MaterialFlowRecords.AnyAsync(x => x.OperatorUserId == id))
+            await _db.MaterialFlowRecords.AnyAsync(x => x.OperatorUserId == id) ||
+            await _db.TestMaterialRecords.AnyAsync(x => x.OperatorUserId == id))
         {
-            throw new BizException(4094, "用户已被审批操作记录使用，不能删除");
+            throw new BizException(4094, "用户已被审批或料件操作记录使用，不能删除");
         }
         if (await _db.MaterialFlows.AnyAsync(x => x.ApplicantId == id || x.TransfereeId == id))
         {

@@ -90,11 +90,11 @@ public class TestMaterialService : ITestMaterialService
             .ToListAsync();
 
         var flowIds = flows.Select(f => f.Id).ToArray();
-        var records = await _db.MaterialFlowRecords
+        var flowRecords = await _db.MaterialFlowRecords
             .Where(x => flowIds.Contains(x.FlowId))
-            .OrderByDescending(x => x.OperatedAt)
             .Select(x => new MaterialFlowRecordDto
             {
+                Key = $"flow:{x.Id}",
                 Id = x.Id,
                 Action = x.Action,
                 Operator = x.Operator,
@@ -102,6 +102,22 @@ public class TestMaterialService : ITestMaterialService
                 OperatedAt = x.OperatedAt
             })
             .ToListAsync();
+
+        var materialRecords = await _db.TestMaterialRecords
+            .Where(x => x.MaterialId == id)
+            .Select(x => new MaterialFlowRecordDto
+            {
+                Key = $"material:{x.Id}",
+                Id = x.Id,
+                Action = x.Action,
+                Operator = x.Operator,
+                Comment = x.Comment,
+                OperatedAt = x.OperatedAt
+            })
+            .ToListAsync();
+        var records = flowRecords.Concat(materialRecords)
+            .OrderByDescending(x => x.OperatedAt)
+            .ToList();
 
         return new TestMaterialDetailDto { Material = material, Flows = flows, Records = records };
     }
@@ -291,6 +307,8 @@ public class TestMaterialService : ITestMaterialService
         if (!m.IsDeleted) throw new BizException(4097, "请先删除料件后再彻底删除");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id))
             throw new BizException(4094, "料件存在流转历史，不能彻底删除");
+        if (await _db.TestMaterialRecords.AnyAsync(x => x.MaterialId == id))
+            throw new BizException(4094, "料件存在操作记录，不能彻底删除");
         _db.TestMaterials.Remove(m);
         try
         {
@@ -302,7 +320,7 @@ public class TestMaterialService : ITestMaterialService
         }
     }
 
-    public async Task<TestMaterialDto> ReturnToVendorAsync(int id)
+    public async Task<TestMaterialDto> ReturnToVendorAsync(int id, int userId)
     {
         await using var transaction = await _db.Database.BeginTransactionAsync();
         var m = await _db.TestMaterials
@@ -316,8 +334,21 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4092, "该料件有进行中的流转,不能退回厂商");
         if (m.Status == MaterialStatus.ReturnedToVendor)
             throw new BizException(4099, "料件已退回厂商,无需重复操作");
+        var user = await _db.Users.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == userId && x.IsActive)
+            ?? throw new BizException(4041, "用户不存在或已停用");
+        var operatedAt = DateTime.UtcNow;
         m.Status = MaterialStatus.ReturnedToVendor;
         m.RowVersion++;
+        _db.TestMaterialRecords.Add(new TestMaterialRecord
+        {
+            MaterialId = m.Id,
+            OperatorUserId = user.Id,
+            Action = "return_to_vendor",
+            Operator = user.Name,
+            Comment = string.IsNullOrWhiteSpace(m.VendorName) ? null : $"退回厂商：{m.VendorName}",
+            OperatedAt = operatedAt
+        });
         try
         {
             await _db.SaveChangesAsync();

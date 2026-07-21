@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Infrastructure.Auth;
@@ -43,7 +44,7 @@ public class TestMaterialController : ControllerBase
     [HttpPost("{id:int}/return")]
     [HasPermission("material:return")]
     public async Task<ApiResult<TestMaterialDto>> Return(int id)
-        => ApiResult<TestMaterialDto>.Ok(await _service.ReturnToVendorAsync(id));
+        => ApiResult<TestMaterialDto>.Ok(await _service.ReturnToVendorAsync(id, CurrentUserId()));
 
     [HttpDelete("{id:int}")]
     [HasPermission("material:delete")]
@@ -68,4 +69,7 @@ public class TestMaterialController : ControllerBase
         await _service.PurgeAsync(id);
         return ApiResult.Ok();
     }
+
+    private int CurrentUserId()
+        => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");
 }

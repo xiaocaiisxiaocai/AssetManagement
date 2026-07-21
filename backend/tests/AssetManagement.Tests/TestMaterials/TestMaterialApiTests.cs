@@ -282,6 +282,14 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         });
         var returned = await Post<ApiResult<TestMaterialDto>>($"/api/test-materials/{created.Data!.Id}/return", new { });
         returned.Data!.Status.Should().Be(MaterialStatus.ReturnedToVendor);
+
+        var detail = await _client.GetFromJsonAsync<ApiResult<TestMaterialDetailDto>>(
+            $"/api/test-materials/{created.Data.Id}/detail");
+        var returnRecord = detail!.Data!.Records.Should()
+            .ContainSingle(x => x.Action == "return_to_vendor").Which;
+        returnRecord.Key.Should().StartWith("material:");
+        returnRecord.Operator.Should().Be("系统管理员");
+        returnRecord.OperatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
     }
 
     [Fact]
