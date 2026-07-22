@@ -74,7 +74,7 @@ public class SupervisorMaintenanceApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Supervisor_can_crud_employees_across_departments_but_cannot_manage_privileged_users()
+    public async Task Supervisor_can_edit_all_users_but_cannot_delete_privileged_users()
     {
         await Login();
         var roles = (await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100"))!
@@ -129,6 +129,25 @@ public class SupervisorMaintenanceApiTests : IClassFixture<TestWebAppFactory>
         });
         updatedOutsideEmployee.Name.Should().Be("跨部门员工已编辑");
         await DeleteSuccess($"/api/users/{outsideEmployee.Id}");
+
+        var updatedAdministrator = await PutSuccess<UserDto>($"/api/users/{administrator.Id}", new UpdateUserRequest
+        {
+            Name = "系统管理员已由主管编辑",
+            DepartmentId = administrator.DepartmentId,
+            SupervisorId = administrator.SupervisorId,
+            RoleIds = administrator.RoleIds
+        });
+        updatedAdministrator.Name.Should().Be("系统管理员已由主管编辑");
+
+        var updatedSupervisor = await PutSuccess<UserDto>($"/api/users/{supervisor.Id}", new UpdateUserRequest
+        {
+            Name = "部门主管已由主管编辑",
+            DepartmentId = supervisor.DepartmentId,
+            SupervisorId = supervisor.SupervisorId,
+            RoleIds = supervisor.RoleIds
+        });
+        updatedSupervisor.Name.Should().Be("部门主管已由主管编辑");
+
         await AssertForbidden(await _client.DeleteAsync($"/api/users/{administrator.Id}"), "无权管理该用户");
         await AssertForbidden(await _client.DeleteAsync($"/api/users/{supervisor.Id}"), "无权管理该用户");
     }

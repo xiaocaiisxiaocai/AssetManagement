@@ -240,7 +240,6 @@ public class RbacService : IRbacService
     {
         EnsureRequiredText(request.Name, 100, "姓名");
         EnsureSingleRole(request.RoleIds);
-        var restrictToEmployees = IsDepartmentSupervisor();
         await using var transaction = await _db.Database.BeginTransactionAsync();
         await LockAdminUsersAsync();
         // 所有停用路径先按统一顺序锁管理员集合，再锁目标用户；业务流创建在持有相关用户锁后
@@ -250,7 +249,6 @@ public class RbacService : IRbacService
             .AsTracking()
             .SingleOrDefaultAsync()
             ?? throw new BizException(4041, "用户不存在");
-        await EnsureCanManageUserAsync(user, restrictToEmployees);
         await ValidateUserRelationsAsync(request.DepartmentId, request.SupervisorId, id);
         await EnsureUserRoleChangeAllowed(
             id,
@@ -875,19 +873,6 @@ public class RbacService : IRbacService
             throw new BizException(4031, "部门主管只能为新用户分配普通员工角色");
         }
         return new[] { employeeRoleId };
-    }
-
-    private async Task EnsureCanManageUserAsync(User user, bool restrictToEmployees)
-    {
-        if (!restrictToEmployees) return;
-        var roleCodes = await _db.UserRoles.AsNoTracking()
-            .Where(x => x.UserId == user.Id && x.Role != null && x.Role.IsActive)
-            .Select(x => x.Role.Code)
-            .ToArrayAsync();
-        if (!IsManagedEmployee(roleCodes))
-        {
-            throw new BizException(4032, "无权管理该用户");
-        }
     }
 
     private static void EnsureCanManageUser(User user, bool restrictToEmployees)

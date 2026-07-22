@@ -496,7 +496,7 @@ onMounted(async () => {
           <ElTableColumn align="center" fixed="right" label="操作" width="300">
             <template #default="{ row }">
               <ElButton
-                v-if="userActionAccess.canEdit && row.canManage"
+                v-if="userActionAccess.canEdit"
                 link
                 size="small"
                 type="primary"
