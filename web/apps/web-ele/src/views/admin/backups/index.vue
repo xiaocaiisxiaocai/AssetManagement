@@ -234,9 +234,9 @@ onMounted(async () => {
 
 .backup-header,
 .backup-table-panel {
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -246,16 +246,16 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border-color: var(--asset-page-border-strong);
   background: var(--asset-page-surface);
+  border-color: var(--asset-page-border-strong);
 }
 
 .backup-title {
   margin: 0;
-  color: var(--asset-page-text);
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
+  color: var(--asset-page-text);
 }
 
 .backup-actions {
@@ -264,12 +264,12 @@ onMounted(async () => {
 }
 
 .backup-table-panel {
-  flex: 1;
   display: flex;
-  min-height: 0;
+  flex: 1;
   flex-direction: column;
-  border-color: var(--asset-page-border);
+  min-height: 0;
   overflow: hidden;
+  border-color: var(--asset-page-border);
 }
 
 .backup-table-panel :deep(.el-table) {
@@ -278,9 +278,9 @@ onMounted(async () => {
 }
 
 .backup-table-panel :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-surface-soft);
-  color: var(--asset-page-text-secondary);
   font-weight: 600;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
 }
 
 .backup-table-panel :deep(.el-table--border) {
@@ -294,8 +294,8 @@ onMounted(async () => {
 
 .file-name-cell {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
   min-width: 0;
 }
 
@@ -308,9 +308,9 @@ onMounted(async () => {
 
 @media (max-width: 768px) {
   .backup-header {
-    align-items: flex-start;
     flex-direction: column;
     gap: 12px;
+    align-items: flex-start;
   }
 }
 </style>

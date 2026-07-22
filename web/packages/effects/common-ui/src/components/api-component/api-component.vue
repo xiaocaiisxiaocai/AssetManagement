@@ -137,7 +137,9 @@ const bindProps = computed(() => {
   };
 });
 
-const forwardedSlotNames = computed<string[]>((): string[] => Object.keys(slots));
+const forwardedSlotNames = computed<string[]>((): string[] =>
+  Object.keys(slots),
+);
 
 async function fetchApi() {
   let { api, beforeFetch, afterFetch, params, resultField } = props;

@@ -538,16 +538,16 @@ onMounted(loadData);
 
 .workspace-load-error {
   display: flex;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
 }
 
 /* 统计卡片特殊样式 */
 .workspace-stat-card {
   cursor: pointer;
-  transition: all 0.2s ease;
   border: 1px solid var(--asset-page-border);
+  transition: all 0.2s ease;
 }
 
 .workspace-stat-grid {
@@ -585,27 +585,27 @@ onMounted(loadData);
 }
 
 .workspace-panel {
-  border: 1px solid var(--asset-page-border);
-  border-radius: 12px;
-  box-shadow: var(--asset-page-shadow);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   max-height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
 }
 
 .workspace-panel :deep(.el-card__header) {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--asset-page-border-strong);
-  background: var(--asset-page-panel-header);
   flex-shrink: 0;
+  padding: 16px 20px;
+  background: var(--asset-page-panel-header);
+  border-bottom: 1px solid var(--asset-page-border-strong);
 }
 
 .workspace-panel :deep(.el-card__body) {
-  padding: 20px;
-  overflow-y: auto;
   flex: 1;
   min-height: 0;
+  padding: 20px;
+  overflow-y: auto;
 }
 
 .workspace-card-header {
@@ -638,9 +638,9 @@ onMounted(loadData);
 
 .workspace-summary-item {
   padding: 16px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: var(--asset-page-surface);
 }
 
 .workspace-summary-item span {
@@ -670,16 +670,16 @@ onMounted(loadData);
   justify-content: space-between;
   min-height: 48px;
   padding: 0 16px;
+  cursor: pointer;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: var(--asset-page-surface);
-  cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .workspace-todo-item:hover {
-  border-color: var(--el-color-primary);
   background: var(--asset-page-surface-soft);
+  border-color: var(--el-color-primary);
 }
 
 .workspace-todo-item span {
@@ -708,19 +708,19 @@ onMounted(loadData);
   justify-content: center;
   min-height: 44px;
   padding: 0 16px;
-  border: 1px solid var(--asset-page-border);
-  border-radius: 8px;
-  background: var(--asset-page-surface);
   font-size: 14px;
   line-height: 20px;
   color: var(--el-color-primary);
   cursor: pointer;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
   transition: all 0.2s ease;
 }
 
 .workspace-shortcut-item:hover {
-  border-color: var(--el-color-primary);
   background: var(--asset-page-surface-soft);
+  border-color: var(--el-color-primary);
 }
 
 /* 表格样式 */
@@ -730,11 +730,11 @@ onMounted(loadData);
 }
 
 .workspace-table :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-panel-header-solid);
-  color: var(--asset-page-panel-header-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header-solid);
 }
 
 .workspace-table :deep(.el-table--border) {
@@ -751,6 +751,7 @@ onMounted(loadData);
 }
 
 /* 响应式 */
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
 @media (max-width: 1280px) {
   .workspace-dashboard {
     grid-template-columns: repeat(2, 1fr);

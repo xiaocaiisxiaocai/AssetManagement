@@ -345,12 +345,13 @@ function rowClassName({ row }: { row: MaterialItem }) {
   height: 18px;
   padding: 0 6px;
   margin-left: 6px;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 18px;
+  color: var(--el-text-color-secondary);
   background: var(--el-fill-color-light);
   border-radius: 999px;
 }
+
 .material-filter {
   display: flex;
   flex-shrink: 0;
@@ -359,34 +360,40 @@ function rowClassName({ row }: { row: MaterialItem }) {
   align-items: center;
   margin-bottom: 14px;
 }
+
 .drawer-table-panel {
   display: flex;
   flex: 1;
-  min-height: 0;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: var(--asset-page-surface);
 }
+
 .drawer-table-panel :deep(.el-table) {
   flex: 1;
   min-height: 0;
 }
+
 .material-table-panel {
   flex: 1;
   height: auto;
   min-height: 0;
 }
+
 .material-row-actions {
   display: flex;
   gap: 4px;
   align-items: center;
   justify-content: center;
 }
+
 .material-row-actions :deep(.el-button + .el-button) {
   margin-left: 0;
 }
+
 .table-bottom-pager {
   display: flex;
   flex-shrink: 0;
@@ -395,28 +402,33 @@ function rowClassName({ row }: { row: MaterialItem }) {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-top: 1px solid var(--asset-page-border);
   background: var(--asset-page-surface);
+  border-top: 1px solid var(--asset-page-border);
 }
+
 .table-bottom-pager-left {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  color: var(--asset-page-muted);
   font-size: 14px;
   line-height: 20px;
+  color: var(--asset-page-muted);
 }
+
 .table-bottom-pager-divider {
   color: var(--asset-page-border);
 }
+
 :deep(.material-row-deleted td.el-table__cell) {
   color: var(--el-text-color-disabled);
   background-color: var(--el-fill-color-light) !important;
 }
+
 :deep(.material-row-returned td.el-table__cell) {
   color: var(--el-text-color-secondary);
 }
+
 @media (max-width: 768px) {
   .material-table-panel {
     height: auto;

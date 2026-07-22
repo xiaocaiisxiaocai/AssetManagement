@@ -4,11 +4,11 @@ import type { BreadcrumbProps } from './types';
 import { ChevronDown } from '@vben-core/icons';
 
 import {
-  Breadcrumb as BreadcrumbRoot,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
+  Breadcrumb as BreadcrumbRoot,
   BreadcrumbSeparator,
   DropdownMenu,
   DropdownMenuContent,

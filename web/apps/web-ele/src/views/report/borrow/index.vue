@@ -365,8 +365,8 @@ onMounted(async () => {
   }
 
   .borrow-filter-actions {
-    width: 100%;
     justify-content: flex-end;
+    width: 100%;
   }
 }
 </style>

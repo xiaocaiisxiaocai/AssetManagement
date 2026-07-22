@@ -37,6 +37,7 @@ import LoginForm from '#/views/_core/authentication/login.vue';
 import { formatNotificationDate } from './notification-date';
 import { resolveNotificationRoute } from './notification-route';
 import { createNotificationSyncGuard } from './notification-sync-guard';
+
 const Password = defineAsyncComponent(() => import('./password.vue'));
 
 const passwordVisible = ref(false);

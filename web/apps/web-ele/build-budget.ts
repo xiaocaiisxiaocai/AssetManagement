@@ -1,5 +1,7 @@
 import type { Plugin } from 'vite';
 
+import { Buffer } from 'node:buffer';
+
 /** web-ele 任一生产 JavaScript chunk 的硬上限（Vite 以十进制 kB 报告）。 */
 export const WEB_ELE_CHUNK_LIMIT_KB = 1100;
 
@@ -25,9 +27,7 @@ export function assertWebEleChunkBudget(
         `${chunk.fileName} ${(chunk.sizeInBytes / 1000).toFixed(2)} kB`,
     )
     .join('、');
-  throw new Error(
-    `web-ele 构建产物超过 ${limitInKb} kB 单块预算：${details}`,
-  );
+  throw new Error(`web-ele 构建产物超过 ${limitInKb} kB 单块预算：${details}`);
 }
 
 export function createWebEleChunkBudgetPlugin(

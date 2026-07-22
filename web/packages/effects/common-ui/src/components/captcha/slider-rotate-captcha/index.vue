@@ -51,7 +51,9 @@ const state = reactive({
 });
 
 const modalValue = defineModel<boolean>({ default: false });
-const forwardedSlotNames = computed<string[]>((): string[] => Object.keys(slots));
+const forwardedSlotNames = computed<string[]>((): string[] =>
+  Object.keys(slots),
+);
 
 watch(
   () => state.isPassing,

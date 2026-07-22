@@ -56,11 +56,7 @@ onMounted(() => {
 <template>
   <div class="relative">
     <div
-      v-if="
-        title ||
-        $slots.title ||
-        $slots.extra
-      "
+      v-if="title || $slots.title || $slots.extra"
       ref="headerRef"
       :class="
         cn(
@@ -75,7 +71,6 @@ onMounted(() => {
             {{ title }}
           </div>
         </slot>
-
       </div>
 
       <div v-if="$slots.extra">

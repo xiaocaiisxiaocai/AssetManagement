@@ -674,7 +674,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* ========== 设计系统规范 ========== */
 .role-page {
   display: flex;
   flex-direction: column;
@@ -689,9 +688,9 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border-strong);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -708,22 +707,22 @@ onMounted(async () => {
 .role-filter-panel {
   flex-shrink: 0;
   padding: 16px 20px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
 /* ========== 表格面板 ========== */
 .role-table-panel {
-  flex: 1;
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -735,11 +734,11 @@ onMounted(async () => {
 }
 
 .role-table-panel :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-surface-soft);
-  color: var(--asset-page-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
 }
 
 .role-table-panel :deep(.el-table--border) {
@@ -785,9 +784,9 @@ onMounted(async () => {
 .role-permission-panel {
   min-width: 0;
   overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 10px;
-  background: var(--asset-page-surface);
 }
 
 .role-access-section-title {
@@ -796,23 +795,23 @@ onMounted(async () => {
   justify-content: space-between;
   min-height: 46px;
   padding: 0 14px;
-  border-bottom: 1px solid var(--asset-page-border);
-  color: var(--asset-page-text);
-  background: var(--asset-page-surface-soft);
   font-size: 14px;
   font-weight: 600;
+  color: var(--asset-page-text);
+  background: var(--asset-page-surface-soft);
+  border-bottom: 1px solid var(--asset-page-border);
 }
 
 .role-access-section-title span:last-child {
-  color: var(--asset-page-muted);
   font-size: 12px;
   font-weight: 400;
+  color: var(--asset-page-muted);
 }
 
 .role-menu-tree {
   max-height: 520px;
-  overflow-y: auto;
   padding: 12px 10px;
+  overflow-y: auto;
 }
 
 .role-permission-panel {
@@ -830,12 +829,12 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px;
   max-height: 560px;
+  padding: 8px;
   overflow-y: auto;
+  background: var(--asset-page-surface-soft);
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: var(--asset-page-surface-soft);
 }
 
 .role-module-item {
@@ -845,18 +844,18 @@ onMounted(async () => {
   width: 100%;
   min-height: 38px;
   padding: 8px 10px;
+  color: var(--asset-page-text-secondary);
+  cursor: pointer;
+  background: transparent;
   border: 1px solid transparent;
   border-radius: 6px;
-  color: var(--asset-page-text-secondary);
-  background: transparent;
-  cursor: pointer;
 }
 
 .role-module-item:hover,
 .role-module-item.is-active {
-  border-color: var(--el-color-primary-light-5);
   color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
 }
 
 .role-module-name {
@@ -887,8 +886,8 @@ onMounted(async () => {
 
 .role-permission-tool-actions {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
   white-space: nowrap;
 }
 
@@ -897,12 +896,12 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border: 1px solid var(--asset-page-border);
-  border-radius: 8px;
-  color: var(--asset-page-text-secondary);
-  background: var(--asset-page-surface-soft);
   font-size: 13px;
   line-height: 18px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
 }
 
 .role-permission-list {
@@ -910,8 +909,8 @@ onMounted(async () => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   max-height: 430px;
-  overflow-y: auto;
   padding-right: 4px;
+  overflow-y: auto;
 }
 
 .role-permission-card {
@@ -924,38 +923,38 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 4px 8px;
+  align-items: center;
   width: 100%;
   min-width: 0;
-  align-items: center;
 }
 
 .role-permission-name {
   min-width: 0;
   overflow: hidden;
-  color: var(--asset-page-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  color: var(--asset-page-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .role-permission-action {
   padding: 2px 6px;
-  border-radius: 999px;
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
   font-size: 12px;
   line-height: 16px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-radius: 999px;
 }
 
 .role-permission-code {
   grid-column: 1 / -1;
   min-width: 0;
   overflow: hidden;
-  color: var(--asset-page-muted);
   font-size: 12px;
   line-height: 16px;
+  color: var(--asset-page-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1025,6 +1024,7 @@ onMounted(async () => {
   line-height: 20px;
 }
 
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
 @media (max-width: 1024px) {
   .role-access-shell {
     grid-template-columns: minmax(0, 1fr);
@@ -1061,8 +1061,7 @@ onMounted(async () => {
   .role-permission-sidebar {
     flex-direction: row;
     max-height: none;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: auto hidden;
   }
 
   .role-module-item {
@@ -1086,4 +1085,6 @@ onMounted(async () => {
     max-height: none;
   }
 }
+
+/* ========== 设计系统规范 ========== */
 </style>

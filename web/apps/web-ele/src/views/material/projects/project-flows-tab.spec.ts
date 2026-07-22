@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { cwd } from 'node:process';
 import { join } from 'node:path';
+import { cwd } from 'node:process';
 
 import { describe, expect, it } from 'vitest';
 

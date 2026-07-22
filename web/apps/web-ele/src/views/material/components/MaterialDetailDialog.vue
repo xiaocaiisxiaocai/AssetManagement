@@ -231,31 +231,31 @@ const statusText: Record<MaterialStatus, string> = {
 .material-detail-descriptions :deep(.el-descriptions__label) {
   width: 96px;
   min-width: 96px;
-  color: var(--el-text-color-regular);
   font-weight: 500;
   line-height: 22px;
+  color: var(--el-text-color-regular);
   white-space: nowrap;
 }
 
 .material-detail-descriptions :deep(.el-descriptions__content) {
   min-width: 0;
-  color: var(--el-text-color-primary);
   line-height: 22px;
+  color: var(--el-text-color-primary);
   overflow-wrap: anywhere;
 }
 
 .material-photo-section {
   min-height: 112px;
-  margin-top: 18px;
   padding-top: 14px;
+  margin-top: 18px;
   border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .material-photo-title {
   margin-bottom: 12px;
-  color: var(--el-text-color-primary);
   font-size: 14px;
   font-weight: 650;
+  color: var(--el-text-color-primary);
 }
 
 .material-photo-alert {
@@ -281,22 +281,22 @@ const statusText: Record<MaterialStatus, string> = {
   justify-content: center;
   width: 100%;
   height: 100%;
-  color: var(--el-text-color-placeholder);
   font-size: 12px;
+  color: var(--el-text-color-placeholder);
   background: var(--el-fill-color-light);
 }
 
 .material-flow-section {
-  margin-top: 18px;
   padding-top: 14px;
+  margin-top: 18px;
   border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .material-flow-title {
   margin-bottom: 12px;
-  color: var(--el-text-color-primary);
   font-size: 14px;
   font-weight: 650;
+  color: var(--el-text-color-primary);
 }
 
 .material-flow-timeline {
@@ -304,15 +304,15 @@ const statusText: Record<MaterialStatus, string> = {
 }
 
 .material-flow-record {
-  color: var(--el-text-color-primary);
   line-height: 22px;
+  color: var(--el-text-color-primary);
 }
 
 .material-flow-comment {
   margin-top: 2px;
-  color: var(--el-text-color-secondary);
   font-size: 13px;
   line-height: 20px;
+  color: var(--el-text-color-secondary);
   overflow-wrap: anywhere;
 }
 

@@ -959,15 +959,15 @@ onUnmounted(() => {
 }
 
 .panel-title {
-  color: var(--workflow-title, var(--el-text-color-primary));
   font-size: 14px;
   font-weight: 600;
+  color: var(--workflow-title, var(--el-text-color-primary));
 }
 
 .panel-subtitle {
   margin-top: 2px;
-  color: var(--workflow-muted, var(--el-text-color-secondary));
   font-size: 12px;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
 }
 
 .empty-state {
@@ -988,15 +988,15 @@ onUnmounted(() => {
 }
 
 .empty-title {
-  color: var(--workflow-title, var(--el-text-color-primary));
   font-weight: 600;
+  color: var(--workflow-title, var(--el-text-color-primary));
 }
 
 .empty-desc {
   margin-top: 6px;
-  color: var(--workflow-muted, var(--el-text-color-secondary));
   font-size: 12px;
   line-height: 18px;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
 }
 
 .properties-form {
@@ -1016,9 +1016,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   margin-bottom: 10px;
-  color: var(--workflow-title, var(--el-text-color-primary));
   font-size: 13px;
   font-weight: 600;
+  color: var(--workflow-title, var(--el-text-color-primary));
 }
 
 .section-title-row {
@@ -1044,8 +1044,8 @@ onUnmounted(() => {
 .readonly-field {
   min-height: 28px;
   padding: 5px 8px;
-  color: var(--workflow-text, var(--el-text-color-primary));
   line-height: 18px;
+  color: var(--workflow-text, var(--el-text-color-primary));
   background: var(--workflow-card-bg, var(--el-fill-color-light));
   border: 1px solid var(--workflow-border, var(--el-border-color));
   border-radius: 4px;
@@ -1059,8 +1059,8 @@ onUnmounted(() => {
 .condition-builder {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 78px;
-  width: 100%;
   gap: 6px;
+  width: 100%;
 }
 
 .condition-builder > :deep(.el-select) {
@@ -1078,9 +1078,9 @@ onUnmounted(() => {
 
 .tip-box {
   padding: 8px 10px;
-  color: var(--workflow-muted-strong, var(--el-text-color-regular));
   font-size: 12px;
   line-height: 18px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
   background: var(--workflow-card-bg, var(--el-fill-color-light));
   border: 1px solid var(--workflow-border, var(--el-border-color));
   border-radius: 4px;
@@ -1102,14 +1102,14 @@ onUnmounted(() => {
 }
 
 .branch-card-header {
-  justify-content: space-between;
   gap: 8px;
+  justify-content: space-between;
   margin-bottom: 10px;
 }
 
 .branch-identity {
-  min-width: 0;
   gap: 8px;
+  min-width: 0;
 }
 
 .branch-identity > div {
@@ -1123,8 +1123,8 @@ onUnmounted(() => {
 
 .branch-identity strong {
   overflow: hidden;
-  color: var(--workflow-title, var(--el-text-color-primary));
   font-size: 13px;
+  color: var(--workflow-title, var(--el-text-color-primary));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1132,8 +1132,8 @@ onUnmounted(() => {
 .branch-identity span {
   margin-top: 2px;
   overflow: hidden;
-  color: var(--workflow-muted, var(--el-text-color-secondary));
   font-size: 11px;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1142,21 +1142,21 @@ onUnmounted(() => {
   flex: 0 0 26px;
   width: 26px;
   height: 26px;
-  color: var(--workflow-primary, var(--el-color-primary));
   font-size: 12px;
   font-weight: 700;
   line-height: 26px;
+  color: var(--workflow-primary, var(--el-color-primary));
   text-align: center;
   background: var(--workflow-card-icon-bg, var(--el-color-primary-light-9));
   border-radius: 50%;
 }
 
 .branch-tags {
+  gap: 6px;
   padding: 7px 8px;
   margin-bottom: 10px;
-  gap: 6px;
-  color: var(--workflow-muted-strong, var(--el-text-color-regular));
   font-size: 11px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
   background: var(--workflow-card-bg, var(--el-fill-color-light));
   border-radius: 4px;
 }
@@ -1190,17 +1190,17 @@ onUnmounted(() => {
 
 .field-help {
   margin-top: 4px;
-  color: var(--workflow-muted, var(--el-text-color-secondary));
   font-size: 11px;
   line-height: 16px;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
 }
 
 .default-rule {
   width: 100%;
   padding: 8px;
-  color: var(--el-color-success-dark-2);
   font-size: 12px;
   line-height: 18px;
+  color: var(--el-color-success-dark-2);
   background: var(--el-color-success-light-9);
   border: 1px dashed var(--el-color-success-light-5);
   border-radius: 4px;
@@ -1213,8 +1213,8 @@ onUnmounted(() => {
 
 .empty-branch {
   padding: 10px;
-  color: var(--workflow-muted-strong, var(--el-text-color-regular));
   font-size: 12px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
   background: var(--workflow-card-bg, var(--el-fill-color-light));
   border: 1px dashed var(--workflow-border-dashed, var(--el-border-color));
   border-radius: 4px;
@@ -1225,8 +1225,8 @@ onUnmounted(() => {
 }
 
 :deep(.el-form-item__label) {
-  color: var(--workflow-muted-strong, var(--el-text-color-regular));
   font-size: 12px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
 }
 
 :deep(.el-input__wrapper),
@@ -1273,7 +1273,7 @@ onUnmounted(() => {
 }
 
 :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
-  color: #ffffff;
+  color: #fff;
   background: var(--workflow-primary, var(--el-color-primary));
   border-color: var(--workflow-primary, var(--el-color-primary));
 }

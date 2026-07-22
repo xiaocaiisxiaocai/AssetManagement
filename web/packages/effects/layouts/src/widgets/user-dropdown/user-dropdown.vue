@@ -183,7 +183,11 @@ if (enableShortcutKey.value) {
   </LogoutModal>
 
   <DropdownMenu v-model:open="openPopover">
-    <DropdownMenuTrigger ref="refTrigger" :disabled="props.trigger === 'hover'" as-child>
+    <DropdownMenuTrigger
+      ref="refTrigger"
+      :disabled="props.trigger === 'hover'"
+      as-child
+    >
       <button
         aria-label="用户菜单"
         class="hover:bg-accent ml-1 mr-2 cursor-pointer rounded-full border-none bg-transparent p-1.5"

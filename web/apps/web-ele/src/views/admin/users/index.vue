@@ -734,9 +734,9 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border-strong);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -751,23 +751,23 @@ onMounted(async () => {
 
 .user-header-actions {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
 }
 
 /* ========== 筛选面板 ========== */
 .user-filter-panel {
   flex-shrink: 0;
   padding: 16px 20px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
 .user-search-form :deep(.el-form-item) {
-  margin-bottom: 0;
   margin-right: 12px;
+  margin-bottom: 0;
 }
 
 .user-search-form :deep(.el-form-item__label) {
@@ -779,14 +779,14 @@ onMounted(async () => {
 
 /* ========== 表格面板 ========== */
 .user-table-panel {
-  flex: 1;
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -804,11 +804,11 @@ onMounted(async () => {
 }
 
 .user-table-panel :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-surface-soft);
-  color: var(--asset-page-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
 }
 
 .user-table-panel :deep(.el-table--border) {
@@ -866,8 +866,8 @@ onMounted(async () => {
 .user-import-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 10px;
+  align-items: center;
   margin-bottom: 14px;
 }
 

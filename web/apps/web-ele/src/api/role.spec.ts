@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { getRoleAccessOptionsApi } from './role';
+
 const requestClientMock = vi.hoisted(() => ({
   get: vi.fn(),
 }));
@@ -7,8 +9,6 @@ const requestClientMock = vi.hoisted(() => ({
 vi.mock('#/api/request', () => ({
   requestClient: requestClientMock,
 }));
-
-import { getRoleAccessOptionsApi } from './role';
 
 describe('角色授权目录接口', () => {
   beforeEach(() => {

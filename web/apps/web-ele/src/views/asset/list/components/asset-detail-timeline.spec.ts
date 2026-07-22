@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-
 import type { AssetFlow } from '#/api/asset';
+
+import { describe, expect, it } from 'vitest';
 
 import {
   custodyTimelineCount,

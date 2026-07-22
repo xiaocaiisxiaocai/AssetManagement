@@ -160,65 +160,74 @@ const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
   height: 18px;
   padding: 0 6px;
   margin-left: 6px;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 18px;
+  color: var(--el-text-color-secondary);
   background: var(--el-fill-color-light);
   border-radius: 999px;
 }
+
 .followup-workspace {
   display: grid;
   grid-template-columns: minmax(320px, 0.48fr) minmax(0, 1fr);
   gap: 14px;
+  align-items: stretch;
   height: 100%;
   min-height: 0;
-  align-items: stretch;
 }
+
 .followup-editor-panel,
 .followup-history-panel {
   min-width: 0;
   padding: 18px;
+  background: var(--el-fill-color-blank);
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 10px;
-  background: var(--el-fill-color-blank);
 }
+
 .followup-editor-panel {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: sticky;
-  top: 0;
-  border-top: 3px solid var(--el-color-primary);
   background: color-mix(
     in srgb,
     var(--el-color-primary) 4%,
     var(--el-fill-color-blank)
   );
+  border-top: 3px solid var(--el-color-primary);
 }
+
 .followup-editor-panel :deep(.el-form) {
   display: flex;
-  min-height: 0;
   flex: 1;
   flex-direction: column;
+  min-height: 0;
 }
+
 .followup-editor-panel :deep(.el-form-item:last-child) {
   display: flex;
-  min-height: 0;
   flex: 1;
   flex-direction: column;
-}
-.followup-editor-panel :deep(.el-form-item:last-child .el-form-item__content) {
   min-height: 0;
-  flex: 1;
 }
+
+.followup-editor-panel :deep(.el-form-item:last-child .el-form-item__content) {
+  flex: 1;
+  min-height: 0;
+}
+
 .followup-textarea {
   height: 100%;
 }
+
 .followup-textarea :deep(.el-textarea__inner) {
   height: 100%;
   max-height: 100%;
   resize: none;
 }
+
 .followup-history-panel {
   min-height: 0;
   overflow: auto;
@@ -226,45 +235,53 @@ const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
   box-shadow: inset 3px 0 0
     color-mix(in srgb, var(--el-color-primary) 14%, transparent);
 }
+
 .followup-actions,
 .record-actions {
   display: flex;
-  justify-content: flex-end;
   gap: 8px;
+  justify-content: flex-end;
 }
+
 .followup-actions {
   flex-shrink: 0;
   margin-top: 12px;
 }
+
 .panel-heading {
   display: flex;
-  justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 14px;
 }
+
 .panel-heading h3 {
   margin: 0;
-  color: var(--el-text-color-primary);
   font-size: 15px;
   font-weight: 700;
+  color: var(--el-text-color-primary);
 }
+
 .panel-heading p {
   margin: 4px 0 0;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.5;
+  color: var(--el-text-color-secondary);
 }
+
 .readonly-note {
   padding: 14px;
-  color: var(--el-text-color-secondary);
   font-size: 13px;
+  color: var(--el-text-color-secondary);
   background: var(--el-fill-color-light);
   border-radius: 6px;
 }
+
 .compact-empty {
   padding: 54px 0;
 }
+
 .followup-timeline {
   padding: 2px 6px 0 2px;
 }
@@ -274,15 +291,16 @@ const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
   box-shadow: 0 0 0 4px
     color-mix(in srgb, var(--el-color-primary) 12%, transparent);
 }
+
 .followup-record {
   padding: 13px 15px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
   background: color-mix(
     in srgb,
     var(--el-fill-color-light) 72%,
     var(--el-fill-color-blank)
   );
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
   transition:
     border-color 0.16s ease,
     box-shadow 0.16s ease;
@@ -296,27 +314,32 @@ const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
   );
   box-shadow: 0 5px 16px rgb(31 78 121 / 7%);
 }
+
 .followup-record-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 12px;
   margin-bottom: 8px;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
+
 .followup-content {
-  color: var(--el-text-color-primary);
   font-size: 13px;
   line-height: 1.6;
+  color: var(--el-text-color-primary);
   white-space: pre-wrap;
 }
+
 .record-actions {
   margin-top: 8px;
 }
+
 @media (max-width: 768px) {
   .followup-workspace {
     grid-template-columns: 1fr;
   }
+
   .followup-editor-panel {
     position: static;
   }

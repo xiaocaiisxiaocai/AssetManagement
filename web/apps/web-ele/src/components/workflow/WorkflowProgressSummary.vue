@@ -109,14 +109,14 @@ const nextText = computed(() => {
 
 .workflow-summary-next {
   margin-top: 5px;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .workflow-summary-signed {
   margin-top: 5px;
-  color: var(--el-color-success);
   font-size: 12px;
+  color: var(--el-color-success);
 }
 
 .workflow-summary-current {
@@ -125,8 +125,8 @@ const nextText = computed(() => {
 
 .workflow-summary-label {
   flex: none;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .workflow-summary-terminal {

@@ -786,9 +786,9 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border-strong);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -808,15 +808,15 @@ onMounted(async () => {
 
 /* ========== 表格面板 ========== */
 .mine-table-panel {
-  flex: 1;
   display: flex;
-  min-height: 0;
+  flex: 1;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
-  overflow: hidden;
 }
 
 .mine-table-panel :deep(.el-table) {
@@ -827,11 +827,11 @@ onMounted(async () => {
 }
 
 .mine-table-panel :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-panel-header-solid);
-  color: var(--asset-page-panel-header-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header-solid);
 }
 
 .mine-table-panel :deep(.el-table--border) {

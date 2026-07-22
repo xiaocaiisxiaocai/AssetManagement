@@ -382,8 +382,8 @@ onMounted(loadData);
 
 <style scoped>
 .category-remark {
-  white-space: pre-wrap;
   word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .table-panel :deep(.category-row-deleted td.el-table__cell) {

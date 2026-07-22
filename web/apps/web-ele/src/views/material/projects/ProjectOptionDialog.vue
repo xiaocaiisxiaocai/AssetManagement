@@ -146,8 +146,8 @@ const kindLabels: Record<OptionKind, string> = {
 .option-actions {
   display: flex;
   flex-shrink: 0;
-  justify-content: flex-end;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 @media (max-width: 768px) {

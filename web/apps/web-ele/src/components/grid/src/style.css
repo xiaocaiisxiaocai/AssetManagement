@@ -30,7 +30,6 @@
   --vxe-ui-loading-background-color: hsl(var(--overlay-content));
 
   /* table */
-  --vxe-ui-table-header-background-color: hsl(var(--accent));
   --vxe-ui-table-border-color: hsl(var(--border));
   --vxe-ui-table-row-hover-background-color: hsl(var(--accent-hover));
   --vxe-ui-table-row-striped-background-color: hsl(var(--accent) / 60%);
@@ -49,6 +48,7 @@
   /* --vxe-ui-table-fixed-scrolling-box-shadow-color: rgb(0 0 0 / 80%); */
   --vxe-ui-table-header-background-color: var(--accent-hover);
 }
+
 :root .vxe-form {
   --vxe-ui-font-color: hsl(var(--foreground));
   --vxe-ui-font-primary-color: hsl(var(--primary));
@@ -59,15 +59,18 @@
   --vxe-ui-table-resizable-line-color: hsl(var(--heavy));
   --vxe-ui-input-border-color: hsl(var(--border));
 }
+
 :root .vxe-select--panel {
   --vxe-ui-layout-background-color: hsl(var(--background));
-  /*base*/
+
+  /* base */
   --vxe-ui-base-popup-border-color: hsl(var(--border));
-  --vxe-ui-base-popup-box-shadow: 0px 12px 30px 8px rgba(0, 0, 0, 0.5);
+  --vxe-ui-base-popup-box-shadow: 0px 12px 30px 8px rgb(0 0 0 / 50%);
   --vxe-ui-base-drag-background-color: hsl(var(--background));
   --vxe-ui-base-active-background-color: hsl(var(--foreground) / 50%);
   --vxe-ui-base-hover-background-color: hsl(var(--accent-hover));
 }
+
 :root .vxe-modal--box {
   --vxe-ui-font-color: hsl(var(--foreground));
   --vxe-ui-font-primary-color: hsl(var(--primary));
@@ -121,6 +124,7 @@
     var(--vxe-ui-layout-background-color)
   );
 }
+
 .vxe-pager {
   .vxe-pager--prev-btn:not(.is--disabled):active,
   .vxe-pager--next-btn:not(.is--disabled):active,
@@ -174,6 +178,7 @@
 .vxe-tools--operate:not(:has(button)) {
   margin-left: 0;
 }
+
 .table-card {
   margin-top: 5px;
 }

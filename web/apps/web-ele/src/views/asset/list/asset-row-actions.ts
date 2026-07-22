@@ -44,8 +44,7 @@ export function canBorrowAvailableAsset(
   currentUserId: number,
 ) {
   return (
-    canRunAvailableAssetAction(asset) &&
-    asset.custodianId !== currentUserId
+    canRunAvailableAssetAction(asset) && asset.custodianId !== currentUserId
   );
 }
 

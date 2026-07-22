@@ -17,7 +17,6 @@
     "#/*": "./src/*"
   },
   "dependencies": {
-    "bpmn-js": "^17.11.1",
     "@vben/access": "workspace:*",
     "@vben/common-ui": "workspace:*",
     "@vben/constants": "workspace:*",
@@ -33,6 +32,7 @@
     "@vben/types": "workspace:*",
     "@vben/utils": "workspace:*",
     "@vueuse/core": "catalog:",
+    "bpmn-js": "^17.11.1",
     "dayjs": "catalog:",
     "element-plus": "catalog:",
     "pinia": "catalog:",

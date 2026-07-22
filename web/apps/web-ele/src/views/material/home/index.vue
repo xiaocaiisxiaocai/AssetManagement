@@ -303,7 +303,7 @@ onBeforeUnmount(() => {
 
       <!-- 中间两个饼图 -->
       <div class="grid grid-cols-2 gap-4">
-        <div v-loading="statsLoading" class="chart-card">
+        <div class="chart-card" v-loading="statsLoading">
           <EchartsUI
             ref="typeChartRef"
             aria-label="测评类型分布图"
@@ -336,7 +336,7 @@ onBeforeUnmount(() => {
             </div>
           </details>
         </div>
-        <div v-loading="statsLoading" class="chart-card">
+        <div class="chart-card" v-loading="statsLoading">
           <EchartsUI
             ref="statusChartRef"
             aria-label="测评项目进度状态分布图"
@@ -372,7 +372,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 底部柱线组合图 -->
-      <div v-loading="statsLoading" class="chart-card">
+      <div class="chart-card" v-loading="statsLoading">
         <EchartsUI
           ref="barChartRef"
           aria-label="全年结案与跟进记录统计图"
@@ -413,10 +413,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .material-home-page {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  box-sizing: border-box;
   height: calc(var(--vben-content-height, 100vh) - 32px);
   min-height: 0;
   overflow: hidden;
@@ -424,15 +424,16 @@ onBeforeUnmount(() => {
 
 .summary-grid {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
-  flex-shrink: 0;
 }
+
 .stats-error-content {
   display: flex;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
 }
 
 .summary-card {
@@ -442,59 +443,68 @@ onBeforeUnmount(() => {
   justify-content: center;
   min-height: 118px;
   padding: 24px 32px;
-  border: 1px solid var(--asset-page-border);
-  border-radius: 8px;
   text-align: center;
   background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
   box-shadow: var(--asset-page-shadow);
 }
+
 .stat-num {
   @apply mb-2 text-5xl font-bold leading-none;
 }
+
 .stat-label {
   margin-top: 4px;
-  color: var(--asset-page-muted);
   font-size: 14px;
   line-height: 20px;
+  color: var(--asset-page-muted);
 }
+
 .chart-card {
   min-height: 0;
   padding: 12px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
+
 .chart-data-details {
   margin-top: 8px;
-  color: var(--asset-page-text-secondary);
   font-size: 14px;
+  color: var(--asset-page-text-secondary);
 }
+
 .chart-data-details summary {
-  min-height: 44px;
   display: flex;
   align-items: center;
-  cursor: pointer;
+  min-height: 44px;
   color: var(--el-color-primary);
+  cursor: pointer;
 }
+
 .chart-data-table-wrap {
   overflow-x: auto;
 }
+
 .chart-data-table {
   width: 100%;
-  border-collapse: collapse;
   color: var(--asset-page-text);
+  border-collapse: collapse;
 }
+
 .chart-data-table caption {
   padding: 8px;
   font-weight: 600;
   text-align: left;
 }
+
 .chart-data-table th,
 .chart-data-table td {
   padding: 8px 12px;
-  border: 1px solid var(--asset-page-border);
   text-align: left;
+  border: 1px solid var(--asset-page-border);
 }
 
 @media (max-width: 1024px) {

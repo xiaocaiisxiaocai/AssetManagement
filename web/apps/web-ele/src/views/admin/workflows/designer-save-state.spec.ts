@@ -7,7 +7,7 @@ describe('工作流设计器保存状态', () => {
     { exporting: true, saving: false },
     { exporting: false, saving: true },
     { exporting: true, saving: true },
-  ])('XML 导出或 API 保存期间均保持忙碌', ({ exporting, saving }) => {
+  ])('xML 导出或 API 保存期间均保持忙碌', ({ exporting, saving }) => {
     expect(isWorkflowDesignerBusy(exporting, saving)).toBe(true);
   });
 

@@ -167,7 +167,7 @@ function removeItem(index: number) {
     const historyIndex = searchHistory.value.findIndex(
       (historyItem) => historyItem.path === item?.path,
     );
-    if (historyIndex >= 0) {
+    if (historyIndex !== -1) {
       searchHistory.value.splice(historyIndex, 1);
     }
   }

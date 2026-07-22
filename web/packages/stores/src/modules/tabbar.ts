@@ -157,7 +157,9 @@ export const useTabbarStore = defineStore('core-tabbar', {
         this.tabs = newTabs;
         await this._goToDefaultTab(router);
       } else {
-        const homeTab = this.tabs.find((tab) => getTabPath(tab) === DEFAULT_HOME_PATH);
+        const homeTab = this.tabs.find(
+          (tab) => getTabPath(tab) === DEFAULT_HOME_PATH,
+        );
         this.tabs = homeTab ? [homeTab] : [];
         await router.replace(DEFAULT_HOME_PATH);
       }

@@ -411,33 +411,35 @@ onMounted(() => {
 <style>
 .workflow-designer-dialog {
   --el-dialog-bg-color: #eef3f9;
+
   background: #eef3f9;
 }
 
 .dark .workflow-designer-dialog {
   --el-dialog-bg-color: var(--el-bg-color-page);
+
   background: var(--el-bg-color-page);
 }
 
 .workflow-designer-dialog .el-dialog__header {
+  display: flex;
+  align-items: center;
   height: 44px;
   padding: 0 16px;
   margin: 0;
-  display: flex;
-  align-items: center;
+  background: #fff;
   border-bottom: 1px solid #d8e0eb;
-  background: #ffffff;
 }
 
 .dark .workflow-designer-dialog .el-dialog__header {
-  border-bottom-color: var(--el-border-color);
   background: var(--el-bg-color);
+  border-bottom-color: var(--el-border-color);
 }
 
 .workflow-designer-dialog .el-dialog__title {
-  color: #1f3f6d;
   font-size: 15px;
   font-weight: 600;
+  color: #1f3f6d;
 }
 
 .dark .workflow-designer-dialog .el-dialog__title {

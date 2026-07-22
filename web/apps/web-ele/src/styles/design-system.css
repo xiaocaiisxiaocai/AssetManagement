@@ -12,15 +12,15 @@
   --asset-page-blue-muted: #8db6df;
   --asset-page-panel-header: #1a5699;
   --asset-page-panel-header-solid: #1a5699;
-  --asset-page-panel-header-text: #ffffff;
+  --asset-page-panel-header-text: #fff;
   --asset-page-panel-header-muted: #d9e8f8;
   --asset-page-panel-accent: #1a5699;
   --asset-page-panel-accent-soft: #d5e6f7;
   --asset-page-text: hsl(var(--foreground));
   --asset-page-text-secondary: hsl(var(--foreground) / 82%);
   --asset-page-muted: hsl(var(--foreground) / 72%);
-  --asset-page-shadow: 0 8px 24px hsl(213 58% 52% / 8%);
-  --asset-page-shadow-hover: 0 14px 30px hsl(213 58% 52% / 12%);
+  --asset-page-shadow: 0 8px 24px hsl(213deg 58% 52% / 8%);
+  --asset-page-shadow-hover: 0 14px 30px hsl(213deg 58% 52% / 12%);
 }
 
 /* Element Plus 对话框常使用像素宽度；在窄屏统一限制到可视区域，避免表单和底部按钮被裁切。 */
@@ -66,35 +66,35 @@
 .dark {
   --asset-page-surface: hsl(var(--card));
   --asset-page-surface-alt: hsl(var(--background));
-  --asset-page-surface-soft: hsl(215 34% 18% / 64%);
-  --asset-page-surface-hover: hsl(211 70% 26% / 34%);
-  --asset-page-border: hsl(215 28% 28%);
+  --asset-page-surface-soft: hsl(215deg 34% 18% / 64%);
+  --asset-page-surface-hover: hsl(211deg 70% 26% / 34%);
+  --asset-page-border: hsl(215deg 28% 28%);
   --asset-page-border-strong: #386ca7;
   --asset-page-blue-soft: #1f3a5d;
   --asset-page-blue-soft-2: #264b78;
   --asset-page-blue-muted: #386ca7;
   --asset-page-panel-header: #1a5699;
   --asset-page-panel-header-solid: #1a5699;
-  --asset-page-panel-header-text: #ffffff;
+  --asset-page-panel-header-text: #fff;
   --asset-page-panel-header-muted: #d9e8f8;
   --asset-page-panel-accent: #386ca7;
   --asset-page-panel-accent-soft: #264b78;
   --asset-page-text-secondary: hsl(var(--foreground) / 88%);
   --asset-page-muted: hsl(var(--foreground) / 68%);
-  --asset-page-shadow: 0 10px 28px hsl(215 80% 5% / 34%);
-  --asset-page-shadow-hover: 0 16px 34px hsl(215 80% 5% / 46%);
+  --asset-page-shadow: 0 10px 28px hsl(215deg 80% 5% / 34%);
+  --asset-page-shadow-hover: 0 16px 34px hsl(215deg 80% 5% / 46%);
 }
 
 /* ========== 页面容器 ========== */
 .page-container {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  box-sizing: border-box;
   height: calc(var(--vben-content-height, 100vh) - 32px);
   min-height: 0;
-  overflow: hidden;
   padding: 20px;
+  overflow: hidden;
 }
 
 .asset-list-page,
@@ -118,22 +118,22 @@
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border-strong);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
 .el-card {
-  border-color: var(--asset-page-border-strong);
   background-color: var(--asset-page-surface);
+  border-color: var(--asset-page-border-strong);
   box-shadow: var(--asset-page-shadow);
 }
 
 .el-card__header {
-  border-bottom-color: var(--asset-page-border-strong);
   color: var(--asset-page-panel-header-text);
   background: var(--asset-page-panel-header);
+  border-bottom-color: var(--asset-page-border-strong);
 }
 
 .el-card__header .page-title {
@@ -173,9 +173,9 @@
 .filter-panel {
   flex-shrink: 0;
   padding: 10px 20px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -183,24 +183,24 @@
 .user-filter-panel,
 .filter-panel {
   padding-block: 10px !important;
-  border-color: var(--asset-page-border) !important;
   background: var(--asset-page-surface) !important;
+  border-color: var(--asset-page-border) !important;
   box-shadow: var(--asset-page-shadow);
 }
 
 .role-filter-panel .filter-form .el-form-item,
 .user-filter-panel .filter-form .el-form-item,
 .filter-panel .filter-form .el-form-item {
-  margin-bottom: 0;
   margin-right: 12px;
+  margin-bottom: 0;
 }
 
 .filter-form .el-form-item__label {
+  padding: 0 8px 0 0 !important;
   font-size: 14px;
   font-weight: 500;
   line-height: 32px !important;
   color: var(--asset-page-muted);
-  padding: 0 8px 0 0 !important;
 }
 
 .filter-form .el-form-item__content {
@@ -209,27 +209,27 @@
 
 /* ========== 表格面板 ========== */
 .table-panel {
-  flex: 1;
   display: flex;
-  min-height: 0;
+  flex: 1;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
-  overflow: hidden;
 }
 
 .table-panel-with-toolbar {
-  flex: 1;
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
-  overflow: hidden;
 }
 
 .asset-table-panel,
@@ -280,9 +280,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid var(--asset-page-border-strong);
   color: var(--asset-page-panel-header-text);
   background: var(--asset-page-panel-header);
+  border-bottom: 1px solid var(--asset-page-border-strong);
 }
 
 .table-total {
@@ -300,13 +300,13 @@
 .table-bottom-pager {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   padding: 16px 20px;
-  border-top: 1px solid var(--asset-page-border-strong);
   background: var(--asset-page-surface);
+  border-top: 1px solid var(--asset-page-border-strong);
 }
 
 .table-bottom-pager-left {
@@ -327,18 +327,18 @@
 .table-panel .el-table,
 .table-panel-with-toolbar .el-table {
   flex: 1;
+  min-height: 0;
   font-size: 14px;
   line-height: 20px;
-  min-height: 0;
 }
 
 .table-panel .el-table th.el-table__cell,
 .table-panel-with-toolbar .el-table th.el-table__cell {
-  background: var(--asset-page-panel-header-solid);
-  color: var(--asset-page-panel-header-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header-solid);
 }
 
 .asset-table-panel .el-table th.el-table__cell,
@@ -354,8 +354,8 @@
 .user-table-panel .el-table th.el-table__cell,
 .el-table.workspace-table th.el-table__cell,
 .workspace-table .el-table th.el-table__cell {
-  background: var(--asset-page-panel-header-solid) !important;
   color: var(--asset-page-panel-header-text) !important;
+  background: var(--asset-page-panel-header-solid) !important;
 }
 
 .el-table td.el-table__cell > .cell,
@@ -444,12 +444,20 @@
 }
 
 .table-panel .el-table--striped .el-table__body tr.el-table__row--striped td,
-.table-panel-with-toolbar .el-table--striped .el-table__body tr.el-table__row--striped td {
+.table-panel-with-toolbar
+  .el-table--striped
+  .el-table__body
+  tr.el-table__row--striped
+  td {
   background: var(--asset-page-blue-soft);
 }
 
 .table-panel .el-table--enable-row-hover .el-table__body tr:hover > td,
-.table-panel-with-toolbar .el-table--enable-row-hover .el-table__body tr:hover > td {
+.table-panel-with-toolbar
+  .el-table--enable-row-hover
+  .el-table__body
+  tr:hover
+  > td {
   background-color: var(--asset-page-surface-hover) !important;
 }
 
@@ -477,21 +485,21 @@
   min-height: 24px;
   padding: 2px 8px;
   overflow: hidden;
-  border: 1px solid var(--el-color-primary-light-7);
-  border-radius: 4px;
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  cursor: pointer;
   font-size: 12px;
   line-height: 18px;
+  color: var(--el-color-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  background: var(--el-color-primary-light-9);
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: 4px;
 }
 
 .category-code-link:hover,
 .category-code-link:focus-visible {
-  border-color: var(--el-color-primary);
   background: var(--asset-page-surface-soft);
+  border-color: var(--el-color-primary);
   outline: none;
 }
 
@@ -539,9 +547,9 @@
 
 .stat-card {
   padding: 24px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -601,19 +609,19 @@
 
   .page-header {
     flex-direction: column;
-    align-items: flex-start;
     gap: 16px;
+    align-items: flex-start;
   }
 
   .page-actions {
-    width: 100%;
     flex-wrap: wrap;
+    width: 100%;
   }
 
   .table-toolbar {
     flex-direction: column;
-    align-items: flex-start;
     gap: 12px;
+    align-items: flex-start;
   }
 
   .table-pagination {

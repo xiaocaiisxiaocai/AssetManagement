@@ -2,13 +2,14 @@
 import { type Component, computed } from 'vue';
 
 import { IconDefault, IconifyIcon } from '@vben-core/icons';
-import { ChartColumn, GitBranch, Package, Settings } from 'lucide-vue-next';
 import {
   isFunction,
   isHttpUrl,
   isObject,
   isString,
 } from '@vben-core/shared/utils';
+
+import { ChartColumn, GitBranch, Package, Settings } from 'lucide-vue-next';
 
 const props = defineProps<{
   // 没有是否显示默认图标

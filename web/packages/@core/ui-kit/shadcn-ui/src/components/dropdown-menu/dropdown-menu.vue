@@ -5,10 +5,10 @@ import type {
 } from './interface';
 
 import {
-  DropdownMenu as DropdownMenuRoot,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenu as DropdownMenuRoot,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../../ui';
@@ -29,8 +29,8 @@ function handleItemClick(menu: IDropdownMenuItem) {
   <DropdownMenuRoot>
     <DropdownMenuTrigger
       :aria-label="triggerLabel || '打开更多操作菜单'"
-      class="flex h-full items-center gap-1"
       :title="triggerLabel || '打开更多操作菜单'"
+      class="flex h-full items-center gap-1"
     >
       <slot></slot>
     </DropdownMenuTrigger>

@@ -631,9 +631,9 @@ onMounted(async () => {
 
 .preview-tip {
   padding-top: 8px;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 18px;
+  color: var(--el-text-color-secondary);
   border-top: 1px dashed var(--el-border-color);
 }
 </style>

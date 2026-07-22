@@ -1245,10 +1245,12 @@ watch(detailVisible, (opened) => {
 </template>
 
 <style scoped>
-/* ========== 设计系统规范 ========== */
 /* 间距系统: 4px 基础单位 */
+
 /* 圆角系统: 8px(小) 12px(中) 16px(大) */
+
 /* 字体系统: 12px(辅助) 14px(正文) 16px(小标题) 18px(标题) 20px(大标题) */
+
 /* 颜色系统: 见下方定义 */
 
 /* ========== 布局容器 ========== */
@@ -1259,10 +1261,6 @@ watch(detailVisible, (opened) => {
 }
 
 .asset-workspace {
-  border: 1px solid var(--asset-page-border);
-  border-radius: 12px;
-  background: var(--asset-page-surface);
-  box-shadow: var(--asset-page-shadow);
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -1271,15 +1269,19 @@ watch(detailVisible, (opened) => {
   max-height: 100%;
   padding: 20px;
   overflow: hidden;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
 }
 
 .asset-workspace-head {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   padding: 4px 0 12px;
   border-bottom: 1px solid var(--asset-page-border);
 }
@@ -1289,8 +1291,8 @@ watch(detailVisible, (opened) => {
   margin-bottom: 4px;
   font-size: 18px;
   font-weight: 600;
-  color: var(--asset-page-text);
   line-height: 28px;
+  color: var(--asset-page-text);
   letter-spacing: -0.02em;
 }
 
@@ -1324,22 +1326,22 @@ watch(detailVisible, (opened) => {
 /* ========== 一级分类网格 ========== */
 .asset-root-grid {
   display: grid;
+  flex: 1;
   grid-template-columns: repeat(auto-fill, 240px);
   gap: 16px;
-  flex: 1;
-  min-height: 0;
   align-content: start;
   align-items: start;
-  overflow-y: auto;
+  min-height: 0;
   padding: 12px 0 20px;
+  overflow-y: auto;
 }
 
 .asset-root-card {
   overflow: hidden;
   cursor: pointer;
-  border-radius: 12px;
-  border: 1px solid var(--asset-page-border);
   background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
   box-shadow: var(--asset-page-shadow);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1347,23 +1349,25 @@ watch(detailVisible, (opened) => {
 .asset-root-card:hover,
 .asset-root-card:focus-visible {
   border-color: var(--asset-page-border-strong);
-  box-shadow: 0 8px 20px hsl(211 70% 35% / 14%);
   outline: none;
+  box-shadow: 0 8px 20px hsl(211deg 70% 35% / 14%);
   transform: translateY(-4px);
 }
 
 .asset-root-card-code {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 84px;
+  overflow: hidden;
   color: #fff;
   background: var(--asset-page-panel-header-solid);
-  position: relative;
-  overflow: hidden;
 }
 
 .asset-root-card-code span {
+  position: relative;
+  z-index: 1;
   max-width: calc(100% - 48px);
   padding: 6px 16px;
   overflow: hidden;
@@ -1372,12 +1376,10 @@ watch(detailVisible, (opened) => {
   line-height: 24px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
+  background: rgb(255 255 255 / 20%);
   backdrop-filter: blur(10px);
-  position: relative;
-  z-index: 1;
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 8px;
 }
 
 .asset-root-card-body {
@@ -1392,9 +1394,9 @@ watch(detailVisible, (opened) => {
 
 .asset-root-actions {
   display: flex;
+  grid-column: 1 / -1;
   gap: 8px;
   justify-content: center;
-  grid-column: 1 / -1;
 }
 
 .asset-row-warning {
@@ -1407,16 +1409,17 @@ watch(detailVisible, (opened) => {
 
 .asset-row-warning::before {
   margin-right: 4px;
-  content: '●';
   color: var(--el-color-warning-light-3);
+  content: '●';
 }
 
 .asset-enter-button {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
   color: var(--el-color-primary);
   white-space: nowrap;
-  font-weight: 500;
-  font-size: 14px;
-  line-height: 20px;
   transition: color 0.2s ease;
 }
 
@@ -1424,22 +1427,18 @@ watch(detailVisible, (opened) => {
   color: var(--el-color-primary-dark-2);
 }
 
-.asset-enter-button {
-  padding: 0;
-}
-
 /* ========== 搜索栏 ========== */
 .asset-filter-strip {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  flex-wrap: wrap;
   justify-content: flex-start;
   padding: 16px 20px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -1453,10 +1452,10 @@ watch(detailVisible, (opened) => {
 /* ========== 分类列表 ========== */
 .asset-class-list {
   display: grid;
-  gap: 16px;
   flex: 1;
-  min-height: 0;
+  gap: 16px;
   align-content: start;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -1466,9 +1465,9 @@ watch(detailVisible, (opened) => {
   min-height: 96px;
   overflow: hidden;
   cursor: pointer;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1476,24 +1475,26 @@ watch(detailVisible, (opened) => {
 .asset-class-row:hover,
 .asset-class-row:focus-visible {
   border-color: var(--asset-page-border-strong);
-  box-shadow: 0 8px 20px hsl(211 70% 35% / 14%);
   outline: none;
+  box-shadow: 0 8px 20px hsl(211deg 70% 35% / 14%);
   transform: translateY(-4px);
 }
 
 .asset-class-code {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-width: 0;
   padding: 12px 16px;
+  overflow: hidden;
   color: #fff;
   background: var(--asset-page-panel-header-solid);
-  position: relative;
-  overflow: hidden;
 }
 
 .asset-class-code span {
+  position: relative;
+  z-index: 1;
   max-width: 100%;
   padding: 6px 16px;
   overflow: hidden;
@@ -1502,18 +1503,16 @@ watch(detailVisible, (opened) => {
   line-height: 28px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
+  background: rgb(255 255 255 / 20%);
   backdrop-filter: blur(10px);
-  position: relative;
-  z-index: 1;
+  border-radius: 999px;
 }
 
 .asset-class-main {
   display: flex;
-  min-width: 0;
   flex-direction: column;
   justify-content: center;
+  min-width: 0;
   padding: 16px 24px;
 }
 
@@ -1522,9 +1521,9 @@ watch(detailVisible, (opened) => {
   font-weight: 600;
   line-height: 24px;
   color: var(--asset-page-text);
-  white-space: pre-wrap;
-  word-break: break-word;
   letter-spacing: -0.01em;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .asset-class-desc {
@@ -1555,9 +1554,9 @@ watch(detailVisible, (opened) => {
   font-size: 14px;
   line-height: 20px;
   color: var(--asset-page-muted);
+  background: var(--asset-page-surface);
   border: 2px dashed var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
 }
 
 /* ========== 表格面板 ========== */
@@ -1567,9 +1566,9 @@ watch(detailVisible, (opened) => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -1579,11 +1578,11 @@ watch(detailVisible, (opened) => {
 }
 
 .asset-table-panel :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-surface-soft);
-  color: var(--asset-page-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
 }
 
 .asset-table-panel :deep(.el-table--border) {
@@ -1646,13 +1645,13 @@ watch(detailVisible, (opened) => {
 .asset-pager {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   padding: 16px 20px;
-  border-top: 1px solid var(--asset-page-border);
   background: var(--asset-page-surface);
+  border-top: 1px solid var(--asset-page-border);
 }
 
 .asset-pager-left {
@@ -1670,6 +1669,7 @@ watch(detailVisible, (opened) => {
 }
 
 /* ========== 响应式 ========== */
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
 @media (max-width: 768px) {
   .asset-workspace-head,
   .asset-pager {
@@ -1689,10 +1689,12 @@ watch(detailVisible, (opened) => {
   }
 
   .asset-class-actions {
-    min-width: 0;
     flex-wrap: wrap;
     justify-content: flex-start;
+    min-width: 0;
     padding-top: 0;
   }
 }
+
+/* ========== 设计系统规范 ========== */
 </style>

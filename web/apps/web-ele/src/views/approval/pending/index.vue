@@ -72,8 +72,8 @@ import {
   normalizeMaterialFlow,
 } from '../approval-work-items';
 import {
-  type ApprovalSource,
   approvalListRequestFlowId,
+  type ApprovalSource,
   beginNotificationFlowAttempt,
   notificationSource,
   withoutNotificationFlowId,
@@ -604,7 +604,7 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="pending-page">
-      <div class="pending-view-switch" aria-label="审批记录范围">
+      <div aria-label="审批记录范围" class="pending-view-switch">
         <ElRadioGroup v-model="viewMode" @change="onViewModeChange">
           <ElRadioButton value="pending">待我处理</ElRadioButton>
           <ElRadioButton value="handled">我已处理</ElRadioButton>
@@ -1064,7 +1064,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* ========== 设计系统规范 ========== */
 .pending-page {
   display: flex;
   flex-direction: column;
@@ -1074,8 +1073,8 @@ onMounted(async () => {
 
 .pending-view-switch {
   display: flex;
-  align-items: center;
   gap: 16px;
+  align-items: center;
 }
 
 .pending-view-tip {
@@ -1085,15 +1084,15 @@ onMounted(async () => {
 
 /* ========== 表格面板 ========== */
 .pending-table-panel {
-  flex: 1;
   display: flex;
-  min-height: 0;
+  flex: 1;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
-  overflow: hidden;
 }
 
 .pending-table-panel :deep(.el-table) {
@@ -1104,11 +1103,11 @@ onMounted(async () => {
 }
 
 .pending-table-panel :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-panel-header-solid);
-  color: var(--asset-page-panel-header-text);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header-solid);
 }
 
 .pending-table-panel :deep(.el-table--border) {
@@ -1140,8 +1139,8 @@ onMounted(async () => {
 
 .pending-sign-item {
   display: inline-flex;
-  align-items: center;
   gap: 4px;
+  align-items: center;
 }
 
 .pending-opinion-panel {
@@ -1191,11 +1190,14 @@ onMounted(async () => {
   line-height: 20px;
 }
 
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
 @media (max-width: 640px) {
   .pending-view-switch {
-    align-items: flex-start;
     flex-direction: column;
     gap: 8px;
+    align-items: flex-start;
   }
 }
+
+/* ========== 设计系统规范 ========== */
 </style>

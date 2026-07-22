@@ -61,15 +61,15 @@ import {
   purgeTestProjectApi,
   restoreTestProjectApi,
   updateTestProjectApi,
-  updateTestProjectProgressApi,
   updateTestProjectFollowupApi,
   updateTestProjectOptionApi,
+  updateTestProjectProgressApi,
 } from '#/api/test-project';
 import { getUserListApi, getUserOptionsPageApi } from '#/api/user';
 import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
 import { formatDate } from '#/utils/date-format';
-import { downloadBlob } from '#/utils/download';
 import { flattenActiveDepartments } from '#/utils/department-options';
+import { downloadBlob } from '#/utils/download';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
 import { normalizedPage } from '#/utils/pagination';
@@ -90,8 +90,8 @@ import {
 import MaterialDetailDialog from '../components/MaterialDetailDialog.vue';
 import MaterialFormDialog from '../components/MaterialFormDialog.vue';
 import TransferDialog from '../components/TransferDialog.vue';
-import { validateProjectForm } from './project-form-rules';
 import { isFutureFollowupDate, localTodayText } from './followup-date-rules';
+import { validateProjectForm } from './project-form-rules';
 import { buildProjectPageQuery } from './project-page-query';
 import { projectFollowUpStatusMeta } from './project-workspace-rules';
 import ProjectFlowsTab from './ProjectFlowsTab.vue';
@@ -1121,23 +1121,21 @@ async function loadProjectFlows(projectId = currentProject.value?.id) {
   if (loadMine) myFlowLoading.value = true;
   else if (loadHandled) handledFlowLoading.value = true;
   else pendingFlowLoading.value = true;
-  const requestGuard = loadMine
-    ? myFlowRequestGuard
-    : loadHandled
-      ? handledFlowRequestGuard
-      : pendingFlowRequestGuard;
+  let requestGuard = pendingFlowRequestGuard;
+  if (loadMine) requestGuard = myFlowRequestGuard;
+  else if (loadHandled) requestGuard = handledFlowRequestGuard;
   const requestGeneration = requestGuard.next();
   try {
-    const query = loadMine
-      ? myFlowQuery
-      : loadHandled
-        ? handledFlowQuery
-        : pendingFlowQuery;
-    const result = await (loadMine
-      ? listMyFlowsPageApi({ ...query, projectId })
-      : loadHandled
-        ? listHandledFlowsPageApi({ ...query, projectId })
-        : listPendingFlowsPageApi({ ...query, projectId }));
+    let query = pendingFlowQuery;
+    let loadFlowsPage = listPendingFlowsPageApi;
+    if (loadMine) {
+      query = myFlowQuery;
+      loadFlowsPage = listMyFlowsPageApi;
+    } else if (loadHandled) {
+      query = handledFlowQuery;
+      loadFlowsPage = listHandledFlowsPageApi;
+    }
+    const result = await loadFlowsPage({ ...query, projectId });
     if (
       !requestGuard.isLatest(requestGeneration) ||
       !followupDrawerVisible.value ||
@@ -1323,8 +1321,8 @@ watch(materialDetailVisible, (opened) => {
         @options="openOptionDialog"
         @page-change="loadData"
         @page-size-change="onProjectPageSizeChange"
-        @purge="purge"
         @progress="openProgress"
+        @purge="purge"
         @remove="remove"
         @reset="resetProjectFilter"
         @restore="restore"
@@ -1558,12 +1556,12 @@ watch(materialDetailVisible, (opened) => {
 .project-table-panel {
   display: flex;
   flex: 1;
-  min-height: 0;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
 }
 
@@ -1590,8 +1588,8 @@ watch(materialDetailVisible, (opened) => {
 .followup-actions {
   display: flex;
   flex-shrink: 0;
-  justify-content: flex-end;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .followup-actions {
@@ -1616,8 +1614,8 @@ watch(materialDetailVisible, (opened) => {
   height: 64px;
   padding: 0 24px;
   margin: 0;
-  border-bottom: 1px solid var(--asset-page-border-strong);
   background: var(--asset-page-panel-header-solid);
+  border-bottom: 1px solid var(--asset-page-border-strong);
   box-shadow: 0 6px 18px rgb(15 56 96 / 18%);
 }
 
@@ -1660,18 +1658,18 @@ watch(materialDetailVisible, (opened) => {
 }
 
 .drawer-workspace-title span {
-  color: var(--asset-page-panel-header-muted);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  color: var(--asset-page-panel-header-muted);
   text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 
 .drawer-workspace-title strong {
-  color: var(--asset-page-panel-header-text);
   font-size: 17px;
   font-weight: 700;
   line-height: 1.35;
+  color: var(--asset-page-panel-header-text);
 }
 
 .project-brief {
@@ -1681,6 +1679,7 @@ watch(materialDetailVisible, (opened) => {
   gap: 16px;
   padding: 18px 18px 18px 22px;
   overflow: hidden;
+  background: var(--el-fill-color-blank);
   border: 1px solid
     color-mix(
       in srgb,
@@ -1688,7 +1687,6 @@ watch(materialDetailVisible, (opened) => {
       var(--el-border-color-light)
     );
   border-radius: 10px;
-  background: var(--el-fill-color-blank);
   box-shadow: 0 8px 24px rgb(31 78 121 / 7%);
 }
 
@@ -1696,8 +1694,8 @@ watch(materialDetailVisible, (opened) => {
   position: absolute;
   inset: 0 auto 0 0;
   width: 4px;
-  background: var(--el-color-primary);
   content: '';
+  background: var(--el-color-primary);
 }
 
 .project-brief::after {
@@ -1706,8 +1704,8 @@ watch(materialDetailVisible, (opened) => {
   width: 260px;
   height: 100%;
   pointer-events: none;
-  background: linear-gradient(125deg, transparent, rgb(64 158 255 / 7%));
   content: '';
+  background: linear-gradient(125deg, transparent, rgb(64 158 255 / 7%));
 }
 
 .project-brief-main {
@@ -1720,17 +1718,17 @@ watch(materialDetailVisible, (opened) => {
   margin-bottom: 8px;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
   color: var(--el-color-primary);
+  letter-spacing: 0.06em;
 }
 
 .project-title {
   margin: 0;
   overflow: hidden;
-  color: var(--el-text-color-primary);
   font-size: 18px;
   font-weight: 650;
   line-height: 1.4;
+  color: var(--el-text-color-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1758,13 +1756,13 @@ watch(materialDetailVisible, (opened) => {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
   overflow: hidden;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
   background: color-mix(
     in srgb,
     var(--el-color-primary) 3%,
     var(--el-fill-color-blank)
   );
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
 }
 
 .brief-stat {
@@ -1780,16 +1778,16 @@ watch(materialDetailVisible, (opened) => {
 .brief-stat-label {
   display: block;
   margin-bottom: 8px;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .brief-stat strong {
   display: block;
   overflow: hidden;
-  color: var(--el-text-color-primary);
   font-size: 15px;
   font-weight: 650;
+  color: var(--el-text-color-primary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1809,19 +1807,19 @@ watch(materialDetailVisible, (opened) => {
 }
 
 .project-work-tabs :deep(.el-tabs__content) {
-  order: 1;
   flex: 1;
+  order: 1;
   min-height: 0;
 }
 
 .project-work-tabs :deep(.el-tabs__header) {
-  order: 0;
   flex-shrink: 0;
+  order: 0;
   padding: 0 14px;
   margin-bottom: 12px;
+  background: var(--el-fill-color-blank);
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 9px;
-  background: var(--el-fill-color-blank);
   box-shadow: 0 4px 14px rgb(31 78 121 / 4%);
 }
 
@@ -1844,9 +1842,9 @@ watch(materialDetailVisible, (opened) => {
   height: 18px;
   padding: 0 6px;
   margin-left: 6px;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 18px;
+  color: var(--el-text-color-secondary);
   background: var(--el-fill-color-light);
   border-radius: 999px;
 }
@@ -1855,45 +1853,45 @@ watch(materialDetailVisible, (opened) => {
   display: grid;
   grid-template-columns: minmax(320px, 0.48fr) minmax(0, 1fr);
   gap: 16px;
+  align-items: stretch;
   height: 100%;
   min-height: 0;
-  align-items: stretch;
 }
 
 .followup-editor-panel,
 .followup-history-panel {
   min-width: 0;
   padding: 16px;
+  background: var(--el-fill-color-blank);
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
-  background: var(--el-fill-color-blank);
 }
 
 .followup-editor-panel {
+  position: sticky;
+  top: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: sticky;
-  top: 0;
 }
 
 .followup-editor-panel :deep(.el-form) {
   display: flex;
-  min-height: 0;
   flex: 1;
   flex-direction: column;
+  min-height: 0;
 }
 
 .followup-editor-panel :deep(.el-form-item:last-child) {
   display: flex;
-  min-height: 0;
   flex: 1;
   flex-direction: column;
+  min-height: 0;
 }
 
 .followup-editor-panel :deep(.el-form-item:last-child .el-form-item__content) {
-  min-height: 0;
   flex: 1;
+  min-height: 0;
 }
 
 .followup-textarea {
@@ -1913,30 +1911,30 @@ watch(materialDetailVisible, (opened) => {
 
 .panel-heading {
   display: flex;
-  justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 14px;
 }
 
 .panel-heading h3 {
   margin: 0;
-  color: var(--el-text-color-primary);
   font-size: 15px;
   font-weight: 650;
+  color: var(--el-text-color-primary);
 }
 
 .panel-heading p {
   margin: 4px 0 0;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.5;
+  color: var(--el-text-color-secondary);
 }
 
 .readonly-note {
   padding: 14px;
-  color: var(--el-text-color-secondary);
   font-size: 13px;
+  color: var(--el-text-color-secondary);
   background: var(--el-fill-color-light);
   border-radius: 6px;
 }
@@ -1951,9 +1949,9 @@ watch(materialDetailVisible, (opened) => {
 
 .followup-record {
   padding: 12px 14px;
+  background: var(--el-fill-color-light);
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
-  background: var(--el-fill-color-light);
 }
 
 .followup-record-meta {
@@ -1961,33 +1959,33 @@ watch(materialDetailVisible, (opened) => {
   flex-wrap: wrap;
   gap: 8px 12px;
   margin-bottom: 8px;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .followup-content {
-  color: var(--el-text-color-primary);
   font-size: 13px;
   line-height: 1.6;
+  color: var(--el-text-color-primary);
   white-space: pre-wrap;
 }
 
 .record-actions {
   display: flex;
-  justify-content: flex-end;
   gap: 8px;
+  justify-content: flex-end;
   margin-top: 8px;
 }
 
 .drawer-table-panel {
   display: flex;
   flex: 1;
-  min-height: 0;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: var(--asset-page-surface);
 }
 
 .drawer-table-panel :deep(.el-table) {
@@ -2016,20 +2014,20 @@ watch(materialDetailVisible, (opened) => {
 .inner-flow-tabs {
   display: flex;
   flex: 1;
+  flex-direction: column;
   height: auto;
   min-height: 0;
-  flex-direction: column;
 }
 
 .inner-flow-tabs :deep(.el-tabs__content) {
-  order: 1;
   flex: 1;
+  order: 1;
   min-height: 0;
 }
 
 .inner-flow-tabs :deep(.el-tabs__header) {
-  order: 0;
   flex-shrink: 0;
+  order: 0;
   margin-bottom: 12px;
 }
 
@@ -2048,8 +2046,8 @@ watch(materialDetailVisible, (opened) => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-top: 1px solid var(--asset-page-border);
   background: var(--asset-page-surface);
+  border-top: 1px solid var(--asset-page-border);
 }
 
 .table-bottom-pager-left {
@@ -2057,9 +2055,9 @@ watch(materialDetailVisible, (opened) => {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  color: var(--asset-page-muted);
   font-size: 14px;
   line-height: 20px;
+  color: var(--asset-page-muted);
 }
 
 .table-bottom-pager-divider {

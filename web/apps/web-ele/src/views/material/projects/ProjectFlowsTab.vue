@@ -352,54 +352,62 @@ function approvalActionLabel(action?: null | string) {
   height: 18px;
   padding: 0 6px;
   margin-left: 6px;
-  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 18px;
+  color: var(--el-text-color-secondary);
   background: var(--el-fill-color-light);
   border-radius: 999px;
 }
+
 .drawer-table-panel {
   display: flex;
   flex: 1;
-  min-height: 0;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
-  background: var(--asset-page-surface);
 }
+
 .drawer-table-panel :deep(.el-table) {
   flex: 1;
   min-height: 0;
 }
+
 .flow-table-panel {
   flex: 1;
   height: auto;
   min-height: 0;
 }
+
 .inner-flow-tabs {
   display: flex;
   flex: 1;
+  flex-direction: column;
   height: auto;
   min-height: 0;
-  flex-direction: column;
 }
+
 .inner-flow-tabs :deep(.el-tabs__content) {
-  order: 1;
   flex: 1;
+  order: 1;
   min-height: 0;
 }
+
 .inner-flow-tabs :deep(.el-tabs__header) {
-  order: 0;
   flex-shrink: 0;
+  order: 0;
   margin-bottom: 12px;
 }
+
 .inner-flow-tabs :deep(.el-tab-pane) {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
+
 .table-bottom-pager {
   display: flex;
   flex-shrink: 0;
@@ -408,21 +416,24 @@ function approvalActionLabel(action?: null | string) {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-top: 1px solid var(--asset-page-border);
   background: var(--asset-page-surface);
+  border-top: 1px solid var(--asset-page-border);
 }
+
 .table-bottom-pager-left {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  color: var(--asset-page-muted);
   font-size: 14px;
   line-height: 20px;
+  color: var(--asset-page-muted);
 }
+
 .table-bottom-pager-divider {
   color: var(--asset-page-border);
 }
+
 @media (max-width: 768px) {
   .flow-table-panel,
   .inner-flow-tabs {

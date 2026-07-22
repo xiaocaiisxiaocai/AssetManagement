@@ -423,9 +423,9 @@ function summaryText(summary: null | string | undefined) {
 
 .ad-header {
   display: flex;
+  gap: 16px;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
   padding-bottom: 16px;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--el-border-color-lighter);
@@ -441,8 +441,8 @@ function summaryText(summary: null | string | undefined) {
 
 .ad-sub {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
   margin-top: 4px;
   font-size: 13px;
   color: var(--el-text-color-secondary);
@@ -512,8 +512,8 @@ function summaryText(summary: null | string | undefined) {
 
 .ad-initial-title {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
   font-size: 14px;
 }
 

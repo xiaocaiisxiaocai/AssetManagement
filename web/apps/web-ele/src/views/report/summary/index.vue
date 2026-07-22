@@ -181,21 +181,21 @@ onMounted(loadData);
 <style scoped>
 .summary-tables {
   display: grid;
+  flex: 1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
-  flex: 1;
   min-height: 0;
 }
 
 .summary-table-panel {
   display: flex;
-  min-height: 0;
   flex-direction: column;
+  min-height: 0;
+  padding: 20px;
+  background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
-  background: var(--asset-page-surface);
   box-shadow: var(--asset-page-shadow);
-  padding: 20px;
 }
 
 .summary-table-title {
@@ -215,11 +215,11 @@ onMounted(loadData);
 }
 
 .summary-table-panel :deep(.el-table th.el-table__cell) {
-  background: var(--asset-page-surface-soft);
-  color: var(--asset-page-text-secondary);
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
 }
 
 .summary-table-panel :deep(.el-table--border) {

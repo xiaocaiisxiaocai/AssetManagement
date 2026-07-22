@@ -102,8 +102,8 @@ watch(
     :close-on-click-modal="false"
     :close-on-press-escape="!submitting"
     :show-close="!submitting"
-    title="修改密码"
     :width="PASSWORD_DIALOG_WIDTH"
+    title="修改密码"
   >
     <ElForm
       ref="formRef"
