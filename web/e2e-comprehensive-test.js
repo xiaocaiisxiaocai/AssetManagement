@@ -211,6 +211,36 @@ async function runComprehensiveTest() {
         log('✗ 分类浏览与全部资产清单切换失败', 'fail');
       }
 
+      // 存放位置已改为资产表单中的手工输入项，不再使用独立数据字典页面。
+      const createAssetButton = page.getByRole('button', {
+        exact: true,
+        name: '新增资产',
+      });
+      if (await createAssetButton.count()) {
+        try {
+          await createAssetButton.click();
+          const locationInput = page.getByPlaceholder(
+            '请输入存放位置，如：三楼研发区 A-12',
+          );
+          await locationInput.waitFor({ state: 'visible', timeout: 10_000 });
+          const manualLocation = 'E2E 手工填写位置 A-12';
+          await locationInput.fill(manualLocation);
+          if ((await locationInput.inputValue()) === manualLocation) {
+            log('✓ 存放位置支持手工填写', 'pass');
+          } else {
+            log('✗ 存放位置手工填写值未正确保留', 'fail');
+          }
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(500);
+        } catch (error) {
+          log(`✗ 存放位置手工填写检查失败: ${error.message}`, 'fail');
+          await takeDebugScreenshot('asset-location-input-fail');
+          await page.keyboard.press('Escape').catch(() => {});
+        }
+      } else {
+        log('✗ 未找到新增资产按钮，无法检查存放位置手工填写', 'fail');
+      }
+
       // 检查操作按钮与详情弹窗
       const detailBtn = await page
         .locator('button:has-text("详情")')
@@ -262,15 +292,6 @@ async function runComprehensiveTest() {
         ['分类', '编码', '添加', '新增', '分类名称'],
         '资产分类',
         'categories-fail',
-      );
-    }
-
-    // 2.3 存放位置管理
-    if (await safeGoto('/asset/locations', '存放位置')) {
-      await checkContentWithRetry(
-        ['位置', '二维码', '添加', '新增', '位置名称'],
-        '存放位置',
-        'locations-fail',
       );
     }
 
