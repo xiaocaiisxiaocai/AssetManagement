@@ -81,8 +81,9 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
             .Should().Contain(new[]
             {
                 "category:create", "category:edit", "category:delete", "category:restore",
+                "department:create", "department:edit", "department:delete",
                 "user:create", "user:edit", "user:delete"
-            }, "部门主管需要维护资产分类及普通员工");
+            }, "部门主管需要维护资产分类、组织架构及普通员工");
         supervisor.RolePermissions.Select(x => x.Permission.Code)
             .Should().NotContain(new[] { "category:purge", "user:assign-role" },
                 "彻底删除分类与分配角色仍只允许系统管理员");

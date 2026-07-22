@@ -45,6 +45,35 @@ public class SupervisorMaintenanceApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Supervisor_can_crud_departments_across_the_organization()
+    {
+        await Login("TEST-SUPERVISOR");
+        var parent = await PostSuccess<DepartmentNodeDto>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = $"主管维护部门-{Guid.NewGuid():N}"
+        });
+        var child = await PostSuccess<DepartmentNodeDto>("/api/departments", new CreateDepartmentRequest
+        {
+            ParentId = parent.Id,
+            Name = $"主管维护下级-{Guid.NewGuid():N}"
+        });
+
+        var updatedName = $"主管已编辑部门-{Guid.NewGuid():N}";
+        var updated = await PutSuccess<DepartmentNodeDto>($"/api/departments/{parent.Id}", new UpdateDepartmentRequest
+        {
+            Name = updatedName,
+            IsActive = true
+        });
+        updated.Name.Should().Be(updatedName);
+
+        var tree = await _client.GetFromJsonAsync<ApiResult<List<DepartmentNodeDto>>>("/api/departments/tree");
+        Flatten(tree!.Data!).Select(x => x.Id).Should().Contain(new[] { parent.Id, child.Id });
+
+        await DeleteSuccess($"/api/departments/{child.Id}");
+        await DeleteSuccess($"/api/departments/{parent.Id}");
+    }
+
+    [Fact]
     public async Task Supervisor_can_crud_employees_across_departments_but_cannot_manage_privileged_users()
     {
         await Login();
@@ -153,4 +182,7 @@ public class SupervisorMaintenanceApiTests : IClassFixture<TestWebAppFactory>
     private static string UniqueEmployeeNo(string prefix) => $"{prefix}-{Guid.NewGuid():N}";
 
     private static string UniqueSegment() => Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
+
+    private static IEnumerable<DepartmentNodeDto> Flatten(IEnumerable<DepartmentNodeDto> nodes)
+        => nodes.SelectMany(x => new[] { x }.Concat(Flatten(x.Children)));
 }
