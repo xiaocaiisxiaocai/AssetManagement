@@ -54,6 +54,7 @@ import {
   deleteTestProjectApi,
   deleteTestProjectFollowupApi,
   deleteTestProjectOptionApi,
+  exportTestProjectsApi,
   listTestProjectFollowupsApi,
   listTestProjectOptionsApi,
   listTestProjectsPageApi,
@@ -67,6 +68,7 @@ import {
 import { getUserListApi, getUserOptionsPageApi } from '#/api/user';
 import WorkflowNodeSelectDialog from '#/components/workflow/WorkflowNodeSelectDialog.vue';
 import { formatDate } from '#/utils/date-format';
+import { downloadBlob } from '#/utils/download';
 import { flattenActiveDepartments } from '#/utils/department-options';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
@@ -89,6 +91,7 @@ import MaterialDetailDialog from '../components/MaterialDetailDialog.vue';
 import MaterialFormDialog from '../components/MaterialFormDialog.vue';
 import TransferDialog from '../components/TransferDialog.vue';
 import { validateProjectForm } from './project-form-rules';
+import { isFutureFollowupDate, localTodayText } from './followup-date-rules';
 import { buildProjectPageQuery } from './project-page-query';
 import { projectFollowUpStatusMeta } from './project-workspace-rules';
 import ProjectFlowsTab from './ProjectFlowsTab.vue';
@@ -473,6 +476,10 @@ function openCreate() {
 }
 
 function openEdit(row: TestProjectItem) {
+  if (row.closedDate) {
+    ElMessage.warning('项目已结案，不能再修改');
+    return;
+  }
   users.value = mergeSelectedUserOption(users.value, {
     id: row.ownerId,
     name: row.ownerName,
@@ -497,6 +504,10 @@ function openEdit(row: TestProjectItem) {
 }
 
 function openProgress(row: TestProjectItem) {
+  if (row.closedDate) {
+    ElMessage.warning('项目已结案，不能再修改');
+    return;
+  }
   progressEditingProject.value = row;
   Object.assign(progressForm, {
     closedDate: row.closedDate ? row.closedDate.slice(0, 10) : '',
@@ -547,6 +558,11 @@ async function save() {
 async function saveProgress() {
   const project = progressEditingProject.value;
   if (!project) return;
+  if (project.closedDate) {
+    ElMessage.warning('项目已结案，不能再修改');
+    progressDialogVisible.value = false;
+    return;
+  }
   if (!progressForm.progressCode) {
     ElMessage.warning('请选择项目进度');
     return;
@@ -578,6 +594,22 @@ async function saveProgress() {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
     progressSaving.value = false;
+  }
+}
+
+async function exportProjects() {
+  try {
+    const response = await exportTestProjectsApi(
+      buildProjectPageQuery(
+        projectFilter,
+        deleteStatus.value,
+        projectQuery.page,
+        projectQuery.pageSize,
+      ),
+    );
+    downloadBlob(response.data, `测试项目_${localTodayText()}.xlsx`);
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
   }
 }
 
@@ -741,9 +773,7 @@ async function openFollowups(row: TestProjectItem) {
   editingFollowupId.value = null;
   Object.assign(followupForm, {
     content: '',
-    dueDate: row.nextFollowUpDueDate
-      ? row.nextFollowUpDueDate.slice(0, 10)
-      : '',
+    dueDate: localTodayText(),
   });
   followupDrawerVisible.value = true;
   await Promise.allSettled([
@@ -783,9 +813,7 @@ function cancelFollowupEdit() {
   editingFollowupId.value = null;
   Object.assign(followupForm, {
     content: '',
-    dueDate: currentProject.value?.nextFollowUpDueDate
-      ? currentProject.value.nextFollowUpDueDate.slice(0, 10)
-      : '',
+    dueDate: localTodayText(),
   });
 }
 
@@ -798,6 +826,13 @@ async function saveFollowup() {
   }
   if (!followupForm.content.trim()) {
     ElMessage.warning('请填写落地情况');
+    return;
+  }
+  if (
+    followupForm.dueDate &&
+    isFutureFollowupDate(new Date(`${followupForm.dueDate}T00:00:00`))
+  ) {
+    ElMessage.warning('跟进日期不能晚于今天');
     return;
   }
   followupSaving.value = true;
@@ -1283,6 +1318,7 @@ watch(materialDetailVisible, (opened) => {
         :user-options-loading="userOptionsLoading"
         @create="openCreate"
         @edit="openEdit"
+        @export="exportProjects"
         @open="openFollowups"
         @options="openOptionDialog"
         @page-change="loadData"
@@ -1332,7 +1368,17 @@ watch(materialDetailVisible, (opened) => {
         @save="saveOption"
       />
 
-      <ElDrawer v-model="followupDrawerVisible" size="78%" title="项目跟进">
+      <ElDrawer
+        v-model="followupDrawerVisible"
+        class="project-workspace-drawer"
+        size="78%"
+      >
+        <template #header>
+          <div class="drawer-workspace-title">
+            <span>新产品新技术</span>
+            <strong>项目跟进工作台</strong>
+          </div>
+        </template>
         <div v-if="currentProject" class="followup-panel">
           <section class="project-brief">
             <div class="project-brief-main">
@@ -1566,41 +1612,102 @@ watch(materialDetailVisible, (opened) => {
   min-height: 0;
 }
 
-:deep(.el-drawer__body) {
+:global(.project-workspace-drawer .el-drawer__header) {
+  height: 64px;
+  padding: 0 24px;
+  margin: 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: var(--el-fill-color-blank);
+  box-shadow: 0 1px 0 rgb(15 56 96 / 3%);
+}
+
+:global(.project-workspace-drawer .el-drawer__body) {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  padding-bottom: 16px;
+  padding: 18px 20px 16px;
+  background: linear-gradient(
+      180deg,
+      rgb(235 244 252 / 70%) 0,
+      transparent 180px
+    ),
+    var(--el-bg-color-page);
 }
 
-:deep(.el-drawer__body > *) {
+:global(.project-workspace-drawer .el-drawer__body > *) {
   flex: 1;
   min-height: 0;
 }
 
+.drawer-workspace-title {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.drawer-workspace-title span {
+  color: var(--el-color-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.drawer-workspace-title strong {
+  color: var(--el-text-color-primary);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .project-brief {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(520px, 1.4fr);
   gap: 16px;
-  padding: 18px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
-  background: linear-gradient(
-    180deg,
-    var(--el-fill-color-blank),
-    var(--el-fill-color-light)
-  );
+  padding: 18px 18px 18px 22px;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--el-color-primary) 22%,
+      var(--el-border-color-light)
+    );
+  border-radius: 10px;
+  background: var(--el-fill-color-blank);
+  box-shadow: 0 8px 24px rgb(31 78 121 / 7%);
+}
+
+.project-brief::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--el-color-primary);
+  content: '';
+}
+
+.project-brief::after {
+  position: absolute;
+  inset: 0 0 auto auto;
+  width: 260px;
+  height: 100%;
+  pointer-events: none;
+  background: linear-gradient(125deg, transparent, rgb(64 158 255 / 7%));
+  content: '';
 }
 
 .project-brief-main {
+  position: relative;
+  z-index: 1;
   min-width: 0;
 }
 
 .project-kicker {
   margin-bottom: 8px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   color: var(--el-color-primary);
 }
 
@@ -1632,17 +1739,29 @@ watch(materialDetailVisible, (opened) => {
 }
 
 .project-brief-stats {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--el-color-primary) 3%,
+    var(--el-fill-color-blank)
+  );
 }
 
 .brief-stat {
   min-width: 0;
   padding: 12px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-  background: var(--el-fill-color-blank);
+  border-right: 1px solid var(--el-border-color-lighter);
+}
+
+.brief-stat:last-child {
+  border-right: 0;
 }
 
 .brief-stat-label {
@@ -1685,7 +1804,16 @@ watch(materialDetailVisible, (opened) => {
 .project-work-tabs :deep(.el-tabs__header) {
   order: 0;
   flex-shrink: 0;
+  padding: 0 14px;
   margin-bottom: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 9px;
+  background: var(--el-fill-color-blank);
+  box-shadow: 0 4px 14px rgb(31 78 121 / 4%);
+}
+
+.project-work-tabs :deep(.el-tabs__nav-wrap::after) {
+  height: 0;
 }
 
 .project-work-tabs :deep(.el-tab-pane) {

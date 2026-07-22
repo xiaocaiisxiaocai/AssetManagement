@@ -193,6 +193,9 @@ function rowClassName({ row }: { row: MaterialItem }) {
           prop="custodianName"
           show-overflow-tooltip
         />
+        <ElTableColumn label="备注" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.remark || '-' }}</template>
+        </ElTableColumn>
         <ElTableColumn align="center" label="状态" width="130">
           <template #default="{ row }">
             <ElTag :type="statusMeta(row.status).tag" size="small">

@@ -14,6 +14,19 @@ public partial class MigrateApprovalReturnDatesToDate : Migration
     {
         migrationBuilder.Sql("UPDATE approval_flows SET ReturnDate = TRIM(ReturnDate) WHERE ReturnDate IS NOT NULL;");
         migrationBuilder.Sql("UPDATE approval_flows SET OriginalReturnDate = TRIM(OriginalReturnDate) WHERE OriginalReturnDate IS NOT NULL;");
+        // 旧版 MySQL 曾将日期值回写为 yyyy-MM-dd 00:00:00，迁移前先无损规范化。
+        migrationBuilder.Sql("""
+            UPDATE approval_flows
+            SET ReturnDate = DATE_FORMAT(STR_TO_DATE(LEFT(ReturnDate, 19), '%Y-%m-%d %H:%i:%s'), '%Y-%m-%d')
+            WHERE ReturnDate REGEXP '^(1[0-9]{3}|[2-9][0-9]{3})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) [0-2][0-9]:[0-5][0-9]:[0-5][0-9](\\.[0-9]+)?$'
+              AND STR_TO_DATE(LEFT(ReturnDate, 19), '%Y-%m-%d %H:%i:%s') IS NOT NULL;
+            """);
+        migrationBuilder.Sql("""
+            UPDATE approval_flows
+            SET OriginalReturnDate = DATE_FORMAT(STR_TO_DATE(LEFT(OriginalReturnDate, 19), '%Y-%m-%d %H:%i:%s'), '%Y-%m-%d')
+            WHERE OriginalReturnDate REGEXP '^(1[0-9]{3}|[2-9][0-9]{3})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) [0-2][0-9]:[0-5][0-9]:[0-5][0-9](\\.[0-9]+)?$'
+              AND STR_TO_DATE(LEFT(OriginalReturnDate, 19), '%Y-%m-%d %H:%i:%s') IS NOT NULL;
+            """);
         migrationBuilder.Sql("DROP PROCEDURE IF EXISTS validate_approval_return_dates_20260721;");
         migrationBuilder.Sql("""
             CREATE PROCEDURE validate_approval_return_dates_20260721()

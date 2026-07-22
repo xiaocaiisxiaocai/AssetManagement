@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.IO.Compression;
+using System.Xml.Linq;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
@@ -482,8 +484,17 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             });
         var adminUpdated = await adminResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
 
-        adminUpdated!.Code.Should().Be(0);
-        adminUpdated.Data!.TestStatus.Should().Be("管理员调整项目进展");
+        adminResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        adminUpdated!.Code.Should().Be(4094);
+        adminUpdated.Message.Should().Contain("已结案");
+
+        var fullAdminUpdate = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{project.Data.Id}",
+            NewProjectRequest("结案后不应修改", owner.Id, project.Data.Code));
+        var fullAdminUpdateBody = await fullAdminUpdate.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+        fullAdminUpdate.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        fullAdminUpdateBody!.Code.Should().Be(4094);
+        fullAdminUpdateBody.Message.Should().Contain("已结案");
     }
 
     [Fact]
@@ -900,6 +911,84 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Followup_create_and_update_reject_future_business_date()
+    {
+        await Login();
+        var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "未来日期负责人");
+        var landing = await Post<ApiResult<TestProjectDto>>(
+            "/api/test-projects",
+            NewProjectRequest("未来日期跟进项目", owner.Id, progressCode: "landing"));
+
+        await Login(owner.EmployeeNo, "123456");
+        var valid = await Post<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{landing.Data!.Id}/followups",
+            new SaveTestProjectFollowupRequest
+            {
+                Content = "今日已发生的进展",
+                DueDate = BusinessClock.Today
+            });
+
+        var futureCreate = await _client.PostAsJsonAsync(
+            $"/api/test-projects/{landing.Data.Id}/followups",
+            new SaveTestProjectFollowupRequest
+            {
+                Content = "不应预写的进展",
+                DueDate = BusinessClock.Today.AddDays(1)
+            });
+        var futureCreateBody = await futureCreate.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
+        futureCreate.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        futureCreateBody!.Message.Should().Contain("不能晚于今天");
+
+        var futureUpdate = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{landing.Data.Id}/followups/{valid.Data!.Id}",
+            new SaveTestProjectFollowupRequest
+            {
+                Content = "不应改成未来日期",
+                DueDate = BusinessClock.Today.AddDays(1)
+            });
+        var futureUpdateBody = await futureUpdate.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
+        futureUpdate.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        futureUpdateBody!.Message.Should().Contain("不能晚于今天");
+    }
+
+    [Fact]
+    public async Task Project_export_contains_filtered_projects_and_corresponding_materials_with_remark()
+    {
+        await Login();
+        var marker = Guid.NewGuid().ToString("N")[..8];
+        var project = await CreateProject($"导出项目-{marker}");
+        await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = $"导出料件-{marker}",
+            ProjectId = project.Id,
+            VendorName = "导出厂商",
+            Quantity = 2,
+            Remark = $"导出备注-{marker}"
+        });
+
+        var response = await _client.GetAsync($"/api/test-projects/export?name={marker}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.Should()
+            .Be("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+        var workbook = ReadZipXml(archive, "xl/workbook.xml");
+        var sheetNames = workbook.Descendants()
+            .Where(x => x.Name.LocalName == "sheet")
+            .Select(x => (string?)x.Attribute("name"))
+            .ToArray();
+        sheetNames.Should().Equal("测试项目", "测试料件");
+
+        var allWorksheetText = string.Join("\n", archive.Entries
+            .Where(x => x.FullName.StartsWith("xl/worksheets/sheet", StringComparison.Ordinal))
+            .Select(entry => ReadZipXml(entry).ToString()));
+        allWorksheetText.Should().Contain(project.Name);
+        allWorksheetText.Should().Contain($"导出料件-{marker}");
+        allWorksheetText.Should().Contain($"导出备注-{marker}");
+    }
+
+    [Fact]
     public async Task Editing_old_followup_preserves_author_and_does_not_change_latest_cycle()
     {
         await Login();
@@ -968,7 +1057,16 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             .Be(baseline.Data.MonthlyStat.Single(x => x.Month == month).FollowUpCount + 1);
     }
 
-    // ===== 辅助方法 =====
+      // ===== 辅助方法 =====
+    private static XDocument ReadZipXml(ZipArchive archive, string path)
+        => ReadZipXml(archive.GetEntry(path) ?? throw new InvalidDataException($"Excel 缺少 {path}"));
+
+    private static XDocument ReadZipXml(ZipArchiveEntry entry)
+    {
+        using var stream = entry.Open();
+        return XDocument.Load(stream);
+    }
+
     private async Task<TestProjectDto> CreateProject(string name)
         => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", NewProjectRequest(name))).Data!;
 

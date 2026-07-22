@@ -2,6 +2,7 @@ using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
+using AssetManagement.Infrastructure.Common;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
 
@@ -46,36 +47,7 @@ public class TestProjectService : ITestProjectService
     public async Task<PagedResult<TestProjectDto>> ListPageAsync(TestProjectPageQuery query, int currentUserId)
     {
         var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
-        var status = query.DeleteStatus?.Trim().ToLowerInvariant();
-        IQueryable<TestProject> projectsQuery = _db.TestProjects.AsNoTracking();
-        projectsQuery = status switch
-        {
-            "all" => projectsQuery,
-            "deleted" => projectsQuery.Where(x => x.IsDeleted),
-            _ => projectsQuery.Where(x => !x.IsDeleted)
-        };
-        if (!string.IsNullOrWhiteSpace(query.Code))
-        {
-            var code = query.Code.Trim();
-            projectsQuery = projectsQuery.Where(x => x.Code != null && x.Code.Contains(code));
-        }
-        if (!string.IsNullOrWhiteSpace(query.Name))
-        {
-            var name = query.Name.Trim();
-            projectsQuery = projectsQuery.Where(x => x.Name.Contains(name));
-        }
-        if (query.OwnerId.HasValue)
-            projectsQuery = projectsQuery.Where(x => x.OwnerId == query.OwnerId.Value);
-        if (!string.IsNullOrWhiteSpace(query.ProgressCode))
-        {
-            var progressCode = query.ProgressCode.Trim();
-            projectsQuery = projectsQuery.Where(x => x.ProgressCode == progressCode);
-        }
-        if (!string.IsNullOrWhiteSpace(query.ProjectTypeCode))
-        {
-            var projectTypeCode = query.ProjectTypeCode.Trim();
-            projectsQuery = projectsQuery.Where(x => x.ProjectTypeCode == projectTypeCode);
-        }
+        var projectsQuery = ApplyProjectQuery(_db.TestProjects.AsNoTracking(), query);
 
         var total = await projectsQuery.CountAsync();
         var offset = Pagination.GetOffset(page, pageSize, total);
@@ -98,6 +70,90 @@ public class TestProjectService : ITestProjectService
             PageSize = pageSize,
             Total = total
         };
+    }
+
+    public async Task<byte[]> ExportAsync(TestProjectPageQuery query)
+    {
+        var projectsQuery = ApplyProjectQuery(_db.TestProjects.AsNoTracking(), query);
+        if (await projectsQuery.CountAsync() > AppConstants.MaxExportRows)
+            throw new BizException(4130, $"导出项目不能超过 {AppConstants.MaxExportRows} 条，请缩小筛选范围");
+
+        var projects = await projectsQuery.OrderBy(x => x.Code).ThenBy(x => x.Id).ToListAsync();
+        var projectIds = projects.Select(x => x.Id).ToArray();
+        var materials = await _db.TestMaterials.AsNoTracking()
+            .Where(x => projectIds.Contains(x.ProjectId))
+            .OrderBy(x => x.ProjectId)
+            .ThenBy(x => x.MaterialNo)
+            .ToListAsync();
+        if (materials.Count > AppConstants.MaxExportRows)
+            throw new BizException(4130, $"导出料件不能超过 {AppConstants.MaxExportRows} 条，请缩小筛选范围");
+
+        var ownerIds = projects.Where(x => x.OwnerId.HasValue).Select(x => x.OwnerId!.Value)
+            .Concat(materials.Where(x => x.CustodianId.HasValue).Select(x => x.CustodianId!.Value))
+            .Distinct().ToArray();
+        var userNames = await _db.Users.AsNoTracking().Where(x => ownerIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name);
+        var departmentIds = materials.Where(x => x.DepartmentId.HasValue).Select(x => x.DepartmentId!.Value).Distinct().ToArray();
+        var departmentNames = await _db.Departments.AsNoTracking().Where(x => departmentIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name);
+        var locationIds = materials.Where(x => x.LocationId.HasValue).Select(x => x.LocationId!.Value).Distinct().ToArray();
+        var locationNames = await _db.Locations.AsNoTracking().Where(x => locationIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name);
+        var options = await _db.TestProjectOptions.AsNoTracking().ToListAsync();
+        var optionLabels = options.ToDictionary(x => (x.Kind, x.Code), x => x.Label);
+        var projectsById = projects.ToDictionary(x => x.Id);
+
+        var projectRows = new List<string[]>
+        {
+            new[] { "项目编号", "项目名称", "项目类型", "项目进度", "负责人", "开始时间", "计划完成时间", "结案时间", "跟进间隔(天)", "测试情况", "删除状态" }
+        };
+        projectRows.AddRange(projects.Select(x => new[]
+        {
+            x.Code ?? "",
+            x.Name,
+            OptionLabel(optionLabels, OptionKindProjectType, x.ProjectTypeCode),
+            OptionLabel(optionLabels, OptionKindProgress, x.ProgressCode),
+            x.OwnerId.HasValue ? userNames.GetValueOrDefault(x.OwnerId.Value, "") : "",
+            FormatDate(x.StartDate),
+            FormatDate(x.PlannedFinishDate),
+            FormatDate(x.ClosedDate),
+            NormalizeInterval(x.FollowUpIntervalDays).ToString(),
+            x.TestStatus ?? "",
+            x.IsDeleted ? "已删除" : "正常"
+        }));
+
+        var materialRows = new List<string[]>
+        {
+            new[] { "项目编号", "项目名称", "料件编号", "料件名称", "厂商", "型号", "品牌", "数量", "部门", "位置", "保管人", "收件日期", "状态", "备注", "删除状态" }
+        };
+        materialRows.AddRange(materials.Select(x =>
+        {
+            var project = projectsById[x.ProjectId];
+            return new[]
+            {
+                project.Code ?? "",
+                project.Name,
+                x.MaterialNo,
+                x.Name,
+                x.VendorName ?? "",
+                x.Model ?? "",
+                x.Brand ?? "",
+                x.Quantity.ToString(),
+                x.DepartmentId.HasValue ? departmentNames.GetValueOrDefault(x.DepartmentId.Value, "") : "",
+                x.LocationId.HasValue ? locationNames.GetValueOrDefault(x.LocationId.Value, "") : "",
+                x.CustodianId.HasValue ? userNames.GetValueOrDefault(x.CustodianId.Value, "") : "",
+                FormatDate(x.ReceivedDate),
+                x.Status == MaterialStatus.ReturnedToVendor ? "已退回厂商" : "在用",
+                x.Remark ?? "",
+                x.IsDeleted ? "已删除" : "正常"
+            };
+        }));
+
+        return XlsxTable.Write(new[]
+        {
+            ("测试项目", (IEnumerable<string[]>)projectRows),
+            ("测试料件", (IEnumerable<string[]>)materialRows)
+        });
     }
 
     public async Task<TestProjectDto> CreateAsync(SaveTestProjectRequest request)
@@ -144,6 +200,7 @@ public class TestProjectService : ITestProjectService
         var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
+        EnsureProjectCanChange(project);
         var name = (request.Name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
         var code = (request.Code ?? "").Trim();
@@ -190,6 +247,7 @@ public class TestProjectService : ITestProjectService
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
         if (project.OwnerId != currentUserId && !await IsAdmin(currentUserId))
             throw new BizException(4031, "只有项目负责人或管理员可以更新项目进展");
+        EnsureProjectCanChange(project);
 
         var progressCode = request.ProgressCode?.Trim();
         if (string.IsNullOrWhiteSpace(progressCode))
@@ -401,11 +459,12 @@ public class TestProjectService : ITestProjectService
         var content = (request.Content ?? "").Trim();
         if (string.IsNullOrWhiteSpace(content)) throw new BizException(4001, "请填写落地情况");
         EnsureMaxLength(content, 2000, "落地情况");
-        var latest = await LatestFollowup(projectId);
+        var dueDate = request.DueDate?.Date ?? BusinessClock.Today;
+        EnsureFollowupDate(dueDate);
         var followup = new TestProjectFollowup
         {
             ProjectId = projectId,
-            DueDate = request.DueDate?.Date ?? NextFollowUpDueDate(project, latest),
+            DueDate = dueDate,
             Content = content,
             FilledById = currentUserId,
             FilledAt = DateTime.UtcNow,
@@ -429,7 +488,9 @@ public class TestProjectService : ITestProjectService
         var content = (request.Content ?? "").Trim();
         if (string.IsNullOrWhiteSpace(content)) throw new BizException(4001, "请填写落地情况");
         EnsureMaxLength(content, 2000, "落地情况");
-        followup.DueDate = request.DueDate?.Date ?? followup.DueDate;
+        var dueDate = request.DueDate?.Date ?? followup.DueDate;
+        EnsureFollowupDate(dueDate);
+        followup.DueDate = dueDate;
         followup.Content = content;
         await _db.SaveChangesAsync();
         var result = (await ToFollowupDtos(new[] { followup })).Single();
@@ -639,6 +700,62 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4001, "已结案项目必须填写结案时间");
         if (!isClosed && closedDate.HasValue)
             throw new BizException(4001, "只有已结案项目才能填写结案时间");
+    }
+
+    private static IQueryable<TestProject> ApplyProjectQuery(
+        IQueryable<TestProject> projectsQuery,
+        TestProjectPageQuery query)
+    {
+        var status = query.DeleteStatus?.Trim().ToLowerInvariant();
+        projectsQuery = status switch
+        {
+            "all" => projectsQuery,
+            "deleted" => projectsQuery.Where(x => x.IsDeleted),
+            _ => projectsQuery.Where(x => !x.IsDeleted)
+        };
+        if (!string.IsNullOrWhiteSpace(query.Code))
+        {
+            var code = query.Code.Trim();
+            projectsQuery = projectsQuery.Where(x => x.Code != null && x.Code.Contains(code));
+        }
+        if (!string.IsNullOrWhiteSpace(query.Name))
+        {
+            var name = query.Name.Trim();
+            projectsQuery = projectsQuery.Where(x => x.Name.Contains(name));
+        }
+        if (query.OwnerId.HasValue)
+            projectsQuery = projectsQuery.Where(x => x.OwnerId == query.OwnerId.Value);
+        if (!string.IsNullOrWhiteSpace(query.ProgressCode))
+        {
+            var progressCode = query.ProgressCode.Trim();
+            projectsQuery = projectsQuery.Where(x => x.ProgressCode == progressCode);
+        }
+        if (!string.IsNullOrWhiteSpace(query.ProjectTypeCode))
+        {
+            var projectTypeCode = query.ProjectTypeCode.Trim();
+            projectsQuery = projectsQuery.Where(x => x.ProjectTypeCode == projectTypeCode);
+        }
+        return projectsQuery;
+    }
+
+    private static string OptionLabel(
+        IReadOnlyDictionary<(string Kind, string Code), string> optionLabels,
+        string kind,
+        string? code)
+        => string.IsNullOrWhiteSpace(code) ? "" : optionLabels.GetValueOrDefault((kind, code), code);
+
+    private static string FormatDate(DateTime? date) => date?.ToString("yyyy-MM-dd") ?? "";
+
+    private static void EnsureProjectCanChange(TestProject project)
+    {
+        if (project.ClosedDate.HasValue)
+            throw new BizException(4094, "项目已结案，不能再修改");
+    }
+
+    private static void EnsureFollowupDate(DateTime dueDate)
+    {
+        if (dueDate.Date > BusinessClock.Today)
+            throw new BizException(4001, "跟进日期不能晚于今天");
     }
 
     private async Task<TestProject> LoadProject(int projectId)

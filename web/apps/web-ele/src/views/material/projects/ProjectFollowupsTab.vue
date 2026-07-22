@@ -18,6 +18,8 @@ import {
 
 import { formatDate, formatDateTime } from '#/utils/date-format';
 
+import { isFutureFollowupDate } from './followup-date-rules';
+
 const props = defineProps<{
   editingId: null | number;
   followups: TestProjectFollowup[];
@@ -37,6 +39,7 @@ const form = defineModel<{ content: string; dueDate: string }>('form', {
 const canWrite = computed(
   () => props.project.canWriteFollowUp && !props.project.isDeleted,
 );
+const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
 </script>
 
 <template>
@@ -58,6 +61,7 @@ const canWrite = computed(
             <ElFormItem label="跟进日期">
               <ElDatePicker
                 v-model="form.dueDate"
+                :disabled-date="disabledFollowupDate"
                 placeholder="选择对应周期日期"
                 style="width: 100%"
                 type="date"
@@ -90,7 +94,9 @@ const canWrite = computed(
           {{
             project.isDeleted
               ? '项目已删除，仅保留历史记录供查看。'
-              : '项目进入落地跟进后，负责人或管理员才能填写。'
+              : project.closedDate
+                ? '项目已结案，跟进记录已锁定。'
+                : '项目进入落地跟进后，负责人或管理员才能填写。'
           }}
         </div>
       </aside>
@@ -163,7 +169,7 @@ const canWrite = computed(
 .followup-workspace {
   display: grid;
   grid-template-columns: minmax(320px, 0.48fr) minmax(0, 1fr);
-  gap: 16px;
+  gap: 14px;
   height: 100%;
   min-height: 0;
   align-items: stretch;
@@ -171,9 +177,9 @@ const canWrite = computed(
 .followup-editor-panel,
 .followup-history-panel {
   min-width: 0;
-  padding: 16px;
+  padding: 18px;
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--el-fill-color-blank);
 }
 .followup-editor-panel {
@@ -182,6 +188,12 @@ const canWrite = computed(
   overflow: hidden;
   position: sticky;
   top: 0;
+  border-top: 3px solid var(--el-color-primary);
+  background: color-mix(
+    in srgb,
+    var(--el-color-primary) 4%,
+    var(--el-fill-color-blank)
+  );
 }
 .followup-editor-panel :deep(.el-form) {
   display: flex;
@@ -210,6 +222,9 @@ const canWrite = computed(
 .followup-history-panel {
   min-height: 0;
   overflow: auto;
+  background: var(--el-fill-color-blank);
+  box-shadow: inset 3px 0 0
+    color-mix(in srgb, var(--el-color-primary) 14%, transparent);
 }
 .followup-actions,
 .record-actions {
@@ -232,7 +247,7 @@ const canWrite = computed(
   margin: 0;
   color: var(--el-text-color-primary);
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 700;
 }
 .panel-heading p {
   margin: 4px 0 0;
@@ -251,13 +266,35 @@ const canWrite = computed(
   padding: 54px 0;
 }
 .followup-timeline {
-  padding-right: 6px;
+  padding: 2px 6px 0 2px;
+}
+
+.followup-timeline :deep(.el-timeline-item__node) {
+  background: var(--el-color-primary);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--el-color-primary) 12%, transparent);
 }
 .followup-record {
-  padding: 12px 14px;
+  padding: 13px 15px;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
-  background: var(--el-fill-color-light);
+  background: color-mix(
+    in srgb,
+    var(--el-fill-color-light) 72%,
+    var(--el-fill-color-blank)
+  );
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.followup-record:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--el-color-primary) 35%,
+    var(--el-border-color-lighter)
+  );
+  box-shadow: 0 5px 16px rgb(31 78 121 / 7%);
 }
 .followup-record-meta {
   display: flex;

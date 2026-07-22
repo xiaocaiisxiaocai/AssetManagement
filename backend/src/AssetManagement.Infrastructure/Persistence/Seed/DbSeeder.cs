@@ -706,6 +706,7 @@ public static class DbSeeder
         ("project:option", "管理项目选项", "project"),
         ("project:followup", "管理项目跟进", "project"),
         ("project:manage", "管理测试项目", "project"),
+        ("project:export", "导出测试项目", "project"),
 
         ("material:view", "查看测试料件", "material"),
         ("material:create", "新增测试料件", "material"),
@@ -728,7 +729,7 @@ public static class DbSeeder
             "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
             "report:view", "report:export",
             "department:view", "user:view",
-            "project:view", "project:create", "project:edit", "project:delete", "project:restore", "project:followup", "project:manage",
+            "project:view", "project:create", "project:edit", "project:delete", "project:restore", "project:followup", "project:manage", "project:export",
             "material:view", "material:create", "material:edit", "material:delete", "material:restore", "material:return",
             "material-flow:view", "material-flow:transfer", "material-flow:approve"
         },

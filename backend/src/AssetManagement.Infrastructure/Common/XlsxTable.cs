@@ -19,41 +19,67 @@ internal static class XlsxTable
     private static readonly XNamespace SheetNs = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
     public static byte[] Write(IEnumerable<string[]> rows)
+        => Write(new[] { ("Sheet1", rows) });
+
+    public static byte[] Write(IReadOnlyList<(string Name, IEnumerable<string[]> Rows)> sheets)
     {
+        if (sheets.Count == 0) throw new ArgumentException("至少需要一个工作表", nameof(sheets));
         using var ms = new MemoryStream();
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
         {
-            WriteEntry(zip, "[Content_Types].xml", """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-                  <Default Extension="xml" ContentType="application/xml"/>
-                  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-                  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-                </Types>
-                """);
+            WriteEntry(zip, "[Content_Types].xml", BuildContentTypesXml(sheets.Count));
             WriteEntry(zip, "_rels/.rels", """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
                   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
                 </Relationships>
                 """);
-            WriteEntry(zip, "xl/workbook.xml", """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-                  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
-                </workbook>
-                """);
-            WriteEntry(zip, "xl/_rels/workbook.xml.rels", """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-                </Relationships>
-                """);
-            WriteEntry(zip, "xl/worksheets/sheet1.xml", BuildSheetXml(rows));
+            WriteEntry(zip, "xl/workbook.xml", BuildWorkbookXml(sheets));
+            WriteEntry(zip, "xl/_rels/workbook.xml.rels", BuildWorkbookRelationshipsXml(sheets.Count));
+            for (var index = 0; index < sheets.Count; index++)
+                WriteEntry(zip, $"xl/worksheets/sheet{index + 1}.xml", BuildSheetXml(sheets[index].Rows));
         }
 
         return ms.ToArray();
+    }
+
+    private static string BuildContentTypesXml(int sheetCount)
+    {
+        XNamespace ns = "http://schemas.openxmlformats.org/package/2006/content-types";
+        return new XDocument(new XDeclaration("1.0", "UTF-8", null),
+            new XElement(ns + "Types",
+                new XElement(ns + "Default", new XAttribute("Extension", "rels"), new XAttribute("ContentType", "application/vnd.openxmlformats-package.relationships+xml")),
+                new XElement(ns + "Default", new XAttribute("Extension", "xml"), new XAttribute("ContentType", "application/xml")),
+                new XElement(ns + "Override", new XAttribute("PartName", "/xl/workbook.xml"), new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml")),
+                Enumerable.Range(1, sheetCount).Select(index =>
+                    new XElement(ns + "Override", new XAttribute("PartName", $"/xl/worksheets/sheet{index}.xml"), new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")))))
+            .ToString(SaveOptions.DisableFormatting);
+    }
+
+    private static string BuildWorkbookXml(IReadOnlyList<(string Name, IEnumerable<string[]> Rows)> sheets)
+    {
+        XNamespace relationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        return new XDocument(new XDeclaration("1.0", "UTF-8", null),
+            new XElement(SheetNs + "workbook",
+                new XAttribute(XNamespace.Xmlns + "r", relationships),
+                new XElement(SheetNs + "sheets", sheets.Select((sheet, index) =>
+                    new XElement(SheetNs + "sheet",
+                        new XAttribute("name", sheet.Name),
+                        new XAttribute("sheetId", index + 1),
+                        new XAttribute(relationships + "id", $"rId{index + 1}"))))))
+            .ToString(SaveOptions.DisableFormatting);
+    }
+
+    private static string BuildWorkbookRelationshipsXml(int sheetCount)
+    {
+        XNamespace ns = "http://schemas.openxmlformats.org/package/2006/relationships";
+        return new XDocument(new XDeclaration("1.0", "UTF-8", null),
+            new XElement(ns + "Relationships", Enumerable.Range(1, sheetCount).Select(index =>
+                new XElement(ns + "Relationship",
+                    new XAttribute("Id", $"rId{index}"),
+                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"),
+                    new XAttribute("Target", $"worksheets/sheet{index}.xml")))))
+            .ToString(SaveOptions.DisableFormatting);
     }
 
     public static List<List<string>> Read(Stream stream)

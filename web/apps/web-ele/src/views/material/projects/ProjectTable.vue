@@ -26,6 +26,7 @@ type ProjectActionAccess = {
   canCreate: boolean;
   canDelete: boolean;
   canEdit: boolean;
+  canExport: boolean;
   canOption: boolean;
   canPurge: boolean;
   canRestore: boolean;
@@ -47,6 +48,7 @@ defineProps<{
 const emit = defineEmits<{
   create: [];
   edit: [project: TestProjectItem];
+  export: [];
   open: [project: TestProjectItem];
   options: [];
   progress: [project: TestProjectItem];
@@ -158,6 +160,9 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
     </div>
     <div class="project-toolbar-right">
       <ElButton v-if="access.canOption" @click="emit('options')">配置</ElButton>
+      <ElButton v-if="access.canExport" @click="emit('export')">
+        导出 Excel
+      </ElButton>
       <ElButton v-if="access.canCreate" type="primary" @click="emit('create')">
         新增项目
       </ElButton>
@@ -254,7 +259,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
         <template #default="{ row }">
           <template v-if="!row.isDeleted">
             <ElButton
-              v-if="access.canEdit"
+              v-if="access.canEdit && !row.closedDate"
               link
               size="small"
               type="primary"

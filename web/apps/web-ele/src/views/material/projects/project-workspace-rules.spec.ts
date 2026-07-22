@@ -9,18 +9,36 @@ import {
 } from './project-workspace-rules';
 
 describe('测试项目工作台规则', () => {
-  it('只有未删除项目的负责人可以更新项目进展', () => {
+  it('只有未删除且未结案项目的负责人可以更新项目进展', () => {
     expect(
-      canUpdateProjectProgress({ isDeleted: false, ownerId: 25 }, 25),
+      canUpdateProjectProgress(
+        { closedDate: null, isDeleted: false, ownerId: 25 },
+        25,
+      ),
     ).toBe(true);
     expect(
-      canUpdateProjectProgress({ isDeleted: false, ownerId: 25 }, 26),
+      canUpdateProjectProgress(
+        { closedDate: null, isDeleted: false, ownerId: 25 },
+        26,
+      ),
     ).toBe(false);
-    expect(canUpdateProjectProgress({ isDeleted: true, ownerId: 25 }, 25)).toBe(
-      false,
-    );
     expect(
-      canUpdateProjectProgress({ isDeleted: false, ownerId: null }, 25),
+      canUpdateProjectProgress(
+        { closedDate: null, isDeleted: true, ownerId: 25 },
+        25,
+      ),
+    ).toBe(false);
+    expect(
+      canUpdateProjectProgress(
+        { closedDate: '2026-07-22', isDeleted: false, ownerId: 25 },
+        25,
+      ),
+    ).toBe(false);
+    expect(
+      canUpdateProjectProgress(
+        { closedDate: null, isDeleted: false, ownerId: null },
+        25,
+      ),
     ).toBe(false);
   });
 

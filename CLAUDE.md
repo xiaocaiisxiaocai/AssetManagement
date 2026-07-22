@@ -192,18 +192,18 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 #### 服务与接口
 
-- **`TestProjectService`**:项目 CRUD + 软删除三态(active/all/deleted)+ 撤销/彻底删除(删除项目前检查下辖料件);项目负责人可通过专用进展接口维护`ProgressCode`/`ClosedDate`/`TestStatus`,但不能修改编号、负责人、计划日期等基础信息;项目**选项字典**(`TestProjectOption`)增删改查;项目**跟进记录**(`TestProjectFollowup`)增删改查;**统计**(`GetStatsAsync` → `TestProjectStatsDto`:总数/结案/进行中/落地 + 类型分布 `typeDist` + 月度统计 `monthlyStat`,供总览仪表盘)。
+- **`TestProjectService`**:项目 CRUD + 软删除三态(active/all/deleted)+ 撤销/彻底删除(删除项目前检查下辖料件);项目负责人可通过专用进展接口维护`ProgressCode`/`ClosedDate`/`TestStatus`,但不能修改编号、负责人、计划日期等基础信息;**`ClosedDate` 一旦存在，项目基础信息与进展均锁定**;项目**选项字典**(`TestProjectOption`)增删改查;项目**跟进记录**(`TestProjectFollowup`)增删改查，跟进日期不得晚于当天;`ExportAsync` 导出筛选项目及对应料件的双工作表 Excel;**统计**(`GetStatsAsync` → `TestProjectStatsDto`:总数/结案/进行中/落地 + 类型分布 `typeDist` + 月度统计 `monthlyStat`,供总览仪表盘)。
 - **`TestMaterialService`**:CRUD + 软删除三态 + 详情(合并展示流转操作 `MaterialFlowRecords` 与生命周期操作 `TestMaterialRecords`)+ 退回厂商(`ReturnToVendorAsync`,在同一事务内置 `Status=1` 并记录操作人/时间)。`CreateAsync` 自动生成 `MaterialNo`。
 - **`MaterialFlowService`**:
   - `InitiateTransferAsync`:发起流转;若全局开关 `material.transfer.approval.enabled=false`(默认),直接转移(`DirectTransfer=true`,立刻改 `CustodianId`);否则创建 pending 流转并启动 BPMN 引擎(`material_transfer` 工作流模板)。
   - `ApproveAsync`/`RejectAsync`:审批;通过时触发 `BizEffectApplier.ApplyMaterialTransfer`,改 `CustodianId` 并记录操作。
   - `PendingAsync`/`MineAsync`:待我审批列表 / 我的发起列表。
-- **控制器**:`TestProjectController`(`api/test-projects`,含 `GET stats` 统计、`options` 选项字典 CRUD、`{id}/followups` 跟进 CRUD)、`TestMaterialController`、`MaterialFlowController`。
+- **控制器**:`TestProjectController`(`api/test-projects`,含 `GET stats` 统计、`GET export` 项目与关联料件导出、`options` 选项字典 CRUD、`{id}/followups` 跟进 CRUD)、`TestMaterialController`、`MaterialFlowController`。
 
 #### 权限码与菜单
 
-权限码分三组(共约 20 个):
-- **`project:`**(9):`view`/`create`/`edit`/`delete`/`restore`/`purge`/`option`(管理选项字典)/`followup`(管理项目跟进)/`manage`。
+权限码分三组(共约 21 个):
+- **`project:`**(10):`view`/`create`/`edit`/`delete`/`restore`/`purge`/`option`(管理选项字典)/`followup`(管理项目跟进)/`manage`/`export`(导出项目及关联料件)。
 - **`material:`**(9):`view`/`create`/`edit`/`delete`/`restore`/`purge`/`return`(退回厂商)/`transfer`/`approve`。
 - **`material-flow:`**(3):`view`/`transfer`/`approve`(流转单据维度)。
 

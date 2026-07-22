@@ -121,6 +121,12 @@ export const listTestProjectsPageApi = (params: TestProjectPageQuery) =>
     ),
   );
 
+export const exportTestProjectsApi = (params: TestProjectPageQuery) =>
+  requestClient.get('/test-projects/export', {
+    params,
+    responseType: 'blob',
+  });
+
 export const createTestProjectApi = (data: SaveTestProjectPayload) =>
   unwrap(
     requestClient.post<ApiResult<TestProjectItem>>('/test-projects', data),

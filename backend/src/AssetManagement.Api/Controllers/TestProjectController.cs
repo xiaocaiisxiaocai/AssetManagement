@@ -29,6 +29,14 @@ public class TestProjectController : ControllerBase
     public async Task<ApiResult<PagedResult<TestProjectDto>>> ListPage([FromQuery] TestProjectPageQuery query)
         => ApiResult<PagedResult<TestProjectDto>>.Ok(await _service.ListPageAsync(query, CurrentUserId()));
 
+    [HttpGet("export")]
+    [HasPermission("project:export")]
+    public async Task<FileContentResult> Export([FromQuery] TestProjectPageQuery query)
+        => File(
+            await _service.ExportAsync(query),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "test-projects.xlsx");
+
     [HttpGet("options")]
     [HasPermission("project:view")]
     public async Task<ApiResult<List<TestProjectOptionDto>>> Options([FromQuery] string? kind)

@@ -6,11 +6,12 @@ export function canWithdrawMaterialFlow(flow: MaterialFlowItem) {
 }
 
 export function canUpdateProjectProgress(
-  project: Pick<TestProjectItem, 'isDeleted' | 'ownerId'>,
+  project: Pick<TestProjectItem, 'closedDate' | 'isDeleted' | 'ownerId'>,
   currentUserId: number,
 ) {
   return (
     !project.isDeleted &&
+    !project.closedDate &&
     currentUserId > 0 &&
     Number(project.ownerId) === currentUserId
   );

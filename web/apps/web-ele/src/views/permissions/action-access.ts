@@ -48,6 +48,7 @@ export function buildProjectActionAccess(hasAccess: HasAccess) {
     canCreate: hasAccess(['project:create']),
     canDelete: hasAccess(['project:delete']),
     canEdit: hasAccess(['project:edit']),
+    canExport: hasAccess(['project:export']),
     canFollowup: hasAccess(['project:followup']),
     canOption: hasAccess(['project:option']),
     canPurge: hasAccess(['project:purge']),

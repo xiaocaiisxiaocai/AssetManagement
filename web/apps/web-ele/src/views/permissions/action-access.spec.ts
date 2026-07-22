@@ -69,6 +69,13 @@ describe('页面操作权限映射', () => {
     expect(access.canPurge).toBe(true);
   });
 
+  it('测试项目导出使用 project:export', () => {
+    const access = buildProjectActionAccess(has(['project:export']));
+
+    expect(access.canExport).toBe(true);
+    expect(access.canEdit).toBe(false);
+  });
+
   it('料件退回和流转使用各自接口权限码', () => {
     const access = buildMaterialActionAccess(
       has(['material:return', 'material-flow:transfer']),
