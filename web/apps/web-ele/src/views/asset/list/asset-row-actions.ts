@@ -4,7 +4,6 @@ export type AssetRowActionAccess = {
   canDelete: boolean;
   canEdit: boolean;
   canExport: boolean;
-  canImport: boolean;
   canPurge: boolean;
   canRestore: boolean;
   canTransfer: boolean;
@@ -20,7 +19,6 @@ export function buildAssetRowActionAccess(
     canDelete: hasAccess(['asset:delete']),
     canEdit: hasAccess(['asset:edit']),
     canExport: hasAccess(['asset:export']),
-    canImport: hasAccess(['asset:import']),
     canPurge: hasAccess(['asset:purge']),
     canRestore: hasAccess(['asset:restore']),
     canTransfer: hasAccess(['approval:create']),
@@ -33,6 +31,14 @@ export function canRunAvailableAssetAction(asset: {
   status: number;
 }) {
   return !asset.isDeleted && asset.status === 0;
+}
+
+export function canShowAllAssetExport(
+  currentCategoryLevel: number,
+  flatMode: boolean,
+  canExport: boolean,
+) {
+  return currentCategoryLevel === 0 && !flatMode && canExport;
 }
 
 export function canBorrowAvailableAsset(

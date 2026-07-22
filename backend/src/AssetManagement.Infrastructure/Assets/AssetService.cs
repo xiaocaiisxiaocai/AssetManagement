@@ -364,7 +364,7 @@ public class AssetService : IAssetService
     {
         var rows = new List<string[]>
         {
-            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "数量", "状态", "购入日期", "资产登记日期", "目前状况", "备注" }
+            new[] { "资产编号", "名称", "分类编码", "部门", "位置", "保管人", "数量", "状态", "购入日期", "资产登记日期", "目前状况", "备注" }
         };
         var exportQuery = ApplyQuery(_db.Assets.AsQueryable(), query);
         if (await exportQuery.CountAsync() > AppConstants.MaxExportRows)
@@ -380,14 +380,28 @@ public class AssetService : IAssetService
             x.CategoryCode,
             x.DepartmentName ?? "",
             x.LocationName ?? "",
+            x.CustodianName ?? "",
             x.Quantity.ToString(),
-            x.Status.ToString(),
+            AssetStatusText(x.Status, x.IsDeleted),
             x.PurchaseDate?.ToString("yyyy-MM-dd") ?? "",
             x.RegistrationTime?.ToString("yyyy-MM-dd") ?? "",
             x.CurrentCondition ?? "",
             x.Remark ?? ""
         }));
         return XlsxTable.Write(rows);
+    }
+
+    private static string AssetStatusText(AssetStatus status, bool isDeleted)
+    {
+        var text = status switch
+        {
+            AssetStatus.Available => "在库",
+            AssetStatus.Borrowed => "借出",
+            AssetStatus.Maintenance => "维修",
+            AssetStatus.Scrapped => "报废",
+            _ => "未知"
+        };
+        return isDeleted ? $"{text}（已删除）" : text;
     }
 
     public byte[] BuildImportTemplate()

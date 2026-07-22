@@ -75,20 +75,6 @@ export interface FileUploadResult {
   url: string;
 }
 
-export interface ImportPreviewRow {
-  categoryCode: string;
-  error: string;
-  isValid: boolean;
-  name: string;
-  row: number;
-}
-
-export interface ImportConfirmResult {
-  failedCount: number;
-  rows: ImportPreviewRow[];
-  successCount: number;
-}
-
 export interface AssetFlow {
   applicant: string;
   applyTime: string;
@@ -155,31 +141,6 @@ export const purgeAssetApi = (id: number) =>
 
 export const restoreAssetApi = (id: number) =>
   unwrap(requestClient.post<ApiResult<null>>(`/assets/${id}/restore`));
-
-export const validateAssetImportApi = (file: File) => {
-  const form = new FormData();
-  form.append('file', file);
-  return unwrap(
-    requestClient.post<ApiResult<ImportPreviewRow[]>>(
-      '/assets/import/validate',
-      form,
-    ),
-  );
-};
-
-export const confirmAssetImportApi = (file: File) => {
-  const form = new FormData();
-  form.append('file', file);
-  return unwrap(
-    requestClient.post<ApiResult<ImportConfirmResult>>(
-      '/assets/import/confirm',
-      form,
-    ),
-  );
-};
-
-export const downloadAssetTemplateApi = () =>
-  requestClient.get('/assets/import/template', { responseType: 'blob' });
 
 export const exportAssetsApi = (params: AssetQuery) =>
   requestClient.get('/assets/export', { params, responseType: 'blob' });

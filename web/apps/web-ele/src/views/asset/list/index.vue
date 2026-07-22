@@ -71,13 +71,13 @@ import {
   buildAssetRowActionAccess,
   canBorrowAvailableAsset,
   canRunAvailableAssetAction,
+  canShowAllAssetExport,
   canTransferAvailableAsset,
 } from './asset-row-actions';
 import { countCategoryTreeAssets } from './category-asset-counts';
 import AssetBorrowDialog from './components/AssetBorrowDialog.vue';
 import AssetDetailDialog from './components/AssetDetailDialog.vue';
 import AssetFormDialog from './components/AssetFormDialog.vue';
-import AssetImportDialog from './components/AssetImportDialog.vue';
 import AssetTransferDialog from './components/AssetTransferDialog.vue';
 
 defineOptions({ name: 'AssetList' });
@@ -108,7 +108,6 @@ const MAX_CATEGORY_LEVEL = 3;
 const loading = ref(false);
 const deletingAssetIds = ref<number[]>([]);
 const dialogVisible = ref(false);
-const importVisible = ref(false);
 const borrowDialogVisible = ref(false);
 const transferDialogVisible = ref(false);
 const editingAsset = ref<AssetItem | null>(null);
@@ -159,6 +158,7 @@ async function searchUsers(keyword = '') {
   }
 }
 const detail = ref<AssetDetail | null>(null);
+const exportingAllAssets = ref(false);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 
 const query = reactive({
@@ -224,6 +224,13 @@ const canPurgeAsset = computed(() => hasAccessByCodes(['asset:purge']));
 const canRestoreAsset = computed(() => hasAccessByCodes(['asset:restore']));
 const assetRowActionAccess = computed(() =>
   buildAssetRowActionAccess(hasAccessByCodes),
+);
+const showAllAssetExport = computed(() =>
+  canShowAllAssetExport(
+    currentCategoryLevel.value,
+    flatMode.value,
+    assetRowActionAccess.value.canExport,
+  ),
 );
 async function loadDictionaries() {
   let departmentRequest: Promise<DepartmentNode[] | DepartmentOptionNode[]> =
@@ -565,21 +572,20 @@ function drillToCategoryPath(index: number) {
   }
 }
 
-async function exportAssets() {
+async function exportAllAssets() {
+  if (exportingAllAssets.value) return;
+  exportingAllAssets.value = true;
   try {
-    const response = await exportAssetsApi(buildQuery());
-    downloadBlob(response.data, 'assets.xlsx');
+    const response = await exportAssetsApi({
+      ...buildQuery(),
+      categoryId: undefined,
+    });
+    downloadBlob(response.data, '全部资产.xlsx');
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    exportingAllAssets.value = false;
   }
-}
-
-function openImport() {
-  importVisible.value = true;
-}
-
-function onImported() {
-  runHandled(Promise.all([loadData(), loadHierarchyAssetCounts()]));
 }
 
 function categoryChildLabel() {
@@ -708,6 +714,13 @@ watch(detailVisible, (opened) => {
             >
               查看全部资产
             </ElButton>
+            <ElButton
+              v-if="showAllAssetExport"
+              :loading="exportingAllAssets"
+              @click="exportAllAssets"
+            >
+              导出全部资产
+            </ElButton>
             <ElButton v-if="flatMode" @click="exitFlatMode">
               返回分类浏览
             </ElButton>
@@ -717,20 +730,6 @@ watch(detailVisible, (opened) => {
             >
               返回上一层
             </ElButton>
-            <template v-if="showAssetTable">
-              <ElButton
-                v-if="assetRowActionAccess.canImport"
-                @click="openImport"
-              >
-                批量导入
-              </ElButton>
-              <ElButton
-                v-if="assetRowActionAccess.canExport"
-                @click="exportAssets"
-              >
-                导出 Excel
-              </ElButton>
-            </template>
             <ElButton
               v-if="showAssetTable && assetRowActionAccess.canCreate"
               type="primary"
@@ -1208,11 +1207,6 @@ watch(detailVisible, (opened) => {
         v-model:visible="detailVisible"
         :detail="detail"
         :loading="detailLoading"
-      />
-
-      <AssetImportDialog
-        v-model:visible="importVisible"
-        @imported="onImported"
       />
 
       <AssetBorrowDialog

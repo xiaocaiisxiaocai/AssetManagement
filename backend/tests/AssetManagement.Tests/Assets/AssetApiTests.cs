@@ -328,6 +328,31 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Export_includes_custodian_and_chinese_asset_status()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var custodian = await CreateUser();
+        var assetName = $"导出字段资产-{Guid.NewGuid():N}";
+        await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = assetName,
+            CategoryId = category.Id,
+            CustodianId = custodian.Id
+        });
+
+        var response = await _client.GetAsync($"/api/assets/export?categoryId={category.Id}");
+        response.EnsureSuccessStatusCode();
+        var rows = ReadXlsxRows(await response.Content.ReadAsByteArrayAsync());
+
+        rows[0].Should().Equal(
+            "资产编号", "名称", "分类编码", "部门", "位置", "保管人", "数量", "状态",
+            "购入日期", "资产登记日期", "目前状况", "备注");
+        rows.Should().Contain(row =>
+            row[1] == assetName && row[5] == custodian.Name && row[7] == "在库");
+    }
+
+    [Fact]
     public async Task Import_validate_previews_errors_and_confirm_imports_valid_rows()
     {
         await Login();
@@ -734,6 +759,21 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         }
 
         return ms.ToArray();
+    }
+
+    private static List<string[]> ReadXlsxRows(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes);
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Read);
+        using var reader = new StreamReader(
+            zip.GetEntry("xl/worksheets/sheet1.xml")!.Open());
+        var document = XDocument.Load(reader);
+        XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        return document.Descendants(ns + "row")
+            .Select(row => row.Elements(ns + "c")
+                .Select(cell => cell.Descendants(ns + "t").SingleOrDefault()?.Value ?? "")
+                .ToArray())
+            .ToList();
     }
 
     private static string BuildSheetXml(IEnumerable<string[]> rows)

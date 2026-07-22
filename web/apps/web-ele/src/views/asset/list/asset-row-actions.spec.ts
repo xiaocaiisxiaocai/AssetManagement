@@ -4,6 +4,7 @@ import {
   buildAssetRowActionAccess,
   canBorrowAvailableAsset,
   canRunAvailableAssetAction,
+  canShowAllAssetExport,
   canTransferAvailableAsset,
 } from './asset-row-actions';
 
@@ -33,7 +34,7 @@ describe('资产清单行操作权限', () => {
     expect(access.canDelete).toBe(true);
   });
 
-  it('顶部导入导出和新增资产使用独立权限码', () => {
+  it('顶部导出和新增资产使用独立权限码', () => {
     const permissions = new Set(['asset:create', 'asset:export']);
     const access = buildAssetRowActionAccess((codes) =>
       codes.some((code) => permissions.has(code)),
@@ -41,7 +42,16 @@ describe('资产清单行操作权限', () => {
 
     expect(access.canCreate).toBe(true);
     expect(access.canExport).toBe(true);
-    expect(access.canImport).toBe(false);
+  });
+});
+
+describe('资产导出入口', () => {
+  it('仅在一级分类页面且具有权限时显示', () => {
+    expect(canShowAllAssetExport(0, false, true)).toBe(true);
+    expect(canShowAllAssetExport(1, false, true)).toBe(false);
+    expect(canShowAllAssetExport(3, false, true)).toBe(false);
+    expect(canShowAllAssetExport(0, true, true)).toBe(false);
+    expect(canShowAllAssetExport(0, false, false)).toBe(false);
   });
 });
 
