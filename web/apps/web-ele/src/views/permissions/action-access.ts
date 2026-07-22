@@ -33,7 +33,7 @@ export function buildUserActionAccess(hasAccess: HasAccess) {
   const canViewRoles = hasAccess(['role:view']);
   return {
     canAssignRole,
-    canCreate: hasAccess(['user:create']) && canAssignRole && canViewRoles,
+    canCreate: hasAccess(['user:create']),
     canImport: hasAccess(['user:create']) && canAssignRole,
     canDelete: hasAccess(['user:delete']),
     canEdit: hasAccess(['user:edit']),

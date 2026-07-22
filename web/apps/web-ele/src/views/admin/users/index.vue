@@ -152,7 +152,7 @@ function openCreate() {
     email: '',
     departmentId: undefined,
     roleId: resolveDefaultEmployeeRoleId(roles.value),
-    roleName: '',
+    roleName: userActionAccess.value.canAssignRole ? '' : '普通员工',
     supervisorId: undefined,
   });
   dialogVisible.value = true;
@@ -212,7 +212,7 @@ async function save() {
     ElMessage.warning('新增用户需要填写工号');
     return;
   }
-  if (!form.roleId) {
+  if (userActionAccess.value.canAssignRole && !form.roleId) {
     ElMessage.warning('请选择角色');
     return;
   }
@@ -496,7 +496,7 @@ onMounted(async () => {
           <ElTableColumn align="center" fixed="right" label="操作" width="300">
             <template #default="{ row }">
               <ElButton
-                v-if="userActionAccess.canEdit"
+                v-if="userActionAccess.canEdit && row.canManage"
                 link
                 size="small"
                 type="primary"
@@ -524,7 +524,7 @@ onMounted(async () => {
                 {{ row.isActive ? '禁用' : '启用' }}
               </ElButton>
               <ElButton
-                v-if="userActionAccess.canDelete"
+                v-if="userActionAccess.canDelete && row.canManage"
                 link
                 size="small"
                 type="danger"

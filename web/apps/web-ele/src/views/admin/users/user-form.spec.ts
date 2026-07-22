@@ -28,6 +28,7 @@ describe('用户编辑表单契约', () => {
 
   it('往返编辑时保留手机号和直属主管', () => {
     const form = userToForm({
+      canManage: true,
       departmentId: 3,
       email: 'tester@example.com',
       employeeNo: '1002',

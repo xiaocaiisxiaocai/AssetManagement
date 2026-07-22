@@ -14,6 +14,7 @@ export interface PagedResult<T> {
 }
 
 export interface UserDto {
+  canManage: boolean;
   id: number;
   employeeNo: string;
   name: string;

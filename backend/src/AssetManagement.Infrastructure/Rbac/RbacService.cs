@@ -6,8 +6,10 @@ using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Workflow;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
+using System.Security.Claims;
 
 namespace AssetManagement.Infrastructure.Rbac;
 
@@ -15,10 +17,12 @@ public class RbacService : IRbacService
 {
     private const int MaxUserImportRows = 1000;
     private readonly AppDbContext _db;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public RbacService(AppDbContext db)
+    public RbacService(AppDbContext db, IHttpContextAccessor httpContextAccessor)
     {
         _db = db;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<PagedResult<UserDto>> GetUsersAsync(
@@ -33,6 +37,7 @@ public class RbacService : IRbacService
             .Include(x => x.UserRoles)
             .ThenInclude(x => x.Role)
             .AsQueryable();
+        var restrictToEmployees = IsDepartmentSupervisor();
         if (!string.IsNullOrWhiteSpace(keyword))
         {
             var kw = keyword.Trim();
@@ -62,7 +67,9 @@ public class RbacService : IRbacService
             : [];
         var departmentMap = await BuildDepartmentMapAsync(users.Select(x => x.DepartmentId));
         var supervisorMap = await BuildUserNameMapAsync(users.Select(x => x.SupervisorId));
-        var items = users.Select(x => ToUserDto(x, departmentMap, supervisorMap)).ToList();
+        var items = users
+            .Select(x => ToUserDto(x, departmentMap, supervisorMap, restrictToEmployees))
+            .ToList();
 
         return new PagedResult<UserDto> { Items = items, Total = total, Page = page, PageSize = pageSize };
     }
@@ -190,8 +197,8 @@ public class RbacService : IRbacService
     {
         EnsureRequiredText(request.EmployeeNo, 50, "工号");
         EnsureRequiredText(request.Name, 100, "姓名");
-        EnsureSingleRole(request.RoleIds);
-        EnsureCanAssignUserRole(canAssignRole);
+        var roleIds = await ResolveCreateUserRoleIdsAsync(request.RoleIds, canAssignRole);
+        EnsureSingleRole(roleIds);
         var employeeNo = request.EmployeeNo.Trim();
         await EnsureEmployeeNoAvailable(employeeNo);
         var password = !string.IsNullOrWhiteSpace(request.Password)
@@ -224,7 +231,7 @@ public class RbacService : IRbacService
         {
             throw new BizException(4094, "工号已存在");
         }
-        await RewriteUserRoles(user.Id, request.RoleIds);
+        await RewriteUserRoles(user.Id, roleIds);
         await transaction.CommitAsync();
         return await LoadUserDto(user.Id);
     }
@@ -233,9 +240,9 @@ public class RbacService : IRbacService
     {
         EnsureRequiredText(request.Name, 100, "姓名");
         EnsureSingleRole(request.RoleIds);
+        var restrictToEmployees = IsDepartmentSupervisor();
         await using var transaction = await _db.Database.BeginTransactionAsync();
         await LockAdminUsersAsync();
-        await EnsureUserRoleChangeAllowed(id, request.RoleIds, currentUserId, canAssignRole);
         // 所有停用路径先按统一顺序锁管理员集合，再锁目标用户；业务流创建在持有相关用户锁后
         // 会重新校验活跃状态，从而关闭“检查通过后又新增在途引用”的窗口。
         var user = await _db.Users
@@ -243,7 +250,13 @@ public class RbacService : IRbacService
             .AsTracking()
             .SingleOrDefaultAsync()
             ?? throw new BizException(4041, "用户不存在");
+        await EnsureCanManageUserAsync(user, restrictToEmployees);
         await ValidateUserRelationsAsync(request.DepartmentId, request.SupervisorId, id);
+        await EnsureUserRoleChangeAllowed(
+            id,
+            request.RoleIds,
+            currentUserId,
+            canAssignRole && !IsDepartmentSupervisor());
         user.Name = request.Name.Trim();
         user.Email = request.Email;
         user.Phone = request.Phone;
@@ -258,6 +271,7 @@ public class RbacService : IRbacService
 
     public async Task DeleteUserAsync(int id)
     {
+        var restrictToEmployees = IsDepartmentSupervisor();
         await using var transaction = await _db.Database.BeginTransactionAsync();
         await LockAdminUsersAsync();
         var user = await _db.Users
@@ -266,6 +280,7 @@ public class RbacService : IRbacService
             .ThenInclude(x => x.Role)
             .SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4041, "用户不存在");
+        EnsureCanManageUser(user, restrictToEmployees);
 
         if (user.IsActive && user.UserRoles.Any(x => x.Role is { Code: "admin", IsActive: true }))
         {
@@ -833,6 +848,67 @@ public class RbacService : IRbacService
         }
     }
 
+    private bool IsDepartmentSupervisor()
+    {
+        var user = _httpContextAccessor.HttpContext?.User;
+        if (user is null) return false;
+        var roles = user.FindAll(ClaimTypes.Role).Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
+        return roles.Contains("supervisor") && !roles.Contains("admin");
+    }
+
+    private async Task<int[]> ResolveCreateUserRoleIdsAsync(IEnumerable<int> requestedRoleIds, bool canAssignRole)
+    {
+        var requested = requestedRoleIds.Distinct().ToArray();
+        if (!IsDepartmentSupervisor())
+        {
+            EnsureCanAssignUserRole(canAssignRole);
+            return requested;
+        }
+
+        var employeeRoleId = await _db.Roles
+            .Where(x => x.Code == "employee" && x.IsActive)
+            .Select(x => (int?)x.Id)
+            .SingleOrDefaultAsync()
+            ?? throw new BizException(4042, "普通员工角色不存在或已停用");
+        if (requested.Length > 0 && (requested.Length != 1 || requested[0] != employeeRoleId))
+        {
+            throw new BizException(4031, "部门主管只能为新用户分配普通员工角色");
+        }
+        return new[] { employeeRoleId };
+    }
+
+    private async Task EnsureCanManageUserAsync(User user, bool restrictToEmployees)
+    {
+        if (!restrictToEmployees) return;
+        var roleCodes = await _db.UserRoles.AsNoTracking()
+            .Where(x => x.UserId == user.Id && x.Role != null && x.Role.IsActive)
+            .Select(x => x.Role.Code)
+            .ToArrayAsync();
+        if (!IsManagedEmployee(roleCodes))
+        {
+            throw new BizException(4032, "无权管理该用户");
+        }
+    }
+
+    private static void EnsureCanManageUser(User user, bool restrictToEmployees)
+    {
+        if (restrictToEmployees && !IsManagedEmployee(user))
+        {
+            throw new BizException(4032, "无权管理该用户");
+        }
+    }
+
+    private static bool IsManagedEmployee(User user)
+        => IsManagedEmployee(
+            user.UserRoles
+                .Where(x => x.Role is { IsActive: true })
+                .Select(x => x.Role.Code)
+                .ToArray());
+
+    private static bool IsManagedEmployee(IReadOnlyCollection<string> roleCodes)
+        => roleCodes.Count == 1
+           && roleCodes.Contains("employee");
+
     private async Task EnsureUserNotReferencedAsync(int id)
     {
         if (await _db.Departments.AnyAsync(x => x.ManagerId == id))
@@ -1287,7 +1363,7 @@ public class RbacService : IRbacService
             .SingleAsync(x => x.Id == id);
         var departmentMap = await BuildDepartmentMapAsync(new[] { user.DepartmentId });
         var supervisorMap = await BuildUserNameMapAsync(new[] { user.SupervisorId });
-        return ToUserDto(user, departmentMap, supervisorMap);
+        return ToUserDto(user, departmentMap, supervisorMap, IsDepartmentSupervisor());
     }
 
     private async Task<Dictionary<int, string>> BuildDepartmentMapAsync(IEnumerable<int?> ids)
@@ -1330,7 +1406,8 @@ public class RbacService : IRbacService
     private static UserDto ToUserDto(
         User x,
         IReadOnlyDictionary<int, string>? departments = null,
-        IReadOnlyDictionary<int, string>? supervisors = null) => new()
+        IReadOnlyDictionary<int, string>? supervisors = null,
+        bool restrictToEmployees = false) => new()
     {
         Id = x.Id,
         EmployeeNo = x.EmployeeNo,
@@ -1350,7 +1427,8 @@ public class RbacService : IRbacService
         RoleNames = x.UserRoles
             .Where(r => r.Role is not null)
             .Select(r => r.Role.Name)
-            .ToArray()
+            .ToArray(),
+        CanManage = !restrictToEmployees || IsManagedEmployee(x)
     };
 
     private static RoleDto ToRoleDto(Role x) => new()

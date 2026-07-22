@@ -17,6 +17,7 @@ public record UserDto
     public string? SupervisorName { get; init; }
     public int[] RoleIds { get; init; } = Array.Empty<int>();
     public string[] RoleNames { get; init; } = Array.Empty<string>();
+    public bool CanManage { get; init; }
 }
 
 public record UserOptionDto

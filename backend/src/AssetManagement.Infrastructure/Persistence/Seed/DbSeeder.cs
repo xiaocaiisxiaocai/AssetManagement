@@ -744,10 +744,11 @@ public static class DbSeeder
         ["supervisor"] = new[]
         {
             "asset:view", "asset:create", "asset:edit", "asset:delete", "asset:restore", "asset:import", "asset:export",
-            "category:view", "file:upload", "file:view",
+            "category:view", "category:create", "category:edit", "category:delete", "category:restore",
+            "file:upload", "file:view",
             "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
             "report:view", "report:export",
-            "department:view", "user:view",
+            "department:view", "user:view", "user:create", "user:edit", "user:delete",
             "project:view", "project:create", "project:edit", "project:delete", "project:restore", "project:followup", "project:manage", "project:export",
             "material:view", "material:create", "material:edit", "material:delete", "material:restore", "material:return",
             "material-flow:view", "material-flow:transfer", "material-flow:approve"

@@ -36,11 +36,11 @@ describe('页面操作权限映射', () => {
     ).toBe(true);
   });
 
-  it('用户导入要求创建与分配角色，交互式新增还需查看角色', () => {
-    expect(buildUserActionAccess(has(['user:create'])).canCreate).toBe(false);
+  it('用户新增只需创建权限，导入仍要求分配角色权限', () => {
+    expect(buildUserActionAccess(has(['user:create'])).canCreate).toBe(true);
     expect(
       buildUserActionAccess(has(['user:create', 'user:assign-role'])).canCreate,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       buildUserActionAccess(has(['user:create', 'user:assign-role'])).canImport,
     ).toBe(true);

@@ -78,7 +78,14 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         supervisor.RolePermissions.Select(x => x.Permission.Code)
             .Should().Contain("project:view", "部门主管已有测试项目菜单时必须能访问测试项目接口");
         supervisor.RolePermissions.Select(x => x.Permission.Code)
-            .Should().NotContain("user:create", "部门主管只能查看部门人员，不能新建用户");
+            .Should().Contain(new[]
+            {
+                "category:create", "category:edit", "category:delete", "category:restore",
+                "user:create", "user:edit", "user:delete"
+            }, "部门主管需要维护资产分类及普通员工");
+        supervisor.RolePermissions.Select(x => x.Permission.Code)
+            .Should().NotContain(new[] { "category:purge", "user:assign-role" },
+                "彻底删除分类与分配角色仍只允许系统管理员");
         roles.Single(x => x.Code == "employee").RoleMenus.Select(x => x.Menu.Name)
             .Should().Contain(new[] { "Material", "MaterialHome", "MaterialProjects" },
                 "普通员工已有菜单时仍应增量补齐新产品模块入口");
@@ -115,14 +122,14 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         _db.ChangeTracker.Clear();
         var supervisor = _db.Roles.Single(x => x.Code == "supervisor");
         var assetCreate = _db.Permissions.Single(x => x.Code == "asset:create");
-        var userCreate = _db.Permissions.Single(x => x.Code == "user:create");
+        var userResetPassword = _db.Permissions.Single(x => x.Code == "user:reset-password");
         var materialHome = _db.Menus.Single(x => x.Name == "MaterialHome");
         _db.RolePermissions.RemoveRange(_db.RolePermissions.Where(x =>
             x.RoleId == supervisor.Id && x.PermissionId == assetCreate.Id));
         _db.RolePermissions.Add(new RolePermission
         {
             RoleId = supervisor.Id,
-            PermissionId = userCreate.Id
+            PermissionId = userResetPassword.Id
         });
         _db.RoleMenus.RemoveRange(_db.RoleMenus.Where(x =>
             x.RoleId == supervisor.Id && x.MenuId == materialHome.Id));
@@ -138,7 +145,7 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
             .ThenInclude(x => x.Menu)
             .Single(x => x.Code == "supervisor");
         reloaded.RolePermissions.Select(x => x.Permission.Code).Should().NotContain("asset:create");
-        reloaded.RolePermissions.Select(x => x.Permission.Code).Should().Contain("user:create");
+        reloaded.RolePermissions.Select(x => x.Permission.Code).Should().Contain("user:reset-password");
         reloaded.RoleMenus.Select(x => x.Menu.Name).Should().NotContain("MaterialHome");
         _db.SystemSettings.Should().Contain(x => x.Key == "rbac_core_role_defaults_initialized_v1");
     }
