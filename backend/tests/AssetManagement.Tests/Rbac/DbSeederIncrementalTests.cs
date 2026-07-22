@@ -90,7 +90,6 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         permissions.Select(x => x.Code).Should().Contain(new[]
         {
             "category:view", "category:create", "category:edit", "category:delete", "category:restore", "category:purge",
-            "location:view", "location:create", "location:edit", "location:delete",
             "asset:import", "asset:export",
             "file:upload", "file:view",
             "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
@@ -104,6 +103,7 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
             "material:return",
             "material-flow:view", "material-flow:transfer", "material-flow:approve"
         });
+        permissions.Select(x => x.Code).Should().NotContain(code => code.StartsWith("location:"));
     }
 
     [Fact]

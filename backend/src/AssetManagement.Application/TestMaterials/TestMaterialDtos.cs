@@ -115,7 +115,6 @@ public class TestMaterialDto
     public int Quantity { get; set; }
     public int? DepartmentId { get; set; }
     public string? DepartmentName { get; set; }
-    public int? LocationId { get; set; }
     public string? LocationName { get; set; }
     public int? CustodianId { get; set; }
     public string? CustodianName { get; set; }
@@ -156,7 +155,8 @@ public class SaveTestMaterialRequest
     public string? Brand { get; set; }
     public int Quantity { get; set; } = 1;
     public int? DepartmentId { get; set; }
-    public int? LocationId { get; set; }
+    [StringLength(100)]
+    public string? LocationName { get; set; }
     public int? CustodianId { get; set; }
     public DateTime? ReceivedDate { get; set; }
     public List<string>? Images { get; set; }

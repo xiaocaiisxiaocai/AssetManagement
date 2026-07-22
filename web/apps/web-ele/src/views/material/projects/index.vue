@@ -2,13 +2,12 @@
 import type { ProjectFilter } from './project-filter';
 import type {
   DeleteStatus,
-  FlatOption,
   OptionKind,
   ProjectFormState,
   ProjectProgressFormState,
 } from './project-workspace-types';
 
-import type { DepartmentOptionNode, LocationNode } from '#/api/base-data';
+import type { DepartmentOptionNode } from '#/api/base-data';
 import type {
   MaterialDetail,
   MaterialFlowItem,
@@ -32,7 +31,7 @@ import { useUserStore } from '@vben/stores';
 
 import { ElDrawer, ElMessage, ElMessageBox, ElTabs, ElTag } from 'element-plus';
 
-import { getDepartmentOptionsApi, getLocationTreeApi } from '#/api/base-data';
+import { getDepartmentOptionsApi } from '#/api/base-data';
 import {
   approveFlowApi,
   deleteMaterialApi,
@@ -174,7 +173,6 @@ const users = ref<UserOptionDto[]>([]);
 const userOptionsLoading = ref(false);
 const userOptionsRequestGuard = createLatestRequestGuard();
 const departments = ref<DepartmentOptionNode[]>([]);
-const locations = ref<LocationNode[]>([]);
 
 const dialogVisible = ref(false);
 const editingId = ref<null | number>(null);
@@ -293,9 +291,6 @@ const displayedOptions = computed(() =>
 );
 const activeDepartmentOptions = computed(() =>
   flattenActiveDepartments(departments.value),
-);
-const locationOptions = computed<FlatOption[]>(() =>
-  locations.value.map((node) => ({ id: node.id, label: node.name })),
 );
 const currentProjectList = computed(() =>
   currentProject.value ? [currentProject.value] : projects.value,
@@ -442,15 +437,8 @@ async function searchUsers(keyword = '') {
 }
 
 async function loadBaseOptions() {
-  const [departmentTree, locationTree] = await Promise.allSettled([
-    getDepartmentOptionsApi(),
-    hasAccessByCodes(['location:view'])
-      ? getLocationTreeApi()
-      : Promise.resolve([]),
-  ]);
-  if (departmentTree.status === 'fulfilled')
-    departments.value = departmentTree.value;
-  if (locationTree.status === 'fulfilled') locations.value = locationTree.value;
+  const departmentTree = await getDepartmentOptionsApi();
+  departments.value = departmentTree;
 }
 
 function resetProjectForm() {
@@ -1489,7 +1477,6 @@ watch(materialDetailVisible, (opened) => {
         v-model:visible="materialFormVisible"
         :default-project-id="currentProject?.id"
         :department-options="activeDepartmentOptions"
-        :location-options="locationOptions"
         :material="editingMaterial"
         :project-locked="true"
         :projects="currentProjectList"

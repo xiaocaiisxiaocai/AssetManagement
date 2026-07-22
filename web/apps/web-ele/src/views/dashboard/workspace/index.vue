@@ -36,7 +36,6 @@ const router = useRouter();
 const { hasAccessByCodes } = useAccess();
 const canViewAssets = computed(() => hasAccessByCodes(['asset:view']));
 const canViewCategories = computed(() => hasAccessByCodes(['category:view']));
-const canViewLocations = computed(() => hasAccessByCodes(['location:view']));
 const canViewApprovals = computed(() => hasAccessByCodes(['approval:view']));
 const canHandleApprovals = computed(() =>
   hasAccessByCodes(['approval:handle']),
@@ -174,11 +173,6 @@ const shortcuts = computed(() =>
       label: '资产分类',
       path: '/asset/categories',
       visible: canViewCategories.value,
-    },
-    {
-      label: '存放位置',
-      path: '/asset/locations',
-      visible: canViewLocations.value,
     },
     {
       label: '待我审批',

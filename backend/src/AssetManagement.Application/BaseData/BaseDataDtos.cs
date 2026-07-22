@@ -80,22 +80,6 @@ public record UpdateCategoryRequest
     public string? Remark { get; init; }
 }
 
-public record LocationNodeDto
-{
-    public int Id { get; init; }
-    public string Name { get; init; } = "";
-}
-
-public record CreateLocationRequest
-{
-    public string Name { get; init; } = "";
-}
-
-public record UpdateLocationRequest
-{
-    public string Name { get; init; } = "";
-}
-
 public record SystemSettingDto
 {
     public int Id { get; init; }

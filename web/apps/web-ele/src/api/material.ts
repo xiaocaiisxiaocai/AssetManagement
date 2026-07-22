@@ -39,7 +39,6 @@ export interface MaterialItem {
   quantity: number;
   departmentId?: null | number;
   departmentName?: null | string;
-  locationId?: null | number;
   locationName?: null | string;
   custodianId?: null | number;
   custodianName?: null | string;
@@ -72,7 +71,7 @@ export interface SaveMaterialPayload {
   brand?: null | string;
   quantity: number;
   departmentId?: null | number;
-  locationId?: null | number;
+  locationName?: null | string;
   custodianId?: null | number;
   receivedDate?: null | string;
   images?: string[];

@@ -30,7 +30,6 @@ export interface AssetItem {
   id: number;
   isDeleted: boolean;
   images?: null | string[];
-  locationId?: null | number;
   locationName?: null | string;
   name: string;
   purchaseDate?: null | string;
@@ -61,7 +60,7 @@ export interface AssetPayload {
   custodianId?: null | number;
   departmentId?: null | number;
   images?: string[];
-  locationId?: null | number;
+  locationName?: null | string;
   name: string;
   purchaseDate?: null | string;
   quantity?: number;

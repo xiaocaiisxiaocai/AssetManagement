@@ -38,11 +38,13 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             VendorName = "宁德时代",
             Model = "LFP-280",
             Brand = "CATL",
-            Quantity = 10
+            Quantity = 10,
+            LocationName = "  二楼实验室 B-08  "
         });
 
         created.Data!.MaterialNo.Should().StartWith("TM-");
         created.Data.ProjectName.Should().Be("电池测试项目");
+        created.Data.LocationName.Should().Be("二楼实验室 B-08");
         created.Data.Status.Should().Be(MaterialStatus.InUse);
 
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<TestMaterialDto>>>(
@@ -145,28 +147,24 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             ManagerId = 1,
             Name = $"重名料件部门-{Guid.NewGuid():N}"
         });
-        var location = await Post<ApiResult<LocationNodeDto>>("/api/locations", new CreateLocationRequest
-        {
-            Name = $"重名料件位置-{Guid.NewGuid():N}"
-        });
         var name = $"重名料件-{Guid.NewGuid():N}";
         await Post<ApiResult<TestMaterialDto>>(
             "/api/test-materials",
-            NewMaterialRequest(project.Id, name, department.Data!.Id, location.Data!.Id));
+            NewMaterialRequest(project.Id, name, department.Data!.Id));
 
         var duplicateCreate = await PostError<TestMaterialDto>(
             "/api/test-materials",
-            NewMaterialRequest(project.Id, name, department.Data.Id, location.Data.Id),
+            NewMaterialRequest(project.Id, name, department.Data.Id),
             HttpStatusCode.Conflict);
         var sameNameInOtherProject = await Post<ApiResult<TestMaterialDto>>(
             "/api/test-materials",
-            NewMaterialRequest(otherProject.Id, name, department.Data.Id, location.Data.Id));
+            NewMaterialRequest(otherProject.Id, name, department.Data.Id));
         var updateTarget = await Post<ApiResult<TestMaterialDto>>(
             "/api/test-materials",
-            NewMaterialRequest(project.Id, $"{name}-可更新", department.Data.Id, location.Data.Id));
+            NewMaterialRequest(project.Id, $"{name}-可更新", department.Data.Id));
         var duplicateUpdateResponse = await _client.PutAsJsonAsync(
             $"/api/test-materials/{updateTarget.Data!.Id}",
-            NewMaterialRequest(project.Id, name, department.Data.Id, location.Data.Id));
+            NewMaterialRequest(project.Id, name, department.Data.Id));
         duplicateUpdateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var duplicateUpdate = await duplicateUpdateResponse.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
 
@@ -1092,12 +1090,11 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     private static SaveTestMaterialRequest NewMaterialRequest(
         int projectId,
         string name,
-        int departmentId,
-        int locationId) => new()
+        int departmentId) => new()
     {
         Brand = "SAA",
         DepartmentId = departmentId,
-        LocationId = locationId,
+        LocationName = "二楼实验室 B-08",
         Model = "TM-Model",
         Name = name,
         ProjectId = projectId,

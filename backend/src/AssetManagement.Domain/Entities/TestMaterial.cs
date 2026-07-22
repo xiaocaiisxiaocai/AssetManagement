@@ -17,7 +17,7 @@ public class TestMaterial
     public string? Brand { get; set; }
     public int Quantity { get; set; } = 1;
     public int? DepartmentId { get; set; }
-    public int? LocationId { get; set; }
+    public string? LocationName { get; set; }
     public int? CustodianId { get; set; }
     public DateTime? ReceivedDate { get; set; }
     public MaterialStatus Status { get; set; } = MaterialStatus.InUse;

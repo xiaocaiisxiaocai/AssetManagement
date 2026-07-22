@@ -4,7 +4,6 @@ import {
   buildApprovalActionAccess,
   buildCategoryActionAccess,
   buildFileActionAccess,
-  buildLocationActionAccess,
   buildMaterialActionAccess,
   buildProjectActionAccess,
   buildReportActionAccess,
@@ -86,15 +85,12 @@ describe('页面操作权限映射', () => {
     expect(access.canEdit).toBe(false);
   });
 
-  it('位置、工作流、报表操作使用对应模块权限码', () => {
-    const location = buildLocationActionAccess(has(['location:create']));
+  it('工作流、报表操作使用对应模块权限码', () => {
     const workflow = buildWorkflowActionAccess(
       has(['workflow:design', 'workflow:delete']),
     );
     const report = buildReportActionAccess(has(['report:remind']));
 
-    expect(location.canCreate).toBe(true);
-    expect(location.canEdit).toBe(false);
     expect(workflow.canDesign).toBe(true);
     expect(workflow.canDelete).toBe(true);
     expect(report.canRemind).toBe(true);

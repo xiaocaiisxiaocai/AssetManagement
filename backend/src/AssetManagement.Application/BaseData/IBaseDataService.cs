@@ -15,11 +15,6 @@ public interface IBaseDataService
     Task PurgeCategoryAsync(int id);
     Task RestoreCategoryAsync(int id);
 
-    Task<List<LocationNodeDto>> GetLocationTreeAsync();
-    Task<LocationNodeDto> CreateLocationAsync(CreateLocationRequest request);
-    Task<LocationNodeDto> UpdateLocationAsync(int id, UpdateLocationRequest request);
-    Task DeleteLocationAsync(int id);
-
     Task<List<SystemSettingDto>> GetSettingsAsync();
     Task<RuntimeSettingsDto> GetRuntimeSettingsAsync();
     Task<List<SystemSettingDto>> SaveSettingsAsync(IEnumerable<SaveSystemSettingRequest> requests);

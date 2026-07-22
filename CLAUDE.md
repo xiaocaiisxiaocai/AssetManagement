@@ -181,7 +181,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **`TestProject`**(测评项目):`Name`(必填)、`Code`、`ProjectTypeCode`(项目类型,取自选项字典)、`ProgressCode`(进度状态,取自选项字典)、`OwnerId`(负责人)、`StartDate`/`PlannedFinishDate`/`ClosedDate`(开始/计划完成/结案)、`TestStatus`、`FollowUpIntervalDays`(跟进周期天数,默认 14)、软删除字段。**已从早期薄分组实体扩展为完整项目生命周期实体**。
 - **`TestProjectOption`**(项目选项字典):`Kind`(分组,如项目类型 `project_type`/进度状态 `project_progress`)、`Code`/`Label`/`Sort`/`IsActive`。为项目类型、进度等下拉提供可维护字典项。
 - **`TestProjectFollowup`**(项目跟进记录):`ProjectId`、`DueDate`(跟进到期日)、`Content`、`FilledById`/`FilledAt`。按 `FollowUpIntervalDays` 周期性跟进。
-- **`TestMaterial`**(测试料件):`MaterialNo`(自动生成 `TM-YYYYMMDD-XXX`)、`Name`(必填)、`ProjectId`(必填,外键到 `TestProject`)、`VendorName`(厂商)、`Model`/`Brand`/`Quantity`、`DepartmentId`/`LocationId`/`CustodianId`(可选)、`ReceivedDate`(接收日期)、`Status`(0=在用、1=已退回厂商)、`Images`(JSON 数组,复用 `FileStorageService`)、`Remark`、软删除字段、`HasPendingFlow`(计算属性,标识有待审批流转)。
+- **`TestMaterial`**(测试料件):`MaterialNo`(自动生成 `TM-YYYYMMDD-XXX`)、`Name`(必填)、`ProjectId`(必填,外键到 `TestProject`)、`VendorName`(厂商)、`Model`/`Brand`/`Quantity`、`DepartmentId`/`CustodianId`(可选)、`LocationName`(用户手工填写的存放位置文本)、`ReceivedDate`(接收日期)、`Status`(0=在用、1=已退回厂商)、`Images`(JSON 数组,复用 `FileStorageService`)、`Remark`、软删除字段、`HasPendingFlow`(计算属性,标识有待审批流转)。
 - **`TestMaterialRecord`**(料件生命周期操作记录):`MaterialId`、`Action`(当前含 `return_to_vendor`)、`OperatorUserId`/`Operator`、`Comment`、`OperatedAt`;独立于人员流转审批单，确保退回厂商等动作可追溯。
 - **`MaterialFlow`**(流转记录):`FlowNo`(流转单号 `MF-YYYYMMDD-XXX`)、`MaterialId`、`ApplicantId`/`TransfereeId`(受让人)、`Reason`、`Status`(pending/approved/rejected)、`DirectTransfer`(布尔,标识绕过审批直接转移)、`BpmnTokens`(BPMN 引擎状态,JSON)、`CurrentNodeIds`(活跃节点列表,JSON)。
 - **`MaterialFlowRecord`**(流转操作记录):`FlowId`、`Action`(start/approve/reject/direct_transfer)、`Operator`(操作人名)、`Comment`、`OperatedAt`。
@@ -369,7 +369,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 ## 前端约定(apps/web-ele)
 
 - 业务代码在 `apps/web-ele/src` 下:`api/`(按模块分文件,封装 `requestClient` 调用)、`views/`(各模块对应菜单路由)、`store/`(Pinia,登录逻辑在 `store/auth.ts`)。
-  - `views/asset/` — 资产管理(`list` 列表、`hierarchy` 层级视图、`categories` 分类、`locations` 位置)
+  - `views/asset/` — 资产管理(`list` 列表及层级视图、`categories` 分类；存放位置直接在资产表单手工填写，不维护位置字典)
   - `views/approval/` — 审批流程(`pending` 待我审批、`mine` 我的申请、`confirm-return` 确认入库)
   - `views/report/` — 报表(`summary` 汇总、`borrow` 借用明细、`overdue` 逾期)
   - `views/admin/` — 基础数据与系统管理(`departments` 部门、`users` 用户、`roles` 角色、`settings` 系统参数、`audit` 审计日志、`workflows` 工作流设计器、`backups` 数据库备份)
@@ -385,7 +385,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 | 场景 | 步骤 |
 |------|------|
 | **修改 BPMN 工作流定义** | (1) 前端: `views/admin/workflows/bpmn-modeler.vue` 可视化设计器调整流程 (2) 保存后 `Workflow.BpmnXml` 字段自动更新 (3) 测试: `BpmnEngineTests.cs` 覆盖新场景 (4) 如需扩展网关类型,修改 `Domain/Workflow/BpmnParser.cs` + `BpmnEngine.cs` |
-| **扩展基础数据(分类/部门/位置)** | (1) Domain: `AssetCategory`/`Department`/`Location` 实体(分类编码生成在 `Services/CategoryCodeService`) (2) Application: 复用 `IBaseDataService`(三类基础数据共用同一粗粒度服务)+ DTO (3) Infrastructure: 实现 + EntityTypeConfiguration (4) DbSeeder: 种子数据 (5) Api: 对应控制器(如 `AssetCategoryController`) (6) 迁移 (7) 前端页面(如 `views/admin/categories`)+ 菜单注册 |
+| **扩展基础数据(分类/部门)** | (1) Domain: `AssetCategory`/`Department` 实体(分类编码生成在 `Services/CategoryCodeService`) (2) Application: 复用 `IBaseDataService` + DTO (3) Infrastructure: 实现 + EntityTypeConfiguration (4) DbSeeder: 种子数据 (5) Api: 对应控制器(如 `AssetCategoryController`) (6) 迁移 (7) 前端页面 + 菜单注册；存放位置不是数据字典，资产与测试料件均直接保存 `LocationName` 文本 |
 | **后端新增权限** | (1) DbSeeder: `Permission` 表加行 + 角色-权限映射 (2) Api: action 标注 `[HasPermission("code")]` (3) 迁移 (4) 前端菜单由后端下发,无需改前端代码 |
 | **前端新页面映射后端菜单** | (1) 后端 DbSeeder 注册 Menu(name/path/component) + Permission (2) 前端在 `views/<module>/` 创建页面,Component 路径须与后端 menu.Component 一致 (3) 登录后菜单自动下发,无需硬编码路由 |
 | **新增报表/导出** | (1) Application: `IReportService` 加方法 + DTO (2) Infrastructure: `Reports/ReportService` 实现查询(注意复用 `AssetService.ApplyQuery` 的部门隔离逻辑) (3) Api: `ReportController`(路由 `api/reports`)加 action,统一 `[HasPermission("report:view")]`,导出走 `.../export` 后缀返回 Excel (4) 前端: `views/report/` 加页面 + `api/report.ts` |
@@ -451,7 +451,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 ## 项目状态
 
-五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通。截至 2026-07-21，可靠性、HTTP 错误语义、权限边界、MySQL 5.7 数据迁移与前端交互加固后，后端 **521 个**测试、前端 **471 个**单元测试及全仓类型检查均通过；后端集成测试要求提供独立 MySQL 测试库配置。
+五大核心模块(资产管理、审批工作流、报表统计、RBAC/基础数据、**新产品新技术(测试料件)**)已全面打通。截至 2026-07-22，后端测试集共 **517 项**、前端单元测试共 **476 项**。本次存放位置文本化变更的 127 项后端定向测试、前端全部单元测试及 `web-ele` 类型检查通过；完整后端回归 516/517 通过，唯一失败为既有并发竞态用例，单独复跑 4 次均通过。后端集成测试要求提供独立 MySQL 测试库配置。
 
 最新里程碑(2026-06-17 ~ 2026-06-30):
 - ✅ 确认入库接口对齐(`/api/approvals/pending-return`)

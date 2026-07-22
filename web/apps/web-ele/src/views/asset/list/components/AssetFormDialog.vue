@@ -44,7 +44,6 @@ const props = defineProps<{
   categoryOptions: FlatOption[];
   defaultCategoryId: number;
   departmentOptions: FlatOption[];
-  locationOptions: FlatOption[];
   searchUsers?: (keyword: string) => Promise<void>;
   userOptionsLoading?: boolean;
   users: (UserDto | UserOptionDto)[];
@@ -84,7 +83,7 @@ const form = reactive({
   categoryId: 0,
   custodianId: undefined as number | undefined,
   departmentId: undefined as number | undefined,
-  locationId: undefined as number | undefined,
+  locationName: '',
   name: '',
   purchaseDate: '',
   quantity: 1,
@@ -162,7 +161,7 @@ watch(visible, async (opened) => {
       categoryId: props.asset.categoryId,
       custodianId: props.asset.custodianId ?? undefined,
       departmentId: props.asset.departmentId ?? undefined,
-      locationId: props.asset.locationId ?? undefined,
+      locationName: props.asset.locationName ?? '',
       name: props.asset.name,
       purchaseDate: props.asset.purchaseDate?.slice(0, 10) ?? '',
       quantity: props.asset.quantity,
@@ -209,7 +208,7 @@ watch(visible, async (opened) => {
       categoryId: props.defaultCategoryId,
       custodianId: undefined,
       departmentId: undefined,
-      locationId: undefined,
+      locationName: '',
       name: '',
       purchaseDate: '',
       quantity: 1,
@@ -233,7 +232,7 @@ function buildPayload(): AssetPayload {
           f.rawUrl ?? (f.response as { rawUrl?: string } | undefined)?.rawUrl,
       )
       .filter((u): u is string => !!u),
-    locationId: form.locationId,
+    locationName: form.locationName.trim() || null,
     name: form.name,
     purchaseDate: form.purchaseDate || null,
     quantity: form.quantity,
@@ -369,20 +368,13 @@ const debouncedSave = useDebounceFn(save, 300);
         </ElSelect>
       </ElFormItem>
       <ElFormItem label="存放位置" required>
-        <ElSelect
-          v-model="form.locationId"
+        <ElInput
+          v-model="form.locationName"
+          :maxlength="100"
           clearable
-          filterable
-          placeholder="选择位置"
-          style="width: 100%"
-        >
-          <ElOption
-            v-for="item in locationOptions"
-            :key="item.id"
-            :label="item.label"
-            :value="item.id"
-          />
-        </ElSelect>
+          placeholder="请输入存放位置，如：三楼研发区 A-12"
+          show-word-limit
+        />
       </ElFormItem>
       <ElFormItem label="保管人" required>
         <ElSelect

@@ -10,7 +10,7 @@ const baseForm = {
   categoryId: 1,
   custodianId: 4,
   departmentId: 2,
-  locationId: 3,
+  locationName: '三楼研发区 A-12',
   name: '测试资产',
   quantity: 1,
   status: 0,
@@ -25,13 +25,20 @@ describe('固定资产表单规则', () => {
     expect(validateAssetForm({ ...baseForm, departmentId: undefined })).toBe(
       '请选择归属部门',
     );
-    expect(validateAssetForm({ ...baseForm, locationId: undefined })).toBe(
-      '请选择存放位置',
+    expect(validateAssetForm({ ...baseForm, locationName: '   ' })).toBe(
+      '请填写存放位置',
     );
     expect(validateAssetForm({ ...baseForm, custodianId: undefined })).toBe(
       '请选择保管人',
     );
     expect(validateAssetForm({ ...baseForm, quantity: 0 })).toBe('请填写数量');
+  });
+
+  it('存放位置允许手工填写并限制为 100 个字符', () => {
+    expect(
+      validateAssetForm({ ...baseForm, locationName: 'A'.repeat(101) }),
+    ).toBe('存放位置不能超过 100 个字符');
+    expect(validateAssetForm(baseForm)).toBeNull();
   });
 
   it('状态和资产图片不是必填校验项', () => {
@@ -61,6 +68,9 @@ describe('固定资产表单规则', () => {
       '<ElFormItem v-if="isEdit" label="状态" required>',
     );
     expect(source).toContain('<ElFormItem label="资产照片">');
+    expect(source).toContain('v-model="form.locationName"');
+    expect(source).toContain('placeholder="请输入存放位置');
+    expect(source).not.toContain('v-model="form.locationId"');
     expect(source).not.toContain('label="型号品牌"');
     expect(source).not.toContain('label="首次登记"');
   });

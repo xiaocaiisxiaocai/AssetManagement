@@ -484,68 +484,6 @@ public class BaseDataService : IBaseDataService
         ClearCategoryTreeCache();
     }
 
-    public async Task<List<LocationNodeDto>> GetLocationTreeAsync()
-        => await _db.Locations
-            .OrderBy(x => x.Id)
-            .Select(x => ToLocationDto(x))
-            .ToListAsync();
-
-    public async Task<LocationNodeDto> CreateLocationAsync(CreateLocationRequest request)
-    {
-        ValidateLocationName(request.Name);
-        var name = request.Name.Trim();
-        await EnsureLocationNameAvailableAsync(name);
-        var location = new Location
-        {
-            Name = name
-        };
-        _db.Locations.Add(location);
-        try
-        {
-            await _db.SaveChangesAsync();
-        }
-        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
-        {
-            throw new BizException(4094, "存放位置已存在");
-        }
-        return ToLocationDto(location);
-    }
-
-    public async Task<LocationNodeDto> UpdateLocationAsync(int id, UpdateLocationRequest request)
-    {
-        ValidateLocationName(request.Name);
-        var location = await _db.Locations.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
-            ?? throw new BizException(4047, "位置不存在");
-        var name = request.Name.Trim();
-        await EnsureLocationNameAvailableAsync(name, id);
-        location.Name = name;
-        try
-        {
-            await _db.SaveChangesAsync();
-        }
-        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
-        {
-            throw new BizException(4094, "存放位置已存在");
-        }
-        return ToLocationDto(location);
-    }
-
-    public async Task DeleteLocationAsync(int id)
-    {
-        var location = await _db.Locations.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
-            ?? throw new BizException(4047, "位置不存在");
-        if (await _db.Assets.AnyAsync(x => x.LocationId == id))
-        {
-            throw new BizException(4094, "位置已被资产使用，不能删除");
-        }
-        if (await _db.TestMaterials.AnyAsync(x => x.LocationId == id))
-        {
-            throw new BizException(4094, "位置已被测试料件使用，不能删除");
-        }
-        _db.Locations.Remove(location);
-        await _db.SaveChangesAsync();
-    }
-
     public async Task<List<SystemSettingDto>> GetSettingsAsync()
         => await _db.SystemSettings
             .OrderBy(x => x.Key)
@@ -1029,22 +967,6 @@ public class BaseDataService : IBaseDataService
         }
     }
 
-    private async Task EnsureLocationNameAvailableAsync(string name, int? selfId = null)
-    {
-        if (await _db.Locations.AnyAsync(x => x.Name == name && x.Id != selfId))
-        {
-            throw new BizException(4094, "存放位置已存在");
-        }
-    }
-
-    private static void ValidateLocationName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new BizException(4001, "存放位置名称不能为空");
-        if (name.Trim().Length > 100)
-            throw new BizException(4001, "存放位置名称不能超过 100 个字符");
-    }
-
     private static bool IsDuplicateKey(DbUpdateException ex)
         => ex.InnerException is MySqlException { Number: 1062 };
 
@@ -1099,12 +1021,6 @@ public class BaseDataService : IBaseDataService
         var trimmed = value?.Trim();
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
     }
-
-    private static LocationNodeDto ToLocationDto(Location x) => new()
-    {
-        Id = x.Id,
-        Name = x.Name
-    };
 
     private async Task<string> NextDepartmentCodeAsync()
     {

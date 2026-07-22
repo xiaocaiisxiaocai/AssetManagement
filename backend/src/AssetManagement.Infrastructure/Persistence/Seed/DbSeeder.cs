@@ -25,6 +25,7 @@ public static class DbSeeder
             EnsureOrganizationLevels(db);
             if (db.Users.Any())
             {
+                RemoveLocationDictionaryArtifacts(db);
                 SeedIncremental(db);
                 SeedTestMaterialModule(db);
                 EnsureEmployeeFileUploadPermission(db);
@@ -48,7 +49,6 @@ public static class DbSeeder
             new Menu { Id = 2, ParentId = 1, Name = "AssetList", Title = "资产列表", Path = "/asset/list", Component = "/asset/list/index", Sort = 11, PermissionCode = "asset:view" },
             // Id=3 资产层级菜单已删除,实际功能已整合到资产列表的层级视图中
             new Menu { Id = 18, ParentId = 1, Name = "AssetCategories", Title = "资产分类", Path = "/asset/categories", Component = "/asset/categories/index", Sort = 13, PermissionCode = "category:view" },
-            new Menu { Id = 19, ParentId = 1, Name = "AssetLocations", Title = "存放位置", Path = "/asset/locations", Component = "/asset/locations/index", Sort = 14, PermissionCode = "location:view" },
             new Menu { Id = 4, Name = "Approval", Title = "审批管理", Path = "/approval", Component = "BasicLayout", Icon = "lucide:git-branch", Sort = 20 },
             new Menu { Id = 5, ParentId = 4, Name = "ApprovalPending", Title = "待我审批", Path = "/approval/pending", Component = "/approval/pending/index", Sort = 21, PermissionCode = "approval:handle" },
             new Menu { Id = 6, ParentId = 4, Name = "ApprovalMine", Title = "我的申请", Path = "/approval/mine", Component = "/approval/mine/index", Sort = 22, PermissionCode = "approval:view" },
@@ -505,13 +505,37 @@ public static class DbSeeder
         db.SaveChanges();
     }
 
+    private static void RemoveLocationDictionaryArtifacts(AppDbContext db)
+    {
+        var menus = db.Menus
+            .Where(x => x.Name == "AssetLocations" || x.Path == "/asset/locations")
+            .ToList();
+        if (menus.Count > 0)
+        {
+            var menuIds = menus.Select(x => x.Id).ToArray();
+            db.RoleMenus.RemoveRange(db.RoleMenus.Where(x => menuIds.Contains(x.MenuId)));
+            db.Menus.RemoveRange(menus);
+        }
+
+        var permissions = db.Permissions
+            .Where(x => x.Code.StartsWith("location:"))
+            .ToList();
+        if (permissions.Count > 0)
+        {
+            var permissionIds = permissions.Select(x => x.Id).ToArray();
+            db.RolePermissions.RemoveRange(db.RolePermissions.Where(x => permissionIds.Contains(x.PermissionId)));
+            db.Permissions.RemoveRange(permissions);
+        }
+
+        db.SaveChanges();
+    }
+
     private static void SyncMenuPermissionCodes(AppDbContext db)
     {
         var menuPermissions = new Dictionary<string, string>
         {
             ["AssetList"] = "asset:view",
             ["AssetCategories"] = "category:view",
-            ["AssetLocations"] = "location:view",
             ["ApprovalPending"] = "approval:handle",
             ["ApprovalMine"] = "approval:view",
             ["ConfirmReturn"] = "approval:confirm-return",
@@ -643,11 +667,6 @@ public static class DbSeeder
         ("category:restore", "恢复资产分类", "category"),
         ("category:purge", "彻底删除资产分类", "category"),
 
-        ("location:view", "查看存放位置", "location"),
-        ("location:create", "新增存放位置", "location"),
-        ("location:edit", "编辑存放位置", "location"),
-        ("location:delete", "删除存放位置", "location"),
-
         ("file:upload", "上传文件", "file"),
         ("file:view", "查看文件", "file"),
 
@@ -725,7 +744,7 @@ public static class DbSeeder
         ["supervisor"] = new[]
         {
             "asset:view", "asset:create", "asset:edit", "asset:delete", "asset:restore", "asset:import", "asset:export",
-            "category:view", "location:view", "file:upload", "file:view",
+            "category:view", "file:upload", "file:view",
             "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
             "report:view", "report:export",
             "department:view", "user:view",
@@ -735,7 +754,7 @@ public static class DbSeeder
         },
         ["employee"] = new[]
         {
-            "asset:view", "category:view", "location:view", "file:upload", "file:view",
+            "asset:view", "category:view", "file:upload", "file:view",
             "approval:create", "approval:view",
             "project:view", "material:view", "material-flow:view", "material-flow:transfer"
         }
@@ -1071,7 +1090,7 @@ public static class DbSeeder
     }
 
     private static bool ShouldGrantMenu(string roleCode, string menuName)
-        => roleCode != "employee" || menuName is not "AssetCategories" and not "AssetLocations";
+        => roleCode != "employee" || menuName is not "AssetCategories";
 
     public static void SeedTestMaterialModule(AppDbContext db)
     {

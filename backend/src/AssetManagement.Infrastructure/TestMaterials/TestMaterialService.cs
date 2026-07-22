@@ -132,7 +132,6 @@ public class TestMaterialService : ITestMaterialService
             : await _files.AcquireReferenceLeaseAsync(normalizedImages);
         await EnsureCanAssignDepartmentAsync(request.DepartmentId);
         await EnsureActiveDepartmentAsync(request.DepartmentId);
-        await EnsureLocationExistsAsync(request.LocationId);
         await EnsureActiveCustodianAsync(request.CustodianId, request.DepartmentId);
         var name = request.Name.Trim();
         if (string.IsNullOrWhiteSpace(name))
@@ -157,7 +156,7 @@ public class TestMaterialService : ITestMaterialService
                 Brand = request.Brand?.Trim(),
                 Quantity = Math.Max(request.Quantity, 1),
                 DepartmentId = request.DepartmentId,
-                LocationId = request.LocationId,
+                LocationName = NormalizeOptionalText(request.LocationName),
                 CustodianId = request.CustodianId,
                 ReceivedDate = request.ReceivedDate,
                 Status = MaterialStatus.InUse,
@@ -199,7 +198,6 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4095, "料件保管人和归属部门只能通过流转变更");
         if (request.ProjectId != m.ProjectId)
             throw new BizException(4095, "料件所属项目不能修改");
-        await EnsureLocationExistsAsync(request.LocationId);
         var originalProject = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == m.ProjectId && !x.IsDeleted)
             ?? throw new BizException(4046, "测试项目不存在");
         EnsureCanWriteMaterial(originalProject, "material:edit");
@@ -216,7 +214,7 @@ public class TestMaterialService : ITestMaterialService
         m.Model = request.Model?.Trim();
         m.Brand = request.Brand?.Trim();
         m.Quantity = Math.Max(request.Quantity, 1);
-        m.LocationId = request.LocationId;
+        m.LocationName = NormalizeOptionalText(request.LocationName);
         m.ReceivedDate = request.ReceivedDate;
         m.Remark = request.Remark?.Trim();
         if (request.Images is not null) m.ImageUrls = imageUrls;
@@ -454,13 +452,6 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4045, "部门不存在或已停用");
     }
 
-    private async Task EnsureLocationExistsAsync(int? locationId)
-    {
-        if (!locationId.HasValue) return;
-        if (!await _db.Locations.AnyAsync(x => x.Id == locationId.Value))
-            throw new BizException(4045, "存放位置不存在");
-    }
-
     private async Task EnsureActiveCustodianAsync(int? custodianId, int? departmentId)
     {
         if (!custodianId.HasValue) return;
@@ -531,13 +522,11 @@ public class TestMaterialService : ITestMaterialService
         var list = materials.ToList();
         var projectIds = list.Select(x => x.ProjectId).Distinct().ToArray();
         var deptIds = list.Where(x => x.DepartmentId.HasValue).Select(x => x.DepartmentId!.Value).Distinct().ToArray();
-        var locIds = list.Where(x => x.LocationId.HasValue).Select(x => x.LocationId!.Value).Distinct().ToArray();
         var custodianIds = list.Where(x => x.CustodianId.HasValue).Select(x => x.CustodianId!.Value).Distinct().ToArray();
         var ids = list.Select(x => x.Id).ToArray();
 
         var projects = await _db.TestProjects.Where(x => projectIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
         var depts = await _db.Departments.Where(x => deptIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
-        var locs = await _db.Locations.Where(x => locIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
         var custodians = await _db.Users.Where(x => custodianIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
         var pendingMaterialIds = await _db.MaterialFlows
             .Where(x => x.Status == "pending" && ids.Contains(x.MaterialId))
@@ -557,8 +546,7 @@ public class TestMaterialService : ITestMaterialService
             Quantity = x.Quantity,
             DepartmentId = x.DepartmentId,
             DepartmentName = x.DepartmentId.HasValue ? depts.GetValueOrDefault(x.DepartmentId.Value) : null,
-            LocationId = x.LocationId,
-            LocationName = x.LocationId.HasValue ? locs.GetValueOrDefault(x.LocationId.Value) : null,
+            LocationName = x.LocationName,
             CustodianId = x.CustodianId,
             CustodianName = x.CustodianId.HasValue ? custodians.GetValueOrDefault(x.CustodianId.Value) : null,
             ReceivedDate = x.ReceivedDate,
@@ -578,7 +566,14 @@ public class TestMaterialService : ITestMaterialService
         EnsureMaxLength(request.VendorName, 100, "供应商");
         EnsureMaxLength(request.Model, 100, "型号");
         EnsureMaxLength(request.Brand, 100, "品牌");
+        EnsureMaxLength(request.LocationName, 100, "存放位置");
         EnsureMaxLength(request.Remark, 500, "备注");
+    }
+
+    private static string? NormalizeOptionalText(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
 
     private static void EnsureMaxLength(string? value, int maxLength, string field)

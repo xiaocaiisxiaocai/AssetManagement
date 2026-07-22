@@ -51,11 +51,6 @@ export interface CategoryNode {
   remark?: null | string;
 }
 
-export interface LocationNode {
-  id: number;
-  name: string;
-}
-
 export interface SystemSetting {
   description?: null | string;
   id: number;
@@ -95,10 +90,6 @@ export type CategoryPayload = {
   codeSeg: string;
   parentId?: null | number;
   remark?: null | string;
-};
-
-export type LocationPayload = {
-  name: string;
 };
 
 export type SettingPayload = {
@@ -162,18 +153,6 @@ export const purgeCategoryApi = (id: number) =>
 
 export const restoreCategoryApi = (id: number) =>
   unwrap(requestClient.post<ApiResult<null>>(`/categories/${id}/restore`));
-
-export const getLocationTreeApi = () =>
-  unwrap(requestClient.get<ApiResult<LocationNode[]>>('/locations/tree'));
-
-export const createLocationApi = (data: LocationPayload) =>
-  unwrap(requestClient.post<ApiResult<LocationNode>>('/locations', data));
-
-export const updateLocationApi = (id: number, data: LocationPayload) =>
-  unwrap(requestClient.put<ApiResult<LocationNode>>(`/locations/${id}`, data));
-
-export const deleteLocationApi = (id: number) =>
-  unwrap(requestClient.delete<ApiResult<null>>(`/locations/${id}`));
 
 export const getSettingsApi = () =>
   unwrap(requestClient.get<ApiResult<SystemSetting[]>>('/settings'));

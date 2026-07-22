@@ -161,7 +161,7 @@ public class AssetService : IAssetService
         EnsureAssetName(request.Name);
         EnsureCanAssignDepartment(request.DepartmentId);
         await EnsureActiveDepartment(request.DepartmentId);
-        await EnsureLocationExistsAsync(request.LocationId);
+        var locationName = NormalizeLocationName(request.LocationName);
         await EnsureActiveCustodianAsync(request.CustodianId, request.DepartmentId);
         var currentCondition = AssetConditionDictionary.NormalizeSelection(
             request.CurrentCondition,
@@ -187,7 +187,7 @@ public class AssetService : IAssetService
                 Name = request.Name.Trim(),
                 CategoryId = request.CategoryId,
                 DepartmentId = request.DepartmentId,
-                LocationId = request.LocationId,
+                LocationName = locationName,
                 CustodianId = request.CustodianId,
                 InitialCustodianId = request.CustodianId,
                 Quantity = Math.Max(request.Quantity, 1),
@@ -231,7 +231,7 @@ public class AssetService : IAssetService
         {
             throw new BizException(4046, "资产分类不存在");
         }
-        await EnsureLocationExistsAsync(request.LocationId);
+        var locationName = NormalizeLocationName(request.LocationName);
         var imageUrls = request.Images is null ? null : JoinImages(request.Images);
         var normalizedImages = SplitImages(imageUrls);
         await using var imageLease = request.Images is null
@@ -240,7 +240,7 @@ public class AssetService : IAssetService
 
         asset.Name = request.Name.Trim();
         asset.CategoryId = request.CategoryId;
-        asset.LocationId = request.LocationId;
+        asset.LocationName = locationName;
         asset.Quantity = Math.Max(request.Quantity, 1);
         asset.PurchaseDate = request.PurchaseDate;
         asset.RegistrationTime = request.RegistrationTime?.Date;
@@ -603,14 +603,6 @@ public class AssetService : IAssetService
         }
     }
 
-    private async Task EnsureLocationExistsAsync(int? locationId)
-    {
-        if (locationId.HasValue && !await _db.Locations.AnyAsync(x => x.Id == locationId.Value))
-        {
-            throw new BizException(4045, "存放位置不存在");
-        }
-    }
-
     private async Task EnsureActiveCustodianAsync(int? custodianId, int? departmentId)
     {
         if (!custodianId.HasValue)
@@ -658,11 +650,9 @@ public class AssetService : IAssetService
         var list = assets.ToList();
         var categoryIds = list.Select(x => x.CategoryId).Distinct().ToArray();
         var departmentIds = list.Where(x => x.DepartmentId.HasValue).Select(x => x.DepartmentId!.Value).Distinct().ToArray();
-        var locationIds = list.Where(x => x.LocationId.HasValue).Select(x => x.LocationId!.Value).Distinct().ToArray();
         var custodianIds = list.Where(x => x.CustodianId.HasValue).Select(x => x.CustodianId!.Value).Distinct().ToArray();
         var categories = await _db.AssetCategories.Where(x => categoryIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
         var departments = await _db.Departments.Where(x => departmentIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
-        var locations = await _db.Locations.Where(x => locationIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
         var custodians = await _db.Users.Where(x => custodianIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
         var assetIds = list.Select(x => x.Id).ToArray();
         var activeBorrowFlows = await _db.ApprovalFlows.AsNoTracking()
@@ -691,8 +681,7 @@ public class AssetService : IAssetService
                 CategoryCode = category?.Code ?? "",
                 DepartmentId = x.DepartmentId,
                 DepartmentName = x.DepartmentId.HasValue && departments.TryGetValue(x.DepartmentId.Value, out var dept) ? dept : null,
-                LocationId = x.LocationId,
-                LocationName = x.LocationId.HasValue && locations.TryGetValue(x.LocationId.Value, out var loc) ? loc : null,
+                LocationName = x.LocationName,
                 CustodianId = x.CustodianId,
                 CustodianName = x.CustodianId.HasValue && custodians.TryGetValue(x.CustodianId.Value, out var custodian) ? custodian : null,
                 CanManage = manageableDepartmentIds is null ||
@@ -729,6 +718,17 @@ public class AssetService : IAssetService
         {
             throw new BizException(4001, "资产名称不能超过 100 个字符");
         }
+    }
+
+    private static string? NormalizeLocationName(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized)) return null;
+        if (normalized.Length > 100)
+        {
+            throw new BizException(4001, "存放位置不能超过 100 个字符");
+        }
+        return normalized;
     }
 
     private static ImportPreviewRow ValidateRow(

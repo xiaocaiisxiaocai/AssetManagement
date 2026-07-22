@@ -20,7 +20,6 @@ public class AppDbContext : DbContext
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<OrganizationLevel> OrganizationLevels => Set<OrganizationLevel>();
     public DbSet<AssetCategory> AssetCategories => Set<AssetCategory>();
-    public DbSet<Location> Locations => Set<Location>();
     public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<AssetManagement.Domain.Entities.Workflow> Workflows => Set<AssetManagement.Domain.Entities.Workflow>();

@@ -14,6 +14,7 @@ public class AssetConfiguration : IEntityTypeConfiguration<Asset>
         b.Property(x => x.Name).HasMaxLength(100).IsRequired();
         b.Property(x => x.Model).HasMaxLength(100);
         b.Property(x => x.Brand).HasMaxLength(100);
+        b.Property(x => x.LocationName).HasMaxLength(100);
         b.Property(x => x.CurrentCondition).HasMaxLength(200);
         b.Property(x => x.Remark).HasMaxLength(500);
         b.Property(x => x.ImageUrls).HasMaxLength(2000);
@@ -25,7 +26,6 @@ public class AssetConfiguration : IEntityTypeConfiguration<Asset>
         b.Property(x => x.RowVersion).IsConcurrencyToken();
         b.HasOne<AssetCategory>().WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<Location>().WithMany().HasForeignKey(x => x.LocationId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<User>().WithMany().HasForeignKey(x => x.CustodianId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<User>().WithMany().HasForeignKey(x => x.InitialCustodianId).OnDelete(DeleteBehavior.Restrict);
     }

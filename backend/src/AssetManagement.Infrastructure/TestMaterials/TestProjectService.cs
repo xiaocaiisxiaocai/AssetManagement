@@ -96,9 +96,6 @@ public class TestProjectService : ITestProjectService
         var departmentIds = materials.Where(x => x.DepartmentId.HasValue).Select(x => x.DepartmentId!.Value).Distinct().ToArray();
         var departmentNames = await _db.Departments.AsNoTracking().Where(x => departmentIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name);
-        var locationIds = materials.Where(x => x.LocationId.HasValue).Select(x => x.LocationId!.Value).Distinct().ToArray();
-        var locationNames = await _db.Locations.AsNoTracking().Where(x => locationIds.Contains(x.Id))
-            .ToDictionaryAsync(x => x.Id, x => x.Name);
         var options = await _db.TestProjectOptions.AsNoTracking().ToListAsync();
         var optionLabels = options.ToDictionary(x => (x.Kind, x.Code), x => x.Label);
         var projectsById = projects.ToDictionary(x => x.Id);
@@ -140,7 +137,7 @@ public class TestProjectService : ITestProjectService
                 x.Brand ?? "",
                 x.Quantity.ToString(),
                 x.DepartmentId.HasValue ? departmentNames.GetValueOrDefault(x.DepartmentId.Value, "") : "",
-                x.LocationId.HasValue ? locationNames.GetValueOrDefault(x.LocationId.Value, "") : "",
+                x.LocationName ?? "",
                 x.CustodianId.HasValue ? userNames.GetValueOrDefault(x.CustodianId.Value, "") : "",
                 FormatDate(x.ReceivedDate),
                 x.Status == MaterialStatus.ReturnedToVendor ? "已退回厂商" : "在用",

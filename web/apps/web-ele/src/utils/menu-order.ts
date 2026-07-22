@@ -16,7 +16,6 @@ const builtInMenuOrder: Record<string, number> = {
   MaterialHome: 16,
   MaterialProjects: 17,
   AssetCategories: 18,
-  AssetLocations: 19,
   Approval: 20,
   ApprovalPending: 21,
   ApprovalMine: 22,

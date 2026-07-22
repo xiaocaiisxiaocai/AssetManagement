@@ -69,14 +69,6 @@ export function buildMaterialActionAccess(hasAccess: HasAccess) {
   };
 }
 
-export function buildLocationActionAccess(hasAccess: HasAccess) {
-  return {
-    canCreate: hasAccess(['location:create']),
-    canDelete: hasAccess(['location:delete']),
-    canEdit: hasAccess(['location:edit']),
-  };
-}
-
 export function buildWorkflowActionAccess(hasAccess: HasAccess) {
   return {
     canCreate: hasAccess(['workflow:create']),

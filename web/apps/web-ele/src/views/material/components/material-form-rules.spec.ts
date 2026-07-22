@@ -9,7 +9,7 @@ const baseForm = {
   brand: 'SAA',
   custodianId: 1,
   departmentId: 2,
-  locationId: 3,
+  locationName: '二楼实验室 B-08',
   model: 'M-100',
   name: '测试料件',
   projectId: 10,
@@ -44,13 +44,19 @@ describe('测试料件表单规则', () => {
         brand: '',
         custodianId: undefined,
         departmentId: undefined,
-        locationId: undefined,
+        locationName: '',
         model: '',
         receivedDate: undefined,
         remark: '',
         vendorName: '',
       }),
     ).toBeNull();
+  });
+
+  it('手工填写的存放位置限制为 100 个字符', () => {
+    expect(
+      validateMaterialForm({ ...baseForm, locationName: 'A'.repeat(101) }),
+    ).toBe('存放位置不能超过 100 个字符');
   });
 
   it('新增时默认保管人为项目负责人', () => {

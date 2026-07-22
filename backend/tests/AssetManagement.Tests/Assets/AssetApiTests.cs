@@ -435,19 +435,17 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Create_asset_rejects_invalid_location_and_custodian_before_saving()
+    public async Task Create_asset_accepts_manual_location_and_rejects_invalid_custodian()
     {
         await Login();
         var category = await CreateCategory();
 
-        var invalidLocationResponse = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
-            Name = "无效库位资产",
+            Name = "手工位置资产",
             CategoryId = category.Id,
-            LocationId = int.MaxValue
+            LocationName = "  三楼研发区 A-12  "
         });
-        invalidLocationResponse.StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
-        var invalidLocation = await invalidLocationResponse.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
 
         var invalidCustodianResponse = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
         {
@@ -458,10 +456,25 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         invalidCustodianResponse.StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
         var invalidCustodian = await invalidCustodianResponse.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
 
-        invalidLocation!.Code.Should().Be(4045);
-        invalidLocation.Message.Should().Be("存放位置不存在");
+        created.Data!.LocationName.Should().Be("三楼研发区 A-12");
         invalidCustodian!.Code.Should().Be(4041);
         invalidCustodian.Message.Should().Be("保管人不存在或已停用");
+    }
+
+    [Fact]
+    public async Task Create_asset_rejects_location_longer_than_100_characters()
+    {
+        await Login();
+        var category = await CreateCategory();
+
+        var response = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
+        {
+            Name = "超长位置资产",
+            CategoryId = category.Id,
+            LocationName = new string('A', 101)
+        });
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
     }
 
     [Fact]

@@ -16,10 +16,8 @@ public class PersistenceModelForeignKeyTests : IClassFixture<TestWebAppFactory>
     {
         { typeof(Asset), nameof(Asset.CategoryId), typeof(AssetCategory) },
         { typeof(Asset), nameof(Asset.DepartmentId), typeof(Department) },
-        { typeof(Asset), nameof(Asset.LocationId), typeof(Location) },
         { typeof(Asset), nameof(Asset.CustodianId), typeof(User) },
         { typeof(TestMaterial), nameof(TestMaterial.DepartmentId), typeof(Department) },
-        { typeof(TestMaterial), nameof(TestMaterial.LocationId), typeof(Location) },
         { typeof(TestMaterial), nameof(TestMaterial.CustodianId), typeof(User) },
         { typeof(TestProject), nameof(TestProject.OwnerId), typeof(User) },
         { typeof(TestProjectFollowup), nameof(TestProjectFollowup.FilledById), typeof(User) },

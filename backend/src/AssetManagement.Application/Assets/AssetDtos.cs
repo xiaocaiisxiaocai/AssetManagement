@@ -12,7 +12,6 @@ public record AssetDto
     public string CategoryCode { get; init; } = "";
     public int? DepartmentId { get; init; }
     public string? DepartmentName { get; init; }
-    public int? LocationId { get; init; }
     public string? LocationName { get; init; }
     public int? CustodianId { get; init; }
     public string? CustodianName { get; init; }
@@ -54,7 +53,8 @@ public record CreateAssetRequest
     public string Name { get; init; } = "";
     public int CategoryId { get; init; }
     public int? DepartmentId { get; init; }
-    public int? LocationId { get; init; }
+    [StringLength(100)]
+    public string? LocationName { get; init; }
     public int? CustodianId { get; init; }
     public int Quantity { get; init; } = 1;
     public DateTime? PurchaseDate { get; init; }
@@ -71,7 +71,8 @@ public record UpdateAssetRequest
     public string Name { get; init; } = "";
     public int CategoryId { get; init; }
     public int? DepartmentId { get; init; }
-    public int? LocationId { get; init; }
+    [StringLength(100)]
+    public string? LocationName { get; init; }
     public int? CustodianId { get; init; }
     public int Quantity { get; init; } = 1;
     public AssetStatus Status { get; init; } = AssetStatus.Available;

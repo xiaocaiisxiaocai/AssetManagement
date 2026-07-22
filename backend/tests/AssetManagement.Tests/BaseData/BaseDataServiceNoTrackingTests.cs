@@ -31,24 +31,6 @@ public class BaseDataServiceNoTrackingTests : MySqlFixtureBase
     }
 
     [Fact]
-    public async Task Update_location_persists_when_global_no_tracking_is_enabled()
-    {
-        var service = CreateService();
-        var location = new Location { Name = "原库位" };
-        _db.Locations.Add(location);
-        await _db.SaveChangesAsync();
-
-        await service.UpdateLocationAsync(location.Id, new UpdateLocationRequest
-        {
-            Name = "新库位"
-        });
-
-        await using var verifyDb = CreateNoTrackingContext();
-        var saved = await verifyDb.Locations.AsNoTracking().SingleAsync(x => x.Id == location.Id);
-        saved.Name.Should().Be("新库位");
-    }
-
-    [Fact]
     public async Task Save_settings_updates_value_without_changing_description_when_global_no_tracking_is_enabled()
     {
         var service = CreateService();

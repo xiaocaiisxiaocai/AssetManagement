@@ -9,7 +9,6 @@ import type {
   CategoryNode,
   DepartmentNode,
   DepartmentOptionNode,
-  LocationNode,
 } from '#/api/base-data';
 import type { UserOptionDto } from '#/api/user';
 
@@ -49,7 +48,6 @@ import {
   getCategoryTreeApi,
   getDepartmentOptionsApi,
   getDepartmentTreeApi,
-  getLocationTreeApi,
 } from '#/api/base-data';
 import {
   getUserListApi,
@@ -126,7 +124,6 @@ const categoryPageSize = ref(20);
 const hierarchyKeyword = ref('');
 const categories = ref<CategoryNode[]>([]);
 const departments = ref<(DepartmentNode | DepartmentOptionNode)[]>([]);
-const locations = ref<LocationNode[]>([]);
 const users = ref<UserOptionDto[]>([]);
 const currentAssetForAction = ref<AssetItem | null>(null);
 const detailVisible = ref(false);
@@ -180,7 +177,6 @@ const categoryOptions = computed(() => flattenCategories(categories.value));
 const activeDepartmentOptions = computed(() =>
   flattenActiveDepartments(departments.value),
 );
-const locationOptions = computed(() => flattenLocations(locations.value));
 const hierarchyContext = computed(() => getHierarchyContext());
 const hierarchyNodes = computed(() => hierarchyContext.value.nodes);
 const hierarchyParent = computed(() => hierarchyContext.value.parent);
@@ -257,15 +253,11 @@ async function loadDictionaries() {
       ? getCategoryTreeApi()
       : Promise.resolve([]),
     departmentRequest,
-    hasAccessByCodes(['location:view'])
-      ? getLocationTreeApi()
-      : Promise.resolve([]),
     userRequest,
   ]);
   if (requests[0].status === 'fulfilled') categories.value = requests[0].value;
   if (requests[1].status === 'fulfilled') departments.value = requests[1].value;
-  if (requests[2].status === 'fulfilled') locations.value = requests[2].value;
-  if (requests[3].status === 'fulfilled') users.value = requests[3].value;
+  if (requests[2].status === 'fulfilled') users.value = requests[2].value;
 }
 
 async function loadData() {
@@ -625,10 +617,6 @@ function flattenCategories(nodes: CategoryNode[], level = 0): FlatOption[] {
     },
     ...flattenCategories(node.children, level + 1),
   ]);
-}
-
-function flattenLocations(nodes: LocationNode[]): FlatOption[] {
-  return nodes.map((node) => ({ id: node.id, label: node.name }));
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -1210,7 +1198,6 @@ watch(detailVisible, (opened) => {
         :category-options="categoryOptions"
         :default-category-id="formDefaultCategoryId"
         :department-options="activeDepartmentOptions"
-        :location-options="locationOptions"
         :search-users="searchUsers"
         :user-options-loading="userOptionsLoading"
         :users="users"

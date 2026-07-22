@@ -15,6 +15,7 @@ public class TestMaterialConfiguration : IEntityTypeConfiguration<TestMaterial>
         b.Property(x => x.VendorName).HasMaxLength(100);
         b.Property(x => x.Model).HasMaxLength(100);
         b.Property(x => x.Brand).HasMaxLength(100);
+        b.Property(x => x.LocationName).HasMaxLength(100);
         b.Property(x => x.ImageUrls).HasMaxLength(2000);
         b.Property(x => x.Remark).HasMaxLength(500);
         b.HasIndex(x => x.MaterialNo).IsUnique();
@@ -32,7 +33,6 @@ public class TestMaterialConfiguration : IEntityTypeConfiguration<TestMaterial>
             .HasForeignKey(x => x.ProjectId)
             .OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<Location>().WithMany().HasForeignKey(x => x.LocationId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<User>().WithMany().HasForeignKey(x => x.CustodianId).OnDelete(DeleteBehavior.Restrict);
     }
 }
