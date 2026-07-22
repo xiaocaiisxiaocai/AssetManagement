@@ -12,6 +12,16 @@
 
 ## 2. 后端发布
 
+推荐在已安装 .NET 8 SDK、Node.js 20+ 和 pnpm 9.15.0 的构建机上，从仓库根目录一次生成 IIS 同源发布包：
+
+```powershell
+.\deploy\build-iis-package.ps1
+```
+
+默认输出 `deploy\artifacts\AssetManagement-IIS` 和同名 ZIP。脚本会发布 Release 后端、构建正式 `web-ele` 前端、合并成单一 IIS 站点目录，并生成校验清单。输出已存在时需要显式使用 `-Force`，脚本不会默认清空目录。
+
+仅当依赖已经严格按锁文件安装时，才可使用 `-SkipInstall`；不建议跳过默认类型检查。
+
 在仓库根目录执行：
 
 ```powershell
@@ -55,6 +65,16 @@ FLUSH PRIVILEGES;
 
 确认迁移和种子完成后，生产环境建议改回 `false`。
 
+`build-iis-package.ps1` 生成的首次启动配置已将上述两项设为 `true`。空库首次启动前必须在 IIS 中设置 `ASSET_ADMIN_PASSWORD`。访问 `/api/health/ready` 确认成功后，在站点目录运行 `关闭数据库自动初始化.ps1`，然后回收应用程序池。
+
+如需把现有组织架构和人员一并写入空库，请在构建机准备已忽略的 `deploy\initial-data.local.json`（字段格式参考 `deploy\initial-data.example.json`），并执行：
+
+```powershell
+.\deploy\build-iis-package.ps1 -IncludeInitialData -Force
+```
+
+生成的 IIS 包会通过 `ASSET_INITIAL_DATA_PATH` 在首次种子阶段导入组织、人员、角色、直属主管和组织负责人。人员密码仅接受现有系统兼容的密码哈希，不在仓库或脚本中保存明文密码。运行 `关闭数据库自动初始化.ps1` 时会删除站点目录中的一次性初始化文件；包含该文件的发布 ZIP 也应在部署完成后妥善删除。
+
 ### 升级前的数据完整性检查
 
 `20260719112523_HardenTestProjectAndMaterialIntegrity` 迁移会为项目编号/名称、活动料件名称增加唯一约束，并为料件和项目跟进增加项目外键。迁移会在执行任何 MySQL DDL 前检查历史重复数据和孤儿数据；若报错包含 `migration blocked:`，应先备份数据库，按错误中的 `duplicate`/`orphan` 类型人工核对并修复数据，然后重新执行迁移。预检失败时不会部分创建业务索引、外键或序列表。
@@ -77,7 +97,7 @@ dotnet C:\asset-management\AssetManagement.Api.dll --urls http://127.0.0.1:8080
 ### 方式 B：IIS
 
 1. 安装 ASP.NET Core Hosting Bundle。
-2. 新建站点，物理路径指向后端发布目录。
+2. 新建站点，物理路径指向 `build-iis-package.ps1` 生成的合并发布目录。根路径由 IIS 直接提供前端静态文件，`/api/*` 由 ASP.NET Core Module V2 处理。
 3. 应用程序池设置为“无托管代码”。
 4. 设置环境变量 `ASPNETCORE_ENVIRONMENT=Production`。
 5. 为站点绑定有效的内网 HTTPS 证书并启用 HTTP→HTTPS 重定向；反向代理必须传递 `X-Forwarded-Proto`，且只信任 `ForwardedHeaders:KnownProxies` 中列出的代理地址。
@@ -91,6 +111,8 @@ dotnet C:\asset-management\AssetManagement.Api.dll --urls http://127.0.0.1:8080
 ## 4. 前端构建与托管
 
 生产前端接口前缀为 `/api`，适合同源部署。
+
+前端的 npm/pnpm 依赖仅在构建机上使用，会被 Vite 打包到 `dist` 中的本地 JS/CSS/图片文件；IIS 服务器不需要安装 Node.js、npm 或 pnpm。正式 `web-ele` 已关闭百度统计外链，并将默认头像与 Logo 指向包内的 `/images/saa.png`；发布脚本还会扫描已知运行时外链，发现时直接失败。
 
 ```powershell
 cd web

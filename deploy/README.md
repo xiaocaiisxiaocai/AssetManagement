@@ -3,3 +3,11 @@
 本文件原有内容基于已废弃的 SQLite 部署方案，现仅保留入口以避免继续误用。旧备份脚本和旧一键部署脚本均已改为安全失败，不会再复制、删除或发布文件。
 
 当前系统使用 **ASP.NET Core 8 + MySQL 5.7+**。请以 [README-部署.md](./README-部署.md) 为唯一现行部署说明，并使用 `appsettings.Production.json` 中的 MySQL 占位符模板；真实连接字符串、JWT 密钥和管理员初始密码必须通过部署配置或环境变量注入，不得提交到仓库。
+
+IIS 发布包使用以下新脚本生成：
+
+```powershell
+.\deploy\build-iis-package.ps1
+```
+
+输出位于 `deploy\artifacts\AssetManagement-IIS` 及同名 ZIP，不包含任何真实密钥。

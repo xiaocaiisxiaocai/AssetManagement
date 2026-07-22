@@ -23,12 +23,18 @@ public static class DbSeeder
         try
         {
             EnsureOrganizationLevels(db);
+            var initialDataPath = Environment.GetEnvironmentVariable("ASSET_INITIAL_DATA_PATH");
             if (db.Users.Any())
             {
                 RemoveLocationDictionaryArtifacts(db);
                 SeedIncremental(db);
                 SeedTestMaterialModule(db);
                 EnsureEmployeeFileUploadPermission(db);
+                if (!string.IsNullOrWhiteSpace(initialDataPath)
+                    && DeploymentInitialDataSeeder.FileExists(initialDataPath))
+                {
+                    DeploymentInitialDataSeeder.Seed(db, initialDataPath);
+                }
                 MarkCoreRoleDefaultsInitialized(db);
                 return;
             }
@@ -141,6 +147,10 @@ public static class DbSeeder
             UserId = admin.Id,
             RoleId = adminRole.Id
         });
+        if (!string.IsNullOrWhiteSpace(initialDataPath))
+        {
+            DeploymentInitialDataSeeder.Seed(db, initialDataPath);
+        }
         db.SystemSettings.AddRange(
             new SystemSetting { Key = "audit_retention_months", Value = "12", Description = "审计日志保留月数（历史兼容）" },
             new SystemSetting { Key = "audit_retention_days", Value = "30", Description = "审计日志保留天数（7/14/30）" },

@@ -9,8 +9,7 @@ const defaultPreferences: Preferences = {
     colorWeakMode: false,
     compact: false,
     contentCompact: 'wide',
-    defaultAvatar:
-      'https://unpkg.com/@vbenjs/static-source@0.1.7/source/avatar-v1.webp',
+    defaultAvatar: '/images/saa.png',
     dynamicTitle: true,
     enableCheckUpdates: true,
     enablePreferences: true,
@@ -50,7 +49,7 @@ const defaultPreferences: Preferences = {
   },
   logo: {
     enable: true,
-    source: 'https://unpkg.com/@vbenjs/static-source@0.1.7/source/logo-v1.webp',
+    source: '/images/saa.png',
   },
   navigation: {
     accordion: true,

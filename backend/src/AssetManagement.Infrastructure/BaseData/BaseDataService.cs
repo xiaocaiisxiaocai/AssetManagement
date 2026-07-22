@@ -85,8 +85,21 @@ public class BaseDataService : IBaseDataService
         await EnsureDepartmentNameAvailableAsync(name);
         await EnsureDepartmentManagerAvailableAsync(request.ManagerId);
         await ValidateDepartmentParentAsync(null, request.ParentId);
+        var parentLevelCode = await GetDepartmentLevelCodeAsync(request.ParentId);
+        var requestedLevelCode = request.OrganizationLevelCode;
+        if (string.IsNullOrWhiteSpace(requestedLevelCode))
+        {
+            requestedLevelCode = parentLevelCode is null
+                ? "company"
+                : OrganizationHierarchyPolicy.GetDefaultChildCode(parentLevelCode);
+        }
+        if (string.IsNullOrWhiteSpace(requestedLevelCode))
+        {
+            throw new BizException(4001, $"{OrganizationHierarchyPolicy.GetLevelName(parentLevelCode!)}不能新增下级组织");
+        }
         var organizationLevel = await ResolveOrganizationLevelAsync(
-            request.OrganizationLevelCode ?? "department");
+            requestedLevelCode);
+        await ValidateOrganizationHierarchyAsync(null, request.ParentId, organizationLevel.Code);
         var department = new Department
         {
             ParentId = request.ParentId,
@@ -125,7 +138,7 @@ public class BaseDataService : IBaseDataService
         {
             await EnsureDepartmentManagerAvailableAsync(request.ManagerId, id);
         }
-        OrganizationLevelInfo? organizationLevel = null;
+        OrganizationLevelInfo? organizationLevel;
         if (!string.IsNullOrWhiteSpace(request.OrganizationLevelCode))
         {
             var resolved = await ResolveOrganizationLevelAsync(request.OrganizationLevelCode);
@@ -139,6 +152,14 @@ public class BaseDataService : IBaseDataService
                 .Select(x => new OrganizationLevelInfo(x.Code, x.Name))
                 .SingleOrDefaultAsync();
         }
+        else
+        {
+            throw new BizException(4001, "组织层级不能为空");
+        }
+        await ValidateOrganizationHierarchyAsync(
+            id,
+            request.ParentId,
+            organizationLevel?.Code ?? throw new BizException(4001, "组织层级不存在或已停用"));
         department.ParentId = request.ParentId;
         department.Name = name;
         department.ManagerId = request.ManagerId;
@@ -259,6 +280,70 @@ public class BaseDataService : IBaseDataService
             {
                 throw new BizException(4094, "部门层级存在无效父级");
             }
+        }
+    }
+
+    private async Task<string?> GetDepartmentLevelCodeAsync(int? departmentId)
+    {
+        if (!departmentId.HasValue)
+        {
+            return null;
+        }
+
+        return await _db.Departments.AsNoTracking()
+            .Where(x => x.Id == departmentId.Value)
+            .Select(x => x.OrganizationLevelId.HasValue
+                ? _db.OrganizationLevels
+                    .Where(level => level.Id == x.OrganizationLevelId.Value)
+                    .Select(level => level.Code)
+                    .SingleOrDefault()
+                : null)
+            .SingleOrDefaultAsync();
+    }
+
+    private async Task ValidateOrganizationHierarchyAsync(
+        int? departmentId,
+        int? parentId,
+        string levelCode)
+    {
+        var parentLevelCode = await GetDepartmentLevelCodeAsync(parentId);
+        if (parentId.HasValue && string.IsNullOrWhiteSpace(parentLevelCode))
+        {
+            throw new BizException(4094, "上级组织未配置有效的组织层级");
+        }
+        if (parentLevelCode is not null
+            && !OrganizationHierarchyPolicy.CanContain(parentLevelCode, levelCode))
+        {
+            var allowedNames = OrganizationHierarchyPolicy.GetAllowedChildCodes(parentLevelCode)
+                .Select(OrganizationHierarchyPolicy.GetLevelName)
+                .ToArray();
+            var parentName = OrganizationHierarchyPolicy.GetLevelName(parentLevelCode);
+            var message = allowedNames.Length == 0
+                ? $"{parentName}不能新增下级组织"
+                : $"{parentName}下只能新增{string.Join("或", allowedNames)}";
+            throw new BizException(4001, message);
+        }
+
+        if (!departmentId.HasValue)
+        {
+            return;
+        }
+
+        var childLevelCodes = await _db.Departments.AsNoTracking()
+            .Where(x => x.ParentId == departmentId.Value && x.OrganizationLevelId.HasValue)
+            .Select(x => _db.OrganizationLevels
+                .Where(level => level.Id == x.OrganizationLevelId!.Value)
+                .Select(level => level.Code)
+                .Single())
+            .Distinct()
+            .ToListAsync();
+        var invalidChildCode = childLevelCodes.FirstOrDefault(childCode =>
+            !OrganizationHierarchyPolicy.CanContain(levelCode, childCode));
+        if (invalidChildCode is not null)
+        {
+            throw new BizException(
+                4001,
+                $"当前组织下已有{OrganizationHierarchyPolicy.GetLevelName(invalidChildCode)}，不能将层级改为{OrganizationHierarchyPolicy.GetLevelName(levelCode)}");
         }
     }
 

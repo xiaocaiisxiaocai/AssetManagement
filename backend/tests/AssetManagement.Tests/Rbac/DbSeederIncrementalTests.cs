@@ -10,6 +10,72 @@ namespace AssetManagement.Tests.Rbac;
 public class DbSeederIncrementalTests : MySqlFixtureBase
 {
     [Fact]
+    public void Deployment_initial_data_seeds_organization_people_roles_and_managers()
+    {
+        DbSeeder.Seed(_db);
+        var file = Path.Combine(Path.GetTempPath(), $"asset-initial-{Guid.NewGuid():N}.json");
+        File.WriteAllText(file, $$"""
+        {
+          "departments": [
+            {
+              "key": "company",
+              "name": "初始化公司{{Guid.NewGuid():N}}",
+              "organizationLevelCode": "company"
+            },
+            {
+              "key": "department",
+              "name": "初始化部门{{Guid.NewGuid():N}}",
+              "organizationLevelCode": "department",
+              "parentKey": "company",
+              "managerEmployeeNo": "SEED-9001"
+            }
+          ],
+          "users": [
+            {
+              "employeeNo": "SEED-9001",
+              "name": "初始化主管",
+              "passwordHash": "{{BCrypt.Net.BCrypt.HashPassword("TestPass123")}}",
+              "roleCode": "supervisor",
+              "departmentKey": "department"
+            },
+            {
+              "employeeNo": "SEED-9002",
+              "name": "初始化员工",
+              "passwordHash": "{{BCrypt.Net.BCrypt.HashPassword("TestPass123")}}",
+              "roleCode": "employee",
+              "departmentKey": "department",
+              "supervisorEmployeeNo": "SEED-9001"
+            }
+          ]
+        }
+        """);
+
+        try
+        {
+            DeploymentInitialDataSeeder.Seed(_db, file);
+            DeploymentInitialDataSeeder.Seed(_db, file);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+
+        _db.ChangeTracker.Clear();
+        var department = _db.Departments.Single(x => x.Name.StartsWith("初始化部门"));
+        var supervisor = _db.Users.Single(x => x.EmployeeNo == "SEED-9001");
+        var employee = _db.Users.Single(x => x.EmployeeNo == "SEED-9002");
+        department.ManagerId.Should().Be(supervisor.Id);
+        employee.DepartmentId.Should().Be(department.Id);
+        employee.SupervisorId.Should().Be(supervisor.Id);
+        _db.UserRoles.Single(x => x.UserId == employee.Id).RoleId
+            .Should().Be(_db.Roles.Single(x => x.Code == "employee").Id);
+        _db.Users.Count(x => x.EmployeeNo == "SEED-9001" || x.EmployeeNo == "SEED-9002")
+            .Should().Be(2, "重复初始化不能重复创建人员");
+        _db.Departments.Count(x => x.Name.StartsWith("初始化公司") || x.Name.StartsWith("初始化部门"))
+            .Should().Be(2, "重复初始化不能重复创建组织架构");
+    }
+
+    [Fact]
     public void Historical_workflow_name_respects_database_length_at_boundary()
     {
         var workflow = new WorkflowEntity { Id = int.MaxValue, Name = new string('长', 100) };

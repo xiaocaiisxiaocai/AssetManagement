@@ -1,0 +1,33 @@
+{
+  "departments": [
+    {
+      "key": "example-company",
+      "name": "示例公司",
+      "organizationLevelCode": "company",
+      "parentKey": null,
+      "managerEmployeeNo": null,
+      "isActive": true
+    },
+    {
+      "key": "example-division",
+      "name": "示例事业部",
+      "organizationLevelCode": "division",
+      "parentKey": "example-company",
+      "managerEmployeeNo": "9001",
+      "isActive": true
+    }
+  ],
+  "users": [
+    {
+      "employeeNo": "9001",
+      "name": "示例主管",
+      "passwordHash": "请填入系统兼容的 BCrypt 密码哈希",
+      "roleCode": "supervisor",
+      "departmentKey": "example-division",
+      "supervisorEmployeeNo": null,
+      "email": null,
+      "phone": null,
+      "isActive": true
+    }
+  ]
+}

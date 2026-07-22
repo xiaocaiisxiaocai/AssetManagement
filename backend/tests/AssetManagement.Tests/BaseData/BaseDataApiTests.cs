@@ -57,6 +57,72 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Organization_hierarchy_allows_division_to_skip_to_section_and_rejects_children_under_section()
+    {
+        await Login();
+        var company = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("公司"),
+            OrganizationLevelCode = "company"
+        });
+        var division = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("事业部"),
+            ParentId = company.Data!.Id,
+            OrganizationLevelCode = "division"
+        });
+        var section = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("直属课别"),
+            ParentId = division.Data!.Id,
+            OrganizationLevelCode = "section"
+        });
+
+        var invalidResponse = await _client.PostAsJsonAsync("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("非法下级"),
+            ParentId = section.Data!.Id,
+            OrganizationLevelCode = "department"
+        });
+        var invalid = await invalidResponse.Content.ReadFromJsonAsync<ApiResult<DepartmentNodeDto>>();
+
+        section.Data!.OrganizationLevelCode.Should().Be("section");
+        invalidResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        invalid!.Code.Should().Be(4001);
+        invalid.Message.Should().Be("课别不能新增下级组织");
+    }
+
+    [Fact]
+    public async Task Organization_hierarchy_defaults_follow_company_division_department_section_order()
+    {
+        await Login();
+        var company = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("默认公司")
+        });
+        var division = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("默认事业部"),
+            ParentId = company.Data!.Id
+        });
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("默认部门"),
+            ParentId = division.Data!.Id
+        });
+        var section = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("默认课别"),
+            ParentId = department.Data!.Id
+        });
+
+        company.Data.OrganizationLevelCode.Should().Be("company");
+        division.Data.OrganizationLevelCode.Should().Be("division");
+        department.Data.OrganizationLevelCode.Should().Be("department");
+        section.Data!.OrganizationLevelCode.Should().Be("section");
+    }
+
+    [Fact]
     public async Task Department_tree_returns_nested_children()
     {
         await Login();

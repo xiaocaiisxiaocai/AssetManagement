@@ -9,6 +9,7 @@ export const overridesPreferences = defineOverridesPreferences({
   // overrides
   app: {
     accessMode: 'backend',
+    defaultAvatar: '/images/saa.png',
     // 是否开启检查更新
     enableCheckUpdates: false,
     // 检查更新的时间间隔，单位为分钟

@@ -25,6 +25,7 @@ import {
   ElTable,
   ElTableColumn,
   ElTag,
+  ElTreeSelect,
 } from 'element-plus';
 
 import {
@@ -42,6 +43,11 @@ import {
 } from '#/utils/runtime-settings';
 import { mergeUserOptions } from '#/utils/user-options';
 import { buildDepartmentActionAccess } from '#/views/permissions/action-access';
+
+import {
+  getAllowedOrganizationLevelCodes,
+  getDefaultOrganizationLevelCode,
+} from './organization-hierarchy';
 
 defineOptions({ name: 'AdminDepartments' });
 
@@ -77,6 +83,44 @@ const pagedDepartments = computed(() => {
   const start = (page.value - 1) * pageSize.value;
   return departments.value.slice(start, start + pageSize.value);
 });
+
+function findDepartment(
+  id: null | number | undefined,
+  nodes = departments.value,
+): DepartmentNode | undefined {
+  if (!id) return undefined;
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const child = findDepartment(id, node.children);
+    if (child) return child;
+  }
+  return undefined;
+}
+
+const allowedOrganizationLevelCodes = computed(() =>
+  getAllowedOrganizationLevelCodes(
+    findDepartment(form.parentId)?.organizationLevelCode,
+  ),
+);
+
+const selectableOrganizationLevels = computed(() =>
+  organizationLevels.value.filter((level) =>
+    allowedOrganizationLevelCodes.value.includes(level.code),
+  ),
+);
+
+function canCreateChild(row: DepartmentNode) {
+  return getAllowedOrganizationLevelCodes(row.organizationLevelCode).length > 0;
+}
+
+function onParentChange() {
+  const parentLevelCode = findDepartment(form.parentId)?.organizationLevelCode;
+  const allowedCodes = getAllowedOrganizationLevelCodes(parentLevelCode);
+  if (!allowedCodes.includes(form.organizationLevelCode ?? '')) {
+    form.organizationLevelCode =
+      getDefaultOrganizationLevelCode(parentLevelCode);
+  }
+}
 
 async function loadUsers() {
   await searchUsers('');
@@ -126,12 +170,21 @@ async function loadOrganizationLevels() {
 }
 
 function openCreate(parent?: DepartmentNode) {
+  const allowedCodes = getAllowedOrganizationLevelCodes(
+    parent?.organizationLevelCode,
+  );
+  if (parent && allowedCodes.length === 0) {
+    ElMessage.warning('课别不能新增下级组织');
+    return;
+  }
   editingId.value = null;
   Object.assign(form, {
     isActive: true,
     managerId: undefined,
     name: '',
-    organizationLevelCode: '',
+    organizationLevelCode: getDefaultOrganizationLevelCode(
+      parent?.organizationLevelCode,
+    ),
     parentId: parent?.id ?? null,
   });
   dialogVisible.value = true;
@@ -151,7 +204,7 @@ function openEdit(row: DepartmentNode) {
 
 async function save() {
   if (!form.name.trim()) {
-    ElMessage.warning('请填写部门名称');
+    ElMessage.warning('请填写组织架构名称');
     return;
   }
   if (!form.organizationLevelCode) {
@@ -177,7 +230,7 @@ async function save() {
 
 async function remove(row: DepartmentNode) {
   try {
-    await ElMessageBox.confirm(`确认删除部门「${row.name}」？`, '删除确认', {
+    await ElMessageBox.confirm(`确认删除组织架构「${row.name}」？`, '删除确认', {
       type: 'warning',
     });
   } catch {
@@ -211,7 +264,7 @@ onMounted(async () => {
           type="primary"
           @click="openCreate()"
         >
-          新增部门
+          新增组织架构
         </ElButton>
       </div>
 
@@ -225,7 +278,7 @@ onMounted(async () => {
           v-loading="loading"
         >
           <ElTableColumn align="center" label="ID" prop="id" width="90" />
-          <ElTableColumn label="部门名称" min-width="200" prop="name" />
+          <ElTableColumn label="组织架构名称" min-width="200" prop="name" />
           <ElTableColumn label="组织层级" min-width="120">
             <template #default="{ row }">
               <ElTag size="small" type="info">
@@ -249,7 +302,7 @@ onMounted(async () => {
           <ElTableColumn align="center" fixed="right" label="操作" width="240">
             <template #default="{ row }">
               <ElButton
-                v-if="departmentActionAccess.canCreate"
+                v-if="departmentActionAccess.canCreate && canCreateChild(row)"
                 link
                 size="small"
                 type="primary"
@@ -308,19 +361,26 @@ onMounted(async () => {
 
       <ElDialog
         v-model="dialogVisible"
-        :title="editingId ? '编辑部门' : '新增部门'"
+        :title="editingId ? '编辑组织架构' : '新增组织架构'"
         width="500px"
       >
         <ElForm label-width="100px">
-          <ElFormItem label="上级 ID">
-            <ElInput
+          <ElFormItem label="上级组织">
+            <ElTreeSelect
+              :data="departments"
+              :props="{ children: 'children', label: 'name' }"
+              check-strictly
               clearable
-              placeholder="留空为事业部/顶级组织"
-              v-model.number="form.parentId"
+              node-key="id"
+              placeholder="留空为顶级组织"
+              style="width: 100%"
+              value-key="id"
+              v-model="form.parentId"
+              @change="onParentChange"
             />
           </ElFormItem>
-          <ElFormItem label="部门名称" required>
-            <ElInput v-model="form.name" placeholder="请输入部门名称" />
+          <ElFormItem label="组织架构名称" required>
+            <ElInput v-model="form.name" placeholder="请输入组织架构名称" />
           </ElFormItem>
           <ElFormItem label="组织层级" required>
             <ElSelect
@@ -329,7 +389,7 @@ onMounted(async () => {
               style="width: 100%"
             >
               <ElOption
-                v-for="level in organizationLevels"
+                v-for="level in selectableOrganizationLevels"
                 :key="level.code"
                 :label="level.name"
                 :value="level.code"

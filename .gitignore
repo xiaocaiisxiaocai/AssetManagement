@@ -50,3 +50,7 @@ web/e2e-interaction-test.js
 
 # 本机开发私密配置文档，禁止提交
 docs/本地开发配置.local.md
+deploy/initial-data.local.json
+
+# IIS 发布包，由 deploy/build-iis-package.ps1 生成
+deploy/artifacts/
