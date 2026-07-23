@@ -131,7 +131,7 @@ async function confirmImport() {
     </div>
 
     <div class="project-import-hint">
-      请使用模板填写，项目类型和进度可填编码或名称，负责人请填写唯一工号。
+      请使用模板填写，项目类型和项目进度均填写中文名称，负责人请填写唯一工号。
     </div>
 
     <ElTable :data="rows" border max-height="420">

@@ -1006,6 +1006,13 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
                 .Where(x => x.Name.LocalName == "sheet")
                 .Select(x => (string?)x.Attribute("name"))
                 .Should().Equal("测试项目", "填写说明");
+            var worksheetText = string.Join("\n", archive.Entries
+                .Where(x => x.FullName.StartsWith("xl/worksheets/sheet", StringComparison.Ordinal))
+                .Select(entry => ReadZipXml(entry).ToString()));
+            worksheetText.Should().Contain("样机测试")
+                .And.Contain("测试中")
+                .And.NotContain("prototype")
+                .And.NotContain("testing");
         }
 
         var file = XlsxTable.Write(new[]
@@ -1017,8 +1024,8 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             },
             new[]
             {
-                code, name, "prototype", owner.EmployeeNo, "2026-07-01",
-                "2026-07-31", "testing", "", "14", "批量导入校验"
+                code, name, "样机测试", owner.EmployeeNo, "2026-07-01",
+                "2026-07-31", "测试中", "", "14", "批量导入校验"
             }
         });
 
@@ -1027,7 +1034,10 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             file);
         preview.Data!.SuccessCount.Should().Be(1);
         preview.Data.FailedCount.Should().Be(0);
-        preview.Data.Rows.Single().OwnerName.Should().Be(owner.Name);
+        preview.Data.Rows.Single().Should().Match<TestProjectImportRowDto>(row =>
+            row.OwnerName == owner.Name
+            && row.ProjectTypeLabel == "样机测试"
+            && row.ProgressLabel == "测试中");
 
         var confirmed = await PostFile<ApiResult<TestProjectImportResultDto>>(
             "/api/test-projects/import/confirm",
@@ -1041,6 +1051,8 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             x.Code == code
             && x.Name == name
             && x.OwnerId == owner.Id
+            && x.ProjectTypeLabel == "样机测试"
+            && x.ProgressLabel == "测试中"
             && x.TestStatus == "批量导入校验");
     }
 
@@ -1059,8 +1071,8 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             },
             new[]
             {
-                code, "导入错误项目一", "prototype", owner.EmployeeNo, "2026-07-10",
-                "2026-07-01", "testing", "2026-07-20", "0", ""
+                code, "导入错误项目一", "样机测试", owner.EmployeeNo, "2026-07-10",
+                "2026-07-01", "测试中", "2026-07-20", "0", ""
             },
             new[]
             {

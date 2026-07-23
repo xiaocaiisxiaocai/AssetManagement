@@ -177,21 +177,21 @@ public class TestProjectService : ITestProjectService
             new[] { "字段", "填写说明" },
             new[] { "项目编号", "必填，系统内唯一，最多 50 个字符" },
             new[] { "项目名称", "必填，系统内唯一，最多 100 个字符" },
-            new[] { "项目类型", "必填，可填写配置编码或名称" },
+            new[] { "项目类型", "必填，请填写下方列出的中文名称" },
             new[] { "负责人工号", "必填，必须是启用用户的工号" },
             new[] { "开始时间", "必填，格式 yyyy-MM-dd" },
             new[] { "计划完成时间", "必填，不能早于开始时间" },
-            new[] { "项目进度", "必填，可填写配置编码或名称" },
+            new[] { "项目进度", "必填，请填写下方列出的中文名称" },
             new[] { "结案时间", "仅已结案项目必填，格式 yyyy-MM-dd" },
             new[] { "跟进间隔(天)", "选填，留空默认 14，范围 1-365" },
             new[] { "测试情况", "选填，最多 1000 个字符" },
             new[] { "", "" },
-            new[] { "可用项目类型", "编码 / 名称" }
+            new[] { "可用项目类型", "中文名称" }
         };
-        instructions.AddRange(projectTypes.Select(x => new[] { "", $"{x.Code} / {x.Label}" }));
+        instructions.AddRange(projectTypes.Select(x => new[] { "", x.Label }));
         instructions.Add(new[] { "", "" });
-        instructions.Add(new[] { "可用项目进度", "编码 / 名称" });
-        instructions.AddRange(progressOptions.Select(x => new[] { "", $"{x.Code} / {x.Label}" }));
+        instructions.Add(new[] { "可用项目进度", "中文名称" });
+        instructions.AddRange(progressOptions.Select(x => new[] { "", x.Label }));
 
         return XlsxTable.Write(new[]
         {
