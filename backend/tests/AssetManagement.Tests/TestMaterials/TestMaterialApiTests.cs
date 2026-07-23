@@ -8,6 +8,7 @@ using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -987,6 +988,104 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_import_template_validates_and_imports_valid_rows()
+    {
+        await Login();
+        var owner = await CreateUserInDb($"pi{Guid.NewGuid():N}"[..12], "批量导入负责人");
+        var marker = Guid.NewGuid().ToString("N")[..8];
+        var code = $"PI-{marker}";
+        var name = $"批量导入项目-{marker}";
+
+        var template = await _client.GetAsync("/api/test-projects/import/template");
+        template.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using (var templateStream = await template.Content.ReadAsStreamAsync())
+        using (var archive = new ZipArchive(templateStream, ZipArchiveMode.Read))
+        {
+            var workbook = ReadZipXml(archive, "xl/workbook.xml");
+            workbook.Descendants()
+                .Where(x => x.Name.LocalName == "sheet")
+                .Select(x => (string?)x.Attribute("name"))
+                .Should().Equal("测试项目", "填写说明");
+        }
+
+        var file = XlsxTable.Write(new[]
+        {
+            new[]
+            {
+                "项目编号", "项目名称", "项目类型", "负责人工号", "开始时间",
+                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "测试情况"
+            },
+            new[]
+            {
+                code, name, "prototype", owner.EmployeeNo, "2026-07-01",
+                "2026-07-31", "testing", "", "14", "批量导入校验"
+            }
+        });
+
+        var preview = await PostFile<ApiResult<TestProjectImportResultDto>>(
+            "/api/test-projects/import/validate",
+            file);
+        preview.Data!.SuccessCount.Should().Be(1);
+        preview.Data.FailedCount.Should().Be(0);
+        preview.Data.Rows.Single().OwnerName.Should().Be(owner.Name);
+
+        var confirmed = await PostFile<ApiResult<TestProjectImportResultDto>>(
+            "/api/test-projects/import/confirm",
+            file);
+        confirmed.Data!.SuccessCount.Should().Be(1);
+        confirmed.Data.FailedCount.Should().Be(0);
+
+        var imported = await _client.GetFromJsonAsync<ApiResult<PagedResult<TestProjectDto>>>(
+            $"/api/test-projects/page?code={code}&page=1&pageSize=20");
+        imported!.Data!.Items.Should().ContainSingle(x =>
+            x.Code == code
+            && x.Name == name
+            && x.OwnerId == owner.Id
+            && x.TestStatus == "批量导入校验");
+    }
+
+    [Fact]
+    public async Task Project_import_preview_reports_duplicate_and_business_rule_errors()
+    {
+        await Login();
+        var owner = await CreateUserInDb($"pe{Guid.NewGuid():N}"[..12], "导入错误负责人");
+        var code = $"PE-{Guid.NewGuid():N}"[..18];
+        var file = XlsxTable.Write(new[]
+        {
+            new[]
+            {
+                "项目编号", "项目名称", "项目类型", "负责人工号", "开始时间",
+                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "测试情况"
+            },
+            new[]
+            {
+                code, "导入错误项目一", "prototype", owner.EmployeeNo, "2026-07-10",
+                "2026-07-01", "testing", "2026-07-20", "0", ""
+            },
+            new[]
+            {
+                code, "导入错误项目二", "不存在类型", "不存在工号", "错误日期",
+                "2026-07-31", "不存在进度", "", "14", ""
+            }
+        });
+
+        var preview = await PostFile<ApiResult<TestProjectImportResultDto>>(
+            "/api/test-projects/import/validate",
+            file);
+
+        preview.Data!.SuccessCount.Should().Be(0);
+        preview.Data.FailedCount.Should().Be(2);
+        preview.Data.Rows[0].Error.Should().Contain("计划完成时间不能早于开始时间")
+            .And.Contain("只有已结案项目才能填写结案时间")
+            .And.Contain("跟进间隔必须是 1-365 的整数");
+        preview.Data.Rows[1].Error.Should().Contain("项目编号在文件中重复")
+            .And.Contain("项目类型不存在或已停用")
+            .And.Contain("负责人不存在或已停用")
+            .And.Contain("开始时间格式不正确")
+            .And.Contain("项目进度不存在或已停用");
+    }
+
+    [Fact]
     public async Task Editing_old_followup_preserves_author_and_does_not_change_latest_cycle()
     {
         await Login();
@@ -1195,6 +1294,18 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var res = await _client.PostAsJsonAsync(url, payload);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private async Task<T> PostFile<T>(string url, byte[] bytes)
+    {
+        using var form = new MultipartFormDataContent();
+        using var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new MediaTypeHeaderValue(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        form.Add(content, "file", "test-projects.xlsx");
+        var response = await _client.PostAsync(url, form);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<T>())!;
     }
 
     private async Task<T> Put<T>(string url, object payload)

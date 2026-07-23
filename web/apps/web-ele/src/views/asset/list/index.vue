@@ -1019,17 +1019,14 @@ watch(detailVisible, (opened) => {
               </ElTableColumn>
               <ElTableColumn align="center" label="状态" width="90">
                 <template #default="{ row }">
-                  <ElTag :type="statusMeta(row.status).tag" size="small">
-                    {{ statusMeta(row.status).label }}
-                  </ElTag>
-                  <ElTag
-                    v-if="row.isDeleted"
-                    class="ml-1"
-                    size="small"
-                    type="danger"
-                  >
-                    已删除
-                  </ElTag>
+                  <div class="asset-status-tags">
+                    <ElTag :type="statusMeta(row.status).tag" size="small">
+                      {{ statusMeta(row.status).label }}
+                    </ElTag>
+                    <ElTag v-if="row.isDeleted" size="small" type="danger">
+                      已删除
+                    </ElTag>
+                  </div>
                 </template>
               </ElTableColumn>
               <ElTableColumn
@@ -1238,17 +1235,17 @@ watch(detailVisible, (opened) => {
 .asset-list-page {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--asset-page-gap);
 }
 
 .asset-workspace {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--asset-page-gap);
   min-height: 0;
   max-height: 100%;
-  padding: 20px;
+  padding: var(--asset-page-padding);
   overflow: hidden;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
@@ -1260,19 +1257,19 @@ watch(detailVisible, (opened) => {
   display: flex;
   flex-shrink: 0;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 0 12px;
+  padding: 0 0 8px;
   border-bottom: 1px solid var(--asset-page-border);
 }
 
 /* ========== 标题与路径 ========== */
 .asset-section-title {
-  margin-bottom: 4px;
-  font-size: 18px;
+  margin-bottom: 2px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 28px;
+  line-height: 24px;
   color: var(--asset-page-text);
   letter-spacing: -0.02em;
 }
@@ -1280,9 +1277,9 @@ watch(detailVisible, (opened) => {
 .asset-path {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  min-height: 24px;
+  min-height: 20px;
   font-size: 14px;
   line-height: 20px;
 }
@@ -1308,12 +1305,12 @@ watch(detailVisible, (opened) => {
 .asset-root-grid {
   display: grid;
   flex: 1;
-  grid-template-columns: repeat(auto-fill, 240px);
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, 300px);
+  gap: var(--asset-page-gap);
   align-content: start;
   align-items: start;
   min-height: 0;
-  padding: 12px 0 20px;
+  padding: 4px 0 8px;
   overflow-y: auto;
 }
 
@@ -1340,7 +1337,7 @@ watch(detailVisible, (opened) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 84px;
+  min-height: 64px;
   overflow: hidden;
   color: #fff;
   background: var(--asset-page-panel-header-solid);
@@ -1349,12 +1346,12 @@ watch(detailVisible, (opened) => {
 .asset-root-card-code span {
   position: relative;
   z-index: 1;
-  max-width: calc(100% - 48px);
-  padding: 6px 16px;
+  max-width: calc(100% - 24px);
+  padding: 4px 10px;
   overflow: hidden;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  line-height: 24px;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
   background: rgb(255 255 255 / 20%);
@@ -1366,10 +1363,10 @@ watch(detailVisible, (opened) => {
 .asset-root-card-body {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  min-height: 80px;
-  padding: 16px;
+  min-height: 60px;
+  padding: 12px 14px;
   background: var(--asset-page-surface);
 }
 
@@ -1413,10 +1410,10 @@ watch(detailVisible, (opened) => {
   display: flex;
   flex-shrink: 0;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   justify-content: flex-start;
-  padding: 16px 20px;
+  padding: 8px 12px;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
@@ -1434,7 +1431,7 @@ watch(detailVisible, (opened) => {
 .asset-class-list {
   display: grid;
   flex: 1;
-  gap: 16px;
+  gap: 8px;
   align-content: start;
   min-height: 0;
   overflow-y: auto;
@@ -1442,8 +1439,8 @@ watch(detailVisible, (opened) => {
 
 .asset-class-row {
   display: grid;
-  grid-template-columns: minmax(140px, 24%) 1fr auto;
-  min-height: 96px;
+  grid-template-columns: minmax(140px, 180px) 1fr auto;
+  min-height: 72px;
   overflow: hidden;
   cursor: pointer;
   background: var(--asset-page-surface);
@@ -1467,7 +1464,7 @@ watch(detailVisible, (opened) => {
   align-items: center;
   justify-content: center;
   min-width: 0;
-  padding: 12px 16px;
+  padding: 10px 14px;
   overflow: hidden;
   color: #fff;
   background: var(--asset-page-panel-header-solid);
@@ -1477,11 +1474,11 @@ watch(detailVisible, (opened) => {
   position: relative;
   z-index: 1;
   max-width: 100%;
-  padding: 6px 16px;
+  padding: 4px 10px;
   overflow: hidden;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  line-height: 28px;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
   background: rgb(255 255 255 / 20%);
@@ -1494,13 +1491,13 @@ watch(detailVisible, (opened) => {
   flex-direction: column;
   justify-content: center;
   min-width: 0;
-  padding: 16px 24px;
+  padding: 10px 16px;
 }
 
 .asset-class-name {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 24px;
+  line-height: 20px;
   color: var(--asset-page-text);
   letter-spacing: -0.01em;
   word-break: break-word;
@@ -1519,11 +1516,11 @@ watch(detailVisible, (opened) => {
 
 .asset-class-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   justify-content: flex-end;
-  min-width: 360px;
-  padding: 16px 20px;
+  min-width: 260px;
+  padding: 10px 16px;
 }
 
 /* ========== 空状态 ========== */
@@ -1622,15 +1619,27 @@ watch(detailVisible, (opened) => {
   margin-left: 0;
 }
 
+.asset-status-tags {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.asset-status-tags :deep(.el-tag) {
+  padding-inline: 4px;
+}
+
 /* ========== 分页器 ========== */
 .asset-pager {
   display: flex;
   flex-shrink: 0;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 10px 12px;
   background: var(--asset-page-surface);
   border-top: 1px solid var(--asset-page-border);
 }
@@ -1666,7 +1675,7 @@ watch(detailVisible, (opened) => {
   }
 
   .asset-class-code {
-    min-height: 80px;
+    min-height: 48px;
   }
 
   .asset-class-actions {

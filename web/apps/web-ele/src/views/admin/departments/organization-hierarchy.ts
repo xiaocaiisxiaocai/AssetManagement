@@ -5,14 +5,18 @@ export const organizationChildLevelCodes: Record<string, string[]> = {
   section: [],
 };
 
-export function getAllowedOrganizationLevelCodes(parentLevelCode?: null | string) {
+export function getAllowedOrganizationLevelCodes(
+  parentLevelCode?: null | string,
+) {
   if (!parentLevelCode) {
     return ['company', 'division', 'department', 'section'];
   }
   return organizationChildLevelCodes[parentLevelCode] ?? [];
 }
 
-export function getDefaultOrganizationLevelCode(parentLevelCode?: null | string) {
+export function getDefaultOrganizationLevelCode(
+  parentLevelCode?: null | string,
+) {
   if (!parentLevelCode) return 'company';
   return getAllowedOrganizationLevelCodes(parentLevelCode)[0] ?? '';
 }

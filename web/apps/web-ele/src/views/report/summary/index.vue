@@ -1,22 +1,17 @@
 <script lang="ts" setup>
 import type { AssetSummary } from '#/api/report';
 
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { useAccess } from '@vben/access';
+import { ElTable, ElTableColumn } from 'element-plus';
 
-import { ElButton, ElTable, ElTableColumn } from 'element-plus';
-
-import { exportAssetSummaryApi, getAssetSummaryApi } from '#/api/report';
-import { downloadBlob } from '#/utils/download';
+import { getAssetSummaryApi } from '#/api/report';
 import { runHandled } from '#/utils/handled-promise';
 
 defineOptions({ name: 'ReportSummary' });
 
 const router = useRouter();
-const { hasAccessByCodes } = useAccess();
-const canExport = computed(() => hasAccessByCodes(['report:export']));
 const loading = ref(false);
 const summary = ref<AssetSummary>({
   available: 0,
@@ -45,24 +40,13 @@ function goCategoryAssets(categoryCode: string) {
   );
 }
 
-async function exportReport() {
-  const response = await exportAssetSummaryApi();
-  downloadBlob(response.data, '资产汇总.xlsx');
-}
-
 onMounted(loadData);
 </script>
 
 <template>
   <re-page>
     <div class="page-container">
-      <div class="page-header">
-        <h2 class="page-title">资产汇总</h2>
-        <ElButton v-if="canExport" type="primary" @click="exportReport">
-          导出 Excel
-        </ElButton>
-      </div>
-      <div class="stat-cards">
+      <div class="stat-cards report-stat-cards">
         <div class="stat-card">
           <div class="stat-label">资产总数</div>
           <div class="stat-value">{{ summary.total }}</div>
@@ -84,12 +68,7 @@ onMounted(loadData);
       <div class="summary-tables">
         <div class="summary-table-panel">
           <div class="summary-table-title">按分类统计</div>
-          <ElTable
-            :data="summary.byCategory"
-            border
-            height="100%"
-            v-loading="loading"
-          >
+          <ElTable :data="summary.byCategory" border v-loading="loading">
             <ElTableColumn label="分类" min-width="180">
               <template #default="{ row }">
                 <button
@@ -133,12 +112,7 @@ onMounted(loadData);
 
         <div class="summary-table-panel">
           <div class="summary-table-title">按部门统计</div>
-          <ElTable
-            :data="summary.byDept"
-            border
-            height="100%"
-            v-loading="loading"
-          >
+          <ElTable :data="summary.byDept" border v-loading="loading">
             <ElTableColumn label="部门" min-width="180">
               <template #default="{ row }">
                 <div>{{ row.departmentName }}</div>
@@ -181,17 +155,15 @@ onMounted(loadData);
 <style scoped>
 .summary-tables {
   display: grid;
-  flex: 1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
-  min-height: 0;
+  gap: 12px;
+  align-items: start;
 }
 
 .summary-table-panel {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  padding: 20px;
+  padding: 14px;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
@@ -200,7 +172,7 @@ onMounted(loadData);
 
 .summary-table-title {
   flex-shrink: 0;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
   font-size: 16px;
   font-weight: 600;
   line-height: 24px;
@@ -208,8 +180,6 @@ onMounted(loadData);
 }
 
 .summary-table-panel :deep(.el-table) {
-  flex: 1;
-  min-height: 0;
   font-size: 14px;
   line-height: 20px;
 }
@@ -247,7 +217,7 @@ onMounted(loadData);
   }
 
   .summary-table-panel {
-    padding: 16px;
+    padding: 12px;
   }
 }
 </style>

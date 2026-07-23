@@ -8,6 +8,7 @@ coverage
 CODEOWNERS
 .nitro
 .output
+.playwright-cli
 
 
 **/*.svg

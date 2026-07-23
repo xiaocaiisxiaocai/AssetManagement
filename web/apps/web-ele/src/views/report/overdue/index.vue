@@ -18,12 +18,10 @@ import {
 } from 'element-plus';
 
 import {
-  exportOverdueReportApi,
   getOverdueReportApi,
   remindOverdueApi,
   remindOverdueBatchApi,
 } from '#/api/report';
-import { downloadBlob } from '#/utils/download';
 import { runHandled } from '#/utils/handled-promise';
 import {
   createPageSizeOptions,
@@ -92,11 +90,6 @@ async function remindBatch() {
   }
 }
 
-async function exportReport() {
-  const response = await exportOverdueReportApi();
-  downloadBlob(response.data, '逾期资产.xlsx');
-}
-
 function onSelectionChange(selection: OverdueReportRow[]) {
   selectedRows.value = selection;
 }
@@ -132,13 +125,6 @@ onMounted(async () => {
         </div>
         <div class="page-actions">
           <ElButton
-            v-if="reportActionAccess.canExport"
-            type="primary"
-            @click="exportReport"
-          >
-            导出 Excel
-          </ElButton>
-          <ElButton
             v-if="reportActionAccess.canRemind"
             :loading="remindingId === -1"
             type="warning"
@@ -149,7 +135,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="stat-cards">
+      <div class="stat-cards report-stat-cards">
         <div class="stat-card">
           <div class="stat-label">逾期资产</div>
           <div class="stat-value stat-value-warning">{{ rows.length }}</div>

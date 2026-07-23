@@ -37,6 +37,30 @@ public class TestProjectController : ControllerBase
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "test-projects.xlsx");
 
+    [HttpGet("import/template")]
+    [HasPermission("project:create")]
+    public async Task<FileContentResult> ImportTemplate()
+        => File(
+            await _service.BuildImportTemplateAsync(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "test-project-import-template.xlsx");
+
+    [HttpPost("import/validate")]
+    [HasPermission("project:create")]
+    public async Task<ApiResult<TestProjectImportResultDto>> ValidateImport(IFormFile file)
+    {
+        await using var stream = file.OpenReadStream();
+        return ApiResult<TestProjectImportResultDto>.Ok(await _service.ValidateImportAsync(stream));
+    }
+
+    [HttpPost("import/confirm")]
+    [HasPermission("project:create")]
+    public async Task<ApiResult<TestProjectImportResultDto>> ConfirmImport(IFormFile file)
+    {
+        await using var stream = file.OpenReadStream();
+        return ApiResult<TestProjectImportResultDto>.Ok(await _service.ConfirmImportAsync(stream));
+    }
+
     [HttpGet("options")]
     [HasPermission("project:view")]
     public async Task<ApiResult<List<TestProjectOptionDto>>> Options([FromQuery] string? kind)

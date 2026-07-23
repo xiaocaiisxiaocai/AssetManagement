@@ -27,6 +27,7 @@ type ProjectActionAccess = {
   canDelete: boolean;
   canEdit: boolean;
   canExport: boolean;
+  canImport: boolean;
   canOption: boolean;
   canPurge: boolean;
   canRestore: boolean;
@@ -49,6 +50,7 @@ const emit = defineEmits<{
   create: [];
   edit: [project: TestProjectItem];
   export: [];
+  import: [];
   open: [project: TestProjectItem];
   options: [];
   pageChange: [];
@@ -160,6 +162,9 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
     </div>
     <div class="project-toolbar-right">
       <ElButton v-if="access.canOption" @click="emit('options')">配置</ElButton>
+      <ElButton v-if="access.canImport" @click="emit('import')">
+        批量导入
+      </ElButton>
       <ElButton v-if="access.canExport" @click="emit('export')">
         导出 Excel
       </ElButton>

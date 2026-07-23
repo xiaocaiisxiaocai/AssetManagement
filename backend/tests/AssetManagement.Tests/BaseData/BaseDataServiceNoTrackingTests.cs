@@ -14,7 +14,22 @@ public class BaseDataServiceNoTrackingTests : MySqlFixtureBase
     public async Task Update_department_persists_when_global_no_tracking_is_enabled()
     {
         var service = CreateService();
-        var department = new Department { Code = "D9001", Name = "原部门", IsActive = true };
+        var level = new OrganizationLevel
+        {
+            Code = "company",
+            Name = "公司",
+            Sort = 1,
+            IsActive = true
+        };
+        _db.OrganizationLevels.Add(level);
+        await _db.SaveChangesAsync();
+        var department = new Department
+        {
+            Code = "D9001",
+            Name = "原部门",
+            OrganizationLevelId = level.Id,
+            IsActive = true
+        };
         _db.Departments.Add(department);
         await _db.SaveChangesAsync();
 

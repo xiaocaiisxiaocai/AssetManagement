@@ -1,6 +1,12 @@
 /* ========== 部门资产管理系统 - 统一设计系统样式 ========== */
 
 :root {
+  --asset-page-gap: 12px;
+  --asset-page-padding: 12px;
+  --asset-panel-padding-block: 10px;
+  --asset-panel-padding-inline: 14px;
+  --asset-table-cell-padding-block: 7px;
+  --asset-table-cell-padding-inline: 6px;
   --asset-page-surface: hsl(var(--background));
   --asset-page-surface-alt: hsl(var(--background));
   --asset-page-surface-soft: hsl(var(--foreground) / 3%);
@@ -90,23 +96,26 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--asset-page-gap);
   height: calc(var(--vben-content-height, 100vh) - 32px);
   min-height: 0;
-  padding: 20px;
+  padding: var(--asset-page-padding);
   overflow: hidden;
 }
 
 .asset-list-page,
 .backup-page,
+.material-home-page,
 .mine-page,
 .pending-page,
 .role-page,
 .user-page,
 .material-projects-page {
   box-sizing: border-box;
+  gap: var(--asset-page-gap) !important;
   height: calc(var(--vben-content-height, 100vh) - 32px);
   min-height: 0 !important;
+  padding: var(--asset-page-padding) !important;
   overflow: hidden;
 }
 
@@ -117,11 +126,26 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
+  padding: var(--asset-panel-padding-block) var(--asset-panel-padding-inline);
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border-strong);
   border-radius: 12px;
   box-shadow: var(--asset-page-shadow);
+}
+
+.backup-header,
+.mine-header,
+.role-header,
+.user-header {
+  padding: var(--asset-panel-padding-block) var(--asset-panel-padding-inline) !important;
+}
+
+.backup-title,
+.mine-title,
+.role-title,
+.user-title {
+  font-size: 16px !important;
+  line-height: 24px !important;
 }
 
 .el-card {
@@ -131,6 +155,7 @@
 }
 
 .el-card__header {
+  padding: 8px 12px;
   color: var(--asset-page-panel-header-text);
   background: var(--asset-page-panel-header);
   border-bottom-color: var(--asset-page-border-strong);
@@ -172,7 +197,7 @@
 /* ========== 筛选面板 ========== */
 .filter-panel {
   flex-shrink: 0;
-  padding: 10px 20px;
+  padding: 8px var(--asset-panel-padding-inline);
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
@@ -183,6 +208,7 @@
 .user-filter-panel,
 .filter-panel {
   padding-block: 10px !important;
+  padding-inline: var(--asset-panel-padding-inline) !important;
   background: var(--asset-page-surface) !important;
   border-color: var(--asset-page-border) !important;
   box-shadow: var(--asset-page-shadow);
@@ -279,7 +305,7 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  padding: 10px var(--asset-panel-padding-inline);
   color: var(--asset-page-panel-header-text);
   background: var(--asset-page-panel-header);
   border-bottom: 1px solid var(--asset-page-border-strong);
@@ -301,10 +327,10 @@
   display: flex;
   flex-shrink: 0;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 10px var(--asset-panel-padding-inline);
   background: var(--asset-page-surface);
   border-top: 1px solid var(--asset-page-border-strong);
 }
@@ -440,7 +466,24 @@
 
 .table-panel .el-table .el-table__cell,
 .table-panel-with-toolbar .el-table .el-table__cell {
-  padding: 12px 0;
+  padding: var(--asset-table-cell-padding-block) 0;
+}
+
+/*
+ * 统一表格密度：
+ * 页面内的 scoped 样式曾重复写入 12px 行留白，因此这里用统一规则收口。
+ * 列宽仍由业务页面决定，只压缩表头/单元格文字两侧的视觉空白。
+ */
+.el-table .el-table__cell {
+  padding-block: var(--asset-table-cell-padding-block) !important;
+}
+
+.el-table td.el-table__cell > .cell {
+  padding-inline: var(--asset-table-cell-padding-inline) !important;
+}
+
+.el-table th.el-table__cell > .cell {
+  padding-inline: 4px !important;
 }
 
 .table-panel .el-table--striped .el-table__body tr.el-table__row--striped td,
@@ -504,7 +547,7 @@
 }
 
 .el-form-item {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .el-form-item__label {
@@ -542,11 +585,11 @@
 .stat-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  gap: 12px;
 }
 
 .stat-card {
-  padding: 24px;
+  padding: 16px;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
@@ -555,6 +598,24 @@
 
 .stat-card:hover {
   box-shadow: var(--asset-page-shadow-hover);
+}
+
+.report-stat-cards .stat-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 12px 16px;
+}
+
+.report-stat-cards .stat-label {
+  margin-bottom: 0;
+  font-weight: 500;
+}
+
+.report-stat-cards .stat-value {
+  font-size: 26px;
+  line-height: 32px;
 }
 
 .stat-label {

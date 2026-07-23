@@ -230,9 +230,13 @@ async function save() {
 
 async function remove(row: DepartmentNode) {
   try {
-    await ElMessageBox.confirm(`确认删除组织架构「${row.name}」？`, '删除确认', {
-      type: 'warning',
-    });
+    await ElMessageBox.confirm(
+      `确认删除组织架构「${row.name}」？`,
+      '删除确认',
+      {
+        type: 'warning',
+      },
+    );
   } catch {
     return;
   }
@@ -367,6 +371,7 @@ onMounted(async () => {
         <ElForm label-width="100px">
           <ElFormItem label="上级组织">
             <ElTreeSelect
+              v-model="form.parentId"
               :data="departments"
               :props="{ children: 'children', label: 'name' }"
               check-strictly
@@ -375,7 +380,6 @@ onMounted(async () => {
               placeholder="留空为顶级组织"
               style="width: 100%"
               value-key="id"
-              v-model="form.parentId"
               @change="onParentChange"
             />
           </ElFormItem>

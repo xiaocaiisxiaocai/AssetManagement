@@ -96,6 +96,7 @@ import { projectFollowUpStatusMeta } from './project-workspace-rules';
 import ProjectFlowsTab from './ProjectFlowsTab.vue';
 import ProjectFollowupsTab from './ProjectFollowupsTab.vue';
 import ProjectFormDialog from './ProjectFormDialog.vue';
+import ProjectImportDialog from './ProjectImportDialog.vue';
 import ProjectMaterialsTab from './ProjectMaterialsTab.vue';
 import ProjectOptionDialog from './ProjectOptionDialog.vue';
 import ProjectProgressDialog from './ProjectProgressDialog.vue';
@@ -175,6 +176,7 @@ const userOptionsRequestGuard = createLatestRequestGuard();
 const departments = ref<DepartmentOptionNode[]>([]);
 
 const dialogVisible = ref(false);
+const importDialogVisible = ref(false);
 const editingId = ref<null | number>(null);
 const saving = ref(false);
 const form = reactive<ProjectFormState>({
@@ -1305,6 +1307,7 @@ watch(materialDetailVisible, (opened) => {
         @create="openCreate"
         @edit="openEdit"
         @export="exportProjects"
+        @import="importDialogVisible = true"
         @open="openFollowups"
         @options="openOptionDialog"
         @page-change="loadData"
@@ -1330,6 +1333,11 @@ watch(materialDetailVisible, (opened) => {
         :user-options-loading="userOptionsLoading"
         :users="users"
         @save="save"
+      />
+
+      <ProjectImportDialog
+        v-model:visible="importDialogVisible"
+        @imported="loadData"
       />
 
       <ProjectProgressDialog

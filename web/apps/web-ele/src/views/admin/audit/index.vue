@@ -33,13 +33,11 @@ import {
 
 import {
   cleanupAuditLogsApi,
-  exportAuditLogsApi,
   getAuditCleanupPreviewApi,
   getAuditLogsApi,
 } from '#/api/report';
 import { formatDateTime } from '#/utils/date-format';
 import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
-import { downloadBlob } from '#/utils/download';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
 import {
@@ -55,7 +53,6 @@ type TagType = 'danger' | 'info' | 'success' | 'warning';
 
 const { hasAccessByCodes } = useAccess();
 const canCleanupAudit = computed(() => hasAccessByCodes(['audit:cleanup']));
-const canExportAudit = computed(() => hasAccessByCodes(['audit:export']));
 const loading = ref(false);
 const cleanupLoading = ref(false);
 const cleanupPreviewLoading = ref(false);
@@ -158,11 +155,6 @@ async function confirmCleanup() {
   } finally {
     cleanupLoading.value = false;
   }
-}
-
-async function exportLogs() {
-  const response = await exportAuditLogsApi(buildQuery());
-  downloadBlob(response.data, '审计日志.xlsx');
 }
 
 function actionTypeLabel(type: string): string {
@@ -281,9 +273,6 @@ onMounted(async () => {
           <h2 class="page-title">审计日志</h2>
         </div>
         <div class="header-actions">
-          <ElButton v-if="canExportAudit" type="primary" @click="exportLogs">
-            导出 Excel
-          </ElButton>
           <ElButton
             v-if="canCleanupAudit"
             type="warning"

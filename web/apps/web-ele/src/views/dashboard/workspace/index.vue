@@ -351,61 +351,6 @@ onMounted(loadData);
       </ElSkeleton>
 
       <section class="workspace-dashboard">
-        <ElCard v-if="canViewReports" class="workspace-panel" shadow="never">
-          <template #header>
-            <div class="workspace-card-header">
-              <span>资产概况</span>
-              <ElButton link type="primary" @click="go('/report/summary')">
-                查看汇总
-              </ElButton>
-            </div>
-          </template>
-          <div class="workspace-summary">
-            <div class="workspace-summary-item">
-              <span>严重逾期</span>
-              <strong>{{ formatCount(seriousOverdueCount) }}</strong>
-            </div>
-          </div>
-          <ElTable
-            v-if="summary"
-            :data="categoryTopRows"
-            border
-            class="workspace-table"
-            style="margin-top: 16px"
-          >
-            <ElTableColumn label="分类" min-width="180">
-              <template #default="{ row }">
-                <button
-                  class="category-code-link"
-                  type="button"
-                  @click="goCategoryAssets(row.categoryCode)"
-                >
-                  {{ row.categoryCode }}
-                </button>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn
-              align="center"
-              label="总数"
-              prop="total"
-              width="90"
-            />
-            <ElTableColumn
-              align="center"
-              label="在库"
-              prop="available"
-              width="90"
-            />
-            <ElTableColumn
-              align="center"
-              label="借出"
-              prop="borrowed"
-              width="90"
-            />
-          </ElTable>
-          <ElEmpty v-else description="资产概况暂不可用" />
-        </ElCard>
-
         <div class="workspace-side">
           <ElCard class="workspace-panel workspace-todo-panel" shadow="never">
             <template #header>
@@ -484,6 +429,60 @@ onMounted(loadData);
         <ElCard v-if="canViewReports" class="workspace-panel" shadow="never">
           <template #header>
             <div class="workspace-card-header">
+              <span>资产概况</span>
+              <ElButton link type="primary" @click="go('/report/summary')">
+                查看汇总
+              </ElButton>
+            </div>
+          </template>
+          <div class="workspace-summary">
+            <div class="workspace-summary-item">
+              <span>严重逾期</span>
+              <strong>{{ formatCount(seriousOverdueCount) }}</strong>
+            </div>
+          </div>
+          <ElTable
+            v-if="summary"
+            :data="categoryTopRows"
+            border
+            class="workspace-table workspace-summary-table"
+          >
+            <ElTableColumn label="分类" min-width="180">
+              <template #default="{ row }">
+                <button
+                  class="category-code-link"
+                  type="button"
+                  @click="goCategoryAssets(row.categoryCode)"
+                >
+                  {{ row.categoryCode }}
+                </button>
+              </template>
+            </ElTableColumn>
+            <ElTableColumn
+              align="center"
+              label="总数"
+              prop="total"
+              width="90"
+            />
+            <ElTableColumn
+              align="center"
+              label="在库"
+              prop="available"
+              width="90"
+            />
+            <ElTableColumn
+              align="center"
+              label="借出"
+              prop="borrowed"
+              width="90"
+            />
+          </ElTable>
+          <ElEmpty v-else description="资产概况暂不可用" />
+        </ElCard>
+
+        <ElCard v-if="canViewReports" class="workspace-panel" shadow="never">
+          <template #header>
+            <div class="workspace-card-header">
               <span>逾期资产</span>
               <ElButton link type="primary" @click="go('/report/overdue')">
                 查看全部
@@ -526,8 +525,8 @@ onMounted(loadData);
 .workspace-container {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 20px;
+  gap: var(--asset-page-gap);
+  padding: var(--asset-page-padding);
 }
 
 .workspace-load-error {
@@ -573,8 +572,8 @@ onMounted(loadData);
 /* 仪表板布局 */
 .workspace-dashboard {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr) minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--asset-page-gap);
   max-height: calc(100vh - 240px);
 }
 
@@ -590,7 +589,7 @@ onMounted(loadData);
 
 .workspace-panel :deep(.el-card__header) {
   flex-shrink: 0;
-  padding: 16px 20px;
+  padding: 8px 12px;
   background: var(--asset-page-panel-header);
   border-bottom: 1px solid var(--asset-page-border-strong);
 }
@@ -598,7 +597,7 @@ onMounted(loadData);
 .workspace-panel :deep(.el-card__body) {
   flex: 1;
   min-height: 0;
-  padding: 20px;
+  padding: 12px;
   overflow-y: auto;
 }
 
@@ -606,9 +605,9 @@ onMounted(loadData);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 24px;
+  line-height: 20px;
   color: var(--asset-page-panel-header-text);
 }
 
@@ -620,7 +619,7 @@ onMounted(loadData);
 .workspace-side {
   display: grid;
   grid-template-rows: auto auto;
-  gap: 20px;
+  gap: var(--asset-page-gap);
 }
 
 /* 概况汇总 */
@@ -631,7 +630,7 @@ onMounted(loadData);
 }
 
 .workspace-summary-item {
-  padding: 16px;
+  padding: 10px 12px;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
@@ -645,25 +644,25 @@ onMounted(loadData);
 
 .workspace-summary-item strong {
   display: block;
-  margin-top: 8px;
-  font-size: 24px;
+  margin-top: 4px;
+  font-size: 22px;
   font-weight: 600;
-  line-height: 32px;
+  line-height: 28px;
   color: var(--asset-page-text);
 }
 
 /* 待办列表 */
 .workspace-todo-list {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .workspace-todo-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 48px;
-  padding: 0 16px;
+  min-height: 44px;
+  padding: 0 12px;
   cursor: pointer;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
@@ -693,7 +692,7 @@ onMounted(loadData);
 .workspace-shortcuts {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 8px;
 }
 
 .workspace-shortcut-item {
@@ -701,7 +700,7 @@ onMounted(loadData);
   align-items: center;
   justify-content: center;
   min-height: 44px;
-  padding: 0 16px;
+  padding: 0 12px;
   font-size: 14px;
   line-height: 20px;
   color: var(--el-color-primary);
@@ -741,7 +740,11 @@ onMounted(loadData);
 }
 
 .workspace-table :deep(.el-table .el-table__cell) {
-  padding: 12px 0;
+  padding: var(--asset-table-cell-padding-block) 0;
+}
+
+.workspace-summary-table {
+  margin-top: 10px;
 }
 
 /* 响应式 */

@@ -5,6 +5,7 @@ using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Common;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
+using System.Globalization;
 
 namespace AssetManagement.Infrastructure.TestMaterials;
 
@@ -151,6 +152,129 @@ public class TestProjectService : ITestProjectService
             ("测试项目", (IEnumerable<string[]>)projectRows),
             ("测试料件", (IEnumerable<string[]>)materialRows)
         });
+    }
+
+    public async Task<byte[]> BuildImportTemplateAsync()
+    {
+        var options = await _db.TestProjectOptions.AsNoTracking()
+            .Where(x => x.IsActive)
+            .OrderBy(x => x.Kind)
+            .ThenBy(x => x.Sort)
+            .ThenBy(x => x.Id)
+            .ToListAsync();
+        var projectTypes = options.Where(x => x.Kind == OptionKindProjectType).ToList();
+        var progressOptions = options.Where(x => x.Kind == OptionKindProgress).ToList();
+        var importRows = new List<string[]>
+        {
+            new[]
+            {
+                "项目编号", "项目名称", "项目类型", "负责人工号", "开始时间",
+                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "测试情况"
+            }
+        };
+        var instructions = new List<string[]>
+        {
+            new[] { "字段", "填写说明" },
+            new[] { "项目编号", "必填，系统内唯一，最多 50 个字符" },
+            new[] { "项目名称", "必填，系统内唯一，最多 100 个字符" },
+            new[] { "项目类型", "必填，可填写配置编码或名称" },
+            new[] { "负责人工号", "必填，必须是启用用户的工号" },
+            new[] { "开始时间", "必填，格式 yyyy-MM-dd" },
+            new[] { "计划完成时间", "必填，不能早于开始时间" },
+            new[] { "项目进度", "必填，可填写配置编码或名称" },
+            new[] { "结案时间", "仅已结案项目必填，格式 yyyy-MM-dd" },
+            new[] { "跟进间隔(天)", "选填，留空默认 14，范围 1-365" },
+            new[] { "测试情况", "选填，最多 1000 个字符" },
+            new[] { "", "" },
+            new[] { "可用项目类型", "编码 / 名称" }
+        };
+        instructions.AddRange(projectTypes.Select(x => new[] { "", $"{x.Code} / {x.Label}" }));
+        instructions.Add(new[] { "", "" });
+        instructions.Add(new[] { "可用项目进度", "编码 / 名称" });
+        instructions.AddRange(progressOptions.Select(x => new[] { "", $"{x.Code} / {x.Label}" }));
+
+        return XlsxTable.Write(new[]
+        {
+            ("测试项目", (IEnumerable<string[]>)importRows),
+            ("填写说明", (IEnumerable<string[]>)instructions)
+        });
+    }
+
+    public async Task<TestProjectImportResultDto> ValidateImportAsync(Stream file)
+    {
+        var rawRows = XlsxTable.Read(file)
+            .Skip(1)
+            .Where(cells => cells.Any(cell => !string.IsNullOrWhiteSpace(cell)))
+            .ToList();
+        if (rawRows.Count > AppConstants.MaxImportRows)
+            throw new BizException(4153, $"单次导入不能超过 {AppConstants.MaxImportRows} 行");
+
+        var options = await _db.TestProjectOptions.AsNoTracking()
+            .Where(x => x.IsActive)
+            .ToListAsync();
+        var users = await _db.Users.AsNoTracking()
+            .Where(x => x.IsActive)
+            .ToDictionaryAsync(x => x.EmployeeNo, StringComparer.OrdinalIgnoreCase);
+        var existingCodes = (await _db.TestProjects.AsNoTracking()
+                .Select(x => x.Code)
+                .Where(x => x != null)
+                .ToListAsync())
+            .Select(x => x!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var existingNames = (await _db.TestProjects.AsNoTracking()
+                .Select(x => x.Name)
+                .ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var seenCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var rows = rawRows.Select((cells, index) => ValidateImportRow(
+            index + 2,
+            cells,
+            options,
+            users,
+            existingCodes,
+            existingNames,
+            seenCodes,
+            seenNames)).ToList();
+
+        return BuildImportResult(rows);
+    }
+
+    public async Task<TestProjectImportResultDto> ConfirmImportAsync(Stream file)
+    {
+        var result = await ValidateImportAsync(file);
+        var validRows = result.Rows.Where(x => x.IsValid).ToList();
+        if (validRows.Count == 0) return result;
+
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        foreach (var row in validRows)
+        {
+            _db.TestProjects.Add(new TestProject
+            {
+                Code = row.Code,
+                Name = row.Name,
+                ProjectTypeCode = row.ProjectTypeCode,
+                OwnerId = row.OwnerId,
+                StartDate = row.StartDate?.Date,
+                PlannedFinishDate = row.PlannedFinishDate?.Date,
+                ProgressCode = row.ProgressCode,
+                ClosedDate = row.ClosedDate?.Date,
+                FollowUpIntervalDays = row.FollowUpIntervalDays,
+                TestStatus = row.TestStatus,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        try
+        {
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            await transaction.RollbackAsync();
+            throw new BizException(4094, "项目编号或项目名称已存在，请重新校验导入文件");
+        }
+        return result;
     }
 
     public async Task<TestProjectDto> CreateAsync(SaveTestProjectRequest request)
@@ -907,6 +1031,158 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4094, "项目名称已存在");
         }
     }
+
+    private static TestProjectImportResultDto BuildImportResult(List<TestProjectImportRowDto> rows)
+        => new()
+        {
+            SuccessCount = rows.Count(x => x.IsValid),
+            FailedCount = rows.Count(x => !x.IsValid),
+            Rows = rows
+        };
+
+    private static TestProjectImportRowDto ValidateImportRow(
+        int rowNumber,
+        IReadOnlyList<string> cells,
+        IReadOnlyList<TestProjectOption> options,
+        IReadOnlyDictionary<string, User> users,
+        IReadOnlySet<string> existingCodes,
+        IReadOnlySet<string> existingNames,
+        ISet<string> seenCodes,
+        ISet<string> seenNames)
+    {
+        var code = ImportCell(cells, 0);
+        var name = ImportCell(cells, 1);
+        var projectTypeText = ImportCell(cells, 2);
+        var ownerEmployeeNo = ImportCell(cells, 3);
+        var startDateText = ImportCell(cells, 4);
+        var plannedFinishDateText = ImportCell(cells, 5);
+        var progressText = ImportCell(cells, 6);
+        var closedDateText = ImportCell(cells, 7);
+        var intervalText = ImportCell(cells, 8);
+        var testStatus = NormalizeOptional(ImportCell(cells, 9));
+        var errors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(code)) errors.Add("项目编号必填");
+        else
+        {
+            if (code.Length > 50) errors.Add("项目编号不能超过 50 个字符");
+            if (existingCodes.Contains(code)) errors.Add("项目编号已存在");
+            if (!seenCodes.Add(code)) errors.Add("项目编号在文件中重复");
+        }
+        if (string.IsNullOrWhiteSpace(name)) errors.Add("项目名称必填");
+        else
+        {
+            if (name.Length > 100) errors.Add("项目名称不能超过 100 个字符");
+            if (existingNames.Contains(name)) errors.Add("项目名称已存在");
+            if (!seenNames.Add(name)) errors.Add("项目名称在文件中重复");
+        }
+
+        var projectType = ResolveImportOption(options, OptionKindProjectType, projectTypeText);
+        if (projectType is null) errors.Add("项目类型不存在或已停用");
+        var progress = ResolveImportOption(options, OptionKindProgress, progressText);
+        if (progress is null) errors.Add("项目进度不存在或已停用");
+
+        users.TryGetValue(ownerEmployeeNo, out var owner);
+        if (string.IsNullOrWhiteSpace(ownerEmployeeNo)) errors.Add("负责人工号必填");
+        else if (owner is null) errors.Add("负责人不存在或已停用");
+
+        var startDate = ParseImportDate(startDateText, "开始时间", required: true, errors);
+        var plannedFinishDate = ParseImportDate(plannedFinishDateText, "计划完成时间", required: true, errors);
+        var closedDate = ParseImportDate(closedDateText, "结案时间", required: false, errors);
+        var interval = 14;
+        if (!string.IsNullOrWhiteSpace(intervalText)
+            && (!int.TryParse(intervalText, out interval) || interval is < 1 or > 365))
+        {
+            errors.Add("跟进间隔必须是 1-365 的整数");
+            interval = 14;
+        }
+        if (testStatus?.Length > 1000) errors.Add("测试情况不能超过 1000 个字符");
+        if (startDate.HasValue && plannedFinishDate.HasValue && plannedFinishDate.Value < startDate.Value)
+            errors.Add("计划完成时间不能早于开始时间");
+        if (startDate.HasValue && closedDate.HasValue && closedDate.Value < startDate.Value)
+            errors.Add("结案时间不能早于开始时间");
+        if (progress is not null)
+        {
+            var isClosed = string.Equals(progress.Code, ProgressClosed, StringComparison.OrdinalIgnoreCase);
+            if (isClosed && !closedDate.HasValue) errors.Add("已结案项目必须填写结案时间");
+            if (!isClosed && closedDate.HasValue) errors.Add("只有已结案项目才能填写结案时间");
+        }
+
+        return new TestProjectImportRowDto
+        {
+            Row = rowNumber,
+            Code = code,
+            Name = name,
+            ProjectTypeCode = projectType?.Code ?? projectTypeText,
+            ProjectTypeLabel = projectType?.Label ?? "",
+            OwnerEmployeeNo = ownerEmployeeNo,
+            OwnerId = owner?.Id,
+            OwnerName = owner?.Name ?? "",
+            StartDate = startDate,
+            PlannedFinishDate = plannedFinishDate,
+            ProgressCode = progress?.Code ?? progressText,
+            ProgressLabel = progress?.Label ?? "",
+            ClosedDate = closedDate,
+            FollowUpIntervalDays = interval,
+            TestStatus = testStatus,
+            IsValid = errors.Count == 0,
+            Error = string.Join("；", errors)
+        };
+    }
+
+    private static TestProjectOption? ResolveImportOption(
+        IEnumerable<TestProjectOption> options,
+        string kind,
+        string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var matching = options.Where(x => x.Kind == kind).ToList();
+        var byCode = matching.FirstOrDefault(x =>
+            x.Code.Equals(text, StringComparison.OrdinalIgnoreCase));
+        if (byCode is not null) return byCode;
+        var byLabel = matching.Where(x =>
+            x.Label.Equals(text, StringComparison.OrdinalIgnoreCase)).ToList();
+        return byLabel.Count == 1 ? byLabel[0] : null;
+    }
+
+    private static DateTime? ParseImportDate(
+        string text,
+        string field,
+        bool required,
+        ICollection<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            if (required) errors.Add($"{field}必填");
+            return null;
+        }
+        if (DateTime.TryParseExact(
+                text,
+                new[] { "yyyy-MM-dd", "yyyy/M/d", "yyyy/M/dd", "yyyy/MM/d", "yyyy/MM/dd" },
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var exact))
+        {
+            return exact.Date;
+        }
+        if (double.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var serial)
+            && serial is >= 1 and <= 2958465)
+        {
+            try
+            {
+                return DateTime.FromOADate(serial).Date;
+            }
+            catch (ArgumentException)
+            {
+                // 继续返回统一的格式错误。
+            }
+        }
+        errors.Add($"{field}格式不正确");
+        return null;
+    }
+
+    private static string ImportCell(IReadOnlyList<string> cells, int index)
+        => index < cells.Count ? cells[index].Trim() : "";
 
     private static string? NormalizeOptional(string? text)
         => string.IsNullOrWhiteSpace(text) ? null : text.Trim();

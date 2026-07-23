@@ -63,6 +63,32 @@ export interface SaveTestProjectPayload {
   followUpIntervalDays: number;
 }
 
+export interface TestProjectImportRow {
+  closedDate?: null | string;
+  code: string;
+  error: string;
+  followUpIntervalDays: number;
+  isValid: boolean;
+  name: string;
+  ownerEmployeeNo: string;
+  ownerId?: null | number;
+  ownerName: string;
+  plannedFinishDate?: null | string;
+  progressCode: string;
+  progressLabel: string;
+  projectTypeCode: string;
+  projectTypeLabel: string;
+  row: number;
+  startDate?: null | string;
+  testStatus?: null | string;
+}
+
+export interface TestProjectImportResult {
+  failedCount: number;
+  rows: TestProjectImportRow[];
+  successCount: number;
+}
+
 export interface UpdateTestProjectProgressPayload {
   closedDate?: null | string;
   progressCode: string;
@@ -126,6 +152,33 @@ export const exportTestProjectsApi = (params: TestProjectPageQuery) =>
     params,
     responseType: 'blob',
   });
+
+export const downloadTestProjectImportTemplateApi = () =>
+  requestClient.get('/test-projects/import/template', {
+    responseType: 'blob',
+  });
+
+export const validateTestProjectImportApi = (file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return unwrap(
+    requestClient.post<ApiResult<TestProjectImportResult>>(
+      '/test-projects/import/validate',
+      form,
+    ),
+  );
+};
+
+export const confirmTestProjectImportApi = (file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return unwrap(
+    requestClient.post<ApiResult<TestProjectImportResult>>(
+      '/test-projects/import/confirm',
+      form,
+    ),
+  );
+};
 
 export const createTestProjectApi = (data: SaveTestProjectPayload) =>
   unwrap(

@@ -3,7 +3,7 @@ import type { CategoryNode } from '#/api/base-data';
 import type { BorrowReportQuery, BorrowReportRow } from '#/api/report';
 import type { UserOptionDto } from '#/api/user';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
@@ -22,11 +22,10 @@ import {
 } from 'element-plus';
 
 import { getCategoryTreeApi } from '#/api/base-data';
-import { exportBorrowReportApi, getBorrowReportApi } from '#/api/report';
+import { getBorrowReportApi } from '#/api/report';
 import { getUserOptionsPageApi } from '#/api/user';
 import { formatDateTime } from '#/utils/date-format';
 import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
-import { downloadBlob } from '#/utils/download';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
 import {
@@ -39,7 +38,6 @@ defineOptions({ name: 'ReportBorrow' });
 
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
-const canExport = computed(() => hasAccessByCodes(['report:export']));
 const listRequestGuard = createLatestRequestGuard();
 const userOptionsLoading = ref(false);
 const userOptionsRequestGuard = createLatestRequestGuard();
@@ -114,11 +112,6 @@ async function searchBorrowers(keyword = '') {
     if (userOptionsRequestGuard.isLatest(requestGeneration))
       userOptionsLoading.value = false;
   }
-}
-
-async function exportReport() {
-  const response = await exportBorrowReportApi(buildQuery());
-  downloadBlob(response.data, '借用明细.xlsx');
 }
 
 function flattenCategories(nodes: CategoryNode[]): CategoryNode[] {
@@ -241,9 +234,6 @@ onMounted(async () => {
             <ElButton @click="resetQuery">重置</ElButton>
           </ElFormItem>
         </ElForm>
-        <div v-if="canExport" class="borrow-filter-actions">
-          <ElButton type="primary" @click="exportReport">导出 Excel</ElButton>
-        </div>
       </div>
 
       <div class="table-panel-with-toolbar">
@@ -348,13 +338,6 @@ onMounted(async () => {
   min-width: 0;
 }
 
-.borrow-filter-actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  margin-left: auto;
-}
-
 @media (max-width: 768px) {
   .borrow-filter-panel {
     flex-wrap: wrap;
@@ -362,11 +345,6 @@ onMounted(async () => {
 
   .borrow-filter-panel .filter-form {
     flex-basis: 100%;
-  }
-
-  .borrow-filter-actions {
-    justify-content: flex-end;
-    width: 100%;
   }
 }
 </style>

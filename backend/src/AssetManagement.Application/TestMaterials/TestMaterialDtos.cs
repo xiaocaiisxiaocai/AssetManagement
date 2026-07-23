@@ -52,6 +52,34 @@ public class SaveTestProjectRequest
     public int FollowUpIntervalDays { get; set; } = 14;
 }
 
+public class TestProjectImportRowDto
+{
+    public int Row { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string ProjectTypeCode { get; set; } = "";
+    public string ProjectTypeLabel { get; set; } = "";
+    public string OwnerEmployeeNo { get; set; } = "";
+    public int? OwnerId { get; set; }
+    public string OwnerName { get; set; } = "";
+    public DateTime? StartDate { get; set; }
+    public DateTime? PlannedFinishDate { get; set; }
+    public string ProgressCode { get; set; } = "";
+    public string ProgressLabel { get; set; } = "";
+    public DateTime? ClosedDate { get; set; }
+    public int FollowUpIntervalDays { get; set; } = 14;
+    public string? TestStatus { get; set; }
+    public bool IsValid { get; set; }
+    public string Error { get; set; } = "";
+}
+
+public class TestProjectImportResultDto
+{
+    public int SuccessCount { get; set; }
+    public int FailedCount { get; set; }
+    public List<TestProjectImportRowDto> Rows { get; set; } = new();
+}
+
 public class UpdateTestProjectProgressRequest
 {
     [Required(ErrorMessage = "项目进度不能为空"), StringLength(50)]
