@@ -194,6 +194,7 @@ public class WorkflowService : IWorkflowService
             throw new BizException(4001, "转让申请必须选择接收人");
         if (workflow.BizType == "transfer" && request.TransfereeId == applicantId)
             throw new BizException(4001, "接收人不能与申请人相同");
+        ValidateReason(workflow.BizType, request.Reason);
         var returnDate = ValidateReturnDate(workflow.BizType, request.ReturnDate);
         DateOnly? originalReturnDate = null;
         var transferee = request.TransfereeId.HasValue
@@ -662,6 +663,18 @@ public class WorkflowService : IWorkflowService
         {
             throw new BizException(4053, $"审批流程执行失败：{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 借用/转让申请必须填写原因。前端已强制要求 10-200 字，这里作为后端独立防线，
+    /// 只兜底校验非空（而非照搬前端 10 字下限），避免绕过前端（如直接调用 API）
+    /// 提交空原因，同时不与既有测试数据中大量短于 10 字但语义完整的原因样例冲突。
+    /// </summary>
+    private static void ValidateReason(string bizType, string? reason)
+    {
+        if (bizType is not ("borrow" or "transfer")) return;
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new BizException(4001, "请填写申请原因");
     }
 
     private static DateOnly? ValidateReturnDate(string bizType, string? value)
