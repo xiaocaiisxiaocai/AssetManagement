@@ -9,6 +9,7 @@ using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using MySqlConnector;
 using WorkflowEntity = AssetManagement.Domain.Entities.Workflow;
 
 namespace AssetManagement.Infrastructure.Workflow;
@@ -39,11 +40,20 @@ public class WorkflowService : IWorkflowService
 
     public async Task<WorkflowDto> CreateWorkflowAsync(SaveWorkflowRequest request)
     {
+        await using var tx = await _db.Database.BeginTransactionAsync();
         var workflow = new WorkflowEntity();
         await ApplyWorkflowDefinition(workflow, request);
 
         _db.Workflows.Add(workflow);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is MySqlException { Number: 1062 })
+        {
+            throw new BizException(4094, "业务类型已有启用流程");
+        }
+        await tx.CommitAsync();
         return ToWorkflowDto(workflow);
     }
 
