@@ -11,7 +11,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAccess } from '@vben/access';
 import { useUserStore } from '@vben/stores';
 
-import { useDebounceFn } from '@vueuse/core';
 import {
   ElButton,
   ElDescriptions,
@@ -462,8 +461,10 @@ async function reject() {
   if (!ensureNodeSelected()) return;
   actionLoading.value = true;
   try {
+    const nodeId = resolveNodeId();
+    if (!nodeId) return;
     await rejectFlowApi(selected.value.id, {
-      nodeId: resolveNodeId(),
+      nodeId,
       reason: opinion.value,
     });
     ElMessage.success('已驳回');
@@ -531,10 +532,6 @@ async function rejectMaterial(item: ApprovalWorkItem) {
     materialActionLoadingIds.value.delete(item.id);
   }
 }
-
-// 防抖版本的审批/驳回方法,防止用户快速点击导致重复提交
-const debouncedApprove = useDebounceFn(approve, 300);
-const debouncedReject = useDebounceFn(reject, 300);
 
 function onPageSizeChange() {
   currentPage.value.page = 1;
@@ -957,22 +954,25 @@ onMounted(async () => {
           <ElButton @click="detailVisible = false">取消</ElButton>
           <ElButton
             v-if="canCurrentUserAddSign"
+            :disabled="addSignLoading"
             :loading="addSignLoading"
             @click="openAddSign"
           >
             加签
           </ElButton>
           <ElButton
+            :disabled="actionLoading"
             :loading="actionLoading"
             type="danger"
-            @click="debouncedReject"
+            @click="reject"
           >
             驳回
           </ElButton>
           <ElButton
+            :disabled="actionLoading"
             :loading="actionLoading"
             type="primary"
-            @click="debouncedApprove"
+            @click="approve"
           >
             通过
           </ElButton>
@@ -1052,7 +1052,12 @@ onMounted(async () => {
 
         <template #footer>
           <ElButton @click="addSignVisible = false">取消</ElButton>
-          <ElButton :loading="addSignLoading" type="primary" @click="addSign">
+          <ElButton
+            :disabled="addSignLoading"
+            :loading="addSignLoading"
+            type="primary"
+            @click="addSign"
+          >
             确认加签
           </ElButton>
         </template>
