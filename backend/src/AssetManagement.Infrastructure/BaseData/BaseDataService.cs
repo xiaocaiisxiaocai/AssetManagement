@@ -83,6 +83,10 @@ public class BaseDataService : IBaseDataService
         ValidateDepartmentRequest(request.Name);
         var name = request.Name.Trim();
         await EnsureDepartmentNameAvailableAsync(name);
+        // 对候选负责人的用户行加锁，序列化并发的“同一负责人分配给多个部门”请求，
+        // 避免两个事务都读到旧状态各自通过“负责人唯一性”校验后同时提交成功。
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await LockUserRowAsync(request.ManagerId);
         await EnsureDepartmentManagerAvailableAsync(request.ManagerId);
         await ValidateDepartmentParentAsync(null, request.ParentId);
         var parentLevelCode = await GetDepartmentLevelCodeAsync(request.ParentId);
@@ -118,6 +122,7 @@ public class BaseDataService : IBaseDataService
         {
             throw new BizException(4094, "部门名称已存在");
         }
+        await tx.CommitAsync();
 
         // 清除部门树缓存
         _cache.Remove("department_tree");
@@ -128,6 +133,7 @@ public class BaseDataService : IBaseDataService
     public async Task<DepartmentNodeDto> UpdateDepartmentAsync(int id, UpdateDepartmentRequest request)
     {
         ValidateDepartmentRequest(request.Name);
+        await using var tx = await _db.Database.BeginTransactionAsync();
         var department = await _db.Departments.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4045, "部门不存在");
         var name = request.Name.Trim();
@@ -136,6 +142,8 @@ public class BaseDataService : IBaseDataService
         await EnsureCanDeactivateDepartmentAsync(id, request.IsActive);
         if (request.IsActive)
         {
+            // 对候选负责人的用户行加锁，序列化并发的“同一负责人分配给多个部门”请求。
+            await LockUserRowAsync(request.ManagerId);
             await EnsureDepartmentManagerAvailableAsync(request.ManagerId, id);
         }
         OrganizationLevelInfo? organizationLevel;
@@ -172,6 +180,7 @@ public class BaseDataService : IBaseDataService
         {
             throw new BizException(4094, "部门名称已存在");
         }
+        await tx.CommitAsync();
 
         // 清除部门树缓存
         _cache.Remove("department_tree");
@@ -1054,6 +1063,18 @@ public class BaseDataService : IBaseDataService
 
     private static bool IsDuplicateKey(DbUpdateException ex)
         => ex.InnerException is MySqlException { Number: 1062 };
+
+    /// <summary>
+    /// 对候选负责人的用户行加锁，序列化并发的部门负责人分配请求，避免两个事务都
+    /// 读到旧状态各自通过“负责人唯一性”校验后同时提交成功。
+    /// </summary>
+    private async Task LockUserRowAsync(int? userId)
+    {
+        if (userId is null) return;
+        await _db.Users.FromSqlInterpolated($"SELECT * FROM users WHERE Id = {userId} FOR UPDATE")
+            .AsNoTracking()
+            .ToListAsync();
+    }
 
     private static DepartmentNodeDto ToDepartmentDto(
         Department x,

@@ -393,13 +393,16 @@ function ensureNodeSelected() {
   return true;
 }
 
-function openAddSign() {
+async function openAddSign() {
   if (!selected.value) return;
   if (!canCurrentUserAddSign.value) {
     ElMessage.warning('被加签人不能再次发起加签');
     return;
   }
   if (!ensureNodeSelected()) return;
+  // 候选人（部门主管）可能在加签弹窗打开前被停用/新增，每次打开都重新拉取，
+  // 避免长期停留在该页面导致候选人列表过期。
+  users.value = await getApproverOptionsApi();
   addSignUser.value = '';
   addSignVisible.value = true;
 }

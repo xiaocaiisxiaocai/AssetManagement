@@ -20,6 +20,9 @@ import { isLoginRequestUrl } from './auth-response';
 
 const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
 
+// 并发请求同时触发 401 时，避免每个响应都重复调用一次登出流程。
+let isLoggingOut = false;
+
 function createRequestClient(baseURL: string) {
   const client = new RequestClient({
     baseURL,
@@ -154,10 +157,20 @@ function createRequestClient(baseURL: string) {
             ElMessage.warning(responseMessage(data));
             break;
           }
-          const authStore = useAuthStore();
-          void authStore.logout().catch(() => {
-            // 本地状态已在 logout 中清理，路由跳转失败不应形成未处理 Promise。
-          });
+          if (!isLoggingOut) {
+            isLoggingOut = true;
+            const authStore = useAuthStore();
+            void authStore
+              .logout()
+              .catch((logoutError) => {
+                // 本地状态已在 logout 中清理，路由跳转失败不应形成未处理 Promise，
+                // 但仍记录下来便于排查登出失败的原因。
+                console.warn('[request] 401 登出流程失败', logoutError);
+              })
+              .finally(() => {
+                isLoggingOut = false;
+              });
+          }
           break;
         }
         default: {

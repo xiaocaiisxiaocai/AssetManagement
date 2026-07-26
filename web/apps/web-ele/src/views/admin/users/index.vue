@@ -74,6 +74,7 @@ const users = ref<UserDto[]>([]);
 const supervisorOptions = ref<UserOptionDto[]>([]);
 const supervisorOptionsLoading = ref(false);
 const supervisorOptionsRequestGuard = createLatestRequestGuard();
+const importValidationGuard = createLatestRequestGuard();
 const roles = ref<RoleDto[]>([]);
 const departments = ref<DepartmentOptionNode[]>([]);
 const total = ref(0);
@@ -315,9 +316,11 @@ async function onImportFileChange(event: Event) {
     return;
   }
 
+  const requestGeneration = importValidationGuard.next();
   importing.value = true;
   try {
     const result = await validateUserImportApi(selectedImportFile.value);
+    if (!importValidationGuard.isLatest(requestGeneration)) return;
     importRows.value = result.rows;
     if (result.failedCount > 0) {
       ElMessage.warning(
@@ -327,7 +330,9 @@ async function onImportFileChange(event: Event) {
       ElMessage.success(`预览通过 ${result.successCount} 条`);
     }
   } finally {
-    importing.value = false;
+    if (importValidationGuard.isLatest(requestGeneration)) {
+      importing.value = false;
+    }
   }
 }
 
@@ -684,7 +689,9 @@ onMounted(async () => {
           </span>
           <ElButton
             :disabled="
-              importRows.length === 0 || importRows.some((row) => !row.isValid)
+              importing ||
+              importRows.length === 0 ||
+              importRows.some((row) => !row.isValid)
             "
             :loading="importing"
             type="primary"

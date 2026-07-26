@@ -912,6 +912,20 @@ watch(detailVisible, (opened) => {
                 :value="user.id"
               />
             </ElSelect>
+            <ElSelect
+              v-model="query.departmentId"
+              clearable
+              filterable
+              placeholder="归属部门"
+              style="width: 180px"
+            >
+              <ElOption
+                v-for="item in activeDepartmentOptions"
+                :key="item.id"
+                :label="item.label"
+                :value="item.id"
+              />
+            </ElSelect>
             <ElButton type="primary" @click="search">查询</ElButton>
             <ElButton @click="resetQuery">重置</ElButton>
           </div>

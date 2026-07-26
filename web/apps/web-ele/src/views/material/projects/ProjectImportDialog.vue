@@ -19,6 +19,7 @@ import {
 } from '#/api/test-project';
 import { formatDate } from '#/utils/date-format';
 import { downloadBlob } from '#/utils/download';
+import { createLatestRequestGuard } from '#/utils/latest-request';
 
 const emit = defineEmits<{ imported: [] }>();
 const visible = defineModel<boolean>('visible', { required: true });
@@ -27,9 +28,14 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
 const rows = ref<TestProjectImportRow[]>([]);
 const selectedFile = ref<File | null>(null);
+const importValidationGuard = createLatestRequestGuard();
 const hasInvalidRows = computed(() => rows.value.some((row) => !row.isValid));
 const canConfirm = computed(
-  () => !!selectedFile.value && rows.value.length > 0 && !hasInvalidRows.value,
+  () =>
+    !importing.value &&
+    !!selectedFile.value &&
+    rows.value.length > 0 &&
+    !hasInvalidRows.value,
 );
 
 watch(visible, (opened) => {
@@ -60,9 +66,11 @@ async function onFileChange(event: Event) {
   rows.value = [];
   if (!selectedFile.value) return;
 
+  const requestGeneration = importValidationGuard.next();
   importing.value = true;
   try {
     const result = await validateTestProjectImportApi(selectedFile.value);
+    if (!importValidationGuard.isLatest(requestGeneration)) return;
     rows.value = result.rows;
     if (result.rows.length === 0) {
       ElMessage.warning('导入文件中没有项目数据');
@@ -74,7 +82,9 @@ async function onFileChange(event: Event) {
       ElMessage.success(`校验通过，共 ${result.successCount} 条`);
     }
   } finally {
-    importing.value = false;
+    if (importValidationGuard.isLatest(requestGeneration)) {
+      importing.value = false;
+    }
   }
 }
 
