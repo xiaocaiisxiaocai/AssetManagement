@@ -60,12 +60,30 @@ public class SlidingTokenMiddleware
             return;
         }
 
+        // 绝对生命周期上限：即便持续活跃、token 不断被续期，登录会话超过上限后
+        // 也不再续期，只能等当前 token 自然过期后重新登录，避免一次 token 泄露
+        // 的影响窗口被滑动续期放大到无限期。
+        var absoluteLifetimeHours = int.TryParse(config["Jwt:AbsoluteLifetimeHours"], out var h) ? h : 24;
+        if (long.TryParse(user.FindFirst("sessionStartedAt")?.Value, out var sessionStartedAtUnix))
+        {
+            var sessionAge = DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeSeconds(sessionStartedAtUnix);
+            if (sessionAge >= TimeSpan.FromHours(absoluteLifetimeHours))
+            {
+                return;
+            }
+        }
+        else
+        {
+            sessionStartedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+
         ctx.Response.Headers["accesstoken"] = jwt.Create(
             userId,
             employeeNo,
             perms,
             roles,
             departmentId,
-            tokenVersion);
+            tokenVersion,
+            sessionStartedAtUnix);
     }
 }

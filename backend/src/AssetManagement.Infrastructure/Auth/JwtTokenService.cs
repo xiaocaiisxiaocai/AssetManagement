@@ -22,7 +22,8 @@ public class JwtTokenService : IJwtTokenService
         IEnumerable<string> permissionCodes,
         IEnumerable<string> roles,
         int? departmentId = null,
-        int tokenVersion = 0)
+        int tokenVersion = 0,
+        long? sessionStartedAtUnix = null)
     {
         var key = _configuration["Jwt:Key"]
             ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
@@ -30,13 +31,15 @@ public class JwtTokenService : IJwtTokenService
         var expireMinutes = int.TryParse(_configuration["Jwt:ExpireMinutes"], out var value)
             ? value
             : 120;
+        var sessionStartedAt = sessionStartedAtUnix ?? DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, userId.ToString()),
             new(ClaimTypes.NameIdentifier, userId.ToString()),
             new("employeeNo", employeeNo),
-            new("tokenVersion", tokenVersion.ToString())
+            new("tokenVersion", tokenVersion.ToString()),
+            new("sessionStartedAt", sessionStartedAt.ToString())
         };
         claims.AddRange(permissionCodes.Select(x => new Claim("perm", x)));
         claims.AddRange(roles.Select(x => new Claim(ClaimTypes.Role, x)));

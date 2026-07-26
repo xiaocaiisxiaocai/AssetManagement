@@ -277,6 +277,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ExceptionMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 
 // 反向代理场景（Nginx/Caddy）：解析 X-Forwarded-For / X-Forwarded-Proto，
 // 确保 HttpContext.Connection.RemoteIpAddress 和 Request.Scheme 为真实客户端 IP
