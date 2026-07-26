@@ -3,6 +3,7 @@ using AssetManagement.Application.Rbac;
 using AssetManagement.Infrastructure.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Security.Claims;
 
 namespace AssetManagement.Api.Controllers;
@@ -116,6 +117,7 @@ public class UserController : ControllerBase
 
     [HttpPost("{id:int}/reset-password")]
     [HasPermission("user:reset-password")]
+    [EnableRateLimiting("credential-change")]
     public async Task<ApiResult<object?>> ResetPassword(int id)
     {
         await _rbac.ResetPasswordAsync(id);

@@ -32,6 +32,8 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Net;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 // 配置 Serilog
 Log.Logger = new LoggerConfiguration()
@@ -75,6 +77,17 @@ builder.Host.UseSerilog();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
+
+// 全局请求体大小上限：附件大小上限（attachment_max_mb，最高可配置到 100MB）此前
+// 仅在应用层读取完整文件流后才校验，恶意请求体在被拒绝前已耗费内存/IO。这里在
+// 管线最前端设置一个足够覆盖多图上传场景的静态上限，尽早拒绝明显超大的请求。
+const long maxRequestBodyBytes = 100 * 1024 * 1024;
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = maxRequestBodyBytes);
+builder.Services.Configure<FormOptions>(o =>
+{
+    o.MultipartBodyLengthLimit = maxRequestBodyBytes;
+});
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -82,6 +95,27 @@ builder.Services.AddRateLimiter(options =>
     {
         // 生产环境始终启用；开发环境默认启用，仅测试工厂可通过配置显式关闭，
         // 避免同一 TestServer IP 的大量独立登录场景互相干扰。
+        var enabled = !builder.Environment.IsDevelopment()
+            || builder.Configuration.GetValue("Security:LoginRateLimitEnabled", true);
+        if (!enabled)
+        {
+            return RateLimitPartition.GetNoLimiter("test-disabled");
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+    // 修改密码/重置密码等凭据变更接口此前完全没有限流，仅登录接口受保护；
+    // 已登录用户理论上可对旧密码做高频枚举/暴力尝试，补充与登录一致的限流水平。
+    options.AddPolicy("credential-change", context =>
+    {
         var enabled = !builder.Environment.IsDevelopment()
             || builder.Configuration.GetValue("Security:LoginRateLimitEnabled", true);
         if (!enabled)
@@ -231,6 +265,23 @@ builder.Services.AddSwaggerGen(c =>
 var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
 if (corsOrigins is { Length: > 0 })
 {
+    // 配合 WithExposedHeaders("accesstoken")，一旦误配为通配符/非法来源，任何被
+    // 允许的源都能读取滑动续期下发的新 token，因此生产环境强制要求每个来源是
+    // 精确的 https 完整地址（本机调试场景允许 http://localhost）。
+    if (!builder.Environment.IsDevelopment())
+    {
+        foreach (var origin in corsOrigins)
+        {
+            var isLocalHttp = origin.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase)
+                || origin.StartsWith("http://127.0.0.1", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(origin) || origin.Trim() == "*" ||
+                (!origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !isLocalHttp))
+            {
+                throw new InvalidOperationException(
+                    $"生产环境 Cors:AllowedOrigins 配置非法（\"{origin}\"）：不允许空值/通配符，且必须是完整的 https 来源");
+            }
+        }
+    }
     builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
         p.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("accesstoken")));
 }

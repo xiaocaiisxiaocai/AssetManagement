@@ -39,6 +39,7 @@ public class AuthController : ControllerBase
 
     [HttpPut("change-password")]
     [Authorize]
+    [EnableRateLimiting("credential-change")]
     public async Task<ApiResult<object?>> ChangePassword(ChangePasswordRequest request)
     {
         await _auth.ChangePasswordAsync(CurrentUserId(), request);
