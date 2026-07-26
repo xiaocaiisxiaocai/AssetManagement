@@ -152,9 +152,3 @@ public record CancelAddSignRequest
     [Required, StringLength(100)]
     public string Who { get; init; } = "";
 }
-
-public record TransferSignRequest
-{
-    [Required, StringLength(100)]
-    public string Who { get; init; } = "";
-}

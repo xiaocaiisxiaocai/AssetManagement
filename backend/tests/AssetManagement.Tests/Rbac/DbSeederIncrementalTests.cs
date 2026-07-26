@@ -166,7 +166,7 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
             "category:view", "category:create", "category:edit", "category:delete", "category:restore", "category:purge",
             "asset:import", "asset:export",
             "file:upload", "file:view",
-            "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
+            "approval:add-sign", "approval:confirm-return",
             "report:export", "report:remind",
             "user:view", "user:create", "user:edit", "user:assign-role", "user:delete", "user:reset-password", "user:toggle-status",
             "department:view", "department:create", "department:edit", "department:delete",

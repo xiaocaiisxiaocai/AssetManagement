@@ -480,7 +480,6 @@ public class AuditActionFilter : IAsyncActionFilter
             _ when ContainsPath(path, "/approve") => "审批通过",
             _ when ContainsPath(path, "/reject") => "审批驳回",
             _ when ContainsPath(path, "/add-sign") => "审批加签",
-            _ when ContainsPath(path, "/transfer-sign") => "审批转签",
             _ when ContainsPath(path, "/confirm-return") => "确认归还",
             _ when EndsWithPath(path, "/approvals") => "发起审批",
             _ => null

@@ -684,7 +684,6 @@ public static class DbSeeder
         ("approval:view", "查看审批", "approval"),
         ("approval:handle", "处理审批", "approval"),
         ("approval:add-sign", "审批加签", "approval"),
-        ("approval:transfer-sign", "审批转签", "approval"),
         ("approval:confirm-return", "确认归还接收", "approval"),
 
         ("report:view", "查看报表", "report"),
@@ -756,7 +755,7 @@ public static class DbSeeder
             "asset:view", "asset:create", "asset:edit", "asset:delete", "asset:restore", "asset:import", "asset:export",
             "category:view", "category:create", "category:edit", "category:delete", "category:restore",
             "file:upload", "file:view",
-            "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:transfer-sign", "approval:confirm-return",
+            "approval:create", "approval:view", "approval:handle", "approval:add-sign", "approval:confirm-return",
             "report:view", "report:export",
             "department:view", "department:create", "department:edit", "department:delete",
             "user:view", "user:create", "user:edit", "user:delete",

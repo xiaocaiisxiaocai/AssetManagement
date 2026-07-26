@@ -838,9 +838,6 @@ public class WorkflowService : IWorkflowService
         return await ToFlowDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
     }
 
-    public Task<ApprovalFlowDto> TransferSignAsync(int id, TransferSignRequest request, int userId)
-        => Task.FromException<ApprovalFlowDto>(new BizException(4054, "BPMN 模式下暂不支持转签功能"));
-
     public async Task<ApprovalFlowDto> ConfirmReturnAsync(int id, int userId)
     {
         var flow = await LoadFlow(id);
