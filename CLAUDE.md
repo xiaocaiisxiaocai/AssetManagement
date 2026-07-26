@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 部门资产管理系统的全栈实现仓库,包含四个并存的部分:
 
 - `backend/` — **正式后端**:ASP.NET Core 8 + EF Core + MySQL 5.7,DDD 四层架构,JWT + 权限码鉴权,可配置审批工作流引擎。当前活跃开发对象。
-- `web/` — **正式前端**:基于 vue-vben-admin 5.x 的 monorepo(pnpm + turbo)。实际开发的应用是 `apps/web-ele`(Vue 3 + Element Plus);`web-antd`、`web-naive` 为上游模板自带,**不使用**。
+- `web/` — **正式前端**:基于 vue-vben-admin 5.x 的 monorepo(pnpm + turbo)。实际开发的应用是 `apps/web-ele`(Vue 3 + Element Plus)。上游模板自带的 `web-antd`、`web-naive` 未被使用,已从仓库中物理删除。
 - `docs/` — 需求/设计文档(`.md` 与 `.pdf` 并存,**修改以 `.md` 为准**)。现行业务口径以 `需求文档.md`、`审批工作流设计.md`、`多部门预留设计.md` 为准，现行运行与部署口径以本文件和 `deploy/README-部署.md` 为准。`docs/全栈实施规划.md`、`docs/plans/`、过程性报告及测试报告均是特定日期的历史快照，**仅供追溯,勿当作当前技术栈、完成度或测试基线**。
 - `prototype/` — 早期纯静态 HTML 原型(零依赖),仅作参考,新功能不在此实现。
 - `deploy/` — 内网部署说明、生产配置样例、数据库备份脚本(部署方案见 `deploy/README-部署.md`)。
