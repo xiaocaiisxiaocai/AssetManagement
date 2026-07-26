@@ -288,7 +288,7 @@ public class WorkflowService : IWorkflowService
         };
 
         // 启动 BPMN 流程引擎
-        BpmnEngine.Start(flow, bpmnProcess);
+        ExecuteBpmn(() => BpmnEngine.Start(flow, bpmnProcess));
         await NormalizeSignStatesAsync(flow, bpmnProcess);
         await EnsureCurrentApproversResolvableAsync(flow, bpmnProcess);
         flow.ActiveScopeKey = flow.Status == "pending" ? $"asset:{asset.Id}" : null;
@@ -523,7 +523,7 @@ public class WorkflowService : IWorkflowService
 
         await NormalizeSignStatesAsync(flow, bpmnProcess);
         await ReconcileInactiveSignersAsync(flow, nodeId);
-        BpmnEngine.Approve(flow, bpmnProcess, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion);
+        ExecuteBpmn(() => BpmnEngine.Approve(flow, bpmnProcess, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion));
 
         if (flow.Status == "pending")
         {
@@ -611,7 +611,7 @@ public class WorkflowService : IWorkflowService
         await EnsureCanApproveNode(flow, nodeId, user);
 
         await using var tx = await _db.Database.BeginTransactionAsync();
-        BpmnEngine.Reject(flow, nodeId, user.Name, request.Reason);
+        ExecuteBpmn(() => BpmnEngine.Reject(flow, nodeId, user.Name, request.Reason));
         flow.ActiveScopeKey = null;
 
         flow.RowVersion++;
@@ -636,6 +636,22 @@ public class WorkflowService : IWorkflowService
         await tx.CommitAsync();
 
         return await ToFlowDtoAsync(flow);
+    }
+
+    /// <summary>
+    /// 执行 BPMN 引擎操作，将流程结构性错误（如网关无匹配分支、循环超限）转换为可读的业务异常，
+    /// 避免 ExceptionMiddleware 将其吞掉细节后统一返回无意义的 500。
+    /// </summary>
+    private static void ExecuteBpmn(Action operation)
+    {
+        try
+        {
+            operation();
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BizException(4053, $"审批流程执行失败：{ex.Message}");
+        }
     }
 
     private static DateOnly? ValidateReturnDate(string bizType, string? value)
@@ -680,7 +696,7 @@ public class WorkflowService : IWorkflowService
 
         var applicant = await LoadUser(userId);
         await using var tx = await _db.Database.BeginTransactionAsync();
-        BpmnEngine.Withdraw(flow, applicant.Name);
+        ExecuteBpmn(() => BpmnEngine.Withdraw(flow, applicant.Name));
         flow.ActiveScopeKey = null;
         flow.RowVersion++;
         try

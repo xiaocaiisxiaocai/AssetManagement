@@ -163,7 +163,7 @@ public class MaterialFlowService : IMaterialFlowService
                 Deadline = DateTime.UtcNow.AddDays(2),
                 Context = await BuildWorkflowContext(applicant, material.ProjectId, process)
             };
-            BpmnEngine.Start(flow, process);
+            ExecuteBpmn(() => BpmnEngine.Start(flow, process));
             await NormalizeSignStatesAsync(flow, process);
             await EnsureCurrentApproversResolvableAsync(flow, process);
             flow.ActiveScopeKey = flow.Status == "pending" ? $"material:{material.Id}" : null;
@@ -332,7 +332,7 @@ public class MaterialFlowService : IMaterialFlowService
         await using var tx = await _db.Database.BeginTransactionAsync();
         await NormalizeSignStatesAsync(flow, process);
         await ReconcileInactiveSignersAsync(flow, nodeId);
-        BpmnEngine.Approve(flow, process, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion);
+        ExecuteBpmn(() => BpmnEngine.Approve(flow, process, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion));
 
         if (flow.Status == "pending")
         {
@@ -408,7 +408,7 @@ public class MaterialFlowService : IMaterialFlowService
         await EnsureCanApproveNode(flow, nodeId, user);
 
         await using var tx = await _db.Database.BeginTransactionAsync();
-        BpmnEngine.Reject(flow, nodeId, user.Name, request.Reason);
+        ExecuteBpmn(() => BpmnEngine.Reject(flow, nodeId, user.Name, request.Reason));
         flow.ActiveScopeKey = null;
         flow.RowVersion++;
         try
@@ -443,7 +443,7 @@ public class MaterialFlowService : IMaterialFlowService
 
         var applicant = await LoadUser(userId);
         await using var tx = await _db.Database.BeginTransactionAsync();
-        BpmnEngine.Withdraw(flow, applicant.Name);
+        ExecuteBpmn(() => BpmnEngine.Withdraw(flow, applicant.Name));
         flow.ActiveScopeKey = null;
         flow.RowVersion++;
         try
@@ -461,6 +461,22 @@ public class MaterialFlowService : IMaterialFlowService
     }
 
     // ===== 私有辅助 =====
+    /// <summary>
+    /// 执行 BPMN 引擎操作，将流程结构性错误（如网关无匹配分支、循环超限）转换为可读的业务异常，
+    /// 避免 ExceptionMiddleware 将其吞掉细节后统一返回无意义的 500。
+    /// </summary>
+    private static void ExecuteBpmn(Action operation)
+    {
+        try
+        {
+            operation();
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BizException(4053, $"料件流转流程执行失败：{ex.Message}");
+        }
+    }
+
     private static (int Page, int PageSize) NormalizePage(int page, int pageSize)
         => (Math.Max(page, 1), Math.Clamp(pageSize, 1, AppConstants.MaxPageSize));
 
