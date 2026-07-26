@@ -174,6 +174,7 @@ public class AssetService : IAssetService
             ? null
             : await _fileStorage.AcquireReferenceLeaseAsync(normalizedImages);
 
+        const int maxAttempts = 3;
         for (var attempt = 0; ; attempt++)
         {
             await using var tx = await _db.Database.BeginTransactionAsync();
@@ -206,10 +207,22 @@ public class AssetService : IAssetService
                 await tx.CommitAsync();
                 return await GetAsync(asset.Id);
             }
-            catch (DbUpdateException ex) when (attempt < 3 && IsDuplicateKey(ex))
+            catch (DbUpdateException ex) when (attempt < maxAttempts - 1 && IsDuplicateKey(ex))
             {
                 // 资产编号唯一索引冲突（并发取号撞号）：移除失败实体后重新取号重试
                 _db.Entry(asset).State = EntityState.Detached;
+            }
+            catch (DbUpdateException ex) when (attempt >= maxAttempts - 1 && IsDuplicateKey(ex))
+            {
+                throw new BizException(4046, "资产编号生成冲突次数过多，请重试");
+            }
+            catch (Exception ex) when (attempt < maxAttempts - 1 && IsDeadlock(ex))
+            {
+                _db.Entry(asset).State = EntityState.Detached;
+            }
+            catch (Exception ex) when (attempt >= maxAttempts - 1 && IsDeadlock(ex))
+            {
+                throw new BizException(4090, "数据库繁忙（检测到死锁），请重试");
             }
         }
     }
@@ -427,45 +440,73 @@ public class AssetService : IAssetService
         var rows = await ValidateImportAsync(file);
         var validRows = rows.Where(x => x.IsValid).ToList();
         var departmentId = CurrentUserDepartmentId();
-        var categoryCache = new Dictionary<string, AssetCategory>();
-        var seq = new Dictionary<int, int>();
+        var distinctCodes = validRows.Select(x => x.CategoryCode).Distinct().ToList();
 
-        // 整批一个事务,任一失败整体回滚,避免逐条提交产生半残数据
-        await using var tx = await _db.Database.BeginTransactionAsync();
-        foreach (var categoryCode in validRows.Select(x => x.CategoryCode).Distinct().OrderBy(x => x))
+        // 先在无锁状态下解析出分类 Id，再统一按 Id 升序加锁：与 CreateAsync（单分类按 Id 加锁）
+        // 保持一致的加锁顺序，避免并发批量导入之间因加锁顺序不同互相等待形成死锁。
+        var codeToId = await _db.AssetCategories
+            .Where(x => !x.IsDeleted && distinctCodes.Contains(x.Code))
+            .ToDictionaryAsync(x => x.Code, x => x.Id);
+        var orderedCodes = distinctCodes.OrderBy(code => codeToId[code]).ToList();
+
+        const int maxAttempts = 3;
+        for (var attempt = 0; ; attempt++)
         {
-            var lockedCategory = await _db.AssetCategories
-                .FromSqlInterpolated($"SELECT * FROM asset_categories WHERE Code = {categoryCode} AND IsDeleted = 0 FOR UPDATE")
-                .SingleAsync();
-            categoryCache[categoryCode] = lockedCategory;
-        }
-        foreach (var row in validRows)
-        {
-            var category = categoryCache[row.CategoryCode];
-            // 同分类多行在内存中递增取号:批量提交前 Count 不变,直接用会撞唯一索引
-            if (!seq.TryGetValue(category.Id, out var used))
+            var categoryCache = new Dictionary<string, AssetCategory>();
+            var seq = new Dictionary<int, int>();
+
+            // 整批一个事务,任一失败整体回滚,避免逐条提交产生半残数据
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            try
             {
-                used = await CurrentMaxSequence(category);
+                foreach (var categoryCode in orderedCodes)
+                {
+                    var lockedCategory = await _db.AssetCategories
+                        .FromSqlInterpolated($"SELECT * FROM asset_categories WHERE Id = {codeToId[categoryCode]} AND IsDeleted = 0 FOR UPDATE")
+                        .SingleAsync();
+                    categoryCache[categoryCode] = lockedCategory;
+                }
+                foreach (var row in validRows)
+                {
+                    var category = categoryCache[row.CategoryCode];
+                    // 同分类多行在内存中递增取号:批量提交前 Count 不变,直接用会撞唯一索引
+                    if (!seq.TryGetValue(category.Id, out var used))
+                    {
+                        used = await CurrentMaxSequence(category);
+                    }
+                    seq[category.Id] = used + 1;
+
+                    _db.Assets.Add(new Asset
+                    {
+                        AssetNo = AssetNoGenerator.Next(category.Code, used),
+                        Name = row.Name,
+                        CategoryId = category.Id,
+                        DepartmentId = departmentId,
+                        PurchaseDate = row.PurchaseDate,
+                        RegistrationTime = row.RegistrationTime?.Date ?? BusinessClock.Today,
+                        CurrentCondition = row.CurrentCondition,
+                        Remark = row.Remark,
+                        Quantity = 1,
+                        Status = AssetStatus.Available,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+                break;
             }
-            seq[category.Id] = used + 1;
-
-            _db.Assets.Add(new Asset
+            catch (Exception ex) when (attempt < maxAttempts - 1 && IsDeadlock(ex))
             {
-                AssetNo = AssetNoGenerator.Next(category.Code, used),
-                Name = row.Name,
-                CategoryId = category.Id,
-                DepartmentId = departmentId,
-                PurchaseDate = row.PurchaseDate,
-                RegistrationTime = row.RegistrationTime?.Date ?? BusinessClock.Today,
-                CurrentCondition = row.CurrentCondition,
-                Remark = row.Remark,
-                Quantity = 1,
-                Status = AssetStatus.Available,
-                CreatedAt = DateTime.UtcNow
-            });
+                foreach (var entry in _db.ChangeTracker.Entries<Asset>().Where(e => e.State == EntityState.Added).ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
+            }
+            catch (Exception ex) when (attempt >= maxAttempts - 1 && IsDeadlock(ex))
+            {
+                throw new BizException(4090, "数据库繁忙（检测到死锁），请重试导入");
+            }
         }
-        await _db.SaveChangesAsync();
-        await tx.CommitAsync();
 
         return new ImportConfirmResult
         {
@@ -658,6 +699,10 @@ public class AssetService : IAssetService
 
     private static bool IsDuplicateKey(DbUpdateException ex)
         => ex.InnerException is MySqlException { Number: 1062 };
+
+    private static bool IsDeadlock(Exception ex)
+        => ex is MySqlException { Number: 1213 } ||
+           (ex is DbUpdateException { InnerException: MySqlException { Number: 1213 } });
 
     private async Task<List<AssetDto>> ToDtos(IEnumerable<Asset> assets)
     {
