@@ -354,6 +354,7 @@ const debouncedSave = useDebounceFn(save, 300);
       <ElFormItem label="归属部门" required>
         <ElSelect
           v-model="form.departmentId"
+          :disabled="isEdit"
           clearable
           filterable
           placeholder="选择部门"
@@ -379,6 +380,7 @@ const debouncedSave = useDebounceFn(save, 300);
       <ElFormItem label="保管人" required>
         <ElSelect
           v-model="form.custodianId"
+          :disabled="isEdit"
           :loading="userOptionsLoading"
           :remote-method="searchUsers"
           clearable
@@ -396,7 +398,7 @@ const debouncedSave = useDebounceFn(save, 300);
         </ElSelect>
       </ElFormItem>
       <ElFormItem label="数量" required>
-        <ElInput v-model.number="form.quantity" />
+        <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
       </ElFormItem>
       <ElFormItem label="购入日期">
         <ElDatePicker
