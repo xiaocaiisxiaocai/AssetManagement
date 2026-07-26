@@ -387,10 +387,9 @@ public class RbacService : IRbacService
                 IsActive = true
             };
             _db.Users.Add(user);
-            await _db.SaveChangesAsync();
             _db.UserRoles.Add(new UserRole
             {
-                UserId = user.Id,
+                User = user,
                 RoleId = roleMap[row.RoleName]
             });
         }

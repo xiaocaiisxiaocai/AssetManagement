@@ -8,6 +8,7 @@ using AssetManagement.Infrastructure.Notifications;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Memory;
 using System.Security.Claims;
 
 namespace AssetManagement.Infrastructure.Reports;
@@ -17,12 +18,19 @@ public class ReportService : IReportService
     private readonly AppDbContext _db;
     private readonly INotificationService _notifications;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IMemoryCache _cache;
+    private const string DepartmentTreeCacheKey = "department_tree";
 
-    public ReportService(AppDbContext db, INotificationService notifications, IHttpContextAccessor httpContextAccessor)
+    public ReportService(
+        AppDbContext db,
+        INotificationService notifications,
+        IHttpContextAccessor httpContextAccessor,
+        IMemoryCache cache)
     {
         _db = db;
         _notifications = notifications;
         _httpContextAccessor = httpContextAccessor;
+        _cache = cache;
     }
 
     public async Task<AssetSummaryDto> GetSummaryAsync()
@@ -172,13 +180,7 @@ public class ReportService : IReportService
     public async Task<List<OverdueReportRow>> QueryOverdueAsync()
     {
         var today = BusinessClock.TodayDateOnly;
-        var flows = ApplyFlowScope(_db.ApprovalFlows.AsNoTracking())
-            .Where(x => x.BizType == "borrow" && x.Status == "approved"
-                        && x.ConfirmedAt == null && x.ReturnDate != null
-                        && x.ReturnDate < today
-                        && _db.Assets.Any(asset => asset.Id == x.AssetId
-                            && !asset.IsDeleted
-                            && asset.Status == AssetStatus.Borrowed))
+        var flows = ApplyOverdueQuery(today)
             .OrderByDescending(x => x.ApplyTime)
             .Take(AppConstants.MaxExportRows + 1);
         var overdueFlows = await flows.ToListAsync();
@@ -194,6 +196,49 @@ public class ReportService : IReportService
 
         return await ToOverdueRows(overdue);
     }
+
+    public async Task<OverdueReportPage> QueryOverduePageAsync(OverdueReportQuery query)
+    {
+        var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
+        var today = BusinessClock.TodayDateOnly;
+        var flows = ApplyOverdueQuery(today);
+        var total = await flows.CountAsync();
+        var seriousCutoff = today.AddDays(-10);
+        var seriousTotal = await flows.CountAsync(x => x.ReturnDate < seriousCutoff);
+        var offset = Pagination.GetOffset(page, pageSize, total);
+        var pageFlows = offset.HasValue
+            ? await flows.OrderByDescending(x => x.ApplyTime)
+                .ThenByDescending(x => x.Id)
+                .Skip(offset.Value)
+                .Take(pageSize)
+                .ToListAsync()
+            : [];
+        var overdue = pageFlows
+            .Select(flow =>
+            {
+                var due = flow.ReturnDate!.Value;
+                return (Flow: flow, Due: due, Days: today.DayNumber - due.DayNumber);
+            })
+            .ToList();
+
+        return new OverdueReportPage
+        {
+            Items = await ToOverdueRows(overdue),
+            Total = total,
+            SeriousTotal = seriousTotal,
+            Page = page,
+            PageSize = pageSize,
+        };
+    }
+
+    private IQueryable<ApprovalFlow> ApplyOverdueQuery(DateOnly today)
+        => ApplyFlowScope(_db.ApprovalFlows.AsNoTracking())
+            .Where(x => x.BizType == "borrow" && x.Status == "approved"
+                        && x.ConfirmedAt == null && x.ReturnDate != null
+                        && x.ReturnDate < today
+                        && _db.Assets.Any(asset => asset.Id == x.AssetId
+                            && !asset.IsDeleted
+                            && asset.Status == AssetStatus.Borrowed));
 
     public async Task<byte[]> ExportOverdueAsync()
     {
@@ -532,9 +577,13 @@ public class ReportService : IReportService
         }
 
         // 历史部门停用后，主管仍须能够处理其后代部门的归还和报表数据。
-        var departments = _db.Departments.AsNoTracking()
-            .Select(x => new { x.Id, x.ParentId })
-            .ToList();
+        var departments = _cache.GetOrCreate(DepartmentTreeCacheKey, entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(AppConstants.DepartmentTreeCacheMinutes);
+            return _db.Departments.AsNoTracking()
+                .Select(x => new { x.Id, x.ParentId })
+                .ToList();
+        })!;
         if (!departments.Any(x => x.Id == rootDepartmentId))
         {
             return Array.Empty<int>();

@@ -11,7 +11,6 @@ import {
 } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
 import { useWatermark } from '@vben/hooks';
 import { createIconifyIcon } from '@vben/icons';
 import {
@@ -32,7 +31,6 @@ import {
 } from '#/api/notification';
 import { useAuthStore } from '#/store';
 import { runHandled } from '#/utils/handled-promise';
-import LoginForm from '#/views/_core/authentication/login.vue';
 
 import { formatNotificationDate } from './notification-date';
 import { resolveNotificationRoute } from './notification-route';
@@ -252,14 +250,6 @@ watch(
         @read="handleNoticeRead"
         @view-all="handleNoticeViewAll"
       />
-    </template>
-    <template #extra>
-      <AuthenticationLoginExpiredModal
-        v-model:open="accessStore.loginExpired"
-        :avatar="avatar"
-      >
-        <LoginForm />
-      </AuthenticationLoginExpiredModal>
     </template>
     <template #lock-screen>
       <LockScreen :avatar="avatar" @to-login="handleLogout" />

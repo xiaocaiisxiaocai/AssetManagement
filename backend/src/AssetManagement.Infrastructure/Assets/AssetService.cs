@@ -60,7 +60,7 @@ public class AssetService : IAssetService
 
     public async Task<AssetDto> GetAsync(int id)
     {
-        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        var asset = await _db.Assets.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
         if (asset.IsDeleted)
         {
@@ -73,7 +73,7 @@ public class AssetService : IAssetService
     {
         // 详情允许查看已删除资产(供主清单中已删除行的"详情"按钮使用),
         // 故不经会拦截已删除资产的 GetAsync，自行加载实体；查看范围由 asset:view 权限统一控制。
-        var entity = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        var entity = await _db.Assets.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
         var asset = (await ToDtos(new[] { entity })).Single();
         var initialCustodianName = entity.InitialCustodianId.HasValue
@@ -686,15 +686,15 @@ public class AssetService : IAssetService
     private async Task<int> CurrentMaxSequence(AssetCategory category)
     {
         var prefix = $"{category.Code}-";
-        var existing = await _db.Assets
+        var latest = await _db.Assets
             .Where(x => x.CategoryId == category.Id && x.AssetNo.StartsWith(prefix))
             .Select(x => x.AssetNo)
-            .ToListAsync();
-        var maxSequence = existing
-            .Select(x => int.TryParse(x[prefix.Length..], out var sequence) ? sequence : 0)
-            .DefaultIfEmpty(0)
-            .Max();
-        return maxSequence;
+            .OrderByDescending(x => x.Length)
+            .ThenByDescending(x => x)
+            .FirstOrDefaultAsync();
+        return latest is not null && int.TryParse(latest[prefix.Length..], out var sequence)
+            ? sequence
+            : 0;
     }
 
     private static bool IsDuplicateKey(DbUpdateException ex)

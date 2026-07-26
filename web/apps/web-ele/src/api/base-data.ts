@@ -1,5 +1,7 @@
 import { requestClient } from '#/api/request';
 
+import { unwrap } from './unwrap';
+
 interface ApiResult<T> {
   code: number;
   data: T;
@@ -97,11 +99,6 @@ export type SettingPayload = {
   key: string;
   value: string;
 };
-
-async function unwrap<T>(request: Promise<ApiResult<T>>) {
-  const result = await request;
-  return result.data;
-}
 
 export const getDepartmentTreeApi = () =>
   unwrap(requestClient.get<ApiResult<DepartmentNode[]>>('/departments/tree'));

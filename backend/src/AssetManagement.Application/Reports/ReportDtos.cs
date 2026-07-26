@@ -73,12 +73,28 @@ public record OverdueReportRow
     public bool IsSerious { get; init; }
 }
 
+public record OverdueReportQuery
+{
+    public int Page { get; init; } = 1;
+    public int PageSize { get; init; } = 20;
+}
+
+public record OverdueReportPage
+{
+    public List<OverdueReportRow> Items { get; init; } = new();
+    public int Total { get; init; }
+    public int SeriousTotal { get; init; }
+    public int Page { get; init; }
+    public int PageSize { get; init; }
+}
+
 public interface IReportService
 {
     Task<AssetSummaryDto> GetSummaryAsync();
     Task<byte[]> ExportSummaryAsync();
     Task<PagedResult<BorrowReportRow>> QueryBorrowedAsync(BorrowReportQuery query);
     Task<byte[]> ExportBorrowedAsync(BorrowReportQuery query);
+    Task<OverdueReportPage> QueryOverduePageAsync(OverdueReportQuery query);
     Task<List<OverdueReportRow>> QueryOverdueAsync();
     Task<byte[]> ExportOverdueAsync();
     Task<int> RemindOverdueAsync(int assetId, int? userId);

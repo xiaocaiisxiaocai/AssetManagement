@@ -26,7 +26,12 @@ public class ExceptionMiddleware
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Unhandled");
+            _log.LogError(
+                ex,
+                "未处理的请求异常 {Method} {Path}，TraceId: {TraceId}",
+                ctx.Request.Method,
+                ctx.Request.Path,
+                ctx.TraceIdentifier);
             await Write(ctx, StatusCodes.Status500InternalServerError, 500, "服务器内部错误");
         }
     }

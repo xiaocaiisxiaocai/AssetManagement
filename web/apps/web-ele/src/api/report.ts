@@ -1,5 +1,7 @@
 import { requestClient } from '#/api/request';
 
+import { unwrap } from './unwrap';
+
 interface ApiResult<T> {
   code: number;
   data: T;
@@ -78,6 +80,15 @@ export interface OverdueReportRow {
   returnDate: string;
 }
 
+export interface OverdueReportQuery {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface OverdueReportPage extends PagedResult<OverdueReportRow> {
+  seriousTotal: number;
+}
+
 export interface AuditLogQuery {
   actionType?: string;
   endTime?: string;
@@ -128,11 +139,6 @@ export interface DatabaseBackupFile {
   sizeBytes: number;
 }
 
-async function unwrap<T>(request: Promise<ApiResult<T>>) {
-  const result = await request;
-  return result.data;
-}
-
 export const getAssetSummaryApi = () =>
   unwrap(requestClient.get<ApiResult<AssetSummary>>('/reports/summary'));
 
@@ -155,8 +161,13 @@ export const exportBorrowReportApi = (params: BorrowReportQuery) =>
     responseType: 'blob',
   });
 
-export const getOverdueReportApi = () =>
-  unwrap(requestClient.get<ApiResult<OverdueReportRow[]>>('/reports/overdue'));
+export const getOverdueReportApi = (params: OverdueReportQuery) =>
+  unwrap(
+    requestClient.get<ApiResult<OverdueReportPage>>(
+      '/reports/overdue',
+      { params },
+    ),
+  );
 
 export const exportOverdueReportApi = () =>
   requestClient.get('/reports/overdue/export', { responseType: 'blob' });

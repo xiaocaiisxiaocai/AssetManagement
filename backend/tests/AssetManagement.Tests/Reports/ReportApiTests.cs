@@ -152,13 +152,13 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             await db.SaveChangesAsync();
         }
 
-        var overdue = await _client.GetFromJsonAsync<ApiResult<List<OverdueReportRow>>>("/api/reports/overdue");
+        var overdue = await _client.GetFromJsonAsync<ApiResult<OverdueReportPage>>("/api/reports/overdue");
         await Post<ApiResult<object?>>($"/api/reports/overdue/{asset.Id}/remind", new { });
         var audit = await _client.GetFromJsonAsync<ApiResult<PagedResult<AuditLogDto>>>("/api/audit-logs?actionType=remind");
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", await LoginToken(borrowerNo, "TestPass123"));
         var notifications = await _client.GetFromJsonAsync<ApiResult<List<NotificationDto>>>("/api/notifications");
 
-        overdue!.Data!.Should().Contain(x => x.AssetId == asset.Id && x.OverdueDays > 0);
+        overdue!.Data!.Items.Should().Contain(x => x.AssetId == asset.Id && x.OverdueDays > 0);
         audit!.Data!.Items.Should().Contain(x => x.TargetId == asset.Id.ToString());
         notifications!.Data.Should().Contain(x =>
             x.Type == "overdue"

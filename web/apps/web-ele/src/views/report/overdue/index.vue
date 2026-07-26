@@ -39,28 +39,22 @@ const reportActionAccess = computed(() =>
 const loading = ref(false);
 const remindingId = ref<null | number>(null);
 const rows = ref<OverdueReportRow[]>([]);
+const total = ref(0);
+const seriousTotal = ref(0);
 const selectedRows = ref<OverdueReportRow[]>([]);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const query = reactive({
   page: 1,
   pageSize: 20,
 });
-const seriousCount = computed(
-  () => rows.value.filter((row) => row.isSerious).length,
-);
-const pagedRows = computed(() => {
-  const start = (query.page - 1) * query.pageSize;
-  return rows.value.slice(start, start + query.pageSize);
-});
-
 async function loadData() {
   loading.value = true;
   try {
-    rows.value = await getOverdueReportApi();
+    const result = await getOverdueReportApi(query);
+    rows.value = result.items;
+    total.value = result.total;
+    seriousTotal.value = result.seriousTotal;
     selectedRows.value = [];
-    if ((query.page - 1) * query.pageSize >= rows.value.length) {
-      query.page = 1;
-    }
   } finally {
     loading.value = false;
   }
@@ -94,9 +88,10 @@ function onSelectionChange(selection: OverdueReportRow[]) {
   selectedRows.value = selection;
 }
 
-function onPageSizeChange() {
+async function onPageSizeChange() {
   query.page = 1;
   selectedRows.value = [];
+  await loadData();
 }
 
 function goCategoryAssets(categoryCode: string) {
@@ -138,11 +133,11 @@ onMounted(async () => {
       <div class="stat-cards report-stat-cards">
         <div class="stat-card">
           <div class="stat-label">逾期资产</div>
-          <div class="stat-value stat-value-warning">{{ rows.length }}</div>
+          <div class="stat-value stat-value-warning">{{ total }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">严重逾期</div>
-          <div class="stat-value stat-value-danger">{{ seriousCount }}</div>
+          <div class="stat-value stat-value-danger">{{ seriousTotal }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">已选资产</div>
@@ -152,7 +147,7 @@ onMounted(async () => {
 
       <div class="table-panel">
         <ElTable
-          :data="pagedRows"
+          :data="rows"
           border
           height="100%"
           row-key="assetId"
@@ -229,7 +224,7 @@ onMounted(async () => {
         </ElTable>
         <div class="table-bottom-pager">
           <div class="table-bottom-pager-left">
-            <span>共 {{ rows.length }} 条记录</span>
+            <span>共 {{ total }} 条记录</span>
             <span class="table-bottom-pager-divider">|</span>
             <span>每页</span>
             <ElSelect
@@ -248,9 +243,10 @@ onMounted(async () => {
           <ElPagination
             v-model:current-page="query.page"
             :page-size="query.pageSize"
-            :total="rows.length"
+            :total="total"
             background
             layout="prev, pager, next"
+            @current-change="loadData"
           />
         </div>
       </div>

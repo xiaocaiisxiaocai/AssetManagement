@@ -52,7 +52,7 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task<TestMaterialDto> GetAsync(int id)
     {
-        var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        var m = await _db.TestMaterials.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
@@ -62,7 +62,7 @@ public class TestMaterialService : ITestMaterialService
     public async Task<TestMaterialDetailDto> GetDetailAsync(int id)
     {
         // 详情允许查看已删除料件(供主清单已删除行的"详情"按钮)
-        var entity = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        var entity = await _db.TestMaterials.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(entity);
         var material = (await ToDtos(new[] { entity })).Single();
@@ -501,14 +501,15 @@ public class TestMaterialService : ITestMaterialService
     {
         var today = BusinessClock.Today;
         var prefix = $"TM-{today:yyyyMMdd}-";
-        var existing = await _db.TestMaterials
+        var latest = await _db.TestMaterials
             .Where(x => x.MaterialNo.StartsWith(prefix))
             .Select(x => x.MaterialNo)
-            .ToListAsync();
-        var maxSequence = existing
-            .Select(x => int.TryParse(x[prefix.Length..], out var sequence) ? sequence : 0)
-            .DefaultIfEmpty(0)
-            .Max();
+            .OrderByDescending(x => x.Length)
+            .ThenByDescending(x => x)
+            .FirstOrDefaultAsync();
+        var maxSequence = latest is not null && int.TryParse(latest[prefix.Length..], out var parsed)
+            ? parsed
+            : 0;
         var sequence = await BusinessSequenceGenerator.NextAsync(
             _db, $"test-material:{today:yyyyMMdd}", maxSequence);
         return $"{prefix}{sequence:D3}";

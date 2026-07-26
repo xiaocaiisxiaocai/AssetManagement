@@ -650,6 +650,47 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Concurrent_approve_and_reject_only_commit_one_terminal_action()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        var started = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "并发审批回归测试",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd"),
+        });
+        var flowId = started.Data!.Id;
+        var token = await LoginToken("TEST-SUPERVISOR", "123456");
+        using var approveClient = _factory.CreateClient();
+        using var rejectClient = _factory.CreateClient();
+        approveClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        rejectClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var approveTask = approveClient.PostAsJsonAsync(
+            $"/api/approvals/{flowId}/approve",
+            new ApprovalActionRequest { Opinion = "并发通过" });
+        var rejectTask = rejectClient.PostAsJsonAsync(
+            $"/api/approvals/{flowId}/reject",
+            new RejectRequest { Reason = "并发驳回" });
+        var responses = await Task.WhenAll(approveTask, rejectTask);
+
+        responses.Count(response => response.IsSuccessStatusCode).Should().Be(1);
+        var bodies = await Task.WhenAll(responses.Select(response =>
+            response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>()));
+        bodies.Count(body => body?.Code == 0).Should().Be(1);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var savedFlow = await db.ApprovalFlows.AsNoTracking().SingleAsync(flow => flow.Id == flowId);
+        savedFlow.Status.Should().BeOneOf("approved", "rejected");
+        var terminalRecordCount = await db.FlowRecords.AsNoTracking().CountAsync(record =>
+            record.FlowId == flowId && (record.Action == "approve" || record.Action == "reject"));
+        terminalRecordCount.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Transfer_receiver_dept_manager_gets_second_node_pending_and_notification()
     {
         await Login();

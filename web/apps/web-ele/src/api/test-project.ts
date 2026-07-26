@@ -1,5 +1,7 @@
 import { requestClient } from '#/api/request';
 
+import { unwrap } from './unwrap';
+
 interface ApiResult<T> {
   code: number;
   data: T;
@@ -125,11 +127,6 @@ export interface TestProjectFollowup {
 export interface SaveTestProjectFollowupPayload {
   content: string;
   dueDate?: null | string;
-}
-
-async function unwrap<T>(request: Promise<ApiResult<T>>) {
-  const result = await request;
-  return result.data;
 }
 
 export const listTestProjectsApi = (deleteStatus?: string) =>

@@ -35,6 +35,7 @@ public sealed class AccountSecurityMiddleware
 
         // 这里只需要刷新声明，不应为每个请求构造完整且被跟踪的用户/RBAC 实体图。
         // 使用只读投影可显著减少传输列、对象分配和 ChangeTracker 压力，同时仍保持权限即时撤销语义。
+        // 部门启用状态通过标量子查询一并取出，避免额外一次往返。
         var user = await db.Users
             .AsNoTracking()
             .Where(x => x.Id == userId && x.IsActive)
@@ -44,6 +45,8 @@ public sealed class AccountSecurityMiddleware
                 x.EmployeeNo,
                 x.DepartmentId,
                 x.TokenVersion,
+                DepartmentIsActive = x.DepartmentId.HasValue
+                    && db.Departments.Any(d => d.Id == x.DepartmentId.Value && d.IsActive),
             })
             .SingleOrDefaultAsync();
         if (user is null)
@@ -59,12 +62,18 @@ public sealed class AccountSecurityMiddleware
             return;
         }
 
-        var roleCodes = await db.UserRoles
+        // 角色与权限合并为一次查询：按角色分组取出权限码，在内存中展开/去重，
+        // 避免角色列表和权限列表各一次往返数据库。
+        var roleData = await db.UserRoles
             .AsNoTracking()
             .Where(x => x.UserId == userId && x.Role.IsActive)
-            .Select(x => x.Role.Code)
-            .Distinct()
+            .Select(x => new
+            {
+                RoleCode = x.Role.Code,
+                PermissionCodes = x.Role.RolePermissions.Select(rp => rp.Permission.Code).ToArray(),
+            })
             .ToArrayAsync();
+        var roleCodes = roleData.Select(x => x.RoleCode).Distinct().ToArray();
         if (roleCodes.Length == 0)
         {
             await RejectAsync(context, StatusCodes.Status401Unauthorized, 4012, "账号角色已禁用，请重新登录");
@@ -73,19 +82,13 @@ public sealed class AccountSecurityMiddleware
 
         if (!roleCodes.Contains("admin", StringComparer.Ordinal)
             && roleCodes.Contains("supervisor", StringComparer.Ordinal)
-            && (!user.DepartmentId.HasValue
-                || !await db.Departments.AnyAsync(x => x.Id == user.DepartmentId.Value && x.IsActive)))
+            && !user.DepartmentIsActive)
         {
             await RejectAsync(context, StatusCodes.Status403Forbidden, 4013, "部门主管必须关联启用状态的部门");
             return;
         }
 
-        var permissionCodes = await db.UserRoles
-            .AsNoTracking()
-            .Where(x => x.UserId == userId && x.Role.IsActive)
-            .SelectMany(x => x.Role.RolePermissions.Select(permission => permission.Permission.Code))
-            .Distinct()
-            .ToArrayAsync();
+        var permissionCodes = roleData.SelectMany(x => x.PermissionCodes).Distinct().ToArray();
 
         RefreshPrincipal(context, user.Id, user.EmployeeNo, user.DepartmentId, user.TokenVersion, roleCodes,
             permissionCodes);

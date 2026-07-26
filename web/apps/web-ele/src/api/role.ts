@@ -1,5 +1,7 @@
 import { requestClient } from '#/api/request';
 
+import { unwrap } from './unwrap';
+
 interface ApiResult<T> {
   code: number;
   data: T;
@@ -58,22 +60,12 @@ export type RolePayload = {
   name: string;
 };
 
-async function unwrap<T>(request: Promise<ApiResult<T>>) {
-  const result = await request;
-  return result.data;
-}
-
-async function unwrapPaged<T>(request: Promise<ApiResult<PagedResult<T>>>) {
-  const result = await request;
-  return result.data;
-}
-
 export const getRoleListApi = (
   keyword?: string,
   page: number = 1,
   pageSize: number = 20,
 ) =>
-  unwrapPaged(
+  unwrap(
     requestClient.get<ApiResult<PagedResult<RoleDto>>>('/roles', {
       params: { keyword, page, pageSize },
     }),

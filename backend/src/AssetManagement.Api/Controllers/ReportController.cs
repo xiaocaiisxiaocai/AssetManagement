@@ -39,8 +39,8 @@ public class ReportController : ControllerBase
 
     [HttpGet("overdue")]
     [HasPermission("report:view")]
-    public async Task<ApiResult<List<OverdueReportRow>>> Overdue()
-        => ApiResult<List<OverdueReportRow>>.Ok(await _service.QueryOverdueAsync());
+    public async Task<ApiResult<OverdueReportPage>> Overdue([FromQuery] OverdueReportQuery query)
+        => ApiResult<OverdueReportPage>.Ok(await _service.QueryOverduePageAsync(query));
 
     [HttpGet("overdue/export")]
     [HasPermission("report:export")]

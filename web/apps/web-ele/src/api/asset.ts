@@ -1,5 +1,7 @@
 import { requestClient } from '#/api/request';
 
+import { unwrap } from './unwrap';
+
 interface ApiResult<T> {
   code: number;
   data: T;
@@ -105,11 +107,6 @@ export interface AssetDetail {
   initialCustodianId?: null | number;
   initialCustodianName?: null | string;
   recentLogs: AssetAuditLog[];
-}
-
-async function unwrap<T>(request: Promise<ApiResult<T>>) {
-  const result = await request;
-  return result.data;
 }
 
 export const getAssetListApi = (params: AssetQuery) =>

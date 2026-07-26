@@ -513,14 +513,15 @@ public class MaterialFlowService : IMaterialFlowService
     {
         var today = BusinessClock.Today;
         var prefix = $"MF-{today:yyyyMMdd}-";
-        var existing = await _db.MaterialFlows
+        var latest = await _db.MaterialFlows
             .Where(x => x.FlowNo.StartsWith(prefix))
             .Select(x => x.FlowNo)
-            .ToListAsync();
-        var maxSequence = existing
-            .Select(x => int.TryParse(x[prefix.Length..], out var sequence) ? sequence : 0)
-            .DefaultIfEmpty(0)
-            .Max();
+            .OrderByDescending(x => x.Length)
+            .ThenByDescending(x => x)
+            .FirstOrDefaultAsync();
+        var maxSequence = latest is not null && int.TryParse(latest[prefix.Length..], out var parsed)
+            ? parsed
+            : 0;
         var sequence = await BusinessSequenceGenerator.NextAsync(
             _db, $"material-flow:{today:yyyyMMdd}", maxSequence);
         return $"{prefix}{sequence:D3}";

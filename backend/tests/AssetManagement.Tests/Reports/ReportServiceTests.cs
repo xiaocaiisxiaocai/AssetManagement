@@ -7,6 +7,7 @@ using AssetManagement.Infrastructure.Reports;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Memory;
 using System.Security.Claims;
 
 namespace AssetManagement.Tests.Reports;
@@ -17,7 +18,11 @@ public class ReportServiceTests : MySqlFixtureBase
 
     public ReportServiceTests()
     {
-        _service = new ReportService(_db, new NotificationService(_db), new HttpContextAccessor());
+        _service = new ReportService(
+            _db,
+            new NotificationService(_db),
+            new HttpContextAccessor(),
+            new MemoryCache(new MemoryCacheOptions()));
     }
 
     [Fact]
@@ -223,6 +228,17 @@ public class ReportServiceTests : MySqlFixtureBase
             "转让后的逾期责任人应为资产当前保管人");
         overdueList[0].BorrowerId.Should().Be(currentCustodian.Id);
         overdueList[0].OverdueDays.Should().BeGreaterThan(0);
+
+        var page = await _service.QueryOverduePageAsync(new OverdueReportQuery
+        {
+            Page = 1,
+            PageSize = 1,
+        });
+        page.Total.Should().Be(1);
+        page.SeriousTotal.Should().Be(0);
+        page.Page.Should().Be(1);
+        page.PageSize.Should().Be(1);
+        page.Items.Should().ContainSingle(x => x.AssetNo == "PC-001");
     }
 
     [Fact]
@@ -317,7 +333,11 @@ public class ReportServiceTests : MySqlFixtureBase
                 User = new ClaimsPrincipal(new ClaimsIdentity(identityClaims, "test"))
             }
         };
-        return new ReportService(_db, new NotificationService(_db), accessor);
+        return new ReportService(
+            _db,
+            new NotificationService(_db),
+            accessor,
+            new MemoryCache(new MemoryCacheOptions()));
     }
 
     [Fact]

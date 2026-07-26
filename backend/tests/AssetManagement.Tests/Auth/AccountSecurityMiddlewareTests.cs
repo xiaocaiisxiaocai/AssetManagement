@@ -4,9 +4,10 @@ using System.Net.Http.Json;
 using AssetManagement.Application.Auth;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
+using AssetManagement.Api.Middleware;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -14,11 +15,50 @@ namespace AssetManagement.Tests.Auth;
 
 public class AccountSecurityMiddlewareTests : IClassFixture<TestWebAppFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly TestWebAppFactory _factory;
 
     public AccountSecurityMiddlewareTests(TestWebAppFactory factory)
     {
         _factory = factory;
+    }
+
+    [Fact]
+    public async Task Successful_refresh_uses_two_database_reads()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Users.AsNoTracking()
+            .Where(x => x.EmployeeNo == "1001")
+            .Select(x => new { x.Id, x.TokenVersion })
+            .SingleAsync();
+        await db.Users.Where(x => x.Id == user.Id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsActive, true));
+
+        var context = new DefaultHttpContext
+        {
+            User = new System.Security.Claims.ClaimsPrincipal(
+                new System.Security.Claims.ClaimsIdentity(
+                new[]
+                {
+                    new System.Security.Claims.Claim(
+                        System.Security.Claims.ClaimTypes.NameIdentifier,
+                        user.Id.ToString()),
+                    new System.Security.Claims.Claim("tokenVersion", user.TokenVersion.ToString()),
+                },
+                "test")),
+        };
+        var reachedNext = false;
+        var middleware = new AccountSecurityMiddleware(_ =>
+        {
+            reachedNext = true;
+            return Task.CompletedTask;
+        });
+
+        _factory.CommandCounter.Reset();
+        await middleware.InvokeAsync(context, db);
+
+        reachedNext.Should().BeTrue();
+        _factory.CommandCounter.ReaderCount.Should().Be(2);
     }
 
     [Fact]

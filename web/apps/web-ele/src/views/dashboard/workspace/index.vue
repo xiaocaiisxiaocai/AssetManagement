@@ -1,5 +1,9 @@
 <script lang="ts" setup>
-import type { AssetSummary, OverdueReportRow } from '#/api/report';
+import type {
+  AssetSummary,
+  OverdueReportPage,
+  OverdueReportRow,
+} from '#/api/report';
 
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -72,6 +76,8 @@ const loading = ref(false);
 const hasLoadedOnce = ref(false);
 const summary = ref<AssetSummary | null>(null);
 const overdueRows = ref<null | OverdueReportRow[]>(null);
+const overdueTotal = ref<null | number>(null);
+const seriousOverdueCount = ref<null | number>(null);
 const pendingApprovals = ref<null | number>(null);
 const myPendingApprovals = ref<null | number>(null);
 const pendingMaterialFlows = ref<null | number>(null);
@@ -108,9 +114,6 @@ function formatCount(value: null | number) {
   return value ?? '—';
 }
 
-const seriousOverdueCount = computed(
-  () => overdueRows.value?.filter((row) => row.isSerious).length ?? null,
-);
 const pendingMineCount = computed(() =>
   combineAvailableCounts([
     { enabled: canViewApprovals.value, value: myPendingApprovals.value },
@@ -158,8 +161,8 @@ const metricCards = computed(() =>
     },
     {
       label: '逾期资产',
-      value: formatCount(overdueRows.value?.length ?? null),
-      tone: (overdueRows.value?.length ?? 0) > 0 ? 'danger' : 'success',
+      value: formatCount(overdueTotal.value),
+      tone: (overdueTotal.value ?? 0) > 0 ? 'danger' : 'success',
       path: '/report/overdue',
       visible: canViewReports.value,
     },
@@ -209,8 +212,14 @@ async function loadData() {
         ? getAssetSummaryApi()
         : Promise.resolve(summary.value),
       canViewReports.value
-        ? getOverdueReportApi()
-        : Promise.resolve(overdueRows.value),
+        ? getOverdueReportApi({ page: 1, pageSize: 5 })
+        : Promise.resolve<OverdueReportPage>({
+            items: overdueRows.value ?? [],
+            page: 1,
+            pageSize: 5,
+            seriousTotal: seriousOverdueCount.value ?? 0,
+            total: overdueTotal.value ?? 0,
+          }),
       canHandleApprovals.value
         ? getPendingApprovalsPageApi({ page: 1, pageSize: 1 }).then(
             (result) => result.total,
@@ -244,8 +253,26 @@ async function loadData() {
       const nextSummary = mergeSettledValue(summary.value, assetSummary);
       summary.value = nextSummary.value;
       nextErrors.assetSummary = nextSummary.error;
-      const nextOverdue = mergeSettledValue(overdueRows.value, overdue);
-      overdueRows.value = nextOverdue.value;
+      const nextOverdue = mergeSettledValue<OverdueReportPage>(
+        {
+          items: overdueRows.value ?? [],
+          page: 1,
+          pageSize: 5,
+          seriousTotal: seriousOverdueCount.value ?? 0,
+          total: overdueTotal.value ?? 0,
+        },
+        overdue,
+      );
+      const nextOverdueValue = nextOverdue.value ?? {
+        items: overdueRows.value ?? [],
+        page: 1,
+        pageSize: 5,
+        seriousTotal: seriousOverdueCount.value ?? 0,
+        total: overdueTotal.value ?? 0,
+      };
+      overdueRows.value = nextOverdueValue.items;
+      overdueTotal.value = nextOverdueValue.total;
+      seriousOverdueCount.value = nextOverdueValue.seriousTotal;
       nextErrors.overdue = nextOverdue.error;
     }
     if (canHandleApprovals.value) {
@@ -401,7 +428,7 @@ onMounted(loadData);
                 @click="go('/report/overdue')"
               >
                 <span>逾期未归还</span>
-                <strong>{{ formatCount(overdueRows?.length ?? null) }}</strong>
+                <strong>{{ formatCount(overdueTotal) }}</strong>
               </button>
             </div>
           </ElCard>

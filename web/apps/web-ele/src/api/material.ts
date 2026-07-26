@@ -2,6 +2,8 @@ import type { BpmnToken, WorkflowProgressStep } from './workflow';
 
 import { requestClient } from '#/api/request';
 
+import { unwrap } from './unwrap';
+
 interface ApiResult<T> {
   code: number;
   data: T;
@@ -118,11 +120,6 @@ export interface MaterialDetail {
   material: MaterialItem;
   flows: MaterialFlowItem[];
   records: MaterialFlowRecordItem[];
-}
-
-async function unwrap<T>(request: Promise<ApiResult<T>>) {
-  const result = await request;
-  return result.data;
 }
 
 export const listMaterialsApi = (params: MaterialQuery) =>

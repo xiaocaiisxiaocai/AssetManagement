@@ -1,5 +1,7 @@
 import { requestClient } from '#/api/request';
 
+import { unwrap } from './unwrap';
+
 interface ApiResult<T> {
   code: number;
   data: T;
@@ -63,16 +65,6 @@ export type UserPayload = {
   supervisorId?: null | number;
 };
 
-async function unwrap<T>(request: Promise<ApiResult<T>>) {
-  const result = await request;
-  return result.data;
-}
-
-async function unwrapPaged<T>(request: Promise<ApiResult<PagedResult<T>>>) {
-  const result = await request;
-  return result.data;
-}
-
 export const getUserListApi = (
   keyword?: string,
   page: number = 1,
@@ -80,7 +72,7 @@ export const getUserListApi = (
   departmentId?: number,
   roleId?: number,
 ) =>
-  unwrapPaged(
+  unwrap(
     requestClient.get<ApiResult<PagedResult<UserDto>>>('/users', {
       params: { departmentId, keyword, page, pageSize, roleId },
     }),
@@ -88,7 +80,7 @@ export const getUserListApi = (
 
 /** 业务人员选择器；仅返回活动用户，不要求用户管理权限。 */
 export const getUserOptionsPageApi = (keyword = '', page = 1, pageSize = 50) =>
-  unwrapPaged(
+  unwrap(
     requestClient.get<ApiResult<PagedResult<UserOptionDto>>>('/users/options', {
       params: { keyword, page, pageSize },
     }),
