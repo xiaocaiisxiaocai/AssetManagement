@@ -19,16 +19,16 @@ import {
 } from '#/api/test-project';
 import { formatDate } from '#/utils/date-format';
 import { downloadBlob } from '#/utils/download';
-import { createLatestRequestGuard } from '#/utils/latest-request';
+import { createImportValidationSession } from '#/utils/import-validation-session';
 
 const emit = defineEmits<{ imported: [] }>();
 const visible = defineModel<boolean>('visible', { required: true });
 
 const fileInput = ref<HTMLInputElement | null>(null);
-const importing = ref(false);
-const rows = ref<TestProjectImportRow[]>([]);
-const selectedFile = ref<File | null>(null);
-const importValidationGuard = createLatestRequestGuard();
+const importValidation = createImportValidationSession<TestProjectImportRow>();
+const importing = importValidation.loading;
+const rows = importValidation.rows;
+const selectedFile = importValidation.selectedFile;
 const hasInvalidRows = computed(() => rows.value.some((row) => !row.isValid));
 const canConfirm = computed(
   () =>
@@ -39,9 +39,8 @@ const canConfirm = computed(
 );
 
 watch(visible, (opened) => {
+  importValidation.reset();
   if (!opened) return;
-  selectedFile.value = null;
-  rows.value = [];
   if (fileInput.value) fileInput.value.value = '';
 });
 
@@ -62,15 +61,13 @@ function chooseFile() {
 
 async function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
-  selectedFile.value = input.files?.[0] ?? null;
-  rows.value = [];
-  if (!selectedFile.value) return;
+  const requestGeneration = importValidation.start(input.files?.[0] ?? null);
+  if (requestGeneration === null || !selectedFile.value) return;
 
-  const requestGeneration = importValidationGuard.next();
-  importing.value = true;
+  const file = selectedFile.value;
   try {
-    const result = await validateTestProjectImportApi(selectedFile.value);
-    if (!importValidationGuard.isLatest(requestGeneration)) return;
+    const result = await validateTestProjectImportApi(file);
+    if (!importValidation.canApply(requestGeneration)) return;
     rows.value = result.rows;
     if (result.rows.length === 0) {
       ElMessage.warning('导入文件中没有项目数据');
@@ -82,9 +79,7 @@ async function onFileChange(event: Event) {
       ElMessage.success(`校验通过，共 ${result.successCount} 条`);
     }
   } finally {
-    if (importValidationGuard.isLatest(requestGeneration)) {
-      importing.value = false;
-    }
+    importValidation.finish(requestGeneration);
   }
 }
 

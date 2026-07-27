@@ -3,7 +3,7 @@ import type { DepartmentOptionNode } from '#/api/base-data';
 import type { RoleDto } from '#/api/role';
 import type { UserDto, UserImportRow, UserOptionDto } from '#/api/user';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import { useAccess } from '@vben/access';
 
@@ -38,6 +38,7 @@ import {
 } from '#/api/user';
 import { flattenActiveDepartments } from '#/utils/department-options';
 import { runHandled } from '#/utils/handled-promise';
+import { createImportValidationSession } from '#/utils/import-validation-session';
 import { createLatestRequestGuard } from '#/utils/latest-request';
 import {
   createPageSizeOptions,
@@ -68,20 +69,20 @@ const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
 const importDialogVisible = ref(false);
-const importing = ref(false);
 const editingId = ref<null | number>(null);
 const users = ref<UserDto[]>([]);
 const supervisorOptions = ref<UserOptionDto[]>([]);
 const supervisorOptionsLoading = ref(false);
 const supervisorOptionsRequestGuard = createLatestRequestGuard();
-const importValidationGuard = createLatestRequestGuard();
+const importValidation = createImportValidationSession<UserImportRow>();
+const importing = importValidation.loading;
+const importRows = importValidation.rows;
+const selectedImportFile = importValidation.selectedFile;
 const roles = ref<RoleDto[]>([]);
 const departments = ref<DepartmentOptionNode[]>([]);
 const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const importFileInput = ref<HTMLInputElement | null>(null);
-const selectedImportFile = ref<File | null>(null);
-const importRows = ref<UserImportRow[]>([]);
 
 const query = reactive({
   departmentId: undefined as number | undefined,
@@ -293,13 +294,16 @@ async function downloadImportTemplate() {
 }
 
 function openImport() {
-  selectedImportFile.value = null;
-  importRows.value = [];
+  importValidation.reset();
   if (importFileInput.value) {
     importFileInput.value.value = '';
   }
   importDialogVisible.value = true;
 }
+
+watch(importDialogVisible, (opened) => {
+  if (!opened) importValidation.reset();
+});
 
 function chooseImportFile() {
   if (importFileInput.value) {
@@ -310,17 +314,13 @@ function chooseImportFile() {
 
 async function onImportFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
-  selectedImportFile.value = input.files?.[0] ?? null;
-  importRows.value = [];
-  if (!selectedImportFile.value) {
-    return;
-  }
+  const requestGeneration = importValidation.start(input.files?.[0] ?? null);
+  if (requestGeneration === null || !selectedImportFile.value) return;
 
-  const requestGeneration = importValidationGuard.next();
-  importing.value = true;
+  const file = selectedImportFile.value;
   try {
-    const result = await validateUserImportApi(selectedImportFile.value);
-    if (!importValidationGuard.isLatest(requestGeneration)) return;
+    const result = await validateUserImportApi(file);
+    if (!importValidation.canApply(requestGeneration)) return;
     importRows.value = result.rows;
     if (result.failedCount > 0) {
       ElMessage.warning(
@@ -330,9 +330,7 @@ async function onImportFileChange(event: Event) {
       ElMessage.success(`预览通过 ${result.successCount} 条`);
     }
   } finally {
-    if (importValidationGuard.isLatest(requestGeneration)) {
-      importing.value = false;
-    }
+    importValidation.finish(requestGeneration);
   }
 }
 
