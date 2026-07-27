@@ -134,6 +134,12 @@ public class BaseDataService : IBaseDataService
     {
         ValidateDepartmentRequest(request.Name);
         await using var tx = await _db.Database.BeginTransactionAsync();
+        if (request.IsActive)
+        {
+            // 候选负责人行锁必须是事务内首次数据库读取，避免 REPEATABLE-READ 在等待锁前
+            // 建立旧快照，导致后续唯一性校验看不到其他事务刚提交的负责人占用。
+            await LockUserRowAsync(request.ManagerId);
+        }
         var department = await _db.Departments.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4045, "部门不存在");
         var name = request.Name.Trim();
@@ -142,8 +148,6 @@ public class BaseDataService : IBaseDataService
         await EnsureCanDeactivateDepartmentAsync(id, request.IsActive);
         if (request.IsActive)
         {
-            // 对候选负责人的用户行加锁，序列化并发的“同一负责人分配给多个部门”请求。
-            await LockUserRowAsync(request.ManagerId);
             await EnsureDepartmentManagerAvailableAsync(request.ManagerId, id);
         }
         OrganizationLevelInfo? organizationLevel;

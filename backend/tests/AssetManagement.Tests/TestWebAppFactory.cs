@@ -138,6 +138,7 @@ public sealed class DbCommandCounterInterceptor : DbCommandInterceptor
 {
     private int _readerCount;
     public int ReaderCount => Volatile.Read(ref _readerCount);
+    public Action<DbCommand>? ReaderExecutingObserver { get; set; }
     public void Reset() => Interlocked.Exchange(ref _readerCount, 0);
 
     public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
@@ -147,6 +148,7 @@ public sealed class DbCommandCounterInterceptor : DbCommandInterceptor
         CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref _readerCount);
+        ReaderExecutingObserver?.Invoke(command);
         return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
     }
 }

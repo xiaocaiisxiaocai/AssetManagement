@@ -8,17 +8,22 @@ using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.TestMaterials;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.BaseData;
 
 public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
+    private readonly TestWebAppFactory _factory;
 
     public BaseDataApiTests(TestWebAppFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -317,6 +322,113 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
         duplicatedCreate.Message.Should().Be("负责人已负责其他部门");
         duplicatedUpdate!.Code.Should().Be(4094);
         duplicatedUpdate.Message.Should().Be("负责人已负责其他部门");
+    }
+
+    [Fact]
+    public async Task Concurrent_department_updates_cannot_assign_the_same_manager()
+    {
+        await Login();
+        var manager = await CreateUser();
+        var first = await Post<ApiResult<DepartmentNodeDto>>(
+            "/api/departments",
+            new CreateDepartmentRequest { Name = Unique("并发部门甲") });
+        var second = await Post<ApiResult<DepartmentNodeDto>>(
+            "/api/departments",
+            new CreateDepartmentRequest { Name = Unique("并发部门乙") });
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await using var blocker = await db.Database.BeginTransactionAsync();
+        await db.Users
+            .FromSqlInterpolated($"SELECT * FROM users WHERE Id = {manager.Id} FOR UPDATE")
+            .AsNoTracking()
+            .ToListAsync();
+
+        var lockAttemptCount = 0;
+        var bothLockAttemptsReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _factory.CommandCounter.ReaderExecutingObserver = command =>
+        {
+            if (!command.CommandText.Contains("FROM users", StringComparison.OrdinalIgnoreCase)
+                || !command.CommandText.Contains("FOR UPDATE", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+            if (Interlocked.Increment(ref lockAttemptCount) == 2)
+            {
+                bothLockAttemptsReached.TrySetResult();
+            }
+        };
+
+        await using var firstUpdateScope = _factory.Services.CreateAsyncScope();
+        await using var secondUpdateScope = _factory.Services.CreateAsyncScope();
+        var firstService = firstUpdateScope.ServiceProvider.GetRequiredService<IBaseDataService>();
+        var secondService = secondUpdateScope.ServiceProvider.GetRequiredService<IBaseDataService>();
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstRequest = Task.Run(async () =>
+        {
+            firstStarted.SetResult();
+            try
+            {
+                await firstService.UpdateDepartmentAsync(
+                    first.Data!.Id,
+                    new UpdateDepartmentRequest
+                    {
+                        IsActive = true,
+                        ManagerId = manager.Id,
+                        Name = first.Data.Name
+                    });
+                return null;
+            }
+            catch (BizException ex)
+            {
+                return ex;
+            }
+        });
+        var secondRequest = Task.Run(async () =>
+        {
+            secondStarted.SetResult();
+            try
+            {
+                await secondService.UpdateDepartmentAsync(
+                    second.Data!.Id,
+                    new UpdateDepartmentRequest
+                    {
+                        IsActive = true,
+                        ManagerId = manager.Id,
+                        Name = second.Data.Name
+                    });
+                return null;
+            }
+            catch (BizException ex)
+            {
+                return ex;
+            }
+        });
+
+        BizException?[] results;
+        try
+        {
+            await Task.WhenAll(firstStarted.Task, secondStarted.Task).WaitAsync(TimeSpan.FromSeconds(5));
+            await bothLockAttemptsReached.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await blocker.CommitAsync();
+            results = await Task.WhenAll(firstRequest, secondRequest);
+        }
+        finally
+        {
+            _factory.CommandCounter.ReaderExecutingObserver = null;
+        }
+
+        results.Count(x => x is null).Should().Be(1);
+        results.Count(x => x is { Code: 4094, Message: "负责人已负责其他部门" })
+            .Should().Be(1);
+
+        await using var verifyScope = _factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var assignedCount = await verifyDb.Departments.AsNoTracking()
+            .CountAsync(x => x.IsActive && x.ManagerId == manager.Id);
+        assignedCount.Should().Be(1);
     }
 
     [Fact]
