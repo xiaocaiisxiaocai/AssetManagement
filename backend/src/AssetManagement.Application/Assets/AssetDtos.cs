@@ -89,6 +89,13 @@ public record ImportPreviewRow
     public int Row { get; init; }
     public string Name { get; init; } = "";
     public string CategoryCode { get; init; } = "";
+    public int? DepartmentId { get; init; }
+    public string? DepartmentName { get; init; }
+    public int? CustodianId { get; init; }
+    public string? CustodianEmployeeNo { get; init; }
+    public string? CustodianName { get; init; }
+    public string? LocationName { get; init; }
+    public int Quantity { get; init; } = 1;
     public DateTime? PurchaseDate { get; init; }
     public DateTime? RegistrationTime { get; init; }
     public string? CurrentCondition { get; init; }

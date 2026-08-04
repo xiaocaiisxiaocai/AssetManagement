@@ -420,7 +420,11 @@ public class AssetService : IAssetService
     public byte[] BuildImportTemplate()
         => XlsxTable.Write(new[]
         {
-            new[] { "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注" }
+            new[]
+            {
+                "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
+                "归属部门", "保管人工号", "存放位置", "数量"
+            }
         });
 
     public async Task<List<ImportPreviewRow>> ValidateImportAsync(Stream file)
@@ -430,16 +434,40 @@ public class AssetService : IAssetService
         {
             throw new BizException(4153, $"单次导入不能超过 {AppConstants.MaxImportRows} 行");
         }
-        var categories = await _db.AssetCategories.Where(x => !x.IsDeleted).ToDictionaryAsync(x => x.Code, x => x);
+        var categories = await _db.AssetCategories
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .ToDictionaryAsync(x => x.Code, x => x);
+        var departments = await _db.Departments
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .ToListAsync();
+        var departmentsByName = departments.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
+        var departmentsById = departments.ToDictionary(x => x.Id);
+        var custodians = (await _db.Users
+                .AsNoTracking()
+                .Where(x => x.IsActive)
+                .ToListAsync())
+            .ToDictionary(x => x.EmployeeNo, StringComparer.OrdinalIgnoreCase);
         var conditionOptions = await LoadConditionOptionsAsync();
-        return rows.Select((cells, index) => ValidateRow(index + 2, cells, categories, conditionOptions)).ToList();
+        var currentUserDepartmentId = CurrentUserDepartmentId();
+        var allowedDepartmentIds = AllowedDepartmentIds();
+        return rows.Select((cells, index) => ValidateRow(
+            index + 2,
+            cells,
+            categories,
+            conditionOptions,
+            departmentsByName,
+            departmentsById,
+            custodians,
+            currentUserDepartmentId,
+            allowedDepartmentIds)).ToList();
     }
 
     public async Task<ImportConfirmResult> ConfirmImportAsync(Stream file)
     {
         var rows = await ValidateImportAsync(file);
         var validRows = rows.Where(x => x.IsValid).ToList();
-        var departmentId = CurrentUserDepartmentId();
         var distinctCodes = validRows.Select(x => x.CategoryCode).Distinct().ToList();
 
         // 先在无锁状态下解析出分类 Id，再统一按 Id 升序加锁：与 CreateAsync（单分类按 Id 加锁）
@@ -481,12 +509,15 @@ public class AssetService : IAssetService
                         AssetNo = AssetNoGenerator.Next(category.Code, used),
                         Name = row.Name,
                         CategoryId = category.Id,
-                        DepartmentId = departmentId,
+                        DepartmentId = row.DepartmentId,
+                        LocationName = row.LocationName,
+                        CustodianId = row.CustodianId,
+                        InitialCustodianId = row.CustodianId,
                         PurchaseDate = row.PurchaseDate,
                         RegistrationTime = row.RegistrationTime?.Date ?? BusinessClock.Today,
                         CurrentCondition = row.CurrentCondition,
                         Remark = row.Remark,
-                        Quantity = 1,
+                        Quantity = row.Quantity,
                         Status = AssetStatus.Available,
                         CreatedAt = DateTime.UtcNow
                     });
@@ -794,7 +825,12 @@ public class AssetService : IAssetService
         int rowNumber,
         IReadOnlyList<string> cells,
         Dictionary<string, AssetCategory> categories,
-        IReadOnlyList<string> conditionOptions)
+        IReadOnlyList<string> conditionOptions,
+        IReadOnlyDictionary<string, Department> departmentsByName,
+        IReadOnlyDictionary<int, Department> departmentsById,
+        IReadOnlyDictionary<string, User> custodians,
+        int? currentUserDepartmentId,
+        int[]? allowedDepartmentIds)
     {
         var name = Cell(cells, 0);
         var categoryCode = Cell(cells, 1);
@@ -802,6 +838,10 @@ public class AssetService : IAssetService
         var registrationTimeText = Cell(cells, 3);
         var currentConditionText = Cell(cells, 4);
         var remark = Cell(cells, 5);
+        var departmentNameText = Cell(cells, 6);
+        var custodianEmployeeNo = Cell(cells, 7);
+        var locationNameText = Cell(cells, 8);
+        var quantityText = Cell(cells, 9);
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(name)) errors.Add("名称必填");
         else if (name.Length > 100) errors.Add("名称不能超过 100 个字符");
@@ -817,11 +857,68 @@ public class AssetService : IAssetService
             errors.Add($"目前状况「{currentConditionText.Trim()}」不在数据字典中");
         }
 
+        Department? requestedDepartment = null;
+        var departmentSpecified = !string.IsNullOrWhiteSpace(departmentNameText);
+        if (departmentSpecified && !departmentsByName.TryGetValue(departmentNameText, out requestedDepartment))
+        {
+            errors.Add("部门名称不存在或已停用");
+        }
+
+        User? custodian = null;
+        var custodianSpecified = !string.IsNullOrWhiteSpace(custodianEmployeeNo);
+        if (custodianSpecified && !custodians.TryGetValue(custodianEmployeeNo, out custodian))
+        {
+            errors.Add("保管人不存在或已停用");
+        }
+
+        int? departmentId = null;
+        if (!departmentSpecified || requestedDepartment is not null)
+        {
+            departmentId = requestedDepartment?.Id ?? custodian?.DepartmentId ?? currentUserDepartmentId;
+            if (custodian is not null && custodian.DepartmentId != departmentId)
+            {
+                errors.Add("保管人与归属部门不一致");
+            }
+            if (allowedDepartmentIds is not null &&
+                (!departmentId.HasValue || !allowedDepartmentIds.Contains(departmentId.Value)))
+            {
+                errors.Add("无权将资产归属到该部门");
+            }
+        }
+
+        var locationName = string.IsNullOrWhiteSpace(locationNameText) ? null : locationNameText;
+        if (locationName?.Length > 100)
+        {
+            errors.Add("存放位置不能超过 100 个字符");
+        }
+
+        var quantity = 1;
+        if (!string.IsNullOrWhiteSpace(quantityText) &&
+            (!int.TryParse(quantityText, NumberStyles.None, CultureInfo.InvariantCulture, out quantity) || quantity <= 0))
+        {
+            errors.Add("数量必须是大于 0 的整数");
+            quantity = 1;
+        }
+
+        var resolvedDepartmentName = requestedDepartment?.Name;
+        if (resolvedDepartmentName is null && departmentId.HasValue &&
+            departmentsById.TryGetValue(departmentId.Value, out var resolvedDepartment))
+        {
+            resolvedDepartmentName = resolvedDepartment.Name;
+        }
+
         return new ImportPreviewRow
         {
             Row = rowNumber,
             Name = name,
             CategoryCode = categoryCode,
+            DepartmentId = departmentId,
+            DepartmentName = resolvedDepartmentName ?? (departmentSpecified ? departmentNameText : null),
+            CustodianId = custodian?.Id,
+            CustodianEmployeeNo = custodianSpecified ? custodianEmployeeNo : null,
+            CustodianName = custodian?.Name,
+            LocationName = locationName,
+            Quantity = quantity,
             PurchaseDate = purchaseDate,
             RegistrationTime = registrationTime,
             CurrentCondition = currentCondition,

@@ -111,11 +111,18 @@ export interface AssetDetail {
 
 export interface AssetImportPreviewRow {
   categoryCode: string;
+  custodianEmployeeNo?: null | string;
+  custodianId?: null | number;
+  custodianName?: null | string;
   currentCondition?: null | string;
+  departmentId?: null | number;
+  departmentName?: null | string;
   error: string;
   isValid: boolean;
+  locationName?: null | string;
   name: string;
   purchaseDate?: null | string;
+  quantity: number;
   registrationTime?: null | string;
   remark?: null | string;
   row: number;

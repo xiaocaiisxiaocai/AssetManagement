@@ -353,6 +353,20 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Import_template_includes_all_asset_create_fields()
+    {
+        await Login();
+
+        var response = await _client.GetAsync("/api/assets/import/template");
+        response.EnsureSuccessStatusCode();
+        var rows = ReadXlsxRows(await response.Content.ReadAsByteArrayAsync());
+
+        rows[0].Should().Equal(
+            "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
+            "归属部门", "保管人工号", "存放位置", "数量");
+    }
+
+    [Fact]
     public async Task Import_validate_previews_errors_and_confirm_imports_valid_rows()
     {
         await Login();
@@ -373,6 +387,90 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         confirmed.Data.FailedCount.Should().Be(1);
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>($"/api/assets?categoryId={category.Id}&name=万用表");
         list!.Data!.Items.Should().ContainSingle(x => x.Name == "万用表");
+    }
+
+    [Fact]
+    public async Task Import_confirm_persists_department_custodian_location_and_quantity()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("资产导入部门")
+        });
+        var custodian = await CreateUser(department.Data!.Id);
+        var assetName = Unique("完整字段导入资产");
+        var bytes = BuildXlsx(new[]
+        {
+            new[]
+            {
+                "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
+                "归属部门", "保管人工号", "存放位置", "数量"
+            },
+            new[]
+            {
+                assetName, category.Code, "2026-08-01", "2026-08-02", "正常使用", "完整字段",
+                department.Data.Name, custodian.EmployeeNo, "三楼研发区 A-12", "3"
+            }
+        });
+
+        var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
+        var row = preview.Data!.Should().ContainSingle().Subject;
+        row.IsValid.Should().BeTrue(row.Error);
+        row.DepartmentName.Should().Be(department.Data.Name);
+        row.CustodianEmployeeNo.Should().Be(custodian.EmployeeNo);
+        row.CustodianName.Should().Be(custodian.Name);
+        row.LocationName.Should().Be("三楼研发区 A-12");
+        row.Quantity.Should().Be(3);
+
+        var confirmed = await PostFile<ApiResult<ImportConfirmResult>>("/api/assets/import/confirm", bytes);
+        confirmed.Data!.SuccessCount.Should().Be(1);
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>(
+            $"/api/assets?categoryId={category.Id}&name={Uri.EscapeDataString(assetName)}");
+        var asset = list!.Data!.Items.Should().ContainSingle().Subject;
+        asset.DepartmentId.Should().Be(department.Data.Id);
+        asset.DepartmentName.Should().Be(department.Data.Name);
+        asset.CustodianId.Should().Be(custodian.Id);
+        asset.CustodianName.Should().Be(custodian.Name);
+        asset.LocationName.Should().Be("三楼研发区 A-12");
+        asset.Quantity.Should().Be(3);
+        asset.PurchaseDate.Should().Be(new DateTime(2026, 8, 1));
+        asset.RegistrationTime.Should().Be(new DateTime(2026, 8, 2));
+        asset.CurrentCondition.Should().Be("正常使用");
+        asset.Remark.Should().Be("完整字段");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var stored = await db.Assets.AsNoTracking().SingleAsync(x => x.Id == asset.Id);
+        stored.InitialCustodianId.Should().Be(custodian.Id);
+    }
+
+    [Fact]
+    public async Task Import_preview_rejects_unknown_organization_values_and_invalid_extended_fields()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var bytes = BuildXlsx(new[]
+        {
+            new[]
+            {
+                "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
+                "归属部门", "保管人工号", "存放位置", "数量"
+            },
+            new[]
+            {
+                "无效扩展字段资产", category.Code, "", "", "", "",
+                "不存在部门", "不存在工号", new string('位', 101), "0"
+            }
+        });
+
+        var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
+        var row = preview.Data!.Should().ContainSingle().Subject;
+        row.IsValid.Should().BeFalse();
+        row.Error.Should().Contain("部门名称不存在或已停用");
+        row.Error.Should().Contain("保管人不存在或已停用");
+        row.Error.Should().Contain("存放位置不能超过 100 个字符");
+        row.Error.Should().Contain("数量必须是大于 0 的整数");
     }
 
     [Fact]
@@ -688,7 +786,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }
 
-    private async Task<AssetManagement.Application.Rbac.UserDto> CreateUser()
+    private async Task<AssetManagement.Application.Rbac.UserDto> CreateUser(int? departmentId = null)
     {
         var role = await _client.GetFromJsonAsync<ApiResult<AssetManagement.Application.Common.PagedResult<AssetManagement.Application.Rbac.RoleDto>>>("/api/roles?pageSize=100");
         var employeeRole = role!.Data!.Items.Single(x => x.Code == "employee");
@@ -696,6 +794,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             EmployeeNo = Unique("u"),
             Name = "资产测试用户",
+            DepartmentId = departmentId,
             RoleIds = new[] { employeeRole.Id }
         });
         return user.Data!;

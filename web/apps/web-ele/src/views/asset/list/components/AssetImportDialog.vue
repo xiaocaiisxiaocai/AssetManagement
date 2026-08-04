@@ -123,7 +123,7 @@ async function confirmImport() {
       :closable="false"
       class="asset-import-alert"
       show-icon
-      title="系统会先检查分类编码；分类不存在的记录不会导入，其他校验通过的记录可继续导入。"
+      title="系统会先检查分类、部门和保管人；分类不存在或其他字段无效的记录不会导入。归属部门填部门名称，保管人填工号，数量留空默认为 1。"
       type="info"
     />
 
@@ -172,6 +172,17 @@ async function confirmImport() {
       <ElTableColumn label="行号" prop="row" width="70" />
       <ElTableColumn label="资产名称" min-width="150" prop="name" />
       <ElTableColumn label="分类编码" min-width="150" prop="categoryCode" />
+      <ElTableColumn label="归属部门" min-width="130" prop="departmentName" />
+      <ElTableColumn label="保管人" min-width="150">
+        <template #default="{ row }">
+          <span v-if="row.custodianName">
+            {{ row.custodianName }}（{{ row.custodianEmployeeNo }}）
+          </span>
+          <span v-else>{{ row.custodianEmployeeNo || '-' }}</span>
+        </template>
+      </ElTableColumn>
+      <ElTableColumn label="存放位置" min-width="150" prop="locationName" />
+      <ElTableColumn label="数量" prop="quantity" width="75" />
       <ElTableColumn label="购入日期" width="115">
         <template #default="{ row }">
           {{ formatDate(row.purchaseDate) }}
