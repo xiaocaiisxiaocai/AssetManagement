@@ -363,7 +363,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
         rows[0].Should().Equal(
             "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
-            "归属部门", "保管人工号", "存放位置", "数量");
+            "归属部门", "保管人工号", "存放位置", "数量", "资产编号");
     }
 
     [Fact]
@@ -400,17 +400,18 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         });
         var custodian = await CreateUser(department.Data!.Id);
         var assetName = Unique("完整字段导入资产");
+        var customAssetNo = $"CUSTOM-{Guid.NewGuid():N}";
         var bytes = BuildXlsx(new[]
         {
             new[]
             {
                 "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
-                "归属部门", "保管人工号", "存放位置", "数量"
+                "归属部门", "保管人工号", "存放位置", "数量", "资产编号"
             },
             new[]
             {
                 assetName, category.Code, "2026-08-01", "2026-08-02", "正常使用", "完整字段",
-                department.Data.Name, custodian.EmployeeNo, "三楼研发区 A-12", "3"
+                department.Data.Name, custodian.EmployeeNo, "三楼研发区 A-12", "3", customAssetNo
             }
         });
 
@@ -422,12 +423,14 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         row.CustodianName.Should().Be(custodian.Name);
         row.LocationName.Should().Be("三楼研发区 A-12");
         row.Quantity.Should().Be(3);
+        row.AssetNo.Should().Be(customAssetNo);
 
         var confirmed = await PostFile<ApiResult<ImportConfirmResult>>("/api/assets/import/confirm", bytes);
         confirmed.Data!.SuccessCount.Should().Be(1);
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>(
             $"/api/assets?categoryId={category.Id}&name={Uri.EscapeDataString(assetName)}");
         var asset = list!.Data!.Items.Should().ContainSingle().Subject;
+        asset.AssetNo.Should().Be(customAssetNo);
         asset.DepartmentId.Should().Be(department.Data.Id);
         asset.DepartmentName.Should().Be(department.Data.Name);
         asset.CustodianId.Should().Be(custodian.Id);
@@ -455,12 +458,12 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             new[]
             {
                 "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
-                "归属部门", "保管人工号", "存放位置", "数量"
+                "归属部门", "保管人工号", "存放位置", "数量", "资产编号"
             },
             new[]
             {
                 "无效扩展字段资产", category.Code, "", "", "", "",
-                "不存在部门", "不存在工号", new string('位', 101), "0"
+                "不存在部门", "不存在工号", new string('位', 101), "0", new string('号', 101)
             }
         });
 
@@ -471,6 +474,64 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         row.Error.Should().Contain("保管人不存在或已停用");
         row.Error.Should().Contain("存放位置不能超过 100 个字符");
         row.Error.Should().Contain("数量必须是大于 0 的整数");
+        row.Error.Should().Contain("资产编号不能超过 100 个字符");
+    }
+
+    [Fact]
+    public async Task Import_preview_rejects_existing_and_in_file_duplicate_custom_asset_numbers()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var existing = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "已有编号资产",
+            CategoryId = category.Id
+        });
+        var duplicatedInFile = $"CUSTOM-{Guid.NewGuid():N}";
+        var bytes = BuildXlsx(new[]
+        {
+            new[]
+            {
+                "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
+                "归属部门", "保管人工号", "存放位置", "数量", "资产编号"
+            },
+            new[] { "文件重复一", category.Code, "", "", "", "", "", "", "", "1", duplicatedInFile },
+            new[] { "文件重复二", category.Code, "", "", "", "", "", "", "", "1", duplicatedInFile.ToLowerInvariant() },
+            new[] { "数据库重复", category.Code, "", "", "", "", "", "", "", "1", existing.Data!.AssetNo }
+        });
+
+        var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
+
+        preview.Data.Should().HaveCount(3);
+        preview.Data![0].Error.Should().Contain("资产编号在文件中重复");
+        preview.Data[1].Error.Should().Contain("资产编号在文件中重复");
+        preview.Data[2].Error.Should().Contain("资产编号已存在");
+        preview.Data.Should().OnlyContain(row => !row.IsValid);
+    }
+
+    [Fact]
+    public async Task Import_auto_number_skips_custom_number_reserved_in_same_file()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var bytes = BuildXlsx(new[]
+        {
+            new[]
+            {
+                "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
+                "归属部门", "保管人工号", "存放位置", "数量", "资产编号"
+            },
+            new[] { "自定义编号资产", category.Code, "", "", "", "", "", "", "", "1", $"{category.Code}-001" },
+            new[] { "自动编号资产", category.Code, "", "", "", "", "", "", "", "1", "" }
+        });
+
+        var confirmed = await PostFile<ApiResult<ImportConfirmResult>>("/api/assets/import/confirm", bytes);
+        var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>(
+            $"/api/assets?categoryId={category.Id}&pageSize=20");
+
+        confirmed.Data!.SuccessCount.Should().Be(2);
+        list!.Data!.Items.Single(x => x.Name == "自定义编号资产").AssetNo.Should().Be($"{category.Code}-001");
+        list.Data.Items.Single(x => x.Name == "自动编号资产").AssetNo.Should().Be($"{category.Code}-002");
     }
 
     [Fact]

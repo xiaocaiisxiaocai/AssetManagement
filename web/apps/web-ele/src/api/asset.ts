@@ -110,6 +110,7 @@ export interface AssetDetail {
 }
 
 export interface AssetImportPreviewRow {
+  assetNo?: null | string;
   categoryCode: string;
   custodianEmployeeNo?: null | string;
   custodianId?: null | number;

@@ -423,7 +423,7 @@ public class AssetService : IAssetService
             new[]
             {
                 "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
-                "归属部门", "保管人工号", "存放位置", "数量"
+                "归属部门", "保管人工号", "存放位置", "数量", "资产编号"
             }
         });
 
@@ -449,6 +449,23 @@ public class AssetService : IAssetService
                 .Where(x => x.IsActive)
                 .ToListAsync())
             .ToDictionary(x => x.EmployeeNo, StringComparer.OrdinalIgnoreCase);
+        var customAssetNos = rows
+            .Select(cells => Cell(cells, 10))
+            .Where(assetNo => !string.IsNullOrWhiteSpace(assetNo))
+            .ToList();
+        var duplicateAssetNos = customAssetNos
+            .GroupBy(assetNo => assetNo, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var existingAssetNos = customAssetNos.Count == 0
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : (await _db.Assets
+                .AsNoTracking()
+                .Where(x => customAssetNos.Contains(x.AssetNo))
+                .Select(x => x.AssetNo)
+                .ToListAsync())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var conditionOptions = await LoadConditionOptionsAsync();
         var currentUserDepartmentId = CurrentUserDepartmentId();
         var allowedDepartmentIds = AllowedDepartmentIds();
@@ -461,7 +478,9 @@ public class AssetService : IAssetService
             departmentsById,
             custodians,
             currentUserDepartmentId,
-            allowedDepartmentIds)).ToList();
+            allowedDepartmentIds,
+            duplicateAssetNos,
+            existingAssetNos)).ToList();
     }
 
     public async Task<ImportConfirmResult> ConfirmImportAsync(Stream file)
@@ -482,6 +501,10 @@ public class AssetService : IAssetService
         {
             var categoryCache = new Dictionary<string, AssetCategory>();
             var seq = new Dictionary<int, int>();
+            var reservedAssetNos = validRows
+                .Where(row => !string.IsNullOrWhiteSpace(row.AssetNo))
+                .Select(row => row.AssetNo!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             // 整批一个事务,任一失败整体回滚,避免逐条提交产生半残数据
             await using var tx = await _db.Database.BeginTransactionAsync();
@@ -497,16 +520,25 @@ public class AssetService : IAssetService
                 foreach (var row in validRows)
                 {
                     var category = categoryCache[row.CategoryCode];
-                    // 同分类多行在内存中递增取号:批量提交前 Count 不变,直接用会撞唯一索引
-                    if (!seq.TryGetValue(category.Id, out var used))
+                    var assetNo = row.AssetNo;
+                    if (string.IsNullOrWhiteSpace(assetNo))
                     {
-                        used = await CurrentMaxSequence(category);
+                        // 同分类多行在内存中递增取号；同时避开本批次自定义编号。
+                        if (!seq.TryGetValue(category.Id, out var used))
+                        {
+                            used = await CurrentMaxSequence(category);
+                        }
+                        do
+                        {
+                            assetNo = AssetNoGenerator.Next(category.Code, used);
+                            used++;
+                        } while (!reservedAssetNos.Add(assetNo));
+                        seq[category.Id] = used;
                     }
-                    seq[category.Id] = used + 1;
 
                     _db.Assets.Add(new Asset
                     {
-                        AssetNo = AssetNoGenerator.Next(category.Code, used),
+                        AssetNo = assetNo,
                         Name = row.Name,
                         CategoryId = category.Id,
                         DepartmentId = row.DepartmentId,
@@ -525,6 +557,10 @@ public class AssetService : IAssetService
                 await _db.SaveChangesAsync();
                 await tx.CommitAsync();
                 break;
+            }
+            catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+            {
+                throw new BizException(4090, "资产编号已存在，请重新校验后导入");
             }
             catch (Exception ex) when (attempt < maxAttempts - 1 && IsDeadlock(ex))
             {
@@ -830,7 +866,9 @@ public class AssetService : IAssetService
         IReadOnlyDictionary<int, Department> departmentsById,
         IReadOnlyDictionary<string, User> custodians,
         int? currentUserDepartmentId,
-        int[]? allowedDepartmentIds)
+        int[]? allowedDepartmentIds,
+        IReadOnlySet<string> duplicateAssetNos,
+        IReadOnlySet<string> existingAssetNos)
     {
         var name = Cell(cells, 0);
         var categoryCode = Cell(cells, 1);
@@ -842,11 +880,21 @@ public class AssetService : IAssetService
         var custodianEmployeeNo = Cell(cells, 7);
         var locationNameText = Cell(cells, 8);
         var quantityText = Cell(cells, 9);
+        var assetNo = Cell(cells, 10);
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(name)) errors.Add("名称必填");
         else if (name.Length > 100) errors.Add("名称不能超过 100 个字符");
         if (string.IsNullOrWhiteSpace(categoryCode) || !categories.ContainsKey(categoryCode)) errors.Add("分类编码不存在");
         if (remark.Length > 500) errors.Add("备注不能超过 500 个字符");
+        if (assetNo.Length > 100) errors.Add("资产编号不能超过 100 个字符");
+        if (!string.IsNullOrWhiteSpace(assetNo) && duplicateAssetNos.Contains(assetNo))
+        {
+            errors.Add("资产编号在文件中重复");
+        }
+        else if (!string.IsNullOrWhiteSpace(assetNo) && existingAssetNos.Contains(assetNo))
+        {
+            errors.Add("资产编号已存在");
+        }
         var purchaseDate = ParseOptionalDate(purchaseDateText, "购入日期", errors);
         var registrationTime = ParseOptionalDate(registrationTimeText, "资产登记日期", errors);
         var currentCondition = string.IsNullOrWhiteSpace(currentConditionText)
@@ -910,6 +958,7 @@ public class AssetService : IAssetService
         return new ImportPreviewRow
         {
             Row = rowNumber,
+            AssetNo = string.IsNullOrWhiteSpace(assetNo) ? null : assetNo,
             Name = name,
             CategoryCode = categoryCode,
             DepartmentId = departmentId,

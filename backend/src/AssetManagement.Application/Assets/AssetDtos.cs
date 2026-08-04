@@ -87,6 +87,7 @@ public record UpdateAssetRequest
 public record ImportPreviewRow
 {
     public int Row { get; init; }
+    public string? AssetNo { get; init; }
     public string Name { get; init; } = "";
     public string CategoryCode { get; init; } = "";
     public int? DepartmentId { get; init; }

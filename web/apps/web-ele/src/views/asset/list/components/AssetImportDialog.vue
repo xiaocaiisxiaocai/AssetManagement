@@ -123,7 +123,7 @@ async function confirmImport() {
       :closable="false"
       class="asset-import-alert"
       show-icon
-      title="系统会先检查分类、部门和保管人；分类不存在或其他字段无效的记录不会导入。归属部门填部门名称，保管人填工号，数量留空默认为 1。"
+      title="系统会先检查分类、部门、保管人和资产编号；无效记录不会导入。资产编号可自定义，留空则自动生成；数量留空默认为 1。"
       type="info"
     />
 
@@ -170,6 +170,11 @@ async function confirmImport() {
 
     <ElTable :data="rows" border max-height="420">
       <ElTableColumn label="行号" prop="row" width="70" />
+      <ElTableColumn label="资产编号" min-width="150">
+        <template #default="{ row }">
+          {{ row.assetNo || '自动生成' }}
+        </template>
+      </ElTableColumn>
       <ElTableColumn label="资产名称" min-width="150" prop="name" />
       <ElTableColumn label="分类编码" min-width="150" prop="categoryCode" />
       <ElTableColumn label="归属部门" min-width="130" prop="departmentName" />
