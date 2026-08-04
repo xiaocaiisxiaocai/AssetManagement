@@ -34,14 +34,19 @@ describe('资产清单行操作权限', () => {
     expect(access.canDelete).toBe(true);
   });
 
-  it('顶部导出和新增资产使用独立权限码', () => {
-    const permissions = new Set(['asset:create', 'asset:export']);
+  it('顶部导入、导出和新增资产使用独立权限码', () => {
+    const permissions = new Set([
+      'asset:create',
+      'asset:export',
+      'asset:import',
+    ]);
     const access = buildAssetRowActionAccess((codes) =>
       codes.some((code) => permissions.has(code)),
     );
 
     expect(access.canCreate).toBe(true);
     expect(access.canExport).toBe(true);
+    expect(access.canImport).toBe(true);
   });
 });
 

@@ -109,6 +109,24 @@ export interface AssetDetail {
   recentLogs: AssetAuditLog[];
 }
 
+export interface AssetImportPreviewRow {
+  categoryCode: string;
+  currentCondition?: null | string;
+  error: string;
+  isValid: boolean;
+  name: string;
+  purchaseDate?: null | string;
+  registrationTime?: null | string;
+  remark?: null | string;
+  row: number;
+}
+
+export interface AssetImportConfirmResult {
+  failedCount: number;
+  rows: AssetImportPreviewRow[];
+  successCount: number;
+}
+
 export const getAssetListApi = (params: AssetQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<AssetItem>>>('/assets', { params }),
@@ -141,6 +159,31 @@ export const restoreAssetApi = (id: number) =>
 
 export const exportAssetsApi = (params: AssetQuery) =>
   requestClient.get('/assets/export', { params, responseType: 'blob' });
+
+export const downloadAssetImportTemplateApi = () =>
+  requestClient.get('/assets/import/template', { responseType: 'blob' });
+
+export const validateAssetImportApi = (file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return unwrap(
+    requestClient.post<ApiResult<AssetImportPreviewRow[]>>(
+      '/assets/import/validate',
+      form,
+    ),
+  );
+};
+
+export const confirmAssetImportApi = (file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return unwrap(
+    requestClient.post<ApiResult<AssetImportConfirmResult>>(
+      '/assets/import/confirm',
+      form,
+    ),
+  );
+};
 
 // 上传资产照片,返回 { name, url };url 形如 /api/files/{guid}.ext,可直接用于 <img src>
 export const uploadAssetImageApi = (file: File) => {

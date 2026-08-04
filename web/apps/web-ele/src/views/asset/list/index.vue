@@ -78,6 +78,7 @@ import { countCategoryTreeAssets } from './category-asset-counts';
 import AssetBorrowDialog from './components/AssetBorrowDialog.vue';
 import AssetDetailDialog from './components/AssetDetailDialog.vue';
 import AssetFormDialog from './components/AssetFormDialog.vue';
+import AssetImportDialog from './components/AssetImportDialog.vue';
 import AssetTransferDialog from './components/AssetTransferDialog.vue';
 
 defineOptions({ name: 'AssetList' });
@@ -108,6 +109,7 @@ const MAX_CATEGORY_LEVEL = 3;
 const loading = ref(false);
 const deletingAssetIds = ref<number[]>([]);
 const dialogVisible = ref(false);
+const importDialogVisible = ref(false);
 const borrowDialogVisible = ref(false);
 const transferDialogVisible = ref(false);
 const editingAsset = ref<AssetItem | null>(null);
@@ -396,6 +398,10 @@ async function openDetail(row: AssetItem) {
 }
 
 function onSaved() {
+  runHandled(Promise.all([loadData(), loadHierarchyAssetCounts()]));
+}
+
+function onImported() {
   runHandled(Promise.all([loadData(), loadHierarchyAssetCounts()]));
 }
 
@@ -708,6 +714,12 @@ watch(detailVisible, (opened) => {
             </div>
           </div>
           <div class="asset-head-actions">
+            <ElButton
+              v-if="assetRowActionAccess.canImport"
+              @click="importDialogVisible = true"
+            >
+              批量导入
+            </ElButton>
             <ElButton
               v-if="currentCategoryLevel === 0 && !flatMode"
               @click="enterFlatMode"
@@ -1212,6 +1224,11 @@ watch(detailVisible, (opened) => {
         :user-options-loading="userOptionsLoading"
         :users="users"
         @saved="onSaved"
+      />
+
+      <AssetImportDialog
+        v-model:visible="importDialogVisible"
+        @imported="onImported"
       />
 
       <AssetDetailDialog
