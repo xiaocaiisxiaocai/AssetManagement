@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Globalization;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
@@ -12,11 +13,19 @@ internal static class XlsxTable
     private const long MaxArchiveUncompressedBytes = 20 * 1024 * 1024;
     private const long MaxWorksheetBytes = 10 * 1024 * 1024;
     private const long MaxSharedStringsBytes = 5 * 1024 * 1024;
+    private const long MaxStylesBytes = 1024 * 1024;
+    private const long MaxWorkbookBytes = 1024 * 1024;
     private const int MaxRows = AppConstants.MaxImportRows + 1;
     private const int MaxColumns = 50;
     private const int MaxCellCharacters = 10_000;
     private const int MaxSharedStrings = MaxRows * MaxColumns;
     private static readonly XNamespace SheetNs = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    private static readonly HashSet<int> BuiltInDateNumberFormatIds =
+    [
+        14, 15, 16, 17, 22,
+        27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
+        50, 51, 52, 53, 54, 55, 56, 57, 58
+    ];
 
     public static byte[] Write(IEnumerable<string[]> rows)
         => Write(new[] { ("Sheet1", rows) });
@@ -89,6 +98,8 @@ internal static class XlsxTable
             using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
             ValidateArchive(zip);
             var sharedStrings = ReadSharedStrings(zip);
+            var dateStyleIndexes = ReadDateStyleIndexes(zip);
+            var uses1904DateSystem = Uses1904DateSystem(zip);
             var entry = zip.GetEntry("xl/worksheets/sheet1.xml")
                 ?? throw new BizException(4001, "Excel 文件缺少工作表");
             var doc = ReadXml(entry, MaxWorksheetBytes, "工作表");
@@ -97,7 +108,7 @@ internal static class XlsxTable
             {
                 throw new BizException(4153, $"Excel 文件不能超过 {AppConstants.MaxImportRows} 行数据");
             }
-            return rows.Select(row => ReadRow(row, sharedStrings)).ToList();
+            return rows.Select(row => ReadRow(row, sharedStrings, dateStyleIndexes, uses1904DateSystem)).ToList();
         }
         catch (BizException)
         {
@@ -109,7 +120,11 @@ internal static class XlsxTable
         }
     }
 
-    private static List<string> ReadRow(XElement row, IReadOnlyList<string> sharedStrings)
+    private static List<string> ReadRow(
+        XElement row,
+        IReadOnlyList<string> sharedStrings,
+        IReadOnlySet<int> dateStyleIndexes,
+        bool uses1904DateSystem)
     {
         var values = new List<string>();
         foreach (var cell in row.Elements(SheetNs + "c"))
@@ -129,7 +144,7 @@ internal static class XlsxTable
                 values.Add("");
             }
 
-            var value = ReadCell(cell, sharedStrings);
+            var value = ReadCell(cell, sharedStrings, dateStyleIndexes, uses1904DateSystem);
             if (value.Length > MaxCellCharacters)
             {
                 throw new BizException(4153, $"单元格内容不能超过 {MaxCellCharacters} 个字符");
@@ -162,6 +177,125 @@ internal static class XlsxTable
             throw new BizException(4153, $"单元格内容不能超过 {MaxCellCharacters} 个字符");
         }
         return result;
+    }
+
+    private static HashSet<int> ReadDateStyleIndexes(ZipArchive zip)
+    {
+        var entry = zip.GetEntry("xl/styles.xml");
+        if (entry is null)
+        {
+            return [];
+        }
+
+        var doc = ReadXml(entry, MaxStylesBytes, "样式");
+        var customFormats = new Dictionary<int, string>();
+        var customFormatElements = doc.Root?
+            .Element(SheetNs + "numFmts")?
+            .Elements(SheetNs + "numFmt")
+            ?? [];
+        foreach (var format in customFormatElements)
+        {
+            var id = ParseIntegerAttribute(format, "numFmtId");
+            if (id is not null)
+            {
+                customFormats.TryAdd(id.Value, (string?)format.Attribute("formatCode") ?? "");
+            }
+        }
+
+        var result = new HashSet<int>();
+        var cellFormats = doc.Root?
+            .Element(SheetNs + "cellXfs")?
+            .Elements(SheetNs + "xf")
+            .ToList()
+            ?? [];
+        for (var index = 0; index < cellFormats.Count; index++)
+        {
+            var numberFormatId = ParseIntegerAttribute(cellFormats[index], "numFmtId");
+            if (numberFormatId is not null && IsDateNumberFormat(numberFormatId.Value, customFormats))
+            {
+                result.Add(index);
+            }
+        }
+
+        return result;
+    }
+
+    private static bool Uses1904DateSystem(ZipArchive zip)
+    {
+        var entry = zip.GetEntry("xl/workbook.xml");
+        if (entry is null)
+        {
+            return false;
+        }
+
+        var doc = ReadXml(entry, MaxWorkbookBytes, "工作簿");
+        var raw = (string?)doc.Root?
+            .Element(SheetNs + "workbookPr")?
+            .Attribute("date1904");
+        return raw is "1" or "true";
+    }
+
+    private static int? ParseIntegerAttribute(XElement element, string name)
+        => int.TryParse(
+            (string?)element.Attribute(name),
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var value)
+            ? value
+            : null;
+
+    private static bool IsDateNumberFormat(
+        int numberFormatId,
+        IReadOnlyDictionary<int, string> customFormats)
+    {
+        if (BuiltInDateNumberFormatIds.Contains(numberFormatId))
+        {
+            return true;
+        }
+
+        return customFormats.TryGetValue(numberFormatId, out var formatCode)
+            && ContainsDateToken(formatCode);
+    }
+
+    private static bool ContainsDateToken(string formatCode)
+    {
+        var inQuotes = false;
+        var inBrackets = false;
+        var escaped = false;
+        foreach (var ch in formatCode)
+        {
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+            if (ch == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+            if (ch == '"')
+            {
+                inQuotes = !inQuotes;
+                continue;
+            }
+            if (!inQuotes && ch == '[')
+            {
+                inBrackets = true;
+                continue;
+            }
+            if (!inQuotes && ch == ']')
+            {
+                inBrackets = false;
+                continue;
+            }
+            if (!inQuotes && !inBrackets && char.ToLowerInvariant(ch) is 'y' or 'd')
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ValidateArchive(ZipArchive zip)
@@ -233,7 +367,11 @@ internal static class XlsxTable
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
-    private static string ReadCell(XElement cell, IReadOnlyList<string> sharedStrings)
+    private static string ReadCell(
+        XElement cell,
+        IReadOnlyList<string> sharedStrings,
+        IReadOnlySet<int> dateStyleIndexes,
+        bool uses1904DateSystem)
     {
         var inlineText = cell.Element(SheetNs + "is")?.Element(SheetNs + "t")?.Value;
         if (inlineText is not null)
@@ -248,6 +386,25 @@ internal static class XlsxTable
             && sharedStringIndex < sharedStrings.Count)
         {
             return sharedStrings[sharedStringIndex];
+        }
+
+        var styleIndex = ParseIntegerAttribute(cell, "s");
+        if (styleIndex is not null
+            && dateStyleIndexes.Contains(styleIndex.Value)
+            && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var serial))
+        {
+            try
+            {
+                if (uses1904DateSystem)
+                {
+                    serial += 1462;
+                }
+                return DateTime.FromOADate(serial).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            }
+            catch (ArgumentException)
+            {
+                // 保留原值，让上层字段校验给出明确的日期格式错误。
+            }
         }
 
         return value;

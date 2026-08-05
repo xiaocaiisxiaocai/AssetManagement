@@ -453,6 +453,31 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Import_preview_accepts_native_excel_date_cells()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var bytes = BuildXlsx(
+            new[]
+            {
+                new[] { "资产编号", "名称", "分类编码", "数量", "购入日期", "资产登记日期" },
+                new[] { "", "Excel 日期资产", category.Code, "1", "", "" }
+            },
+            new Dictionary<string, double>
+            {
+                ["E2"] = 44531,
+                ["F2"] = 45614
+            });
+
+        var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
+
+        var row = preview.Data!.Should().ContainSingle().Subject;
+        row.IsValid.Should().BeTrue(row.Error);
+        row.PurchaseDate.Should().Be(new DateTime(2021, 12, 1));
+        row.RegistrationTime.Should().Be(new DateTime(2024, 11, 18));
+    }
+
+    [Fact]
     public async Task Import_preview_rejects_ambiguous_custodian_name_and_accepts_employee_number()
     {
         await Login();
@@ -915,7 +940,9 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             .Data!.Url;
     }
 
-    private static byte[] BuildXlsx(IEnumerable<string[]> rows)
+    private static byte[] BuildXlsx(
+        IEnumerable<string[]> rows,
+        IReadOnlyDictionary<string, double>? excelDateCells = null)
     {
         using var ms = new MemoryStream();
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
@@ -927,6 +954,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
                   <Default Extension="xml" ContentType="application/xml"/>
                   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
                   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
                 </Types>
                 """);
             WriteEntry(zip, "_rels/.rels", """
@@ -945,9 +973,23 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
                 <?xml version="1.0" encoding="UTF-8"?>
                 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
                   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
                 </Relationships>
                 """);
-            WriteEntry(zip, "xl/worksheets/sheet1.xml", BuildSheetXml(rows));
+            WriteEntry(zip, "xl/styles.xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                  <fonts count="1"><font/></fonts>
+                  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+                  <borders count="1"><border/></borders>
+                  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+                  <cellXfs count="2">
+                    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+                    <xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+                  </cellXfs>
+                </styleSheet>
+                """);
+            WriteEntry(zip, "xl/worksheets/sheet1.xml", BuildSheetXml(rows, excelDateCells));
         }
 
         return ms.ToArray();
@@ -968,15 +1010,29 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             .ToList();
     }
 
-    private static string BuildSheetXml(IEnumerable<string[]> rows)
+    private static string BuildSheetXml(
+        IEnumerable<string[]> rows,
+        IReadOnlyDictionary<string, double>? excelDateCells = null)
     {
         XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
         var sheetRows = rows.Select((cells, rowIndex) => new XElement(ns + "row",
             new XAttribute("r", rowIndex + 1),
-            cells.Select((cell, colIndex) => new XElement(ns + "c",
-                new XAttribute("r", $"{ColumnName(colIndex + 1)}{rowIndex + 1}"),
-                new XAttribute("t", "inlineStr"),
-                new XElement(ns + "is", new XElement(ns + "t", cell))))));
+            cells.Select((cell, colIndex) =>
+            {
+                var cellReference = $"{ColumnName(colIndex + 1)}{rowIndex + 1}";
+                if (excelDateCells?.TryGetValue(cellReference, out var serial) == true)
+                {
+                    return new XElement(ns + "c",
+                        new XAttribute("r", cellReference),
+                        new XAttribute("s", 1),
+                        new XElement(ns + "v", serial.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                }
+
+                return new XElement(ns + "c",
+                    new XAttribute("r", cellReference),
+                    new XAttribute("t", "inlineStr"),
+                    new XElement(ns + "is", new XElement(ns + "t", cell)));
+            })));
         return new XDocument(new XDeclaration("1.0", "UTF-8", null),
             new XElement(ns + "worksheet", new XElement(ns + "sheetData", sheetRows))).ToString(SaveOptions.DisableFormatting);
     }
