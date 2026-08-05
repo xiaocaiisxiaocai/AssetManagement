@@ -362,8 +362,12 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var rows = ReadXlsxRows(await response.Content.ReadAsByteArrayAsync());
 
         rows[0].Should().Equal(
-            "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
-            "归属部门", "保管人工号", "存放位置", "数量", "资产编号");
+            "资产编号", "名称", "分类编码", "数量", "购入日期", "资产登记日期",
+            "目前状况", "归属部门", "保管人", "存放位置", "备注");
+        rows[1].Should().Equal(
+            "ZC-SAMPLE-001", "示例资产（请替换）", "示例分类编码（请替换）", "1",
+            "2026-01-01", "2026-01-02", "正常使用", "示例部门（请替换）",
+            "张三（请替换）", "A区-01", "此行为填写范例，导入前请删除或替换");
     }
 
     [Fact]
@@ -405,13 +409,13 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             new[]
             {
-                "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
-                "归属部门", "保管人工号", "存放位置", "数量", "资产编号"
+                "资产编号", "名称", "分类编码", "数量", "购入日期", "资产登记日期",
+                "目前状况", "归属部门", "保管人", "存放位置", "备注"
             },
             new[]
             {
-                assetName, category.Code, "2026-08-01", "2026-08-02", "正常使用", "完整字段",
-                department.Data.Name, custodian.EmployeeNo, "三楼研发区 A-12", "3", customAssetNo
+                customAssetNo, assetName, category.Code, "3", "2026-08-01", "2026-08-02",
+                "正常使用", department.Data.Name, custodian.Name, "三楼研发区 A-12", "完整字段"
             }
         });
 
@@ -446,6 +450,34 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var stored = await db.Assets.AsNoTracking().SingleAsync(x => x.Id == asset.Id);
         stored.InitialCustodianId.Should().Be(custodian.Id);
+    }
+
+    [Fact]
+    public async Task Import_preview_rejects_ambiguous_custodian_name_and_accepts_employee_number()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("同名保管人部门")
+        });
+        var first = await CreateUser(department.Data!.Id);
+        await CreateUser(department.Data.Id);
+        var bytes = BuildXlsx(new[]
+        {
+            new[] { "资产编号", "名称", "分类编码", "数量", "保管人", "归属部门" },
+            new[] { "", "姓名不唯一资产", category.Code, "1", first.Name, department.Data.Name },
+            new[] { "", "工号唯一资产", category.Code, "1", first.EmployeeNo, department.Data.Name }
+        });
+
+        var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
+
+        preview.Data.Should().HaveCount(2);
+        preview.Data![0].IsValid.Should().BeFalse();
+        preview.Data[0].Error.Should().Contain("保管人姓名不唯一，请填写工号");
+        preview.Data[1].IsValid.Should().BeTrue(preview.Data[1].Error);
+        preview.Data[1].CustodianId.Should().Be(first.Id);
+        preview.Data[1].CustodianEmployeeNo.Should().Be(first.EmployeeNo);
     }
 
     [Fact]

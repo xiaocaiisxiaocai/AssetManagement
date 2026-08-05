@@ -422,14 +422,22 @@ public class AssetService : IAssetService
         {
             new[]
             {
-                "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
-                "归属部门", "保管人工号", "存放位置", "数量", "资产编号"
+                "资产编号", "名称", "分类编码", "数量", "购入日期", "资产登记日期",
+                "目前状况", "归属部门", "保管人", "存放位置", "备注"
+            },
+            new[]
+            {
+                "ZC-SAMPLE-001", "示例资产（请替换）", "示例分类编码（请替换）", "1",
+                "2026-01-01", "2026-01-02", "正常使用", "示例部门（请替换）",
+                "张三（请替换）", "A区-01", "此行为填写范例，导入前请删除或替换"
             }
         });
 
     public async Task<List<ImportPreviewRow>> ValidateImportAsync(Stream file)
     {
-        var rows = XlsxTable.Read(file).Skip(1).ToList();
+        var table = XlsxTable.Read(file);
+        var columnIndexes = BuildImportColumnIndexes(table.FirstOrDefault() ?? new List<string>());
+        var rows = table.Skip(1).ToList();
         if (rows.Count > AppConstants.MaxImportRows)
         {
             throw new BizException(4153, $"单次导入不能超过 {AppConstants.MaxImportRows} 行");
@@ -444,13 +452,17 @@ public class AssetService : IAssetService
             .ToListAsync();
         var departmentsByName = departments.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
         var departmentsById = departments.ToDictionary(x => x.Id);
-        var custodians = (await _db.Users
-                .AsNoTracking()
-                .Where(x => x.IsActive)
-                .ToListAsync())
+        var custodianList = await _db.Users
+            .AsNoTracking()
+            .Where(x => x.IsActive)
+            .ToListAsync();
+        var custodiansByEmployeeNo = custodianList
             .ToDictionary(x => x.EmployeeNo, StringComparer.OrdinalIgnoreCase);
+        var custodiansByName = custodianList
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
         var customAssetNos = rows
-            .Select(cells => Cell(cells, 10))
+            .Select(cells => Cell(cells, columnIndexes, "资产编号"))
             .Where(assetNo => !string.IsNullOrWhiteSpace(assetNo))
             .ToList();
         var duplicateAssetNos = customAssetNos
@@ -472,11 +484,13 @@ public class AssetService : IAssetService
         return rows.Select((cells, index) => ValidateRow(
             index + 2,
             cells,
+            columnIndexes,
             categories,
             conditionOptions,
             departmentsByName,
             departmentsById,
-            custodians,
+            custodiansByEmployeeNo,
+            custodiansByName,
             currentUserDepartmentId,
             allowedDepartmentIds,
             duplicateAssetNos,
@@ -860,27 +874,29 @@ public class AssetService : IAssetService
     private static ImportPreviewRow ValidateRow(
         int rowNumber,
         IReadOnlyList<string> cells,
+        IReadOnlyDictionary<string, int> columnIndexes,
         Dictionary<string, AssetCategory> categories,
         IReadOnlyList<string> conditionOptions,
         IReadOnlyDictionary<string, Department> departmentsByName,
         IReadOnlyDictionary<int, Department> departmentsById,
-        IReadOnlyDictionary<string, User> custodians,
+        IReadOnlyDictionary<string, User> custodiansByEmployeeNo,
+        IReadOnlyDictionary<string, List<User>> custodiansByName,
         int? currentUserDepartmentId,
         int[]? allowedDepartmentIds,
         IReadOnlySet<string> duplicateAssetNos,
         IReadOnlySet<string> existingAssetNos)
     {
-        var name = Cell(cells, 0);
-        var categoryCode = Cell(cells, 1);
-        var purchaseDateText = Cell(cells, 2);
-        var registrationTimeText = Cell(cells, 3);
-        var currentConditionText = Cell(cells, 4);
-        var remark = Cell(cells, 5);
-        var departmentNameText = Cell(cells, 6);
-        var custodianEmployeeNo = Cell(cells, 7);
-        var locationNameText = Cell(cells, 8);
-        var quantityText = Cell(cells, 9);
-        var assetNo = Cell(cells, 10);
+        var assetNo = Cell(cells, columnIndexes, "资产编号");
+        var name = Cell(cells, columnIndexes, "名称");
+        var categoryCode = Cell(cells, columnIndexes, "分类编码");
+        var quantityText = Cell(cells, columnIndexes, "数量");
+        var purchaseDateText = Cell(cells, columnIndexes, "购入日期", "购入时间");
+        var registrationTimeText = Cell(cells, columnIndexes, "资产登记日期", "资产登记时间");
+        var currentConditionText = Cell(cells, columnIndexes, "目前状况");
+        var departmentNameText = Cell(cells, columnIndexes, "归属部门");
+        var custodianText = Cell(cells, columnIndexes, "保管人", "保管人工号");
+        var locationNameText = Cell(cells, columnIndexes, "存放位置");
+        var remark = Cell(cells, columnIndexes, "备注");
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(name)) errors.Add("名称必填");
         else if (name.Length > 100) errors.Add("名称不能超过 100 个字符");
@@ -913,10 +929,21 @@ public class AssetService : IAssetService
         }
 
         User? custodian = null;
-        var custodianSpecified = !string.IsNullOrWhiteSpace(custodianEmployeeNo);
-        if (custodianSpecified && !custodians.TryGetValue(custodianEmployeeNo, out custodian))
+        var custodianSpecified = !string.IsNullOrWhiteSpace(custodianText);
+        if (custodianSpecified && !custodiansByEmployeeNo.TryGetValue(custodianText, out custodian))
         {
-            errors.Add("保管人不存在或已停用");
+            if (!custodiansByName.TryGetValue(custodianText, out var matchingCustodians))
+            {
+                errors.Add("保管人不存在或已停用");
+            }
+            else if (matchingCustodians.Count > 1)
+            {
+                errors.Add("保管人姓名不唯一，请填写工号");
+            }
+            else
+            {
+                custodian = matchingCustodians[0];
+            }
         }
 
         int? departmentId = null;
@@ -964,7 +991,7 @@ public class AssetService : IAssetService
             DepartmentId = departmentId,
             DepartmentName = resolvedDepartmentName ?? (departmentSpecified ? departmentNameText : null),
             CustodianId = custodian?.Id,
-            CustodianEmployeeNo = custodianSpecified ? custodianEmployeeNo : null,
+            CustodianEmployeeNo = custodian?.EmployeeNo ?? (custodianSpecified ? custodianText : null),
             CustodianName = custodian?.Name,
             LocationName = locationName,
             Quantity = quantity,
@@ -995,6 +1022,32 @@ public class AssetService : IAssetService
         return AssetConditionDictionary.ParseOrDefault(raw);
     }
 
-    private static string Cell(IReadOnlyList<string> cells, int index)
-        => index < cells.Count ? cells[index].Trim() : "";
+    private static IReadOnlyDictionary<string, int> BuildImportColumnIndexes(IReadOnlyList<string> headers)
+    {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < headers.Count; index++)
+        {
+            var header = headers[index].Trim();
+            if (!string.IsNullOrWhiteSpace(header))
+            {
+                result.TryAdd(header, index);
+            }
+        }
+        return result;
+    }
+
+    private static string Cell(
+        IReadOnlyList<string> cells,
+        IReadOnlyDictionary<string, int> columnIndexes,
+        params string[] headers)
+    {
+        foreach (var header in headers)
+        {
+            if (columnIndexes.TryGetValue(header, out var index) && index < cells.Count)
+            {
+                return cells[index].Trim();
+            }
+        }
+        return "";
+    }
 }

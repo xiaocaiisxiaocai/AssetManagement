@@ -123,7 +123,7 @@ async function confirmImport() {
       :closable="false"
       class="asset-import-alert"
       show-icon
-      title="系统会先检查分类、部门、保管人和资产编号；无效记录不会导入。资产编号可自定义，留空则自动生成；数量留空默认为 1。"
+      title="模板第二行为填写范例，请替换或删除。系统会先检查分类、部门、保管人和资产编号；保管人可填姓名或工号，同名时请填工号；资产编号留空则自动生成。"
       type="info"
     />
 
