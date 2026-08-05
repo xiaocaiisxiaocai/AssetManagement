@@ -75,6 +75,19 @@ describe('固定资产表单规则', () => {
     expect(source).not.toContain('label="首次登记"');
   });
 
+  it('数量字段注册并渲染数字输入控件', () => {
+    const componentPath = join(
+      cwd(),
+      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
+    );
+    const source = readFileSync(componentPath, 'utf8');
+
+    expect(source).toMatch(
+      /import\s*\{[\s\S]*?\bElInputNumber\b[\s\S]*?\}\s*from 'element-plus';/,
+    );
+    expect(source).toContain('<ElInputNumber v-model="form.quantity"');
+  });
+
   it('资产登记字段仅选择日期', () => {
     const componentPath = join(
       cwd(),
