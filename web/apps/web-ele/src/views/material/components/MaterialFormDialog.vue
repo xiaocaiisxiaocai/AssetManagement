@@ -296,123 +296,129 @@ const debouncedSave = useDebounceFn(save, 300);
     v-model="visible"
     :title="isEdit ? '编辑测试料件' : '新增测试料件'"
     align-center
-    width="600px"
+    class="material-form-dialog"
+    width="840px"
   >
     <ElForm label-width="96px">
-      <ElFormItem label="料件名称" required>
-        <ElInput v-model="form.name" placeholder="请输入料件名称" />
-      </ElFormItem>
-      <ElFormItem label="所属项目" required>
-        <ElSelect
-          v-model="form.projectId"
-          :disabled="props.projectLocked"
-          filterable
-          placeholder="选择测试项目"
-          style="width: 100%"
-        >
-          <ElOption
-            v-for="item in projects"
-            :key="item.id"
-            :label="item.name"
-            :value="item.id"
+      <div class="material-form-grid">
+        <ElFormItem class="material-form-field--wide" label="料件名称" required>
+          <ElInput v-model="form.name" placeholder="请输入料件名称" />
+        </ElFormItem>
+        <ElFormItem label="所属项目" required>
+          <ElSelect
+            v-model="form.projectId"
+            :disabled="props.projectLocked"
+            filterable
+            placeholder="选择测试项目"
+            style="width: 100%"
+          >
+            <ElOption
+              v-for="item in projects"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem label="厂商/来源">
+          <ElInput v-model="form.vendorName" placeholder="请输入寄件厂商名称" />
+        </ElFormItem>
+        <ElFormItem class="material-form-field--wide" label="型号品牌">
+          <div class="material-form-model">
+            <ElInput v-model="form.model" placeholder="请输入型号" />
+            <ElInput v-model="form.brand" placeholder="请输入品牌" />
+          </div>
+        </ElFormItem>
+        <ElFormItem label="数量" required>
+          <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
+        </ElFormItem>
+        <ElFormItem label="接收日期">
+          <ElDatePicker
+            v-model="form.receivedDate"
+            placeholder="选择接收日期"
+            style="width: 100%"
+            type="date"
+            value-format="YYYY-MM-DD"
           />
-        </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="厂商/来源">
-        <ElInput v-model="form.vendorName" placeholder="请输入寄件厂商名称" />
-      </ElFormItem>
-      <ElFormItem label="型号品牌">
-        <div class="grid w-full grid-cols-2 gap-2">
-          <ElInput v-model="form.model" placeholder="请输入型号" />
-          <ElInput v-model="form.brand" placeholder="请输入品牌" />
-        </div>
-      </ElFormItem>
-      <ElFormItem label="数量" required>
-        <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
-      </ElFormItem>
-      <ElFormItem label="归属部门">
-        <ElSelect
-          v-model="form.departmentId"
-          :disabled="isEdit"
-          clearable
-          filterable
-          placeholder="选择部门"
-          style="width: 100%"
-        >
-          <ElOption
-            v-for="item in selectableDepartmentOptions"
-            :key="item.id"
-            :label="item.label"
-            :value="item.id"
+        </ElFormItem>
+        <ElFormItem label="归属部门">
+          <ElSelect
+            v-model="form.departmentId"
+            :disabled="isEdit"
+            clearable
+            filterable
+            placeholder="选择部门"
+            style="width: 100%"
+          >
+            <ElOption
+              v-for="item in selectableDepartmentOptions"
+              :key="item.id"
+              :label="item.label"
+              :value="item.id"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem label="保管人">
+          <ElSelect
+            v-model="form.custodianId"
+            :disabled="isEdit"
+            :loading="userOptionsLoading"
+            :remote-method="searchUsers"
+            clearable
+            filterable
+            placeholder="选择保管人"
+            remote
+            style="width: 100%"
+          >
+            <ElOption
+              v-for="user in users"
+              :key="user.id"
+              :label="`${user.name}(${user.employeeNo})`"
+              :value="user.id"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem class="material-form-field--wide" label="存放位置">
+          <ElInput
+            v-model="form.locationName"
+            :maxlength="100"
+            clearable
+            placeholder="请输入存放位置"
+            show-word-limit
           />
-        </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="存放位置">
-        <ElInput
-          v-model="form.locationName"
-          :maxlength="100"
-          clearable
-          placeholder="请输入存放位置"
-          show-word-limit
-        />
-      </ElFormItem>
-      <ElFormItem label="保管人">
-        <ElSelect
-          v-model="form.custodianId"
-          :disabled="isEdit"
-          :loading="userOptionsLoading"
-          :remote-method="searchUsers"
-          clearable
-          filterable
-          placeholder="选择保管人"
-          remote
-          style="width: 100%"
+        </ElFormItem>
+        <ElFormItem
+          class="material-form-field--wide material-form-photo"
+          label="料件照片"
         >
-          <ElOption
-            v-for="user in users"
-            :key="user.id"
-            :label="`${user.name}(${user.employeeNo})`"
-            :value="user.id"
+          <ElUpload
+            v-model:file-list="imageFileList"
+            :before-upload="beforeImageUpload"
+            :disabled="!canUploadImages"
+            :http-request="customImageUpload"
+            :limit="5"
+            :on-exceed="onImageExceed"
+            :on-remove="onImageRemove"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            list-type="picture-card"
+          >
+            <span v-if="canUploadImages" class="text-2xl">+</span>
+          </ElUpload>
+          <div v-if="!canUploadImages" class="text-xs text-gray-400">
+            当前账号无文件上传权限
+          </div>
+        </ElFormItem>
+        <ElFormItem class="material-form-field--wide" label="备注">
+          <ElInput
+            v-model="form.remark"
+            :maxlength="500"
+            :rows="2"
+            placeholder="可选"
+            show-word-limit
+            type="textarea"
           />
-        </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="接收日期">
-        <ElDatePicker
-          v-model="form.receivedDate"
-          placeholder="选择接收日期"
-          style="width: 100%"
-          type="date"
-          value-format="YYYY-MM-DD"
-        />
-      </ElFormItem>
-      <ElFormItem label="料件照片">
-        <ElUpload
-          v-model:file-list="imageFileList"
-          :before-upload="beforeImageUpload"
-          :disabled="!canUploadImages"
-          :http-request="customImageUpload"
-          :limit="5"
-          :on-exceed="onImageExceed"
-          :on-remove="onImageRemove"
-          accept="image/png,image/jpeg,image/gif,image/webp"
-          list-type="picture-card"
-        >
-          <span v-if="canUploadImages" class="text-2xl">+</span>
-        </ElUpload>
-        <div v-if="!canUploadImages" class="text-xs text-gray-400">
-          当前账号无文件上传权限
-        </div>
-      </ElFormItem>
-      <ElFormItem label="备注">
-        <ElInput
-          v-model="form.remark"
-          :maxlength="500"
-          :rows="2"
-          placeholder="可选"
-          show-word-limit
-          type="textarea"
-        />
-      </ElFormItem>
+        </ElFormItem>
+      </div>
     </ElForm>
     <template #footer>
       <ElButton @click="visible = false">取消</ElButton>
@@ -426,3 +432,67 @@ const debouncedSave = useDebounceFn(save, 300);
     </template>
   </ElDialog>
 </template>
+
+<style scoped>
+.material-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 20px;
+}
+
+.material-form-field--wide {
+  grid-column: 1 / -1;
+}
+
+.material-form-model {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.material-form-grid :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.material-form-grid :deep(.el-form-item__content) {
+  min-width: 0;
+}
+
+.material-form-photo :deep(.el-upload--picture-card),
+.material-form-photo
+  :deep(.el-upload-list--picture-card .el-upload-list__item) {
+  width: 104px;
+  height: 104px;
+}
+
+:global(.material-form-dialog) {
+  max-width: calc(100vw - 32px);
+}
+
+:global(.material-form-dialog .el-dialog__body) {
+  padding: 12px 24px 0;
+}
+
+:global(.material-form-dialog .el-dialog__footer) {
+  padding-top: 6px;
+}
+
+@media (max-width: 768px) {
+  .material-form-grid,
+  .material-form-model {
+    grid-template-columns: 1fr;
+  }
+
+  .material-form-field--wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-height: 720px) {
+  :global(.material-form-dialog .el-dialog__body) {
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+  }
+}
+</style>

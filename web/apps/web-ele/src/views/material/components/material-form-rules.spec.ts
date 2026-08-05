@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { cwd } from 'node:process';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -62,5 +66,25 @@ describe('测试料件表单规则', () => {
   it('新增时默认保管人为项目负责人', () => {
     expect(getDefaultCustodianId(projects, 10)).toBe(8);
     expect(getDefaultCustodianId(projects, 11)).toBeUndefined();
+  });
+
+  it('桌面端使用紧凑双列布局避免弹窗超出视口', () => {
+    const componentPath = join(
+      cwd(),
+      'apps/web-ele/src/views/material/components/MaterialFormDialog.vue',
+    );
+    const source = readFileSync(componentPath, 'utf8');
+
+    expect(source).toContain('class="material-form-dialog"');
+    expect(source).toContain('width="840px"');
+    expect(source).toContain('<div class="material-form-grid">');
+    expect(source).toContain(
+      'grid-template-columns: repeat(2, minmax(0, 1fr))',
+    );
+    expect(source).toContain(
+      'class="material-form-field--wide material-form-photo"',
+    );
+    expect(source).toContain('width: 104px');
+    expect(source).toContain(':global(.material-form-dialog .el-dialog__body)');
   });
 });
