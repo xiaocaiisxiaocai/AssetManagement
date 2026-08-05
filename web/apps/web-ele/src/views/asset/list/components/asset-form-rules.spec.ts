@@ -62,12 +62,20 @@ describe('固定资产表单规则', () => {
     ];
 
     for (const label of requiredLabels) {
-      expect(source).toContain(`<ElFormItem label="${label}" required>`);
+      expect(source).toMatch(
+        new RegExp(
+          `<ElFormItem\\b(?=[^>]*\\blabel="${label}")(?=[^>]*\\brequired\\b)[^>]*>`,
+        ),
+      );
     }
     expect(source).not.toContain(
       '<ElFormItem v-if="isEdit" label="状态" required>',
     );
-    expect(source).toContain('<ElFormItem label="资产照片">');
+    const photoFormItem = source.match(
+      /<ElFormItem\b(?=[^>]*\blabel="资产照片")[^>]*>/,
+    )?.[0];
+    expect(photoFormItem).toBeDefined();
+    expect(photoFormItem).not.toMatch(/\brequired\b/);
     expect(source).toContain('v-model="form.locationName"');
     expect(source).toContain('placeholder="请输入存放位置');
     expect(source).not.toContain('v-model="form.locationId"');
@@ -85,7 +93,28 @@ describe('固定资产表单规则', () => {
     expect(source).toMatch(
       /import\s*\{[\s\S]*?\bElInputNumber\b[\s\S]*?\}\s*from 'element-plus';/,
     );
-    expect(source).toContain('<ElInputNumber v-model="form.quantity"');
+    expect(source).toMatch(
+      /<ElInputNumber\b[^>]*v-model="form\.quantity"[^>]*>/,
+    );
+  });
+
+  it('桌面端使用紧凑双列布局避免弹窗超出视口', () => {
+    const componentPath = join(
+      cwd(),
+      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
+    );
+    const source = readFileSync(componentPath, 'utf8');
+
+    expect(source).toContain('align-center');
+    expect(source).toContain('width="840px"');
+    expect(source).toContain('<div class="asset-form-grid">');
+    expect(source).toContain(
+      'grid-template-columns: repeat(2, minmax(0, 1fr))',
+    );
+    expect(source).toContain('class="asset-form-field--wide asset-form-photo"');
+    expect(source).toContain(':rows="2"');
+    expect(source).toContain('width: 104px');
+    expect(source).toContain(':global(.asset-form-dialog .el-dialog__body)');
   });
 
   it('资产登记字段仅选择日期', () => {

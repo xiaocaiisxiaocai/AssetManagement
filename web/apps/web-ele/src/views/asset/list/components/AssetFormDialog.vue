@@ -328,151 +328,161 @@ const debouncedSave = useDebounceFn(save, 300);
   <ElDialog
     v-model="visible"
     :title="isEdit ? '编辑资产' : '新增资产'"
-    width="560px"
+    align-center
+    class="asset-form-dialog"
+    width="840px"
   >
     <ElForm label-width="88px">
-      <ElFormItem label="资产名称" required>
-        <ElInput v-model="form.name" />
-      </ElFormItem>
-      <ElFormItem label="资产分类" required>
-        <ElSelect
-          v-model="form.categoryId"
-          filterable
-          placeholder="选择末级分类"
-          style="width: 100%"
-        >
-          <ElOption
-            v-for="item in categoryOptions"
-            :key="item.id"
-            :label="item.label"
-            :value="item.id"
+      <div class="asset-form-grid">
+        <ElFormItem class="asset-form-field--wide" label="资产名称" required>
+          <ElInput v-model="form.name" />
+        </ElFormItem>
+        <ElFormItem label="资产分类" required>
+          <ElSelect
+            v-model="form.categoryId"
+            filterable
+            placeholder="选择末级分类"
+            style="width: 100%"
+          >
+            <ElOption
+              v-for="item in categoryOptions"
+              :key="item.id"
+              :label="item.label"
+              :value="item.id"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem label="编号预览" required>
+          <ElTag>{{ assetNoPreview }}</ElTag>
+        </ElFormItem>
+        <ElFormItem label="归属部门" required>
+          <ElSelect
+            v-model="form.departmentId"
+            :disabled="isEdit"
+            clearable
+            filterable
+            placeholder="选择部门"
+            style="width: 100%"
+          >
+            <ElOption
+              v-for="item in selectableDepartmentOptions"
+              :key="item.id"
+              :label="item.label"
+              :value="item.id"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem label="保管人" required>
+          <ElSelect
+            v-model="form.custodianId"
+            :disabled="isEdit"
+            :loading="userOptionsLoading"
+            :remote-method="searchUsers"
+            clearable
+            filterable
+            placeholder="选择保管人"
+            remote
+            style="width: 100%"
+          >
+            <ElOption
+              v-for="user in users"
+              :key="user.id"
+              :label="user.name"
+              :value="user.id"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem class="asset-form-field--wide" label="存放位置" required>
+          <ElInput
+            v-model="form.locationName"
+            :maxlength="100"
+            clearable
+            placeholder="请输入存放位置，如：三楼研发区 A-12"
+            show-word-limit
           />
-        </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="编号预览" required>
-        <ElTag>{{ assetNoPreview }}</ElTag>
-      </ElFormItem>
-      <ElFormItem label="归属部门" required>
-        <ElSelect
-          v-model="form.departmentId"
-          :disabled="isEdit"
-          clearable
-          filterable
-          placeholder="选择部门"
-          style="width: 100%"
-        >
-          <ElOption
-            v-for="item in selectableDepartmentOptions"
-            :key="item.id"
-            :label="item.label"
-            :value="item.id"
+        </ElFormItem>
+        <ElFormItem label="数量" required>
+          <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
+        </ElFormItem>
+        <ElFormItem label="购入日期">
+          <ElDatePicker
+            v-model="form.purchaseDate"
+            placeholder="选择购入日期"
+            style="width: 100%"
+            type="date"
+            value-format="YYYY-MM-DD"
           />
-        </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="存放位置" required>
-        <ElInput
-          v-model="form.locationName"
-          :maxlength="100"
-          clearable
-          placeholder="请输入存放位置，如：三楼研发区 A-12"
-          show-word-limit
-        />
-      </ElFormItem>
-      <ElFormItem label="保管人" required>
-        <ElSelect
-          v-model="form.custodianId"
-          :disabled="isEdit"
-          :loading="userOptionsLoading"
-          :remote-method="searchUsers"
-          clearable
-          filterable
-          placeholder="选择保管人"
-          remote
-          style="width: 100%"
-        >
-          <ElOption
-            v-for="user in users"
-            :key="user.id"
-            :label="user.name"
-            :value="user.id"
+        </ElFormItem>
+        <ElFormItem label="登记日期">
+          <ElDatePicker
+            v-model="form.registrationTime"
+            placeholder="选择资产登记日期"
+            style="width: 100%"
+            type="date"
+            value-format="YYYY-MM-DD"
           />
-        </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="数量" required>
-        <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
-      </ElFormItem>
-      <ElFormItem label="购入日期">
-        <ElDatePicker
-          v-model="form.purchaseDate"
-          placeholder="选择购入日期"
-          style="width: 100%"
-          type="date"
-          value-format="YYYY-MM-DD"
-        />
-      </ElFormItem>
-      <ElFormItem label="登记日期">
-        <ElDatePicker
-          v-model="form.registrationTime"
-          placeholder="选择资产登记日期"
-          style="width: 100%"
-          type="date"
-          value-format="YYYY-MM-DD"
-        />
-      </ElFormItem>
-      <ElFormItem label="目前状况">
-        <ElSelect
-          v-model="form.currentCondition"
-          clearable
-          filterable
-          placeholder="请选择资产目前状况"
-          style="width: 100%"
+        </ElFormItem>
+        <ElFormItem
+          :class="{ 'asset-form-field--wide': !isEdit }"
+          label="目前状况"
         >
-          <ElOption
-            v-for="option in selectableConditionOptions"
-            :key="option"
-            :label="option"
-            :value="option"
+          <ElSelect
+            v-model="form.currentCondition"
+            clearable
+            filterable
+            placeholder="请选择资产目前状况"
+            style="width: 100%"
+          >
+            <ElOption
+              v-for="option in selectableConditionOptions"
+              :key="option"
+              :label="option"
+              :value="option"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem v-if="isEdit" label="状态">
+          <ElSelect v-model="form.status" style="width: 100%">
+            <ElOption
+              v-for="item in statusOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </ElSelect>
+        </ElFormItem>
+        <ElFormItem class="asset-form-field--wide" label="备注">
+          <ElInput
+            v-model="form.remark"
+            :rows="2"
+            maxlength="500"
+            placeholder="请输入备注"
+            show-word-limit
+            type="textarea"
           />
-        </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="备注">
-        <ElInput
-          v-model="form.remark"
-          :rows="3"
-          maxlength="500"
-          placeholder="请输入备注"
-          show-word-limit
-          type="textarea"
-        />
-      </ElFormItem>
-      <ElFormItem label="资产照片">
-        <ElUpload
-          v-model:file-list="imageFileList"
-          :before-upload="beforeImageUpload"
-          :disabled="!canUploadImages"
-          :http-request="customImageUpload"
-          :limit="5"
-          :on-exceed="onImageExceed"
-          :on-remove="onImageRemove"
-          accept="image/png,image/jpeg,image/gif,image/webp"
-          list-type="picture-card"
+        </ElFormItem>
+        <ElFormItem
+          class="asset-form-field--wide asset-form-photo"
+          label="资产照片"
         >
-          <span v-if="canUploadImages" class="text-2xl">+</span>
-        </ElUpload>
-        <div v-if="!canUploadImages" class="text-xs text-gray-400">
-          当前账号无文件上传权限
-        </div>
-      </ElFormItem>
-      <ElFormItem v-if="isEdit" label="状态">
-        <ElSelect v-model="form.status" style="width: 100%">
-          <ElOption
-            v-for="item in statusOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </ElSelect>
-      </ElFormItem>
+          <ElUpload
+            v-model:file-list="imageFileList"
+            :before-upload="beforeImageUpload"
+            :disabled="!canUploadImages"
+            :http-request="customImageUpload"
+            :limit="5"
+            :on-exceed="onImageExceed"
+            :on-remove="onImageRemove"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            list-type="picture-card"
+          >
+            <span v-if="canUploadImages" class="text-2xl">+</span>
+          </ElUpload>
+          <div v-if="!canUploadImages" class="text-xs text-gray-400">
+            当前账号无文件上传权限
+          </div>
+        </ElFormItem>
+      </div>
     </ElForm>
     <template #footer>
       <ElButton @click="visible = false">取消</ElButton>
@@ -486,3 +496,58 @@ const debouncedSave = useDebounceFn(save, 300);
     </template>
   </ElDialog>
 </template>
+
+<style scoped>
+.asset-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 20px;
+}
+
+.asset-form-field--wide {
+  grid-column: 1 / -1;
+}
+
+.asset-form-grid :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.asset-form-grid :deep(.el-form-item__content) {
+  min-width: 0;
+}
+
+.asset-form-photo :deep(.el-upload--picture-card),
+.asset-form-photo :deep(.el-upload-list--picture-card .el-upload-list__item) {
+  width: 104px;
+  height: 104px;
+}
+
+:global(.asset-form-dialog) {
+  max-width: calc(100vw - 32px);
+}
+
+:global(.asset-form-dialog .el-dialog__body) {
+  padding: 12px 24px 0;
+}
+
+:global(.asset-form-dialog .el-dialog__footer) {
+  padding-top: 6px;
+}
+
+@media (max-width: 768px) {
+  .asset-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-form-field--wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-height: 720px) {
+  :global(.asset-form-dialog .el-dialog__body) {
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+  }
+}
+</style>
