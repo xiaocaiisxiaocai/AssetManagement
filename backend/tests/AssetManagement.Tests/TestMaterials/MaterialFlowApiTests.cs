@@ -60,28 +60,32 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         await SetApprovalSwitch(false);
-        var project = await CreateProject("并发停用项目");
-        var transferee = await CreateUser("race-user", "并发受让人");
-        var material = await CreateMaterial(project.Id, "并发停用样品");
-
-        var transferTask = _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+        for (var attempt = 0; attempt < 10; attempt++)
         {
-            MaterialId = material.Id, TransfereeId = transferee.Id, Reason = "与停用并发"
-        });
-        var disableTask = _client.PostAsJsonAsync($"/api/users/{transferee.Id}/toggle-status", new { isActive = false });
-        await Task.WhenAll(transferTask, disableTask);
-        var transfer = await transferTask.Result.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
-        var disable = await disableTask.Result.Content.ReadFromJsonAsync<ApiResult<object?>>();
-        var currentMaterial = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
-        var users = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={transferee.EmployeeNo}");
-        var currentUser = users!.Data!.Items.Single(user => user.Id == transferee.Id);
-        var current = currentMaterial!.Data!;
-        var disableResult = disable!;
+            var project = await CreateProject($"并发停用项目-{attempt}");
+            var transferee = await CreateUser($"race-user-{attempt}", $"并发受让人-{attempt}");
+            var material = await CreateMaterial(project.Id, $"并发停用样品-{attempt}");
 
-        (transfer!.Code == 0 && disableResult.Code == 0).Should().BeFalse(
-            $"transfer={transfer.Code}/{transfer.Message}, disable={disableResult.Code}/{disableResult.Message}, " +
-            $"custodian={current.CustodianId}, userActive={currentUser.IsActive}");
-        (current.CustodianId == transferee.Id && !currentUser.IsActive).Should().BeFalse();
+            var transferTask = _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+            {
+                MaterialId = material.Id, TransfereeId = transferee.Id, Reason = "与停用并发"
+            });
+            var disableTask = _client.PostAsJsonAsync($"/api/users/{transferee.Id}/toggle-status", new { isActive = false });
+            await Task.WhenAll(transferTask, disableTask);
+            var transfer = await transferTask.Result.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+            var disable = await disableTask.Result.Content.ReadFromJsonAsync<ApiResult<object?>>();
+            var currentMaterial = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
+            var users = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={transferee.EmployeeNo}");
+            var currentUser = users!.Data!.Items.Single(user => user.Id == transferee.Id);
+            var current = currentMaterial!.Data!;
+            var disableResult = disable!;
+
+            (transfer!.Code == 0 && disableResult.Code == 0).Should().BeFalse(
+                $"attempt={attempt}, transfer={transfer.Code}/{transfer.Message}, " +
+                $"disable={disableResult.Code}/{disableResult.Message}, " +
+                $"custodian={current.CustodianId}, userActive={currentUser.IsActive}");
+            (current.CustodianId == transferee.Id && !currentUser.IsActive).Should().BeFalse();
+        }
     }
 
     [Fact]

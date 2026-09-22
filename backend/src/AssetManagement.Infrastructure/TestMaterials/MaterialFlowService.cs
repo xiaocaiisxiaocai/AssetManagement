@@ -60,8 +60,11 @@ public class MaterialFlowService : IMaterialFlowService
             for (var attempt = 0; ; attempt++)
             {
                 await using var tx = await _db.Database.BeginTransactionAsync();
+                // 与用户停用流程保持一致的加锁顺序：先用户，后料件。
+                // 否则停用请求可能在料件转移事务中途读到旧的保管人状态。
+                transferee = await LockActiveUserAsync(transferee.Id);
                 material = await LockTransferableMaterialAsync(request.MaterialId);
-                transferee = await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
+                await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
                 // 防重检查放事务内，避免并发请求同时通过检查
                 if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
                     throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
@@ -138,8 +141,9 @@ public class MaterialFlowService : IMaterialFlowService
             if (string.IsNullOrWhiteSpace(workflow.BpmnXml))
                 throw new BizException(4051, "流程定义不完整,缺少 BPMN XML");
             var process = BpmnParser.Parse(workflow.BpmnXml);
+            transferee = await LockActiveUserAsync(transferee.Id);
             material = await LockTransferableMaterialAsync(request.MaterialId);
-            transferee = await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
+            await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
             // 防重检查放事务内，避免并发请求同时通过检查
             if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
                 throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
@@ -778,7 +782,7 @@ public class MaterialFlowService : IMaterialFlowService
         return material;
     }
 
-    private async Task<User> EnsureTransferStillAllowedAsync(TestMaterial material, User applicant, int transfereeId)
+    private async Task EnsureTransferStillAllowedAsync(TestMaterial material, User applicant, int transfereeId)
     {
         await EnsureMaterialInScopeAsync(material, applicant);
         var isSupervisor = applicant.UserRoles.Any(x => x.Role is { Code: "supervisor", IsActive: true });
@@ -788,11 +792,14 @@ public class MaterialFlowService : IMaterialFlowService
             throw new BizException(4047, "只能流转本人保管或本人负责项目的料件");
         if (material.CustodianId == transfereeId)
             throw new BizException(4001, "接收人不能是当前保管人");
-        return await LockActiveUserAsync(transfereeId);
     }
 
     private async Task<User> LockActiveUserAsync(int userId)
     {
+        var tracked = _db.ChangeTracker.Entries<User>()
+            .FirstOrDefault(entry => entry.Entity.Id == userId);
+        if (tracked is not null) tracked.State = EntityState.Detached;
+
         var user = await _db.Users
             .FromSqlInterpolated($"SELECT * FROM users WHERE Id = {userId} FOR UPDATE")
             .AsTracking()

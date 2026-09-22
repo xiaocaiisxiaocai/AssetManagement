@@ -415,7 +415,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
             new[]
             {
                 customAssetNo, assetName, category.Code, "3", "2026-08-01", "2026-08-02",
-                "正常使用", department.Data.Name, custodian.Name, "三楼研发区 A-12", "完整字段"
+                "正常使用", department.Data.Name, custodian.EmployeeNo, "三楼研发区 A-12", "完整字段"
             }
         });
 
