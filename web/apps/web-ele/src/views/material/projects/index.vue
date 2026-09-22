@@ -92,7 +92,10 @@ import TransferDialog from '../components/TransferDialog.vue';
 import { isFutureFollowupDate, localTodayText } from './followup-date-rules';
 import { validateProjectForm } from './project-form-rules';
 import { buildProjectPageQuery } from './project-page-query';
-import { projectFollowUpStatusMeta } from './project-workspace-rules';
+import {
+  projectFollowUpStatusMeta,
+  refreshProjectAfterMaterialChange,
+} from './project-workspace-rules';
 import ProjectFlowsTab from './ProjectFlowsTab.vue';
 import ProjectFollowupsTab from './ProjectFollowupsTab.vue';
 import ProjectFormDialog from './ProjectFormDialog.vue';
@@ -946,14 +949,19 @@ function onMaterialPageSizeChange() {
   runHandled(loadProjectMaterials());
 }
 
-function loadMaterialFormOptions() {
-  runHandled(Promise.all([loadUsers(), loadBaseOptions()]));
+function loadMaterialFormOptions(userKeyword = '') {
+  runHandled(
+    Promise.all([
+      userKeyword ? searchUsers(userKeyword) : loadUsers(),
+      loadBaseOptions(),
+    ]),
+  );
 }
 
 function openCreateMaterial() {
   if (isCurrentProjectReadOnly.value) return;
   editingMaterial.value = null;
-  loadMaterialFormOptions();
+  loadMaterialFormOptions(currentProject.value?.ownerName ?? '');
   materialFormVisible.value = true;
 }
 
@@ -1100,7 +1108,11 @@ async function purgeMaterial(row: MaterialItem) {
 }
 
 async function afterMaterialChanged() {
-  await Promise.all([loadProjectMaterials(), loadProjectFlows()]);
+  await refreshProjectAfterMaterialChange(
+    loadProjectMaterials,
+    loadProjectFlows,
+    loadData,
+  );
 }
 
 async function loadProjectFlows(projectId = currentProject.value?.id) {

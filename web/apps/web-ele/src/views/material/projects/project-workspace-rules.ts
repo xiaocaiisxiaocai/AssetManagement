@@ -5,6 +5,14 @@ export function canWithdrawMaterialFlow(flow: MaterialFlowItem) {
   return flow.status === 'pending' && flow.canWithdraw === true;
 }
 
+export async function refreshProjectAfterMaterialChange(
+  loadMaterials: () => Promise<unknown>,
+  loadFlows: () => Promise<unknown>,
+  loadProjects: () => Promise<unknown>,
+) {
+  await Promise.all([loadMaterials(), loadFlows(), loadProjects()]);
+}
+
 export function canUpdateProjectProgress(
   project: Pick<TestProjectItem, 'closedDate' | 'isDeleted' | 'ownerId'>,
   currentUserId: number,

@@ -484,7 +484,7 @@ onMounted(async () => {
                 link
                 size="small"
                 type="danger"
-                @click="remove(row)"
+                @click="runHandled(remove(row))"
               >
                 删除
               </ElButton>
@@ -545,7 +545,11 @@ onMounted(async () => {
         </ElForm>
         <template #footer>
           <ElButton @click="dialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="save">
+          <ElButton
+            :loading="saving"
+            type="primary"
+            @click="runHandled(save())"
+          >
             保存
           </ElButton>
         </template>
@@ -664,7 +668,11 @@ onMounted(async () => {
         </div>
         <template #footer>
           <ElButton @click="accessDialogVisible = false">取消</ElButton>
-          <ElButton :loading="saving" type="primary" @click="saveAccess">
+          <ElButton
+            :loading="saving"
+            type="primary"
+            @click="runHandled(saveAccess())"
+          >
             保存授权
           </ElButton>
         </template>

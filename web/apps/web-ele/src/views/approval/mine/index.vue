@@ -70,6 +70,10 @@ import {
   getApprovalAssetSelectCopy,
   mergeApprovalAssetOptions,
 } from './approval-asset-options';
+import {
+  isApprovalReasonRequired,
+  validateApprovalReason,
+} from './approval-form-rules';
 
 defineOptions({ name: 'ApprovalMine' });
 
@@ -325,12 +329,20 @@ async function submit() {
     ElMessage.warning('请选择接收人');
     return;
   }
+  const reasonValidationMessage = validateApprovalReason(
+    form.bizType,
+    form.reason,
+  );
+  if (reasonValidationMessage) {
+    ElMessage.warning(reasonValidationMessage);
+    return;
+  }
   saving.value = true;
   try {
     await startApprovalApi({
       assetId: form.assetId,
       bizType: form.bizType,
-      reason: form.reason,
+      reason: form.reason.trim() || undefined,
       returnDate: showReturnDate.value ? form.returnDate : undefined,
       transfereeId: form.bizType === 'transfer' ? form.transfereeId : undefined,
     });
@@ -750,7 +762,10 @@ onMounted(async () => {
               转让只变更当前保管人，不会重新计算原借用期限
             </div>
           </ElFormItem>
-          <ElFormItem label="申请事由">
+          <ElFormItem
+            :required="isApprovalReasonRequired(form.bizType)"
+            label="申请事由"
+          >
             <ElInput
               v-model="form.reason"
               :rows="3"

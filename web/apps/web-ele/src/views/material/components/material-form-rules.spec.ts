@@ -6,6 +6,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   getDefaultCustodianId,
+  nextCustodianDepartmentId,
+  resolveCustodianDepartment,
+  validateCustodianDepartment,
   validateMaterialForm,
 } from './material-form-rules';
 
@@ -66,6 +69,77 @@ describe('测试料件表单规则', () => {
   it('新增时默认保管人为项目负责人', () => {
     expect(getDefaultCustodianId(projects, 10)).toBe(8);
     expect(getDefaultCustodianId(projects, 11)).toBeUndefined();
+  });
+
+  it('按用户选项同步保管人的归属部门', () => {
+    expect(
+      resolveCustodianDepartment(
+        [{ departmentName: '甲部门', id: 8 }],
+        [{ id: 2, label: '　甲部门' }],
+        8,
+      ),
+    ).toEqual({ departmentId: 2, resolved: true });
+    expect(
+      resolveCustodianDepartment(
+        [{ departmentId: 3, departmentName: '旧名称', id: 9 }],
+        [{ id: 2, label: '甲部门' }],
+        9,
+      ),
+    ).toEqual({ departmentId: 3, resolved: true });
+  });
+
+  it('保存前拒绝保管人与归属部门不一致或选项尚未加载', () => {
+    const users = [{ departmentName: '甲部门', id: 8 }];
+    const departments = [{ id: 2, label: '甲部门' }];
+
+    expect(
+      validateCustodianDepartment(
+        { custodianId: 8, departmentId: 3 },
+        users,
+        departments,
+      ),
+    ).toBe('保管人与归属部门不一致');
+    expect(
+      validateCustodianDepartment(
+        { custodianId: 8, departmentId: 2 },
+        users,
+        departments,
+      ),
+    ).toBeNull();
+    expect(
+      validateCustodianDepartment(
+        { custodianId: 8, departmentId: undefined },
+        [],
+        departments,
+      ),
+    ).toBe('保管人归属部门尚未加载，请稍后重试');
+  });
+
+  it('编辑时允许占位保管人沿用原部门', () => {
+    expect(
+      validateCustodianDepartment(
+        { custodianId: 8, departmentId: 2 },
+        [{ id: 8 }],
+        [{ id: 2, label: '甲部门' }],
+        true,
+      ),
+    ).toBeNull();
+  });
+
+  it('未选择保管人或选项尚未解析时保留手工部门', () => {
+    expect(
+      nextCustodianDepartmentId(2, undefined, {
+        departmentId: undefined,
+        resolved: true,
+      }),
+    ).toBe(2);
+    expect(nextCustodianDepartmentId(2, 8, { resolved: false })).toBe(2);
+    expect(
+      nextCustodianDepartmentId(2, 8, {
+        departmentId: 3,
+        resolved: true,
+      }),
+    ).toBe(3);
   });
 
   it('桌面端使用紧凑双列布局避免弹窗超出视口', () => {

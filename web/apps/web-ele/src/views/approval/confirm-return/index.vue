@@ -89,7 +89,7 @@ function resetQuery() {
 async function confirmReturn(row: ApprovalFlow) {
   try {
     await ElMessageBox.confirm(
-      `请确认已实际收回「${row.applicant}」归还的资产「${row.assetName}」（${row.assetNo}）。确认后资产将恢复为可用状态，并清空当前保管人。`,
+      `请确认已实际收回「${row.applicant}」归还的资产「${row.assetName}」（${row.assetNo}）。确认后资产将恢复为可用状态，并优先恢复至借出前保管人；借出前保管人不可用时，由本次确认的所属组织负责人接收入库。`,
       '确认资产已归还',
       {
         type: 'warning',

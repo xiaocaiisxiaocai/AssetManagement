@@ -1,11 +1,12 @@
 import type { MaterialFlowItem } from '#/api/material';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   canUpdateProjectProgress,
   canWithdrawMaterialFlow,
   projectFollowUpStatusMeta,
+  refreshProjectAfterMaterialChange,
 } from './project-workspace-rules';
 
 describe('测试项目工作台规则', () => {
@@ -73,5 +74,21 @@ describe('测试项目工作台规则', () => {
         isDeleted: true,
       }).label,
     ).toBe('已删除');
+  });
+
+  it('料件变更后同时刷新抽屉数据和项目列表计数', async () => {
+    const loadMaterials = vi.fn(async () => {});
+    const loadFlows = vi.fn(async () => {});
+    const loadProjects = vi.fn(async () => {});
+
+    await refreshProjectAfterMaterialChange(
+      loadMaterials,
+      loadFlows,
+      loadProjects,
+    );
+
+    expect(loadMaterials).toHaveBeenCalledOnce();
+    expect(loadFlows).toHaveBeenCalledOnce();
+    expect(loadProjects).toHaveBeenCalledOnce();
   });
 });

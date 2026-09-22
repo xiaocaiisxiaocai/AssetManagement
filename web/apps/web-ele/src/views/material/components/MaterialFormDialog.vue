@@ -33,6 +33,9 @@ import { buildFileActionAccess } from '#/views/permissions/action-access';
 
 import {
   getDefaultCustodianId,
+  nextCustodianDepartmentId,
+  resolveCustodianDepartment,
+  validateCustodianDepartment,
   validateMaterialForm,
 } from './material-form-rules';
 
@@ -78,6 +81,18 @@ const form = reactive({
 });
 
 const isEdit = computed(() => props.material !== null);
+const custodianDepartment = computed(() =>
+  resolveCustodianDepartment(
+    props.users,
+    props.departmentOptions,
+    form.custodianId,
+  ),
+);
+const isCustodianDepartmentRequired = computed(
+  () =>
+    custodianDepartment.value.resolved &&
+    custodianDepartment.value.departmentId !== undefined,
+);
 const selectableDepartmentOptions = computed(() => {
   const options = [...props.departmentOptions];
   const currentId = props.material?.departmentId;
@@ -110,6 +125,19 @@ function onImageRemove(file: AuthenticatedUploadFile) {
   if (responseUrl?.startsWith('blob:') && responseUrl !== file.url)
     URL.revokeObjectURL(responseUrl);
 }
+
+function syncCustodianDepartment() {
+  if (isEdit.value) return;
+  form.departmentId = nextCustodianDepartmentId(
+    form.departmentId,
+    form.custodianId,
+    custodianDepartment.value,
+  );
+}
+
+watch([() => props.users, () => props.departmentOptions], () => {
+  if (visible.value && !isEdit.value) syncCustodianDepartment();
+});
 
 watch(visible, async (opened) => {
   const generation = ++imageLoadGeneration;
@@ -190,6 +218,7 @@ watch(visible, async (opened) => {
       remark: '',
       vendorName: '',
     });
+    syncCustodianDepartment();
     imageFileList.value = [];
   }
 });
@@ -263,7 +292,14 @@ function onImageExceed() {
 }
 
 async function save() {
-  const validationMessage = validateMaterialForm(form);
+  const validationMessage =
+    validateMaterialForm(form) ||
+    validateCustodianDepartment(
+      form,
+      props.users,
+      props.departmentOptions,
+      isEdit.value,
+    );
   if (validationMessage) {
     ElMessage.warning(validationMessage);
     return;
@@ -341,7 +377,7 @@ const debouncedSave = useDebounceFn(save, 300);
             value-format="YYYY-MM-DD"
           />
         </ElFormItem>
-        <ElFormItem label="归属部门">
+        <ElFormItem :required="isCustodianDepartmentRequired" label="归属部门">
           <ElSelect
             v-model="form.departmentId"
             :disabled="isEdit"
@@ -369,6 +405,7 @@ const debouncedSave = useDebounceFn(save, 300);
             placeholder="选择保管人"
             remote
             style="width: 100%"
+            @change="syncCustodianDepartment"
           >
             <ElOption
               v-for="user in users"
