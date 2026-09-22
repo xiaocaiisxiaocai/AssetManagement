@@ -44,11 +44,18 @@ const kindLabels: Record<OptionKind, string> = {
   project_progress: '项目进度',
   project_type: '项目类型',
 };
+
+function onKindChange(kind: number | string) {
+  if (kind === 'project_type' || kind === 'project_progress') {
+    // 父组件的 v-model 尚未回传，必须使用本次切换事件的目标分组。
+    emit('reset', kind);
+  }
+}
 </script>
 
 <template>
   <ElDialog v-model="visible" title="项目配置" width="760px">
-    <ElTabs v-model="activeKind" @tab-change="emit('reset', activeKind)">
+    <ElTabs v-model="activeKind" @tab-change="onKindChange">
       <ElTabPane label="项目类型" name="project_type" />
       <ElTabPane label="项目进度" name="project_progress" />
     </ElTabs>
