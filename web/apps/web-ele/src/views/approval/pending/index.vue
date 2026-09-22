@@ -839,10 +839,12 @@ onMounted(async () => {
       <ElDialog
         v-model="detailVisible"
         :close-on-click-modal="false"
+        align-center
+        class="pending-approval-dialog"
         title="审批"
-        width="640px"
+        width="800px"
       >
-        <ElDescriptions v-if="selected" :column="2" border>
+        <ElDescriptions v-if="selected" :column="2" border label-width="112px">
           <ElDescriptionsItem label="流程单号">
             {{ selected.flowNo }}
           </ElDescriptionsItem>
@@ -982,7 +984,13 @@ onMounted(async () => {
         </template>
       </ElDialog>
 
-      <ElDialog v-model="handledDetailVisible" title="审批记录" width="680px">
+      <ElDialog
+        v-model="handledDetailVisible"
+        align-center
+        class="pending-approval-dialog"
+        title="审批记录"
+        width="680px"
+      >
         <ElDescriptions v-if="handledSelected" :column="2" border>
           <ElDescriptionsItem label="流程单号">
             {{ handledSelected.flowNo }}
@@ -1155,6 +1163,23 @@ onMounted(async () => {
   margin-top: 20px;
 }
 
+:global(.pending-approval-dialog) {
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+}
+
+:global(.pending-approval-dialog .el-dialog__body) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+:global(.pending-approval-dialog .el-descriptions__label) {
+  white-space: nowrap;
+}
+
 /* ========== 对话框优化 ========== */
 :deep(.el-dialog) {
   border-radius: 12px;
@@ -1204,6 +1229,11 @@ onMounted(async () => {
     flex-direction: column;
     gap: 8px;
     align-items: flex-start;
+  }
+
+  :global(.pending-approval-dialog .el-descriptions__label) {
+    width: auto !important;
+    white-space: normal;
   }
 }
 
