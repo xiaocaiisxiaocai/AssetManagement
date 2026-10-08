@@ -168,6 +168,7 @@ public class AssetService : IAssetService
             await LoadConditionOptionsAsync());
         var category = await _db.AssetCategories.SingleOrDefaultAsync(x => x.Id == request.CategoryId && !x.IsDeleted)
             ?? throw new BizException(4046, "资产分类不存在");
+        await EnsureAssignableCategoryAsync(category);
         var imageUrls = request.Images is null ? null : JoinImages(request.Images);
         var normalizedImages = SplitImages(imageUrls);
         await using var imageLease = request.Images is null
@@ -240,9 +241,12 @@ public class AssetService : IAssetService
         EnsureCanManage(asset);
         if (request.Status != asset.Status || request.CustodianId != asset.CustodianId || request.DepartmentId != asset.DepartmentId)
             throw new BizException(4095, "资产状态、保管人和归属部门只能通过审批流转变更");
-        if (!await _db.AssetCategories.AnyAsync(x => x.Id == request.CategoryId && !x.IsDeleted))
+        var category = await _db.AssetCategories.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == request.CategoryId && !x.IsDeleted)
+            ?? throw new BizException(4046, "资产分类不存在");
+        if (category.Id != asset.CategoryId)
         {
-            throw new BizException(4046, "资产分类不存在");
+            await EnsureAssignableCategoryAsync(category);
         }
         var locationName = NormalizeLocationName(request.LocationName);
         var imageUrls = request.Images is null ? null : JoinImages(request.Images);
@@ -767,15 +771,44 @@ public class AssetService : IAssetService
     private async Task<int> CurrentMaxSequence(AssetCategory category)
     {
         var prefix = $"{category.Code}-";
-        var latest = await _db.Assets
+        var assetNos = await _db.Assets
             .Where(x => x.CategoryId == category.Id && x.AssetNo.StartsWith(prefix))
             .Select(x => x.AssetNo)
-            .OrderByDescending(x => x.Length)
-            .ThenByDescending(x => x)
-            .FirstOrDefaultAsync();
-        return latest is not null && int.TryParse(latest[prefix.Length..], out var sequence)
-            ? sequence
-            : 0;
+            .ToListAsync();
+        return AssetNoGenerator.MaxSequence(category.Code, assetNos);
+    }
+
+    private async Task EnsureAssignableCategoryAsync(AssetCategory category)
+    {
+        if (!IsThirdLevelCategory(category, await LoadActiveCategoriesAsync()))
+        {
+            throw new BizException(4001, "资产只能归属第三级分类");
+        }
+    }
+
+    private async Task<IReadOnlyCollection<AssetCategory>> LoadActiveCategoriesAsync()
+        => await _db.AssetCategories.AsNoTracking().Where(x => !x.IsDeleted).ToListAsync();
+
+    internal static bool IsThirdLevelCategory(
+        AssetCategory category,
+        IEnumerable<AssetCategory> categories)
+    {
+        var byId = categories.ToDictionary(x => x.Id);
+        var depth = 1;
+        var parentId = category.ParentId;
+        var seen = new HashSet<int> { category.Id };
+        while (parentId is int id)
+        {
+            if (!seen.Add(id) || !byId.TryGetValue(id, out var parent))
+            {
+                return false;
+            }
+
+            depth++;
+            parentId = parent.ParentId;
+        }
+
+        return depth == 3;
     }
 
     private static bool IsDuplicateKey(DbUpdateException ex)
@@ -901,6 +934,7 @@ public class AssetService : IAssetService
         if (string.IsNullOrWhiteSpace(name)) errors.Add("名称必填");
         else if (name.Length > 100) errors.Add("名称不能超过 100 个字符");
         if (string.IsNullOrWhiteSpace(categoryCode) || !categories.ContainsKey(categoryCode)) errors.Add("分类编码不存在");
+        else if (!IsThirdLevelCategory(categories[categoryCode], categories.Values)) errors.Add("资产只能归属第三级分类");
         if (remark.Length > 500) errors.Add("备注不能超过 500 个字符");
         if (assetNo.Length > 100) errors.Add("资产编号不能超过 100 个字符");
         if (!string.IsNullOrWhiteSpace(assetNo) && duplicateAssetNos.Contains(assetNo))

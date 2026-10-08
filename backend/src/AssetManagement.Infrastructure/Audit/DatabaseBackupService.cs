@@ -176,8 +176,6 @@ public class DatabaseBackupService : IDatabaseBackupService
         arguments.Add($"--user={builder.UserID}");
         arguments.Add("--default-character-set=utf8mb4");
         arguments.Add("--single-transaction");
-        arguments.Add("--routines");
-        arguments.Add("--events");
         arguments.Add($"--result-file={filePath}");
         arguments.Add(builder.Database);
     }

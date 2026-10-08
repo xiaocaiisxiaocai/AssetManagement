@@ -343,6 +343,17 @@ foreach (var proxyText in builder.Configuration.GetSection("ForwardedHeaders:Kno
         forwardedHeadersOptions.KnownProxies.Add(proxy);
     }
 }
+foreach (var networkText in builder.Configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? Array.Empty<string>())
+{
+    var parts = networkText.Split('/', 2, StringSplitOptions.TrimEntries);
+    if (parts.Length == 2
+        && IPAddress.TryParse(parts[0], out var prefix)
+        && int.TryParse(parts[1], out var prefixLength))
+    {
+        forwardedHeadersOptions.KnownNetworks.Add(
+            new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, prefixLength));
+    }
+}
 app.UseForwardedHeaders(forwardedHeadersOptions);
 
 if (!app.Environment.IsDevelopment())
@@ -360,6 +371,7 @@ app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseMiddleware<AccountSecurityMiddleware>();
+app.UseMiddleware<MustChangePasswordMiddleware>();
 app.UseMiddleware<SlidingTokenMiddleware>();
 app.UseMiddleware<AuthorizationFailureAuditMiddleware>();
 app.UseAuthorization();

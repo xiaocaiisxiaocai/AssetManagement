@@ -100,8 +100,18 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
     public async Task Asset_update_audit_log_records_target_id_and_change_detail()
     {
         await Login();
+        var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            CodeSeg = UniqueCodeSeg()
+        });
+        var second = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            ParentId = root.Data!.Id,
+            CodeSeg = UniqueCodeSeg()
+        });
         var category = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
+            ParentId = second.Data!.Id,
             CodeSeg = UniqueCodeSeg()
         });
         var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest

@@ -335,7 +335,12 @@ const debouncedSave = useDebounceFn(save, 300);
     <ElForm label-width="88px">
       <div class="asset-form-grid">
         <ElFormItem class="asset-form-field--wide" label="资产名称" required>
-          <ElInput v-model="form.name" />
+          <ElInput
+            v-model="form.name"
+            :maxlength="100"
+            placeholder="请输入资产名称"
+            show-word-limit
+          />
         </ElFormItem>
         <ElFormItem label="资产分类" required>
           <ElSelect
@@ -402,7 +407,14 @@ const debouncedSave = useDebounceFn(save, 300);
           />
         </ElFormItem>
         <ElFormItem label="数量" required>
-          <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
+          <ElInputNumber
+            v-model="form.quantity"
+            :max="999999"
+            :min="1"
+            :precision="0"
+            :step="1"
+            style="width: 100%"
+          />
         </ElFormItem>
         <ElFormItem label="购入日期">
           <ElDatePicker
@@ -442,7 +454,7 @@ const debouncedSave = useDebounceFn(save, 300);
           </ElSelect>
         </ElFormItem>
         <ElFormItem v-if="isEdit" label="状态">
-          <ElSelect v-model="form.status" style="width: 100%">
+          <ElSelect v-model="form.status" disabled style="width: 100%">
             <ElOption
               v-for="item in statusOptions"
               :key="item.value"

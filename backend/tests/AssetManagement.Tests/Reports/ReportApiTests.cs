@@ -262,7 +262,12 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
             ParentId = root.Data!.Id,
             CodeSeg = UniqueCodeSeg()
         });
-        return child.Data!;
+        var leaf = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            ParentId = child.Data!.Id,
+            CodeSeg = UniqueCodeSeg()
+        });
+        return leaf.Data!;
     }
 
     private async Task<AssetDto> CreateAsset(

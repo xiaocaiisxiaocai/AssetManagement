@@ -23,7 +23,8 @@ public class JwtTokenService : IJwtTokenService
         IEnumerable<string> roles,
         int? departmentId = null,
         int tokenVersion = 0,
-        long? sessionStartedAtUnix = null)
+        long? sessionStartedAtUnix = null,
+        bool mustChangePassword = false)
     {
         var key = _configuration["Jwt:Key"]
             ?? throw new InvalidOperationException("缺少 Jwt:Key 配置");
@@ -47,6 +48,11 @@ public class JwtTokenService : IJwtTokenService
         if (departmentId.HasValue)
         {
             claims.Add(new Claim("departmentId", departmentId.Value.ToString()));
+        }
+
+        if (mustChangePassword)
+        {
+            claims.Add(new Claim("mustChangePassword", "true"));
         }
 
         var credentials = new SigningCredentials(

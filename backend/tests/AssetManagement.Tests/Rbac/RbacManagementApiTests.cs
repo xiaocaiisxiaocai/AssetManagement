@@ -570,7 +570,7 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
-    public async Task Create_user_enforces_password_length_without_composition_requirement()
+    public async Task Create_user_enforces_password_policy()
     {
         await Login();
         var roleId = await CreateRoleId();
@@ -583,32 +583,42 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         });
         weak.Code.Should().Be(1004);
 
-        var lettersOnlyEmployeeNo = Unique("letters");
-        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        var lettersOnly = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
-            EmployeeNo = lettersOnlyEmployeeNo,
+            EmployeeNo = Unique("letters"),
             Name = "纯字母密码用户",
             Password = "abcdef",
             RoleIds = new[] { roleId }
         });
-        var lettersOnlyLogin = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
-        {
-            employeeNo = lettersOnlyEmployeeNo,
-            password = "abcdef"
-        });
-        lettersOnlyLogin.Code.Should().Be(0);
+        lettersOnly.Code.Should().Be(1004);
 
-        var employeeNo = Unique("default");
-        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        var employeeNo = Unique("strong");
+        var created = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = employeeNo,
+            Name = "合规密码用户",
+            Password = "abc12345",
+            RoleIds = new[] { roleId }
+        });
+        created.Code.Should().Be(0, created.Message);
+        var strongLogin = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo,
+            password = "abc12345"
+        });
+        strongLogin.Code.Should().Be(0);
+
+        var defaultEmployeeNo = Unique("default");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = defaultEmployeeNo,
             Name = "显式默认密码用户",
             Password = "123456",
             RoleIds = new[] { roleId }
         });
         var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
         {
-            employeeNo,
+            employeeNo = defaultEmployeeNo,
             password = "123456"
         });
         login.Code.Should().Be(0);
@@ -1674,8 +1684,18 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
             Name = "资产保管人",
             RoleIds = new[] { roleId }
         });
+        var root = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            CodeSeg = Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()
+        });
+        var second = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+        {
+            ParentId = root.Data!.Id,
+            CodeSeg = Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()
+        });
         var category = await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
         {
+            ParentId = second.Data!.Id,
             CodeSeg = Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()
         });
         await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest

@@ -231,6 +231,26 @@ public class ReportService : IReportService
         };
     }
 
+    private async Task<List<OverdueReportRow>> QueryOverdueByAssetIdsAsync(IReadOnlyCollection<int> assetIds)
+    {
+        var ids = assetIds.Distinct().ToArray();
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        var today = BusinessClock.TodayDateOnly;
+        var flows = await ApplyOverdueQuery(today)
+            .Where(x => ids.Contains(x.AssetId))
+            .ToListAsync();
+        var overdue = flows.Select(flow =>
+        {
+            var due = flow.ReturnDate!.Value;
+            return (Flow: flow, Due: due, Days: today.DayNumber - due.DayNumber);
+        }).ToList();
+        return await ToOverdueRows(overdue);
+    }
+
     private IQueryable<ApprovalFlow> ApplyOverdueQuery(DateOnly today)
         => ApplyFlowScope(_db.ApprovalFlows.AsNoTracking())
             .Where(x => x.BizType == "borrow" && x.Status == "approved"
@@ -262,7 +282,7 @@ public class ReportService : IReportService
 
     public async Task<int> RemindOverdueAsync(int assetId, int? userId)
     {
-        var row = (await QueryOverdueAsync()).FirstOrDefault(x => x.AssetId == assetId)
+        var row = (await QueryOverdueByAssetIdsAsync([assetId])).FirstOrDefault()
             ?? throw new BizException(4060, "资产不存在或未逾期");
         var (auditLog, notification) = BuildOverdueReminder(row, userId);
         _db.AuditLogs.Add(auditLog);
@@ -285,7 +305,7 @@ public class ReportService : IReportService
         }
 
         // 任何无效 ID 都必须在产生审计或通知之前失败，避免半批成功。
-        var overdueRows = await QueryOverdueAsync();
+        var overdueRows = await QueryOverdueByAssetIdsAsync(ids);
         var rowMap = overdueRows
             .Where(row => ids.Contains(row.AssetId))
             .GroupBy(row => row.AssetId)

@@ -51,6 +51,7 @@ public class MaterialFlowService : IMaterialFlowService
             ?? throw new BizException(4041, "受让人不存在或已停用");
         if (transferee.Id == applicant.Id) throw new BizException(4001, "接收人不能与申请人相同");
         if (transferee.Id == material.CustodianId) throw new BizException(4001, "接收人不能是当前保管人");
+        await EnsureTransfereeDepartmentAsync(transferee);
 
         var approvalEnabled = await IsApprovalEnabled();
 
@@ -63,6 +64,7 @@ public class MaterialFlowService : IMaterialFlowService
                 // 与用户停用流程保持一致的加锁顺序：先用户，后料件。
                 // 否则停用请求可能在料件转移事务中途读到旧的保管人状态。
                 transferee = await LockActiveUserAsync(transferee.Id);
+                await EnsureTransfereeDepartmentAsync(transferee);
                 material = await LockTransferableMaterialAsync(request.MaterialId);
                 await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
                 // 防重检查放事务内，避免并发请求同时通过检查
@@ -142,6 +144,7 @@ public class MaterialFlowService : IMaterialFlowService
                 throw new BizException(4051, "流程定义不完整,缺少 BPMN XML");
             var process = BpmnParser.Parse(workflow.BpmnXml);
             transferee = await LockActiveUserAsync(transferee.Id);
+            await EnsureTransfereeDepartmentAsync(transferee);
             material = await LockTransferableMaterialAsync(request.MaterialId);
             await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
             // 防重检查放事务内，避免并发请求同时通过检查
@@ -726,6 +729,15 @@ public class MaterialFlowService : IMaterialFlowService
     private static bool IsSupervisor(User user)
         => user.UserRoles.Any(ur => ur.Role is { Code: "supervisor", IsActive: true });
 
+    private async Task EnsureTransfereeDepartmentAsync(User? transferee)
+    {
+        if (transferee?.DepartmentId is not int departmentId
+            || !await _db.Departments.AsNoTracking().AnyAsync(x => x.Id == departmentId && x.IsActive))
+        {
+            throw new BizException(4001, "接收人必须属于有效部门");
+        }
+    }
+
     private async Task EnsureMaterialInScopeAsync(TestMaterial material, User user)
     {
         if (IsAdmin(user) || !IsSupervisor(user)) return;
@@ -761,6 +773,7 @@ public class MaterialFlowService : IMaterialFlowService
             throw new BizException(4001, "流转单缺少接收人");
         material.CustodianId = flow.TransfereeId.Value;
         var transferee = await LockActiveUserAsync(flow.TransfereeId.Value);
+        await EnsureTransfereeDepartmentAsync(transferee);
         material.DepartmentId = transferee.DepartmentId;
         material.RowVersion++;
     }

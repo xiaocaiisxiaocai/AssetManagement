@@ -136,10 +136,12 @@ public class InactiveApproverSecurityTests : IClassFixture<TestWebAppFactory>
             new CreateCategoryRequest { CodeSeg = UniqueCodeSeg() });
         var child = await Post<ApiResult<CategoryNodeDto>>(client, "/api/categories",
             new CreateCategoryRequest { ParentId = root.Data!.Id, CodeSeg = UniqueCodeSeg() });
+        var leaf = await Post<ApiResult<CategoryNodeDto>>(client, "/api/categories",
+            new CreateCategoryRequest { ParentId = child.Data!.Id, CodeSeg = UniqueCodeSeg() });
         var asset = await Post<ApiResult<AssetDto>>(client, "/api/assets", new CreateAssetRequest
         {
             Name = Unique("停用审批测试资产"),
-            CategoryId = child.Data!.Id,
+            CategoryId = leaf.Data!.Id,
             DepartmentId = departmentId
         });
         return asset.Data!;

@@ -34,6 +34,10 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       loginLoading.value = true;
       const loginResult = await loginApi(params);
+      if (loginResult?.mustChangePassword) {
+        accessStore.setAccessToken(loginResult.token);
+        return { mustChangePassword: true, userInfo: null };
+      }
       if (loginResult) {
         accessStore.setAccessToken(loginResult.token);
         userInfo = await fetchUserInfo();
@@ -61,6 +65,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     return {
+      mustChangePassword: false,
       userInfo,
     };
   }

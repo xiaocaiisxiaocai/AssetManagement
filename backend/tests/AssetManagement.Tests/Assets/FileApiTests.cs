@@ -134,16 +134,12 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
     public async Task Asset_rejects_external_or_unmanaged_image_url()
     {
         await Login();
-        var categoryResponse = await _client.PostAsJsonAsync("/api/categories", new CreateCategoryRequest
-        {
-            CodeSeg = Guid.NewGuid().ToString("N")[..6],
-        });
-        var category = await categoryResponse.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
+        var category = await CreateLeafCategory();
 
         var response = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
         {
             Name = "非法图片地址资产",
-            CategoryId = category!.Data!.Id,
+            CategoryId = category.Id,
             Images = new List<string> { "https://attacker.example/tracker.png" },
         });
         var body = await response.Content.ReadFromJsonAsync<ApiResult<JsonElement>>();
@@ -156,16 +152,12 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
     public async Task Asset_rejects_well_formed_but_missing_stored_image()
     {
         await Login();
-        var categoryResponse = await _client.PostAsJsonAsync("/api/categories", new CreateCategoryRequest
-        {
-            CodeSeg = Guid.NewGuid().ToString("N")[..6],
-        });
-        var category = await categoryResponse.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
+        var category = await CreateLeafCategory();
 
         var response = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
         {
             Name = "不存在图片资产",
-            CategoryId = category!.Data!.Id,
+            CategoryId = category.Id,
             Images = new List<string> { $"/api/files/{Guid.NewGuid():N}.png" },
         });
         var body = await response.Content.ReadFromJsonAsync<ApiResult<JsonElement>>();
@@ -182,16 +174,12 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
             new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1 },
             "trimmed-reference.png",
             "image/png");
-        var categoryResponse = await _client.PostAsJsonAsync("/api/categories", new CreateCategoryRequest
-        {
-            CodeSeg = Guid.NewGuid().ToString("N")[..6],
-        });
-        var category = await categoryResponse.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
+        var category = await CreateLeafCategory();
 
         var response = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
         {
             Name = "图片地址规范化资产",
-            CategoryId = category!.Data!.Id,
+            CategoryId = category.Id,
             Images = new List<string> { $"  {uploadedUrl}  " },
         });
         var body = await response.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
@@ -250,5 +238,21 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
         res.EnsureSuccessStatusCode();
         var body = await res.Content.ReadFromJsonAsync<ApiResult<LoginResponse>>();
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body!.Data!.Token);
+    }
+
+    private async Task<CategoryNodeDto> CreateLeafCategory()
+    {
+        ApiResult<CategoryNodeDto>? current = null;
+        for (var depth = 0; depth < 3; depth++)
+        {
+            var response = await _client.PostAsJsonAsync("/api/categories", new CreateCategoryRequest
+            {
+                ParentId = current?.Data?.Id,
+                CodeSeg = Guid.NewGuid().ToString("N")[..6],
+            });
+            current = await response.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
+        }
+
+        return current!.Data!;
     }
 }

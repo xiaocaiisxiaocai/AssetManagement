@@ -376,7 +376,11 @@ public class BpmnEngineRegressionTests : IClassFixture<TestWebAppFactory>
         return await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
             Name = "BPMN测试资产",
-            CategoryId = child.Data!.Id,
+            CategoryId = (await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+            {
+                ParentId = child.Data!.Id,
+                CodeSeg = UniqueCodeSeg()
+            })).Data!.Id,
             DepartmentId = departmentId,
         });
     }

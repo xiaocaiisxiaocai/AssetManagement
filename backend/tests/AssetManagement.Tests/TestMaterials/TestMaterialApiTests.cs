@@ -303,7 +303,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         try
         {
             var project = await CreateProject("待审批退回项目");
-            var transferee = await CreateUserInDb($"tf{Guid.NewGuid():N}"[..12], "待审批接收人");
+            var transferee = await CreateUserInDb($"tf{Guid.NewGuid():N}"[..12], "待审批接收人", withDepartment: true);
             var created = await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
             {
                 Name = "待审批退回样品",
@@ -752,7 +752,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             Name = "有流转历史料件",
             ProjectId = project.Id
         });
-        var transferee = await CreateUserInDb($"tf{Guid.NewGuid():N}"[..12], "流转接收人");
+        var transferee = await CreateUserInDb($"tf{Guid.NewGuid():N}"[..12], "流转接收人", withDepartment: true);
         await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
         {
             MaterialId = material.Data!.Id,
@@ -1282,17 +1282,34 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         return user;
     }
 
-    private async Task<User> CreateUserInDb(string employeeNo, string name)
+    private async Task<User> CreateUserInDb(string employeeNo, string name, bool withDepartment = false)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var employeeRole = db.Roles.Single(x => x.Code == "employee");
+        Department? department = null;
+        if (withDepartment)
+        {
+            department = db.Departments.FirstOrDefault(x => x.IsActive);
+            if (department is null)
+            {
+                department = new Department
+                {
+                    Code = $"D{Guid.NewGuid():N}"[..12],
+                    Name = $"测试部门{Guid.NewGuid():N}"[..20],
+                    IsActive = true
+                };
+                db.Departments.Add(department);
+                await db.SaveChangesAsync();
+            }
+        }
         var user = new User
         {
             EmployeeNo = employeeNo,
             Name = name,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456"),
-            IsActive = true
+            IsActive = true,
+            DepartmentId = department?.Id
         };
         db.Users.Add(user);
         await db.SaveChangesAsync();

@@ -95,7 +95,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         await SetApprovalSwitch(false);
         var project = await CreateProject("禁止原地转移项目");
         var custodian = await CreateUser("0999", "当前保管人");
-        var material = await CreateMaterial(project.Id, "禁止原地转移样品", custodianId: custodian.Id);
+        var material = await CreateMaterial(project.Id, "禁止原地转移样品", custodian.DepartmentId, custodian.Id);
 
         var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
         {
@@ -500,7 +500,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var owner = await CreateUser("0943", "料件实际负责人");
         var transferee = await CreateUser("0944", "管理员转移接收人");
         var project = await CreateProject("管理员不可越权转移项目", owner.Id);
-        var material = await CreateMaterial(project.Id, "管理员不可越权转移样品", null, owner.Id);
+        var material = await CreateMaterial(project.Id, "管理员不可越权转移样品", owner.DepartmentId, owner.Id);
 
         var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
         {
@@ -683,7 +683,12 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         string name,
         string roleCode = "employee",
         int? departmentId = null)
-        => (await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+    {
+        departmentId ??= (await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = $"接收部门{Guid.NewGuid():N}"[..24]
+        })).Data!.Id;
+        return (await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = employeeNo,
             Name = name,
@@ -691,6 +696,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             DepartmentId = departmentId,
             RoleIds = new[] { (await Role(roleCode)).Id }
         })).Data!;
+    }
 
     private async Task<string> ReplaceActiveMaterialWorkflowBpmn(string bpmnXml)
     {

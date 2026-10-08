@@ -34,8 +34,18 @@ export type CustodianDepartmentResolution =
 
 export function validateMaterialForm(form: MaterialFormLike) {
   if (!form.name.trim()) return '请填写料件名称';
+  if (form.name.trim().length > 100) return '料件名称不能超过 100 个字符';
+  if (form.vendorName.trim().length > 100)
+    return '供应商不能超过 100 个字符';
+  if (form.model.trim().length > 100) return '型号不能超过 100 个字符';
+  if (form.brand.trim().length > 100) return '品牌不能超过 100 个字符';
+  if ((form.remark ?? '').trim().length > 500)
+    return '备注不能超过 500 个字符';
   if (!form.projectId) return '请选择所属项目';
   if (!form.quantity || form.quantity < 1) return '请填写数量';
+  if (!Number.isInteger(form.quantity) || form.quantity > 999999) {
+    return '数量须为 1-999999 的整数';
+  }
   if (form.locationName.trim().length > 100)
     return '存放位置不能超过 100 个字符';
   return null;

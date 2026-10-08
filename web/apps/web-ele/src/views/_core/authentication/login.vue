@@ -1,16 +1,18 @@
 <script lang="ts" setup>
 import type { VbenFormSchema } from '@vben/common-ui';
 
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 import { AuthenticationLogin, z } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 
+import Password from '#/layouts/password.vue';
 import { useAuthStore } from '#/store';
 
 defineOptions({ name: 'Login' });
 
 const authStore = useAuthStore();
+const mustChangePassword = ref(false);
 
 const formSchema = computed((): VbenFormSchema[] => {
   return [
@@ -39,10 +41,16 @@ const formSchema = computed((): VbenFormSchema[] => {
 
 async function handleLogin(values: any) {
   try {
-    await authStore.authLogin(values);
+    const result = await authStore.authLogin(values);
+    mustChangePassword.value = Boolean(result?.mustChangePassword);
   } catch {
     // 错误提示已由请求拦截器(request.ts)统一弹出
   }
+}
+
+async function handlePasswordChanged() {
+  mustChangePassword.value = false;
+  await authStore.logout(false);
 }
 </script>
 
@@ -57,5 +65,10 @@ async function handleLogin(values: any) {
     :show-third-party-login="false"
     title="资产管理系统"
     @submit="handleLogin"
+  />
+  <Password
+    v-model:open="mustChangePassword"
+    forced
+    @changed="handlePasswordChanged"
   />
 </template>

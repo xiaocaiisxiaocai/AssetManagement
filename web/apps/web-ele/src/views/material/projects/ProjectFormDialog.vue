@@ -44,10 +44,20 @@ function onProgressChange(value: string) {
     <ElForm label-width="96px">
       <div class="form-grid">
         <ElFormItem label="项目编号" required>
-          <ElInput v-model="form.code" placeholder="请输入项目编号" />
+          <ElInput
+            v-model="form.code"
+            :maxlength="50"
+            placeholder="请输入项目编号"
+            show-word-limit
+          />
         </ElFormItem>
         <ElFormItem label="项目名称" required>
-          <ElInput v-model="form.name" placeholder="请输入项目名称" />
+          <ElInput
+            v-model="form.name"
+            :maxlength="100"
+            placeholder="请输入项目名称"
+            show-word-limit
+          />
         </ElFormItem>
         <ElFormItem label="项目类型" required>
           <ElSelect
@@ -101,6 +111,8 @@ function onProgressChange(value: string) {
             v-model="form.followUpIntervalDays"
             :max="365"
             :min="1"
+            :precision="0"
+            :step="1"
             controls-position="right"
             style="width: 100%"
           />

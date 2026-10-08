@@ -77,6 +77,10 @@ public class SlidingTokenMiddleware
             sessionStartedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         }
 
+        var mustChangePassword = string.Equals(
+            user.FindFirst("mustChangePassword")?.Value,
+            "true",
+            StringComparison.OrdinalIgnoreCase);
         ctx.Response.Headers["accesstoken"] = jwt.Create(
             userId,
             employeeNo,
@@ -84,6 +88,7 @@ public class SlidingTokenMiddleware
             roles,
             departmentId,
             tokenVersion,
-            sessionStartedAtUnix);
+            sessionStartedAtUnix,
+            mustChangePassword);
     }
 }

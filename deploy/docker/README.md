@@ -30,4 +30,4 @@ DATABASE_AUTO_SEED=false
 docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env up -d
 ```
 
-默认账号：`1001 / 123456`。首次登录后请修改密码。
+管理员初始密码来自 `.env` 的 `ASSET_ADMIN_PASSWORD`，工号是 `1001`。生产环境不会使用 `123456`。首次登录后请立即修改密码。

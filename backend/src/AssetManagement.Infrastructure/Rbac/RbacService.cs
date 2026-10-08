@@ -6,6 +6,7 @@ using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Auth;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Workflow;
+using System.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
@@ -308,8 +309,15 @@ public class RbacService : IRbacService
 
     public async Task ToggleUserStatusAsync(int id, bool? isActive = null)
     {
-        await using var transaction = await _db.Database.BeginTransactionAsync();
-        await LockAdminUsersAsync();
+        // 先读管理员身份会建立可重复读快照。转移在等待用户行锁期间提交后，
+        // 后续保管人检查仍会看到旧快照，从而把已接收料件的人停用。
+        // 读已提交让获锁后的检查看到刚刚提交的保管人，同时不必先锁资产，避免和「先资产后用户」的转让加锁顺序死锁。
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        // 只有停用管理员才锁全部管理员，并且必须先于目标用户。先锁用户再锁管理员会在并发停用时死锁。
+        if (await IsActiveAdminAsync(id))
+        {
+            await LockAdminUsersAsync();
+        }
         var user = await _db.Users
             .FromSqlInterpolated($"SELECT * FROM users WHERE Id = {id} FOR UPDATE")
             .AsTracking()
@@ -965,6 +973,12 @@ public class RbacService : IRbacService
         }
 
         if (await _db.ApprovalFlows.AsNoTracking()
+                .AnyAsync(x => x.Status == "pending" && x.BizType != "borrow" && x.ApplicantId == userId))
+        {
+            throw new BizException(4092, "该用户有进行中的审批申请，流程结束前不能停用");
+        }
+
+        if (await _db.ApprovalFlows.AsNoTracking()
                 .AnyAsync(x => x.Status == "pending" && x.TransfereeId == userId))
         {
             throw new BizException(4092, "该用户是在途资产流转的受让人，流程结束前不能停用");
@@ -974,6 +988,12 @@ public class RbacService : IRbacService
                 .AnyAsync(x => x.Status == "pending" && x.TransfereeId == userId))
         {
             throw new BizException(4092, "该用户是在途料件流转的受让人，流程结束前不能停用");
+        }
+
+        if (await _db.MaterialFlows.AsNoTracking()
+                .AnyAsync(x => x.Status == "pending" && x.ApplicantId == userId))
+        {
+            throw new BizException(4092, "该用户有进行中的料件流转申请，流程结束前不能停用");
         }
 
         var approvalFlows = await _db.ApprovalFlows.AsNoTracking()
@@ -998,74 +1018,69 @@ public class RbacService : IRbacService
         int userId)
         where TFlow : class, Domain.Workflow.IBpmnFlowInstance
     {
+        if (HasUnsignedSignTask(flows, userId))
+        {
+            return true;
+        }
+
+        var workflowIds = flows
+            .Select(WorkflowIdOf)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+        var xmlByWorkflowId = workflowIds.Length == 0
+            ? new Dictionary<int, string?>()
+            : await _db.Workflows.AsNoTracking()
+                .Where(x => workflowIds.Contains(x.Id))
+                .Select(x => new { x.Id, x.BpmnXml })
+                .ToDictionaryAsync(x => x.Id, x => (string?)x.BpmnXml);
+        var processes = new Dictionary<int, BpmnProcess?>();
+
         foreach (var flow in flows)
         {
+            var workflowId = WorkflowIdOf(flow);
+            if (workflowId <= 0 || !TryGetProcess(workflowId, xmlByWorkflowId, processes, out var process))
+            {
+                continue;
+            }
+
+            var applicantId = flow switch
+            {
+                ApprovalFlow assetFlow => assetFlow.ApplicantId,
+                MaterialFlow materialFlow => materialFlow.ApplicantId,
+                _ => 0,
+            };
+            int? transfereeId = flow switch
+            {
+                ApprovalFlow assetFlow => assetFlow.TransfereeId,
+                MaterialFlow materialFlow => materialFlow.TransfereeId,
+                _ => null,
+            };
+            var bizType = flow switch
+            {
+                ApprovalFlow assetFlow => assetFlow.BizType,
+                MaterialFlow materialFlow => materialFlow.BizType,
+                _ => null,
+            };
+
             foreach (var nodeId in flow.CurrentNodeIds)
             {
                 if (!flow.BpmnTokens.TryGetValue(nodeId, out var token)
-                    || token.Status != Domain.Workflow.BpmnTokenStatus.Active)
+                    || token.Status != BpmnTokenStatus.Active
+                    || token.SignStates is { Count: > 0 })
                 {
                     continue;
                 }
 
-                if (token.SignStates?.TryGetValue(userId.ToString(), out var signed) == true && !signed)
-                {
-                    return true;
-                }
-            }
-
-            var workflowId = flow switch
-            {
-                ApprovalFlow assetFlow => assetFlow.WorkflowId,
-                MaterialFlow materialFlow => materialFlow.WorkflowId ?? 0,
-                _ => 0,
-            };
-            if (workflowId <= 0)
-            {
-                continue;
-            }
-
-            var bpmnXml = await _db.Workflows.AsNoTracking()
-                .Where(x => x.Id == workflowId)
-                .Select(x => x.BpmnXml)
-                .SingleOrDefaultAsync();
-            if (string.IsNullOrWhiteSpace(bpmnXml))
-            {
-                continue;
-            }
-
-            var process = BpmnParser.Parse(bpmnXml);
-            foreach (var nodeId in flow.CurrentNodeIds)
-            {
                 var node = process.FindNode(nodeId);
-                var assignee = node?.Properties.GetValueOrDefault("assignee");
-                if (!string.IsNullOrWhiteSpace(assignee)
-                    && !OrganizationApprovalResolver.IsOrganizationAssignee(assignee)
-                    && assignee is not ("deptManager" or "supervisor"))
-                {
-                    var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, assignee);
-                    if (resolution.Status == ApproverIdentityResolutionStatus.Unique
-                        && resolution.UserIds[0] == userId)
-                    {
-                        return true;
-                    }
-                }
-
-                var candidateUsers = node?.Properties.GetValueOrDefault("candidateUsers");
-                if (string.IsNullOrWhiteSpace(candidateUsers))
+                if (node?.Type != BpmnNodeType.UserTask)
                 {
                     continue;
                 }
-                var resolvedCandidates = new HashSet<int>();
-                foreach (var identity in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                {
-                    var candidateResolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, identity);
-                    if (candidateResolution.Status == ApproverIdentityResolutionStatus.Unique)
-                    {
-                        resolvedCandidates.Add(candidateResolution.UserIds[0]);
-                    }
-                }
-                if (resolvedCandidates.SetEquals(new[] { userId }))
+
+                var approverIds = await UserTaskApproverResolver.ResolveAsync(
+                    _db, node, applicantId, transfereeId, bizType);
+                if (approverIds.Count == 1 && approverIds[0] == userId)
                 {
                     return true;
                 }
@@ -1073,6 +1088,54 @@ public class RbacService : IRbacService
         }
 
         return false;
+    }
+
+    private static bool HasUnsignedSignTask<TFlow>(IReadOnlyCollection<TFlow> flows, int userId)
+        where TFlow : class, IBpmnFlowInstance
+    {
+        var userKey = userId.ToString();
+        foreach (var flow in flows)
+        {
+            foreach (var nodeId in flow.CurrentNodeIds)
+            {
+                if (flow.BpmnTokens.TryGetValue(nodeId, out var token)
+                    && token.Status == BpmnTokenStatus.Active
+                    && token.SignStates?.TryGetValue(userKey, out var signed) == true
+                    && !signed)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static int WorkflowIdOf<TFlow>(TFlow flow)
+        where TFlow : class, IBpmnFlowInstance
+        => flow switch
+        {
+            ApprovalFlow assetFlow => assetFlow.WorkflowId,
+            MaterialFlow materialFlow => materialFlow.WorkflowId ?? 0,
+            _ => 0,
+        };
+
+    private static bool TryGetProcess(
+        int workflowId,
+        IReadOnlyDictionary<int, string?> xmlByWorkflowId,
+        Dictionary<int, BpmnProcess?> processes,
+        out BpmnProcess process)
+    {
+        if (!processes.TryGetValue(workflowId, out var cached))
+        {
+            cached = xmlByWorkflowId.TryGetValue(workflowId, out var xml) && !string.IsNullOrWhiteSpace(xml)
+                ? BpmnParser.Parse(xml)
+                : null;
+            processes[workflowId] = cached;
+        }
+
+        process = cached!;
+        return cached is not null;
     }
 
     private async Task<List<UserImportRowDto>> ReadAndValidateUserImportRowsAsync(Stream file)

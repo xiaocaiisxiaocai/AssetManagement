@@ -273,6 +273,8 @@ public class WorkflowService : IWorkflowService
         var lockedParticipants = await LockActiveParticipantsAsync(protectedParticipantIds);
         if (request.TransfereeId.HasValue)
             transferee = lockedParticipants[request.TransfereeId.Value];
+        if (workflow.BizType == "transfer")
+            await EnsureTransfereeDepartmentAsync(transferee);
 
         var flow = new ApprovalFlow
         {
@@ -310,10 +312,14 @@ public class WorkflowService : IWorkflowService
         {
             await _db.SaveChangesAsync();
         }
-        catch (DbUpdateException ex)
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
         {
             _logger.LogWarning(ex, "创建审批单发生唯一键冲突，资产 {AssetId}", asset.Id);
             throw new BizException(4056, "该资产已有进行中的审批,请勿重复发起");
+        }
+        catch (DbUpdateException ex) when (IsDeadlock(ex))
+        {
+            throw new BizException(4090, "数据库繁忙（检测到死锁），请重试");
         }
         await AddRecord(flow.Id, "start", applicant.Id, applicant.Name, request.Reason);
         await NotifyCurrentApproversAsync(flow, bpmnProcess, $"您有新的待审批任务：{asset.Name} 的{BizTypeLabel(workflow.BizType)}申请");
@@ -666,16 +672,33 @@ public class WorkflowService : IWorkflowService
     }
 
     /// <summary>
-    /// 借用/转让申请必须填写原因。前端已强制要求 10-200 字，这里作为后端独立防线，
-    /// 只兜底校验非空（而非照搬前端 10 字下限），避免绕过前端（如直接调用 API）
-    /// 提交空原因，同时不与既有测试数据中大量短于 10 字但语义完整的原因样例冲突。
+    /// 借用/转让申请必须填写原因，所有申请原因最长 500 字。
+    /// 不设置最短字数，避免和既有短原因测试数据冲突。
     /// </summary>
     private static void ValidateReason(string bizType, string? reason)
     {
+        if (reason is { Length: > 500 })
+            throw new BizException(4001, "申请原因不能超过 500 个字符");
         if (bizType is not ("borrow" or "transfer")) return;
         if (string.IsNullOrWhiteSpace(reason))
             throw new BizException(4001, "请填写申请原因");
     }
+
+    private async Task EnsureTransfereeDepartmentAsync(User? transferee)
+    {
+        if (transferee?.DepartmentId is not int departmentId
+            || !await _db.Departments.AsNoTracking().AnyAsync(x => x.Id == departmentId && x.IsActive))
+        {
+            throw new BizException(4001, "接收人必须属于有效部门");
+        }
+    }
+
+    private static bool IsDuplicateKey(DbUpdateException ex)
+        => ex.InnerException is MySqlException { Number: 1062 };
+
+    private static bool IsDeadlock(Exception ex)
+        => ex is MySqlException { Number: 1213 }
+           || ex is DbUpdateException { InnerException: MySqlException { Number: 1213 } };
 
     private static DateOnly? ValidateReturnDate(string bizType, string? value)
     {

@@ -10,6 +10,20 @@ jobs:
   backend:
     name: 后端构建与测试
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_ROOT_PASSWORD: ci-test-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-test-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      ASSETMGMT_TEST_MYSQL_PASSWORD: ci-test-password
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -40,3 +54,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: 类型检查
         run: pnpm -F @vben/web-ele run typecheck
+      - name: 单元测试
+        run: pnpm test:unit
+      - name: 生产构建
+        run: pnpm --filter @vben/web-ele... run build

@@ -7,6 +7,8 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using MySqlConnector;
 using System.Data.Common;
 
@@ -156,10 +158,9 @@ public class AuthServiceTests
     }
 
     [Theory]
-    [InlineData("abcdef")]
-    [InlineData("654321")]
-    [InlineData("!!!!!!")]
-    public async Task ChangePassword_allows_six_character_password_without_composition_requirement(string newPassword)
+    [InlineData("abc12345")]
+    [InlineData("a1!!!!!!")]
+    public async Task ChangePassword_allows_password_with_letter_and_digit(string newPassword)
     {
         await using var fixture = await AuthFixture.Create();
 
@@ -171,8 +172,11 @@ public class AuthServiceTests
     }
 
     [Theory]
-    [InlineData("12345")]
-    public async Task ChangePassword_with_too_short_password_throws(string newPassword)
+    [InlineData("1234567")]
+    [InlineData("abcdefg")]
+    [InlineData("12345678")]
+    [InlineData("!!!!!!!!")]
+    public async Task ChangePassword_rejects_password_outside_policy(string newPassword)
     {
         await using var fixture = await AuthFixture.Create();
         var act = () => fixture.CreateService().ChangePasswordAsync(
@@ -183,14 +187,43 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task ChangePassword_with_more_than_12_characters_throws()
+    public async Task ChangePassword_allows_64_characters_and_rejects_65()
     {
         await using var fixture = await AuthFixture.Create();
+        var accepted = $"a1{new string('b', 62)}";
+        await fixture.CreateService().ChangePasswordAsync(
+            fixture.GetUserId(),
+            new ChangePasswordRequest { OldPassword = "123456", NewPassword = accepted });
+        PasswordHashing.Verify(accepted, fixture.GetUserPasswordHash()).Should().BeTrue();
+
         var act = () => fixture.CreateService().ChangePasswordAsync(
             fixture.GetUserId(),
-            new ChangePasswordRequest { OldPassword = "123456", NewPassword = new string('a', 13) });
-
+            new ChangePasswordRequest { OldPassword = accepted, NewPassword = accepted + "c" });
         await act.Should().ThrowAsync<BizException>().Where(x => x.Code == 1004);
+    }
+
+    [Fact]
+    public async Task Login_with_default_password_requires_change_outside_development()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var jwt = new FakeJwtTokenService();
+        var response = await fixture.CreateService(jwt, "Production").LoginAsync(
+            new LoginRequest { EmployeeNo = "1001", Password = "123456" });
+
+        response.MustChangePassword.Should().BeTrue();
+        jwt.LastMustChangePassword.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Login_with_default_password_does_not_require_change_in_development()
+    {
+        await using var fixture = await AuthFixture.Create();
+        var jwt = new FakeJwtTokenService();
+        var response = await fixture.CreateService(jwt).LoginAsync(
+            new LoginRequest { EmployeeNo = "1001", Password = "123456" });
+
+        response.MustChangePassword.Should().BeFalse();
+        jwt.LastMustChangePassword.Should().BeFalse();
     }
 
     [Fact]
@@ -379,13 +412,13 @@ public class AuthServiceTests
             Db.ChangeTracker.Clear();
         }
 
-        public AuthService CreateService()
+        public AuthService CreateService(IJwtTokenService? jwt = null, string environmentName = "Development")
         {
-            var jwt = new FakeJwtTokenService();
+            jwt ??= new FakeJwtTokenService();
             var cache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
                 new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions());
             var httpContextAccessor = new FakeHttpContextAccessor();
-            return new AuthService(Db, jwt, cache, httpContextAccessor);
+            return new AuthService(Db, jwt, cache, httpContextAccessor, new StubHostEnvironment(environmentName));
         }
 
         public async ValueTask DisposeAsync()
@@ -402,6 +435,8 @@ public class AuthServiceTests
 
     private sealed class FakeJwtTokenService : IJwtTokenService
     {
+        public bool LastMustChangePassword { get; private set; }
+
         public string Create(
             int userId,
             string employeeNo,
@@ -409,8 +444,25 @@ public class AuthServiceTests
             IEnumerable<string> roles,
             int? departmentId = null,
             int tokenVersion = 0,
-            long? sessionStartedAtUnix = null)
-            => $"token:{userId}:{employeeNo}:{string.Join(",", permissionCodes)}:{string.Join(",", roles)}:{departmentId}:{tokenVersion}";
+            long? sessionStartedAtUnix = null,
+            bool mustChangePassword = false)
+        {
+            LastMustChangePassword = mustChangePassword;
+            return $"token:{userId}:{employeeNo}:{string.Join(",", permissionCodes)}:{string.Join(",", roles)}:{departmentId}:{tokenVersion}";
+        }
+    }
+
+    private sealed class StubHostEnvironment : IHostEnvironment
+    {
+        public StubHostEnvironment(string environmentName)
+        {
+            EnvironmentName = environmentName;
+        }
+
+        public string EnvironmentName { get; set; }
+        public string ApplicationName { get; set; } = "AssetManagement.Tests";
+        public string ContentRootPath { get; set; } = ".";
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
     private sealed class FakeHttpContextAccessor : Microsoft.AspNetCore.Http.IHttpContextAccessor

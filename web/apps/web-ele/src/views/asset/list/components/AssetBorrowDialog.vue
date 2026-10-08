@@ -50,8 +50,13 @@ async function submit() {
     ElMessage.warning('归还日期必须晚于今天');
     return;
   }
-  if (!form.reason || form.reason.length < 10 || form.reason.length > 200) {
-    ElMessage.warning('借用原因需要 10-200 字');
+  const reason = form.reason.trim();
+  if (!reason) {
+    ElMessage.warning('请填写借用原因');
+    return;
+  }
+  if (reason.length > 500) {
+    ElMessage.warning('借用原因不能超过 500 个字符');
     return;
   }
   saving.value = true;
@@ -59,7 +64,7 @@ async function submit() {
     await startApprovalApi({
       assetId: props.asset.id,
       bizType: 'borrow',
-      reason: form.reason,
+      reason,
       returnDate: form.returnDate as string,
     });
     ElMessage.success('借用申请已提交');
@@ -98,10 +103,10 @@ async function submit() {
       <ElFormItem label="借用原因" required>
         <ElInput
           v-model="form.reason"
-          :maxlength="200"
+          :maxlength="500"
           :rows="3"
           clearable
-          placeholder="10-200 字"
+          placeholder="请填写借用原因，最多 500 字"
           show-word-limit
           type="textarea"
         />

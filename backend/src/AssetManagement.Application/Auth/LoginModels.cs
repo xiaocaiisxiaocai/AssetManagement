@@ -13,6 +13,8 @@ public record LoginRequest
 public record LoginResponse
 {
     public string Token { get; init; } = "";
+    /// <summary>非开发环境使用默认密码登录时为 true，须先改密才能调用其他接口。</summary>
+    public bool MustChangePassword { get; init; }
 }
 
 public record ChangePasswordRequest

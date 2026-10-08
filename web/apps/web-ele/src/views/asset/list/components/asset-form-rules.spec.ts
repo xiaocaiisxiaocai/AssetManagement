@@ -94,7 +94,7 @@ describe('固定资产表单规则', () => {
       /import\s*\{[\s\S]*?\bElInputNumber\b[\s\S]*?\}\s*from 'element-plus';/,
     );
     expect(source).toMatch(
-      /<ElInputNumber\b[^>]*v-model="form\.quantity"[^>]*>/,
+      /<ElInputNumber\b[\s\S]*?v-model="form\.quantity"[\s\S]*?>/,
     );
   });
 

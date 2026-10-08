@@ -205,7 +205,11 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
         return (await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
             Name = name,
-            CategoryId = child.Data!.Id
+            CategoryId = (await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+            {
+                ParentId = child.Data!.Id,
+                CodeSeg = UniqueCodeSeg()
+            })).Data!.Id
         })).Data!;
     }
 
@@ -239,11 +243,20 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
     private async Task<UserDto> CreateUser(string prefix, string name, string roleCode)
     {
         var employeeNo = $"{prefix}{Guid.NewGuid():N}"[..12].ToUpperInvariant();
+        int? departmentId = null;
+        if (roleCode == "employee")
+        {
+            departmentId = (await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+            {
+                Name = $"接收部门{Guid.NewGuid():N}"[..24]
+            })).Data!.Id;
+        }
         return (await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = employeeNo,
             Name = $"{name}{employeeNo[^4..]}",
             Password = "TestPass123",
+            DepartmentId = departmentId,
             RoleIds = new[] { (await Role(roleCode)).Id }
         })).Data!;
     }

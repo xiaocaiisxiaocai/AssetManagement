@@ -14,6 +14,7 @@ public interface IJwtTokenService
         IEnumerable<string> roles,
         int? departmentId = null,
         int tokenVersion = 0,
-        long? sessionStartedAtUnix = null);
+        long? sessionStartedAtUnix = null,
+        bool mustChangePassword = false);
 }
 

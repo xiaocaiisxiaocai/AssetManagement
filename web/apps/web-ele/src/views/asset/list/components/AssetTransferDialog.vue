@@ -59,8 +59,13 @@ async function submit() {
     ElMessage.warning('受让人不能是当前持有人');
     return;
   }
-  if (!form.reason || form.reason.length < 10 || form.reason.length > 200) {
-    ElMessage.warning('转让原因需要 10-200 字');
+  const reason = form.reason.trim();
+  if (!reason) {
+    ElMessage.warning('请填写转让原因');
+    return;
+  }
+  if (reason.length > 500) {
+    ElMessage.warning('转让原因不能超过 500 个字符');
     return;
   }
   saving.value = true;
@@ -68,7 +73,7 @@ async function submit() {
     await startApprovalApi({
       assetId: props.asset.id,
       bizType: 'transfer',
-      reason: form.reason,
+      reason,
       transfereeId: form.transfereeId,
     });
     ElMessage.success('转让申请已提交');
@@ -110,13 +115,13 @@ async function submit() {
           />
         </ElSelect>
       </ElFormItem>
-      <ElFormItem label="转让原因">
+      <ElFormItem label="转让原因" required>
         <ElInput
           v-model="form.reason"
-          :maxlength="200"
+          :maxlength="500"
           :rows="3"
           clearable
-          placeholder="10-200 字"
+          placeholder="请填写转让原因，最多 500 字"
           show-word-limit
           type="textarea"
         />

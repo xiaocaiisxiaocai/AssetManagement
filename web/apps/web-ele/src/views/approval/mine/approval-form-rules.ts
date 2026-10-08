@@ -5,8 +5,12 @@ export function isApprovalReasonRequired(type: string) {
 }
 
 export function validateApprovalReason(type: string, reason: string) {
-  if (isApprovalReasonRequired(type) && !reason.trim()) {
+  const trimmed = reason.trim();
+  if (isApprovalReasonRequired(type) && !trimmed) {
     return '请填写申请事由';
+  }
+  if (trimmed.length > 500) {
+    return '申请事由不能超过 500 个字符';
   }
   return null;
 }

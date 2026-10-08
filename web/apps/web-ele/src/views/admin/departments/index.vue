@@ -207,6 +207,10 @@ async function save() {
     ElMessage.warning('请填写组织架构名称');
     return;
   }
+  if (form.name.trim().length > 100) {
+    ElMessage.warning('组织架构名称不能超过 100 个字符');
+    return;
+  }
   if (!form.organizationLevelCode) {
     ElMessage.warning('请选择组织层级');
     return;
@@ -384,7 +388,12 @@ onMounted(async () => {
             />
           </ElFormItem>
           <ElFormItem label="组织架构名称" required>
-            <ElInput v-model="form.name" placeholder="请输入组织架构名称" />
+            <ElInput
+              v-model="form.name"
+              :maxlength="100"
+              placeholder="请输入组织架构名称"
+              show-word-limit
+            />
           </ElFormItem>
           <ElFormItem label="组织层级" required>
             <ElSelect

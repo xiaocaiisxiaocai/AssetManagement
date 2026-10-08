@@ -10,6 +10,9 @@ describe('资产审批申请表单规则', () => {
     expect(isApprovalReasonRequired(type)).toBe(true);
     expect(validateApprovalReason(type, '   ')).toBe('请填写申请事由');
     expect(validateApprovalReason(type, '项目使用')).toBeNull();
+    expect(validateApprovalReason(type, '申'.repeat(501))).toBe(
+      '申请事由不能超过 500 个字符',
+    );
   });
 
   it.each(['extension', 'return'])('%s 允许不填写申请事由', (type) => {

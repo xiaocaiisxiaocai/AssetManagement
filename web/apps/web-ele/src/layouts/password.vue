@@ -23,6 +23,9 @@ import {
   PASSWORD_DIALOG_WIDTH,
 } from './password-dialog';
 
+const props = withDefaults(defineProps<{ forced?: boolean }>(), {
+  forced: false,
+});
 const emit = defineEmits<{ changed: [] }>();
 const showPopup = defineModel<boolean>('open', { default: false });
 interface FormDataVO {
@@ -64,8 +67,10 @@ const formRules: FormRules<FormDataVO> = {
   ],
 };
 const submitting = ref(false);
-const handleBeforeClose = (done: () => void) =>
+const handleBeforeClose = (done: () => void) => {
+  if (props.forced) return;
   closePasswordDialogUnlessSubmitting(submitting.value, done);
+};
 const handleSubmit = async () => {
   if (!formRef.value || submitting.value) return;
   const valid = await formRef.value.validate().catch(() => false);
@@ -100,10 +105,10 @@ watch(
     v-model="showPopup"
     :before-close="handleBeforeClose"
     :close-on-click-modal="false"
-    :close-on-press-escape="!submitting"
-    :show-close="!submitting"
+    :close-on-press-escape="!props.forced && !submitting"
+    :show-close="!props.forced && !submitting"
     :width="PASSWORD_DIALOG_WIDTH"
-    title="修改密码"
+    :title="props.forced ? '请先修改默认密码' : '修改密码'"
   >
     <ElForm
       ref="formRef"
@@ -143,7 +148,11 @@ watch(
     </ElForm>
 
     <template #footer>
-      <ElButton :disabled="submitting" @click="showPopup = false">
+      <ElButton
+        v-if="!props.forced"
+        :disabled="submitting"
+        @click="showPopup = false"
+      >
         取消
       </ElButton>
       <ElButton :loading="submitting" type="primary" @click="handleSubmit">

@@ -12,7 +12,10 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 
 COPY --from=build /app/publish .
-RUN mkdir -p /app/uploads /app/backups
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends default-mysql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app/uploads /app/Backups
 
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "AssetManagement.Api.dll"]

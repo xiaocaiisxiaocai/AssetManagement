@@ -235,7 +235,11 @@ public class ApprovalSecurityTests : IClassFixture<TestWebAppFactory>
         var asset = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
         {
             Name = "安全测试资产",
-            CategoryId = child.Data!.Id,
+            CategoryId = (await Post<ApiResult<CategoryNodeDto>>("/api/categories", new CreateCategoryRequest
+            {
+                ParentId = child.Data!.Id,
+                CodeSeg = UniqueCodeSeg()
+            })).Data!.Id,
         });
         return asset.Data!;
     }

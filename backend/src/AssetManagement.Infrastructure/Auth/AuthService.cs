@@ -5,6 +5,7 @@ using AssetManagement.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
 
 namespace AssetManagement.Infrastructure.Auth;
 
@@ -16,13 +17,20 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwt;
     private readonly IMemoryCache _cache;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IHostEnvironment _environment;
 
-    public AuthService(AppDbContext db, IJwtTokenService jwt, IMemoryCache cache, IHttpContextAccessor httpContextAccessor)
+    public AuthService(
+        AppDbContext db,
+        IJwtTokenService jwt,
+        IMemoryCache cache,
+        IHttpContextAccessor httpContextAccessor,
+        IHostEnvironment environment)
     {
         _db = db;
         _jwt = jwt;
         _cache = cache;
         _httpContextAccessor = httpContextAccessor;
+        _environment = environment;
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request)
@@ -129,15 +137,19 @@ public class AuthService : IAuthService
             .OrderBy(x => x)
             .ToArray();
 
+        var mustChangePassword = !_environment.IsDevelopment()
+            && string.Equals(request.Password, AppConstants.DefaultUserPassword, StringComparison.Ordinal);
         return new LoginResponse
         {
+            MustChangePassword = mustChangePassword,
             Token = _jwt.Create(
                 user.Id,
                 user.EmployeeNo,
                 permissionCodes,
                 roleCodes,
                 user.DepartmentId,
-                user.TokenVersion)
+                user.TokenVersion,
+                mustChangePassword: mustChangePassword)
         };
     }
 

@@ -37,13 +37,16 @@ services:
       Jwt__ExpireMinutes: 120
       Database__AutoMigrate: ${DATABASE_AUTO_MIGRATE:-true}
       Database__AutoSeed: ${DATABASE_AUTO_SEED:-true}
+      ASSET_ADMIN_PASSWORD: ${ASSET_ADMIN_PASSWORD}
       Attachment__Path: /app/uploads
-      DatabaseBackup__Path: /app/backups
+      DatabaseBackup__Path: /app/Backups
       DatabaseBackup__RetentionDays: 30
       DatabaseBackup__MysqldumpPath: mysqldump
+      ForwardedHeaders__KnownNetworks__0: 172.16.0.0/12
+      ForwardedHeaders__KnownNetworks__1: 10.0.0.0/8
     volumes:
       - upload-data:/app/uploads
-      - backup-data:/app/backups
+      - backup-data:/app/Backups
 
   web:
     build:

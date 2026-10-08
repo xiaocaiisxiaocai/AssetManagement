@@ -338,7 +338,12 @@ const debouncedSave = useDebounceFn(save, 300);
     <ElForm label-width="96px">
       <div class="material-form-grid">
         <ElFormItem class="material-form-field--wide" label="料件名称" required>
-          <ElInput v-model="form.name" placeholder="请输入料件名称" />
+          <ElInput
+            v-model="form.name"
+            :maxlength="100"
+            placeholder="请输入料件名称"
+            show-word-limit
+          />
         </ElFormItem>
         <ElFormItem label="所属项目" required>
           <ElSelect
@@ -357,16 +362,38 @@ const debouncedSave = useDebounceFn(save, 300);
           </ElSelect>
         </ElFormItem>
         <ElFormItem label="厂商/来源">
-          <ElInput v-model="form.vendorName" placeholder="请输入寄件厂商名称" />
+          <ElInput
+            v-model="form.vendorName"
+            :maxlength="100"
+            placeholder="请输入寄件厂商名称"
+            show-word-limit
+          />
         </ElFormItem>
         <ElFormItem class="material-form-field--wide" label="型号品牌">
           <div class="material-form-model">
-            <ElInput v-model="form.model" placeholder="请输入型号" />
-            <ElInput v-model="form.brand" placeholder="请输入品牌" />
+            <ElInput
+              v-model="form.model"
+              :maxlength="100"
+              placeholder="请输入型号"
+              show-word-limit
+            />
+            <ElInput
+              v-model="form.brand"
+              :maxlength="100"
+              placeholder="请输入品牌"
+              show-word-limit
+            />
           </div>
         </ElFormItem>
         <ElFormItem label="数量" required>
-          <ElInputNumber v-model="form.quantity" :min="1" style="width: 100%" />
+          <ElInputNumber
+            v-model="form.quantity"
+            :max="999999"
+            :min="1"
+            :precision="0"
+            :step="1"
+            style="width: 100%"
+          />
         </ElFormItem>
         <ElFormItem label="接收日期">
           <ElDatePicker

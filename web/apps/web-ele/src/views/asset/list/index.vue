@@ -582,10 +582,7 @@ async function exportAllAssets() {
   if (exportingAllAssets.value) return;
   exportingAllAssets.value = true;
   try {
-    const response = await exportAssetsApi({
-      ...buildQuery(),
-      categoryId: undefined,
-    });
+    const response = await exportAssetsApi({ deleteStatus: 'all' });
     downloadBlob(response.data, '全部资产.xlsx');
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
@@ -621,14 +618,18 @@ function tableRowClassName({ row }: { row: AssetItem }) {
 }
 
 function flattenCategories(nodes: CategoryNode[], level = 0): FlatOption[] {
-  return nodes.flatMap((node) => [
-    {
-      code: node.code,
-      id: node.id,
-      label: `${'　'.repeat(level)}${node.code}`,
-    },
-    ...flattenCategories(node.children, level + 1),
-  ]);
+  return nodes.flatMap((node) => {
+    const children = flattenCategories(node.children, level + 1);
+    if (level !== 2) return children;
+    return [
+      {
+        code: node.code,
+        id: node.id,
+        label: node.code,
+      },
+      ...children,
+    ];
+  });
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -912,9 +913,12 @@ watch(detailVisible, (opened) => {
             </ElSelect>
             <ElSelect
               v-model="query.custodianId"
+              :loading="userOptionsLoading"
+              :remote-method="searchUsers"
               clearable
               filterable
               placeholder="保管人"
+              remote
               style="width: 180px"
             >
               <ElOption

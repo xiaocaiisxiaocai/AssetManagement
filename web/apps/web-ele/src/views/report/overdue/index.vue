@@ -23,6 +23,7 @@ import {
   remindOverdueBatchApi,
 } from '#/api/report';
 import { runHandled } from '#/utils/handled-promise';
+import { createLatestRequestGuard } from '#/utils/latest-request';
 import {
   createPageSizeOptions,
   getDefaultPageSize,
@@ -36,6 +37,7 @@ const { hasAccessByCodes } = useAccess();
 const reportActionAccess = computed(() =>
   buildReportActionAccess(hasAccessByCodes),
 );
+const listRequestGuard = createLatestRequestGuard();
 const loading = ref(false);
 const remindingId = ref<null | number>(null);
 const rows = ref<OverdueReportRow[]>([]);
@@ -48,15 +50,17 @@ const query = reactive({
   pageSize: 20,
 });
 async function loadData() {
+  const requestGeneration = listRequestGuard.next();
   loading.value = true;
   try {
     const result = await getOverdueReportApi(query);
+    if (!listRequestGuard.isLatest(requestGeneration)) return;
     rows.value = result.items;
     total.value = result.total;
     seriousTotal.value = result.seriousTotal;
     selectedRows.value = [];
   } finally {
-    loading.value = false;
+    if (listRequestGuard.isLatest(requestGeneration)) loading.value = false;
   }
 }
 
