@@ -579,16 +579,22 @@ onMounted(async () => {
             <ElInput
               v-model="form.employeeNo"
               :disabled="!!editingId"
+              maxlength="50"
               placeholder="新增用户时必填"
             />
           </ElFormItem>
           <ElFormItem label="姓名" required>
-            <ElInput v-model="form.name" placeholder="请输入姓名" />
+            <ElInput
+              v-model="form.name"
+              maxlength="100"
+              placeholder="请输入姓名"
+            />
           </ElFormItem>
           <ElFormItem label="邮箱">
             <ElInput
               v-model="form.email"
               clearable
+              maxlength="200"
               placeholder="请输入邮箱"
               type="email"
             />
@@ -597,6 +603,7 @@ onMounted(async () => {
             <ElInput
               v-model="form.phone"
               clearable
+              maxlength="50"
               placeholder="请输入手机号"
             />
           </ElFormItem>

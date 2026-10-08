@@ -23,6 +23,7 @@ public class AssetService : IAssetService
 
     // 部门树缓存键
     private const string DepartmentTreeCacheKey = "department_tree";
+    private const int MaxAssetQuantity = 999999;
 
     public AssetService(
         AppDbContext db,
@@ -171,6 +172,7 @@ public class AssetService : IAssetService
         await EnsureAssignableCategoryAsync(category);
         var imageUrls = request.Images is null ? null : JoinImages(request.Images);
         var normalizedImages = SplitImages(imageUrls);
+        var quantity = EnsureQuantity(request.Quantity);
         await using var imageLease = request.Images is null
             ? null
             : await _fileStorage.AcquireReferenceLeaseAsync(normalizedImages);
@@ -192,7 +194,7 @@ public class AssetService : IAssetService
                 LocationName = locationName,
                 CustodianId = request.CustodianId,
                 InitialCustodianId = request.CustodianId,
-                Quantity = Math.Max(request.Quantity, 1),
+                Quantity = quantity,
                 Status = AssetStatus.Available,
                 PurchaseDate = request.PurchaseDate,
                 RegistrationTime = request.RegistrationTime?.Date ?? BusinessClock.Today,
@@ -258,7 +260,7 @@ public class AssetService : IAssetService
         asset.Name = request.Name.Trim();
         asset.CategoryId = request.CategoryId;
         asset.LocationName = locationName;
-        asset.Quantity = Math.Max(request.Quantity, 1);
+        asset.Quantity = EnsureQuantity(request.Quantity);
         asset.PurchaseDate = request.PurchaseDate;
         asset.RegistrationTime = request.RegistrationTime?.Date;
         asset.CurrentCondition = AssetConditionDictionary.NormalizeSelection(
@@ -770,9 +772,10 @@ public class AssetService : IAssetService
 
     private async Task<int> CurrentMaxSequence(AssetCategory category)
     {
+        // 资产编号全局唯一。自定义编号可以写到其他分类下，仍会占用本分类的数字流水。
         var prefix = $"{category.Code}-";
         var assetNos = await _db.Assets
-            .Where(x => x.CategoryId == category.Id && x.AssetNo.StartsWith(prefix))
+            .Where(x => x.AssetNo.StartsWith(prefix))
             .Select(x => x.AssetNo)
             .ToListAsync();
         return AssetNoGenerator.MaxSequence(category.Code, assetNos);
@@ -880,6 +883,16 @@ public class AssetService : IAssetService
         => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static List<string> SplitImages(string? imageUrls) => ImageHelpers.Split(imageUrls);
+
+    private static int EnsureQuantity(int quantity)
+    {
+        if (quantity < 1 || quantity > MaxAssetQuantity)
+        {
+            throw new BizException(4001, "数量须为 1-999999 的整数");
+        }
+
+        return quantity;
+    }
 
     private static void EnsureAssetName(string? name)
     {
@@ -1002,11 +1015,17 @@ public class AssetService : IAssetService
         }
 
         var quantity = 1;
-        if (!string.IsNullOrWhiteSpace(quantityText) &&
-            (!int.TryParse(quantityText, NumberStyles.None, CultureInfo.InvariantCulture, out quantity) || quantity <= 0))
+        if (!string.IsNullOrWhiteSpace(quantityText))
         {
-            errors.Add("数量必须是大于 0 的整数");
-            quantity = 1;
+            if (!int.TryParse(quantityText, NumberStyles.None, CultureInfo.InvariantCulture, out quantity) || quantity <= 0)
+            {
+                errors.Add("数量必须是大于 0 的整数");
+                quantity = 1;
+            }
+            else if (quantity > MaxAssetQuantity)
+            {
+                errors.Add("数量不能超过 999999");
+            }
         }
 
         var resolvedDepartmentName = requestedDepartment?.Name;

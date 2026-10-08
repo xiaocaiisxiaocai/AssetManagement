@@ -75,6 +75,73 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Create_asset_skips_number_reserved_under_another_category()
+    {
+        await Login();
+        var target = await CreateCategory();
+        var other = await CreateCategory();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Assets.Add(new Asset
+            {
+                AssetNo = $"{target.Code}-001",
+                Name = "其他分类占用的编号",
+                CategoryId = other.Id,
+                Quantity = 1,
+                IsDeleted = true,
+                DeletedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "跳过跨分类占用流水",
+            CategoryId = target.Id
+        });
+
+        created.Code.Should().Be(0);
+        created.Data!.AssetNo.Should().Be($"{target.Code}-002");
+    }
+
+    [Fact]
+    public async Task Create_and_update_reject_quantity_outside_1_to_999999()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var zero = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
+        {
+            Name = "数量为零",
+            CategoryId = category.Id,
+            Quantity = 0
+        });
+        var zeroBody = await zero.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
+        zeroBody!.Code.Should().Be(4001);
+        zeroBody.Message.Should().Be("数量须为 1-999999 的整数");
+
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "数量边界",
+            CategoryId = category.Id,
+            Quantity = 999999
+        });
+        created.Data!.Quantity.Should().Be(999999);
+
+        var tooLarge = await _client.PutAsJsonAsync($"/api/assets/{created.Data.Id}", new UpdateAssetRequest
+        {
+            Name = "数量边界",
+            CategoryId = category.Id,
+            Quantity = 1_000_000,
+            Status = AssetStatus.Available
+        });
+        var tooLargeBody = await tooLarge.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
+        tooLargeBody!.Code.Should().Be(4001);
+        tooLargeBody.Message.Should().Be("数量须为 1-999999 的整数");
+    }
+
+    [Fact]
     public async Task Create_asset_rejects_condition_outside_dictionary()
     {
         await Login();
@@ -532,6 +599,24 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         row.Error.Should().Contain("存放位置不能超过 100 个字符");
         row.Error.Should().Contain("数量必须是大于 0 的整数");
         row.Error.Should().Contain("资产编号不能超过 100 个字符");
+    }
+
+    [Fact]
+    public async Task Import_preview_rejects_quantity_above_999999()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var bytes = BuildXlsx(new[]
+        {
+            new[] { "名称", "分类编码", "数量" },
+            new[] { "数量过大资产", category.Code, "1000000" }
+        });
+
+        var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
+        var row = preview.Data!.Should().ContainSingle().Subject;
+
+        row.IsValid.Should().BeFalse();
+        row.Error.Should().Contain("数量不能超过 999999");
     }
 
     [Fact]

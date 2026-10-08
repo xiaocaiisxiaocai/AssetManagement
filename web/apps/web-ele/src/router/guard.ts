@@ -11,6 +11,10 @@ import {
   fallbackNotFoundRoute,
 } from '#/router/routes';
 import { useAuthStore } from '#/store';
+import {
+  passwordChangeRedirect,
+  tokenRequiresPasswordChange,
+} from '#/utils/must-change-password';
 
 import { generateAccess } from './access';
 import { authenticatedRootRedirect } from './home-redirect';
@@ -56,10 +60,24 @@ function setupAccessGuard(router: Router) {
     const accessStore = useAccessStore();
     const userStore = useUserStore();
     const authStore = useAuthStore();
+    const mustChangePassword = tokenRequiresPasswordChange(
+      accessStore.accessToken,
+    );
+    const passwordRedirect = passwordChangeRedirect(
+      to.path,
+      accessStore.accessToken,
+    );
+    if (passwordRedirect) {
+      return { path: passwordRedirect, replace: true };
+    }
 
     // 基本路由，这些路由不需要进入权限拦截
     if (coreRouteNames.includes(to.name as string)) {
-      if (to.path === LOGIN_PATH && accessStore.accessToken) {
+      if (
+        to.path === LOGIN_PATH &&
+        accessStore.accessToken &&
+        !mustChangePassword
+      ) {
         return safeInternalRedirect(
           typeof to.query?.redirect === 'string'
             ? to.query.redirect
