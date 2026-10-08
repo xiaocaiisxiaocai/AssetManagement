@@ -4,11 +4,9 @@ public static class PasswordPolicy
 {
     public static void EnsureStrong(string password)
     {
-        if (password.Length < 8 || password.Length > 64
-            || !password.Any(char.IsAsciiLetter)
-            || !password.Any(char.IsAsciiDigit))
+        if (password.Length < 6 || password.Length > 12)
         {
-            throw new BizException(1004, "密码须为 8-64 位，且同时包含字母和数字");
+            throw new BizException(1004, "密码须为 6-12 位");
         }
     }
 }

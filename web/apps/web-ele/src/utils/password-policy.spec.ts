@@ -5,26 +5,22 @@ import {
   PASSWORD_RULE_PATTERN,
 } from './password-policy';
 
-describe('密码规则', () => {
+describe('密码长度规则', () => {
   const pattern = new RegExp(PASSWORD_RULE_PATTERN);
 
-  it.each(['abc12345', 'a1!!!!!!', `a1${'b'.repeat(62)}`])(
-    '允许同时包含字母和数字的 8-64 位密码：%s',
+  it.each(['abcdef', '654321', '!!!!!!', '中中中中中中'])(
+    '允许不限制字符组成的六位密码：%s',
     (password) => {
       expect(pattern.test(password)).toBe(true);
     },
   );
 
-  it('拒绝过短、过长、纯字母或纯数字密码', () => {
-    expect(pattern.test('1234567')).toBe(false);
-    expect(pattern.test('abcdefg')).toBe(false);
-    expect(pattern.test('12345678')).toBe(false);
-    expect(pattern.test(`a1${'b'.repeat(63)}`)).toBe(false);
+  it('拒绝少于六位或超过 12 位的密码', () => {
+    expect(pattern.test('12345')).toBe(false);
+    expect(pattern.test('a'.repeat(13))).toBe(false);
   });
 
-  it('提示语描述长度和字符组成', () => {
-    expect(PASSWORD_RULE_MESSAGE).toBe(
-      '密码须为 8-64 位，且同时包含字母和数字',
-    );
+  it('提示语只描述长度要求', () => {
+    expect(PASSWORD_RULE_MESSAGE).toBe('请输入 6-12 位密码');
   });
 });

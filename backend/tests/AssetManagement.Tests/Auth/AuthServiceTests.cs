@@ -158,9 +158,10 @@ public class AuthServiceTests
     }
 
     [Theory]
-    [InlineData("abc12345")]
-    [InlineData("a1!!!!!!")]
-    public async Task ChangePassword_allows_password_with_letter_and_digit(string newPassword)
+    [InlineData("abcdef")]
+    [InlineData("654321")]
+    [InlineData("!!!!!!")]
+    public async Task ChangePassword_allows_six_character_password_without_composition_requirement(string newPassword)
     {
         await using var fixture = await AuthFixture.Create();
 
@@ -172,11 +173,8 @@ public class AuthServiceTests
     }
 
     [Theory]
-    [InlineData("1234567")]
-    [InlineData("abcdefg")]
-    [InlineData("12345678")]
-    [InlineData("!!!!!!!!")]
-    public async Task ChangePassword_rejects_password_outside_policy(string newPassword)
+    [InlineData("12345")]
+    public async Task ChangePassword_with_too_short_password_throws(string newPassword)
     {
         await using var fixture = await AuthFixture.Create();
         var act = () => fixture.CreateService().ChangePasswordAsync(
@@ -187,18 +185,13 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task ChangePassword_allows_64_characters_and_rejects_65()
+    public async Task ChangePassword_with_more_than_12_characters_throws()
     {
         await using var fixture = await AuthFixture.Create();
-        var accepted = $"a1{new string('b', 62)}";
-        await fixture.CreateService().ChangePasswordAsync(
-            fixture.GetUserId(),
-            new ChangePasswordRequest { OldPassword = "123456", NewPassword = accepted });
-        PasswordHashing.Verify(accepted, fixture.GetUserPasswordHash()).Should().BeTrue();
-
         var act = () => fixture.CreateService().ChangePasswordAsync(
             fixture.GetUserId(),
-            new ChangePasswordRequest { OldPassword = accepted, NewPassword = accepted + "c" });
+            new ChangePasswordRequest { OldPassword = "123456", NewPassword = new string('a', 13) });
+
         await act.Should().ThrowAsync<BizException>().Where(x => x.Code == 1004);
     }
 

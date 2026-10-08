@@ -583,14 +583,21 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         });
         weak.Code.Should().Be(1004);
 
+        var lettersEmployeeNo = Unique("letters");
         var lettersOnly = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
-            EmployeeNo = Unique("letters"),
+            EmployeeNo = lettersEmployeeNo,
             Name = "纯字母密码用户",
             Password = "abcdef",
             RoleIds = new[] { roleId }
         });
-        lettersOnly.Code.Should().Be(1004);
+        lettersOnly.Code.Should().Be(0, lettersOnly.Message);
+        var lettersLogin = await Post<ApiResult<LoginResponse>>("/api/auth/login", new
+        {
+            employeeNo = lettersEmployeeNo,
+            password = "abcdef"
+        });
+        lettersLogin.Code.Should().Be(0);
 
         var employeeNo = Unique("strong");
         var created = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
