@@ -154,7 +154,7 @@ public class TestMaterialService : ITestMaterialService
                 VendorName = request.VendorName?.Trim(),
                 Model = request.Model?.Trim(),
                 Brand = request.Brand?.Trim(),
-                Quantity = Math.Max(request.Quantity, 1),
+                Quantity = EnsureQuantity(request.Quantity),
                 DepartmentId = request.DepartmentId,
                 LocationName = NormalizeOptionalText(request.LocationName),
                 CustodianId = request.CustodianId,
@@ -213,7 +213,7 @@ public class TestMaterialService : ITestMaterialService
         m.VendorName = request.VendorName?.Trim();
         m.Model = request.Model?.Trim();
         m.Brand = request.Brand?.Trim();
-        m.Quantity = Math.Max(request.Quantity, 1);
+        m.Quantity = EnsureQuantity(request.Quantity);
         m.LocationName = NormalizeOptionalText(request.LocationName);
         m.ReceivedDate = request.ReceivedDate;
         m.Remark = request.Remark?.Trim();
@@ -299,7 +299,11 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task PurgeAsync(int id)
     {
-        var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var m = await _db.TestMaterials
+            .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
         if (!m.IsDeleted) throw new BizException(4097, "请先删除料件后再彻底删除");
@@ -316,6 +320,11 @@ public class TestMaterialService : ITestMaterialService
         {
             throw new BizException(4090, "料件已被其他操作更新，请刷新后重试");
         }
+        catch (DbUpdateException ex) when (IsForeignKeyViolation(ex))
+        {
+            throw new BizException(4094, "料件已被其他数据使用，不能彻底删除");
+        }
+        await transaction.CommitAsync();
     }
 
     public async Task<TestMaterialDto> ReturnToVendorAsync(int id, int userId)
@@ -515,8 +524,18 @@ public class TestMaterialService : ITestMaterialService
         return $"{prefix}{sequence:D3}";
     }
 
+    private static int EnsureQuantity(int quantity)
+    {
+        if (quantity < 1 || quantity > 999999)
+            throw new BizException(4001, "数量须为 1-999999 的整数");
+        return quantity;
+    }
+
     private static bool IsDuplicateKey(DbUpdateException ex)
         => ex.InnerException is MySqlException { Number: 1062 };
+
+    private static bool IsForeignKeyViolation(DbUpdateException ex)
+        => ex.InnerException is MySqlException { Number: 1451 or 1452 };
 
     private async Task<List<TestMaterialDto>> ToDtos(IEnumerable<TestMaterial> materials)
     {

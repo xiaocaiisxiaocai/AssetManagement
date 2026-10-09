@@ -45,7 +45,10 @@ const props = defineProps<{
   categoryOptions: FlatOption[];
   defaultCategoryId: number;
   departmentOptions: FlatOption[];
-  searchUsers?: (keyword: string) => Promise<void>;
+  searchUsers?: (
+    keyword: string,
+    keepIds?: Array<null | number | undefined>,
+  ) => Promise<void>;
   userOptionsLoading?: boolean;
   users: (UserDto | UserOptionDto)[];
 }>();
@@ -294,8 +297,12 @@ function onImageExceed() {
   ElMessage.warning('最多上传 5 张照片');
 }
 
+function searchCustodians(keyword: string) {
+  return props.searchUsers?.(keyword, [form.custodianId]);
+}
+
 async function save() {
-  const error = validateAssetForm(form);
+  const error = validateAssetForm(form, props.users, props.asset != null);
   if (error) {
     ElMessage.warning(error);
     return;
@@ -382,7 +389,7 @@ const debouncedSave = useDebounceFn(save, 300);
             v-model="form.custodianId"
             :disabled="isEdit"
             :loading="userOptionsLoading"
-            :remote-method="searchUsers"
+            :remote-method="searchCustodians"
             clearable
             filterable
             placeholder="选择保管人"
@@ -392,7 +399,7 @@ const debouncedSave = useDebounceFn(save, 300);
             <ElOption
               v-for="user in users"
               :key="user.id"
-              :label="user.name"
+              :label="`${user.name}（${user.employeeNo}）`"
               :value="user.id"
             />
           </ElSelect>

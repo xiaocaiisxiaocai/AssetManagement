@@ -333,9 +333,10 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         _db.ChangeTracker.Clear();
         var adminId = _db.Users.Single(x => x.EmployeeNo == "1001").Id;
         _db.Workflows.Single(x => x.BizType == "transfer").BpmnXml
-            .Should().Contain("camunda:candidateGroups=\"role:supervisor\"");
-        _db.Workflows.Single(x => x.BizType == "return").BpmnXml
-            .Should().Contain("camunda:candidateGroups=\"role:supervisor\"");
+            .Should().Contain("id=\"Task_adminRole\" name=\"部门主管审批\" camunda:assignee=\"deptManager\"");
+        var returnXml = _db.Workflows.Single(x => x.BizType == "return").BpmnXml;
+        returnXml.Should().Contain("id=\"Task_supervisor\" name=\"部门主管确认\" camunda:assignee=\"deptManager\"");
+        returnXml.Should().NotContain("camunda:candidateGroups=\"role:supervisor\"");
         var materialXml = _db.Workflows.Single(x => x.BizType == "material_transfer").BpmnXml;
         materialXml.Should().Contain($"camunda:assignee=\"user:{adminId}\"");
         materialXml.Should().NotContain("camunda:assignee=\"1001\"");
@@ -356,6 +357,59 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         _db.ChangeTracker.Clear();
         _db.Workflows.Should().ContainSingle(x => x.BizType == "return");
         _db.Workflows.Single(x => x.BizType == "custom_seed").BpmnXml.Should().Be("<custom />");
+    }
+
+    [Fact]
+    public void Incremental_seed_scopes_stock_return_and_transfer_templates_without_rewriting_custom_xml()
+    {
+        SeedLegacyDatabaseState();
+        DbSeeder.Seed(_db);
+        var stockReturn = """
+                          <bpmn:definitions id="Definitions_return" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+                            <bpmn:process id="Process_return">
+                              <bpmn:userTask id="Task_supervisor" name="部门主管确认" camunda:candidateGroups="role:supervisor" />
+                            </bpmn:process>
+                          </bpmn:definitions>
+                          """;
+        var stockTransfer = """
+                            <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+                              <bpmn:process id="Process_transfer">
+                                <bpmn:userTask id="Task_adminRole" name="部门主管审批" camunda:candidateGroups="role:supervisor" />
+                                <bpmn:userTask id="Task_custom" name="自定义" camunda:candidateGroups="role:supervisor" />
+                              </bpmn:process>
+                            </bpmn:definitions>
+                            """;
+        var customReturn = """
+                           <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+                             <bpmn:process id="Process_return">
+                               <bpmn:exclusiveGateway id="Gateway_custom" />
+                               <bpmn:userTask id="Task_supervisor" name="部门主管确认" camunda:candidateGroups="role:supervisor" />
+                             </bpmn:process>
+                           </bpmn:definitions>
+                           """;
+        var returnWorkflow = _db.Workflows.Single(x => x.BizType == "return" && x.IsActive);
+        var transferWorkflow = _db.Workflows.Single(x => x.BizType == "transfer" && x.IsActive);
+        returnWorkflow.BpmnXml = stockReturn;
+        transferWorkflow.BpmnXml = stockTransfer;
+        _db.Workflows.Add(new WorkflowEntity
+        {
+            Name = "自定义归还",
+            BizType = "return",
+            BpmnXml = customReturn,
+            IsActive = false
+        });
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        var repairedReturn = _db.Workflows.Single(x => x.Id == returnWorkflow.Id).BpmnXml!;
+        repairedReturn.Should().Contain("camunda:assignee=\"deptManager\"");
+        repairedReturn.Should().NotContain("camunda:candidateGroups=\"role:supervisor\"");
+        var repairedTransfer = _db.Workflows.Single(x => x.Id == transferWorkflow.Id).BpmnXml!;
+        repairedTransfer.Should().Contain("id=\"Task_adminRole\" name=\"部门主管审批\" camunda:assignee=\"deptManager\"");
+        repairedTransfer.Should().Contain("id=\"Task_custom\" name=\"自定义\" camunda:candidateGroups=\"role:supervisor\"");
+        _db.Workflows.Single(x => x.Name == "自定义归还").BpmnXml.Should().Be(customReturn);
     }
 
     [Fact]

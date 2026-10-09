@@ -1060,6 +1060,146 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Return_approval_is_limited_to_the_asset_department_and_excludes_the_applicant()
+    {
+        await Login();
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
+        var assetDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("归还资产部门") });
+        var otherDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("其他部门") });
+        var managerNo = Unique("RET-MGR");
+        var manager = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = managerNo,
+            Name = Unique("资产部门负责人"),
+            Password = "TestPass123",
+            DepartmentId = assetDepartment.Data!.Id,
+            RoleIds = new[] { supervisorRole.Id }
+        });
+        await Put<ApiResult<DepartmentNodeDto>>($"/api/departments/{assetDepartment.Data.Id}", new UpdateDepartmentRequest
+        {
+            Name = assetDepartment.Data.Name,
+            ManagerId = manager.Data!.Id,
+            IsActive = true
+        });
+        var peerNo = Unique("RET-PEER");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = peerNo,
+            Name = Unique("同部门主管"),
+            Password = "TestPass123",
+            DepartmentId = assetDepartment.Data.Id,
+            RoleIds = new[] { supervisorRole.Id }
+        });
+        var applicantNo = Unique("RET-APP");
+        var applicant = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = applicantNo,
+            Name = Unique("借用人主管"),
+            Password = "TestPass123",
+            DepartmentId = assetDepartment.Data.Id,
+            RoleIds = new[] { supervisorRole.Id }
+        });
+        var outsiderNo = Unique("RET-OUT");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = outsiderNo,
+            Name = Unique("外部门主管"),
+            Password = "TestPass123",
+            DepartmentId = otherDepartment.Data!.Id,
+            RoleIds = new[] { supervisorRole.Id }
+        });
+        var asset = await CreateAsset(assetDepartment.Data.Id, applicant.Data!.Id);
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var borrowed = await db.Assets.AsTracking().SingleAsync(item => item.Id == asset.Id);
+            borrowed.Status = AssetStatus.Borrowed;
+            borrowed.CustodianId = applicant.Data.Id;
+            borrowed.RowVersion++;
+            var borrowWorkflowId = await db.Workflows.AsNoTracking()
+                .Where(item => item.BizType == "borrow" && item.IsActive)
+                .Select(item => item.Id)
+                .SingleAsync();
+            db.ApprovalFlows.Add(new ApprovalFlow
+            {
+                FlowNo = Unique("BOR"),
+                BizType = "borrow",
+                WorkflowId = borrowWorkflowId,
+                AssetId = asset.Id,
+                AssetNo = asset.AssetNo,
+                AssetName = asset.Name,
+                ApplicantId = applicant.Data.Id,
+                Applicant = applicant.Data.Name,
+                SourceCustodianId = manager.Data.Id,
+                Status = "approved",
+                ReturnDate = DateOnly.FromDateTime(DateTime.Today.AddDays(3)),
+                ApplyTime = DateTime.UtcNow.AddDays(-1),
+                Deadline = DateTime.UtcNow.AddDays(1)
+            });
+            await db.SaveChangesAsync();
+        }
+
+        string? originalXml;
+        int workflowId;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var workflow = await db.Workflows.AsTracking().SingleAsync(item => item.BizType == "return" && item.IsActive);
+            workflowId = workflow.Id;
+            originalXml = workflow.BpmnXml;
+            workflow.BpmnXml = StockReturnRoleGroupBpmn;
+            await db.SaveChangesAsync();
+        }
+
+        try
+        {
+            Auth(await LoginToken(applicantNo, "TestPass123"));
+            var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+            {
+                BizType = "return",
+                AssetId = asset.Id,
+                Reason = "归还越权回归"
+            });
+            flow.Code.Should().Be(0, flow.Message);
+
+            Auth(await LoginToken(outsiderNo, "TestPass123"));
+            var outsider = await PostError<ApprovalFlowDto>(
+                $"/api/approvals/{flow.Data!.Id}/approve",
+                new ApprovalActionRequest { Opinion = "外部门同意" },
+                HttpStatusCode.Forbidden);
+            outsider.Code.Should().Be(4016);
+
+            Auth(await LoginToken(applicantNo, "TestPass123"));
+            var selfApproval = await PostError<ApprovalFlowDto>(
+                $"/api/approvals/{flow.Data.Id}/approve",
+                new ApprovalActionRequest { Opinion = "自己同意" },
+                HttpStatusCode.Forbidden);
+            selfApproval.Code.Should().Be(4016);
+
+            Auth(await LoginToken(peerNo, "TestPass123"));
+            var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data.Id}/approve",
+                new ApprovalActionRequest { Opinion = "同部门同意" });
+            approved.Code.Should().Be(0, approved.Message);
+            approved.Data!.Status.Should().Be("approved");
+
+            var returnedAsset = await _client.GetFromJsonAsync<ApiResult<AssetDto>>($"/api/assets/{asset.Id}");
+            returnedAsset!.Data!.Status.Should().Be(AssetStatus.Available);
+            returnedAsset.Data.CustodianId.Should().Be(manager.Data.Id);
+        }
+        finally
+        {
+            await using var scope = _factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var workflow = await db.Workflows.AsTracking().SingleAsync(item => item.Id == workflowId);
+            workflow.BpmnXml = originalXml;
+            await db.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
     public async Task Exclusive_gateway_routes_based_on_condition()
     {
         // 测试 BPMN ExclusiveGateway 根据条件选择不同分支
@@ -1226,6 +1366,26 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
 
     private static string UniqueCodeSeg()
         => Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
+
+    private const string StockReturnRoleGroupBpmn = """
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_return">
+  <bpmn:process id="Process_return" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1" name="发起归还申请">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_supervisor" name="部门主管确认" camunda:candidateGroups="role:supervisor">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_1" name="流程结束">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_supervisor" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_supervisor" targetRef="EndEvent_1" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
 
     private static string SimpleBpmn(string taskId) => $$"""
 <?xml version="1.0" encoding="UTF-8"?>

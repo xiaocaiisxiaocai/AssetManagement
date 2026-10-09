@@ -84,10 +84,14 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
         var options = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserOptionDto>>>($"/api/users/options?keyword={employeeNo}&page=1&pageSize=10");
 
-        options!.Data!.Items.Should().ContainSingle(x => x.Id == created.Data!.Id && x.EmployeeNo == employeeNo && x.Name == "选项用户");
+        options!.Data!.Items.Should().ContainSingle(x =>
+            x.Id == created.Data!.Id
+            && x.EmployeeNo == employeeNo
+            && x.Name == "选项用户"
+            && x.DepartmentId == null);
         options.Data.Total.Should().Be(1);
         typeof(UserOptionDto).GetProperties().Select(x => x.Name)
-            .Should().BeEquivalentTo("Id", "EmployeeNo", "Name", "DepartmentName");
+            .Should().BeEquivalentTo("Id", "EmployeeNo", "Name", "DepartmentId", "DepartmentName");
 
         await Post<ApiResult<object?>>($"/api/users/{created.Data!.Id}/toggle-status", new SetUserStatusRequest { IsActive = false });
         var afterDisable = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserOptionDto>>>($"/api/users/options?keyword={employeeNo}");
@@ -410,6 +414,51 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<UserDto>>>($"/api/users?keyword={employeeNo}");
 
         list!.Data!.Items.Single().DepartmentName.Should().Be(department.Data.Name);
+    }
+
+    [Fact]
+    public async Task Manager_options_hide_people_who_already_manage_another_department()
+    {
+        await Login();
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>(
+            "/api/roles?keyword=supervisor&pageSize=20");
+        var supervisorRoleId = roles!.Data!.Items.Single(x => x.Code == "supervisor").Id;
+        var home = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = Unique("负责人候选部门")
+        });
+        var occupiedNo = Unique("occupied");
+        var freeNo = Unique("free");
+        var occupied = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = occupiedNo,
+            Name = "已负责其他部门",
+            DepartmentId = home.Data!.Id,
+            RoleIds = new[] { supervisorRoleId }
+        });
+        var free = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = freeNo,
+            Name = "尚未负责部门",
+            DepartmentId = home.Data.Id,
+            RoleIds = new[] { supervisorRoleId }
+        });
+        var managed = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            ManagerId = occupied.Data!.Id,
+            Name = Unique("已有负责人部门")
+        });
+
+        var creating = await _client.GetFromJsonAsync<ApiResult<List<UserOptionDto>>>(
+            $"/api/users/manager-options?keyword={occupiedNo}");
+        var editing = await _client.GetFromJsonAsync<ApiResult<List<UserOptionDto>>>(
+            $"/api/users/manager-options?keyword={occupiedNo}&departmentId={managed.Data!.Id}");
+        var available = await _client.GetFromJsonAsync<ApiResult<List<UserOptionDto>>>(
+            $"/api/users/manager-options?keyword={freeNo}");
+
+        creating!.Data.Should().BeEmpty();
+        editing!.Data.Should().ContainSingle(x => x.Id == occupied.Data.Id);
+        available!.Data.Should().ContainSingle(x => x.Id == free.Data!.Id && x.DepartmentId == home.Data.Id);
     }
 
     [Fact]

@@ -67,20 +67,22 @@ async function handlePasswordChanged() {
 </script>
 
 <template>
-  <AuthenticationLogin
-    :form-schema="formSchema"
-    :loading="authStore.loginLoading"
-    :show-code-login="false"
-    :show-qrcode-login="false"
-    :show-register="false"
-    :show-remember-me="false"
-    :show-third-party-login="false"
-    title="资产管理系统"
-    @submit="handleLogin"
-  />
-  <Password
-    v-model:open="mustChangePassword"
-    forced
-    @changed="handlePasswordChanged"
-  />
+  <div>
+    <AuthenticationLogin
+      :form-schema="formSchema"
+      :loading="authStore.loginLoading"
+      :show-code-login="false"
+      :show-qrcode-login="false"
+      :show-register="false"
+      :show-remember-me="false"
+      :show-third-party-login="false"
+      title="资产管理系统"
+      @submit="handleLogin"
+    />
+    <Password
+      v-model:open="mustChangePassword"
+      forced
+      @changed="handlePasswordChanged"
+    />
+  </div>
 </template>

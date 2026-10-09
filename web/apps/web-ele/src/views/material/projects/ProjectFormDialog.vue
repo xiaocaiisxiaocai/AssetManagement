@@ -16,12 +16,15 @@ import {
   ElSelect,
 } from 'element-plus';
 
-defineProps<{
+const props = defineProps<{
   editing: boolean;
   progressOptions: TestProjectOption[];
   projectTypeOptions: TestProjectOption[];
   saving: boolean;
-  searchUsers?: (keyword: string) => Promise<void>;
+  searchUsers?: (
+    keyword: string,
+    keepIds?: Array<null | number | undefined>,
+  ) => Promise<void>;
   userOptionsLoading?: boolean;
   users: (UserDto | UserOptionDto)[];
 }>();
@@ -29,6 +32,10 @@ defineProps<{
 const emit = defineEmits<{ save: [] }>();
 const form = defineModel<ProjectFormState>('form', { required: true });
 const visible = defineModel<boolean>('visible', { default: false });
+
+function searchOwners(keyword: string) {
+  return props.searchUsers?.(keyword, [form.value.ownerId]);
+}
 
 function onProgressChange(value: string) {
   if (value !== 'closed') form.value.closedDate = '';
@@ -92,7 +99,7 @@ function onProgressChange(value: string) {
           <ElSelect
             v-model="form.ownerId"
             :loading="userOptionsLoading"
-            :remote-method="searchUsers"
+            :remote-method="searchOwners"
             clearable
             filterable
             placeholder="请选择"

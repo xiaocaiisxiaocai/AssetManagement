@@ -17,7 +17,16 @@ export const defaultCategoryCodeRules: CategoryCodeRules = {
 
 export function categoryCodeRuleHint(level: number, rules: CategoryCodeRules) {
   const rule = getRule(level, rules);
-  return `当前为${levelName(level)}分类，编码段要求：${rule.length} 位，可输入字母和数字`;
+  return `当前为${levelName(level)}分类，编码段要求：${rule.length} 位，${charsetHint(rule.regex)}`;
+}
+
+function charsetHint(regex: string) {
+  const digit = /\\d|0-9/.test(regex);
+  const letter = /A-Za-z|A-Z|a-z|\\w/.test(regex);
+  if (digit && letter) return '可输入字母和数字';
+  if (digit) return '只能输入数字';
+  if (letter) return '只能输入字母';
+  return `须匹配 ${regex}`;
 }
 
 export function validateCategoryCodeSeg(

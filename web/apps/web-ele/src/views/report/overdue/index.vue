@@ -18,10 +18,12 @@ import {
 } from 'element-plus';
 
 import {
+  exportOverdueReportApi,
   getOverdueReportApi,
   remindOverdueApi,
   remindOverdueBatchApi,
 } from '#/api/report';
+import { downloadBlob } from '#/utils/download';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
 import {
@@ -39,6 +41,7 @@ const reportActionAccess = computed(() =>
 );
 const listRequestGuard = createLatestRequestGuard();
 const loading = ref(false);
+const exporting = ref(false);
 const remindingId = ref<null | number>(null);
 const rows = ref<OverdueReportRow[]>([]);
 const total = ref(0);
@@ -71,6 +74,19 @@ async function remind(row: OverdueReportRow) {
     ElMessage.success('站内催办已记录');
   } finally {
     remindingId.value = null;
+  }
+}
+
+async function exportReport() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const response = await exportOverdueReportApi();
+    downloadBlob(response.data, '逾期资产.xlsx');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    exporting.value = false;
   }
 }
 
@@ -123,6 +139,13 @@ onMounted(async () => {
           <h2 class="page-title">逾期资产报表</h2>
         </div>
         <div class="page-actions">
+          <ElButton
+            v-if="reportActionAccess.canExport"
+            :loading="exporting"
+            @click="exportReport"
+          >
+            导出
+          </ElButton>
           <ElButton
             v-if="reportActionAccess.canRemind"
             :loading="remindingId === -1"

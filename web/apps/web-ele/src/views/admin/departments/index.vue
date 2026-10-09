@@ -35,13 +35,17 @@ import {
   getOrganizationLevelsApi,
   updateDepartmentApi,
 } from '#/api/base-data';
-import { getUserListApi, getUserOptionsPageApi } from '#/api/user';
+import {
+  getDepartmentManagerOptionsApi,
+  getUserListApi,
+  getUserOptionsPageApi,
+} from '#/api/user';
 import { createLatestRequestGuard } from '#/utils/latest-request';
 import {
   createPageSizeOptions,
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
-import { mergeUserOptions } from '#/utils/user-options';
+import { replaceUserOptions } from '#/utils/user-options';
 import { buildDepartmentActionAccess } from '#/views/permissions/action-access';
 
 import {
@@ -130,13 +134,19 @@ async function searchUsers(keyword = '') {
   const requestGeneration = userOptionsRequestGuard.next();
   userOptionsLoading.value = true;
   try {
-    const canLoadUserOptions =
-      hasAccessByCodes(['approval:create']) ||
-      hasAccessByCodes(['material-flow:transfer']) ||
+    const canChooseManager =
       hasAccessByCodes(['department:create']) ||
       hasAccessByCodes(['department:edit']);
     let incoming: UserOptionDto[];
-    if (canLoadUserOptions) {
+    if (canChooseManager) {
+      incoming = await getDepartmentManagerOptionsApi(
+        keyword,
+        editingId.value ?? undefined,
+      );
+    } else if (
+      hasAccessByCodes(['approval:create']) ||
+      hasAccessByCodes(['material-flow:transfer'])
+    ) {
       const response = await getUserOptionsPageApi(keyword, 1, 50);
       incoming = response.items;
     } else {
@@ -144,7 +154,9 @@ async function searchUsers(keyword = '') {
       incoming = response.items.filter((user) => user.isActive);
     }
     if (!userOptionsRequestGuard.isLatest(requestGeneration)) return;
-    userOptions.value = mergeUserOptions(userOptions.value, incoming);
+    userOptions.value = replaceUserOptions(userOptions.value, incoming, [
+      form.managerId,
+    ]);
   } catch {
     // 请求层已提示，保留已回填选项。
   } finally {

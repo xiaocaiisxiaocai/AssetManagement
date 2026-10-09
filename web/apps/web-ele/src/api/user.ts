@@ -32,6 +32,7 @@ export interface UserDto {
 }
 
 export interface UserOptionDto {
+  departmentId?: null | number;
   departmentName?: null | string;
   employeeNo: string;
   id: number;
@@ -97,6 +98,16 @@ export const getApproverOptionsApi = (keyword?: string) =>
   unwrap(
     requestClient.get<ApiResult<UserOptionDto[]>>('/users/approver-options', {
       params: { keyword },
+    }),
+  );
+
+export const getDepartmentManagerOptionsApi = (
+  keyword = '',
+  departmentId?: number,
+) =>
+  unwrap(
+    requestClient.get<ApiResult<UserOptionDto[]>>('/users/manager-options', {
+      params: { departmentId, keyword },
     }),
   );
 

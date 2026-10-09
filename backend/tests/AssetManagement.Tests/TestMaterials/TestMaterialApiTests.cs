@@ -102,6 +102,61 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Create_and_update_reject_quantity_outside_1_to_999999()
+    {
+        await Login();
+        var project = await CreateProject("料件数量边界项目");
+
+        var zero = await PostError<TestMaterialDto>(
+            "/api/test-materials",
+            new SaveTestMaterialRequest
+            {
+                Name = "数量为零",
+                ProjectId = project.Id,
+                Quantity = 0
+            },
+            HttpStatusCode.BadRequest);
+        var tooLarge = await PostError<TestMaterialDto>(
+            "/api/test-materials",
+            new SaveTestMaterialRequest
+            {
+                Name = "数量过大",
+                ProjectId = project.Id,
+                Quantity = 1_000_000
+            },
+            HttpStatusCode.BadRequest);
+
+        zero.Code.Should().Be(4001);
+        zero.Message.Should().Be("数量须为 1-999999 的整数");
+        tooLarge.Code.Should().Be(4001);
+        tooLarge.Message.Should().Be("数量须为 1-999999 的整数");
+
+        var created = await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+        {
+            Name = "数量边界",
+            ProjectId = project.Id,
+            Quantity = 999999
+        });
+        created.Data!.Quantity.Should().Be(999999);
+
+        var negative = await PutError<TestMaterialDto>(
+            $"/api/test-materials/{created.Data.Id}",
+            new SaveTestMaterialRequest
+            {
+                Name = "数量边界",
+                ProjectId = project.Id,
+                Quantity = -1
+            },
+            HttpStatusCode.BadRequest);
+        negative.Code.Should().Be(4001);
+        negative.Message.Should().Be("数量须为 1-999999 的整数");
+
+        var current = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>(
+            $"/api/test-materials/{created.Data.Id}");
+        current!.Data!.Quantity.Should().Be(999999);
+    }
+
+    [Fact]
     public async Task Create_material_rejects_well_formed_but_missing_stored_image()
     {
         await Login();

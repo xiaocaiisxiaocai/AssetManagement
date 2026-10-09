@@ -39,22 +39,18 @@ function parseSvg(svgData: string): IconifyIconStructure {
  * <Icon icon="svg:avatar"></Icon>
  */
 async function loadSvgIcons() {
-  const svgEagers = import.meta.glob('./icons/**', {
-    eager: true,
-    query: '?raw',
-  });
+  // 原始 SVG 单独成块，避免头像等图片进入应用启动脚本。
+  const { svgIconSources } = await import('./icon-sources');
 
   await Promise.all(
-    Object.entries(svgEagers).map((svg) => {
-      const [key, body] = svg as [string, { default: string } | string];
-
+    Object.entries(svgIconSources).map(([key, raw]) => {
       // ./icons/xxxx.svg => xxxxxx
       const start = key.lastIndexOf('/') + 1;
       const end = key.lastIndexOf('.');
       const iconName = key.slice(start, end);
 
       return addIcon(`svg:${iconName}`, {
-        ...parseSvg(typeof body === 'object' ? body.default : body),
+        ...parseSvg(raw),
       });
     }),
   );

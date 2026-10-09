@@ -23,7 +23,7 @@ internal static class BusinessSequenceGenerator
             update.CommandText = """
                 INSERT INTO business_sequences (SequenceKey, NextValue)
                 VALUES (@key, LAST_INSERT_ID(@firstNext))
-                ON DUPLICATE KEY UPDATE NextValue = LAST_INSERT_ID(NextValue + 1)
+                ON DUPLICATE KEY UPDATE NextValue = LAST_INSERT_ID(GREATEST(NextValue, @floor) + 1)
                 """;
             var key = update.CreateParameter();
             key.ParameterName = "@key";
@@ -34,6 +34,10 @@ internal static class BusinessSequenceGenerator
             // 首次分配 existingMaximum + 1，并把表中的下一可用值保存为 +2。
             firstNext.Value = existingMaximum + 2;
             update.Parameters.Add(firstNext);
+            var floor = update.CreateParameter();
+            floor.ParameterName = "@floor";
+            floor.Value = existingMaximum + 1;
+            update.Parameters.Add(floor);
             await update.ExecuteNonQueryAsync(cancellationToken);
         }
 

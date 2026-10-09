@@ -29,25 +29,35 @@ public class PendingApprovalReminderWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var waitForSchedule = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await WaitUntilNineAm(stoppingToken);
+                if (waitForSchedule)
+                {
+                    await WaitUntilNineAm(stoppingToken);
+                }
+
+                await ScanAndRemindAsync(stoppingToken);
+                waitForSchedule = true;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
             }
-            if (stoppingToken.IsCancellationRequested) break;
-
-            try
-            {
-                await ScanAndRemindAsync(stoppingToken);
-            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "待审批催办扫描异常");
+                waitForSchedule = false;
+                _logger.LogError(ex, "待审批催办扫描异常，将在 15 分钟后重试");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(15), stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
         }
     }
@@ -98,6 +108,12 @@ public class PendingApprovalReminderWorker : BackgroundService
         var workflowMap = await db.Workflows
             .Where(w => workflowIds.Contains(w.Id))
             .ToDictionaryAsync(w => w.Id, w => w, cancellationToken);
+        var assetIds = pendingFlows.Select(f => f.AssetId).Distinct().ToArray();
+        var assetDepartments = assetIds.Length == 0
+            ? new Dictionary<int, int?>()
+            : await db.Assets.AsNoTracking()
+                .Where(asset => assetIds.Contains(asset.Id))
+                .ToDictionaryAsync(asset => asset.Id, asset => asset.DepartmentId, cancellationToken);
 
         foreach (var flow in pendingFlows)
         {
@@ -111,7 +127,9 @@ public class PendingApprovalReminderWorker : BackgroundService
                 string.IsNullOrEmpty(wf.BpmnXml)) continue;
 
             var process = BpmnParser.Parse(wf.BpmnXml);
-            var approverIds = await ResolveApproversForFlowAsync(db, flow, process, overdueNodeIds);
+            assetDepartments.TryGetValue(flow.AssetId, out var assetDepartmentId);
+            var approverIds = await ResolveApproversForFlowAsync(
+                db, flow, process, overdueNodeIds, assetDepartmentId);
 
             foreach (var uid in approverIds)
             {
@@ -176,7 +194,11 @@ public class PendingApprovalReminderWorker : BackgroundService
     }
 
     private async Task<List<int>> ResolveApproversForFlowAsync(
-        AppDbContext db, ApprovalFlow flow, BpmnProcess process, IReadOnlyCollection<string> nodeIds)
+        AppDbContext db,
+        ApprovalFlow flow,
+        BpmnProcess process,
+        IReadOnlyCollection<string> nodeIds,
+        int? assetDepartmentId)
     {
         var result = new List<int>();
         foreach (var nodeId in nodeIds)
@@ -189,8 +211,8 @@ public class PendingApprovalReminderWorker : BackgroundService
 
             var ids = token.SignStates is { Count: > 0 }
                 ? await ResolvePendingSignStateUserIdsAsync(db, token)
-                : await ResolveAssigneeAsync(
-                    db, node, flow.ApplicantId, flow.TransfereeId, flow.BizType);
+                : await UserTaskApproverResolver.ResolveAsync(
+                    db, node, flow.ApplicantId, flow.TransfereeId, flow.BizType, assetDepartmentId);
             foreach (var id in ids)
                 if (!result.Contains(id)) result.Add(id);
         }
@@ -230,107 +252,12 @@ public class PendingApprovalReminderWorker : BackgroundService
 
             var ids = token.SignStates is { Count: > 0 }
                 ? await ResolvePendingSignStateUserIdsAsync(db, token)
-                : await ResolveAssigneeAsync(db, node, flow.ApplicantId);
+                : await UserTaskApproverResolver.ResolveAsync(
+                    db, node, flow.ApplicantId, flow.TransfereeId, flow.BizType);
             foreach (var id in ids)
                 if (!result.Contains(id)) result.Add(id);
         }
         return result;
-    }
-
-    private async Task<List<int>> ResolveAssigneeAsync(
-        AppDbContext db,
-        BpmnNode node,
-        int applicantId,
-        int? transfereeId = null,
-        string? bizType = null)
-    {
-        var result = new List<int>();
-        var assignee = node.Properties.GetValueOrDefault("assignee");
-        var candidateUsers = node.Properties.GetValueOrDefault("candidateUsers");
-        var candidateGroups = node.Properties.GetValueOrDefault("candidateGroups");
-
-        if (!string.IsNullOrEmpty(assignee))
-        {
-            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
-            {
-                foreach (var uid in await OrganizationApprovalResolver.ResolveApproverUserIdsAsync(
-                             db, applicantId, assignee))
-                    if (!result.Contains(uid)) result.Add(uid);
-            }
-            else if (assignee == "deptManager")
-            {
-                var targetUserId = bizType == "transfer" && node.Id == "Task_receiver" && transfereeId.HasValue
-                    ? transfereeId.Value
-                    : applicantId;
-                var targetUser = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetUserId);
-                if (targetUser?.DepartmentId is not null)
-                {
-                    var dept = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetUser.DepartmentId.Value);
-                    if (dept?.ManagerId is int managerId && managerId != applicantId &&
-                        await db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
-                        result.Add(managerId);
-                    var deptAdmins = await db.Users
-                        .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.Id != applicantId && u.IsActive && u.DepartmentId == targetUser.DepartmentId &&
-                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.IsActive && ur.Role.Code == "supervisor"))
-                        .Select(u => u.Id).ToListAsync();
-                    foreach (var uid in deptAdmins)
-                        if (!result.Contains(uid)) result.Add(uid);
-                }
-            }
-            else if (assignee == "supervisor")
-            {
-                foreach (var supervisorId in await ResolveSupervisorApproverUserIdsAsync(db, applicantId))
-                {
-                    if (!result.Contains(supervisorId)) result.Add(supervisorId);
-                }
-            }
-            else
-            {
-                await AddResolvedUsersAsync(db, assignee, result, node.Id);
-            }
-        }
-
-        if (!string.IsNullOrEmpty(candidateUsers))
-        {
-            foreach (var part in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            {
-                await AddResolvedUsersAsync(db, part, result, node.Id);
-            }
-        }
-
-        if (!string.IsNullOrEmpty(candidateGroups))
-        {
-            foreach (var group in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(db, group);
-                if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
-                {
-                    _logger.LogWarning("跳过审批节点 {NodeId} 的歧义角色配置：{Diagnostic}", node.Id, resolution.Diagnostic);
-                    continue;
-                }
-                foreach (var uid in resolution.UserIds)
-                    if (!result.Contains(uid)) result.Add(uid);
-            }
-        }
-
-        return result;
-    }
-
-    private async Task AddResolvedUsersAsync(
-        AppDbContext db,
-        string identity,
-        List<int> result,
-        string nodeId)
-    {
-        var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(db, identity);
-        if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
-        {
-            _logger.LogWarning("跳过审批节点 {NodeId} 的歧义人员配置：{Diagnostic}", nodeId, resolution.Diagnostic);
-            return;
-        }
-        foreach (var uid in resolution.UserIds)
-            if (!result.Contains(uid)) result.Add(uid);
     }
 
     private static async Task<List<int>> ResolvePendingSignStateUserIdsAsync(
@@ -346,30 +273,6 @@ public class PendingApprovalReminderWorker : BackgroundService
             .Where(x => x.IsActive && pendingUserIds.Contains(x.Id))
             .Select(x => x.Id)
             .ToListAsync();
-    }
-
-    private static async Task<List<int>> ResolveSupervisorApproverUserIdsAsync(AppDbContext db, int applicantId)
-    {
-        var result = new List<int>();
-        var applicant = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicantId);
-        if (applicant?.DepartmentId is not null)
-        {
-            var department = await db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-            if (department?.ManagerId is int managerId && managerId != applicantId &&
-                await db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
-            {
-                result.Add(managerId);
-            }
-        }
-
-        // 与正式审批权限解析保持一致：组织负责人优先，旧库未配置负责人时再兼容直属上级字段。
-        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId && supervisorId != applicantId &&
-            await db.Users.AsNoTracking().AnyAsync(x => x.Id == supervisorId && x.IsActive))
-        {
-            result.Add(supervisorId);
-        }
-
-        return result;
     }
 
     private static string BizTypeLabel(string bizType) => bizType switch

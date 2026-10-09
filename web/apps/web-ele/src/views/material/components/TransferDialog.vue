@@ -2,7 +2,9 @@
 import type { MaterialItem } from '#/api/material';
 import type { UserOptionDto } from '#/api/user';
 
-import { reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
+
+import { useUserStore } from '@vben/stores';
 
 import {
   ElButton,
@@ -16,17 +18,34 @@ import {
 } from 'element-plus';
 
 import { initiateTransferApi } from '#/api/material';
+import { selectableTransferees } from '#/utils/user-options';
 
 const props = defineProps<{
   material: MaterialItem | null;
-  searchUsers?: (keyword: string) => Promise<void>;
+  projectOwnerId?: null | number;
+  searchUsers?: (
+    keyword: string,
+    keepIds?: Array<null | number | undefined>,
+  ) => Promise<void>;
   userOptionsLoading?: boolean;
   users: UserOptionDto[];
 }>();
 const emit = defineEmits<{ done: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 
+const userStore = useUserStore();
 const saving = ref(false);
+const transfereeOptions = computed(() =>
+  selectableTransferees(props.users, [
+    Number(userStore.userInfo?.userId || 0),
+    props.material?.custodianId,
+    props.projectOwnerId,
+  ]),
+);
+
+function searchTransferees(keyword: string) {
+  return props.searchUsers?.(keyword, [form.transfereeId]);
+}
 const form = reactive({
   reason: '',
   transfereeId: undefined as number | undefined,
@@ -90,14 +109,14 @@ async function submit() {
         <ElSelect
           v-model="form.transfereeId"
           :loading="userOptionsLoading"
-          :remote-method="searchUsers"
+          :remote-method="searchTransferees"
           filterable
           placeholder="选择受让人"
           remote
           style="width: 100%"
         >
           <ElOption
-            v-for="item in users"
+            v-for="item in transfereeOptions"
             :key="item.id"
             :label="`${item.name}(${item.employeeNo})`"
             :value="item.id"

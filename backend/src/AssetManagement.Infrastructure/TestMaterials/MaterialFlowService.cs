@@ -655,54 +655,7 @@ public class MaterialFlowService : IMaterialFlowService
             return resolvedIds.Contains(user.Id);
         }
 
-        var assignee = node.Properties.GetValueOrDefault("assignee");
-        var candidateUsers = node.Properties.GetValueOrDefault("candidateUsers");
-        var candidateGroups = node.Properties.GetValueOrDefault("candidateGroups");
-
-        if (!string.IsNullOrEmpty(assignee))
-        {
-            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
-            {
-                var approverIds = await OrganizationApprovalResolver.ResolveApproverUserIdsAsync(
-                    _db, flow.ApplicantId, assignee);
-                return approverIds.Contains(user.Id);
-            }
-            if (assignee == "deptManager")
-            {
-                var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
-                if (applicant?.DepartmentId is null) return false;
-                if (user.Id == flow.ApplicantId) return false;
-                var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-                var isSameDeptAdmin = user.DepartmentId == applicant.DepartmentId &&
-                                      user.UserRoles.Any(ur => ur.Role is { Code: "supervisor", IsActive: true });
-                var isDepartmentManager = department?.ManagerId == user.Id;
-                return isSameDeptAdmin || isDepartmentManager;
-            }
-            if (assignee == "supervisor")
-            {
-                var approverIds = await ResolveSupervisorApproverUserIdsAsync(flow);
-                return approverIds.Contains(user.Id);
-            }
-            var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, assignee);
-            return resolution.IsResolved && resolution.UserIds.Contains(user.Id);
-        }
-        if (!string.IsNullOrEmpty(candidateUsers))
-        {
-            foreach (var candidateUser in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, candidateUser);
-                if (resolution.IsResolved && resolution.UserIds.Contains(user.Id)) return true;
-            }
-        }
-        if (!string.IsNullOrEmpty(candidateGroups))
-        {
-            foreach (var candidateGroup in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(_db, candidateGroup);
-                if (resolution.IsResolved && resolution.UserIds.Contains(user.Id)) return true;
-            }
-        }
-        return false;
+        return (await ResolveApproverUserIdsAsync(node, flow)).Contains(user.Id);
     }
 
     private async Task<int[]> DescendantDepartmentIdsAsync(int rootId)
@@ -875,6 +828,10 @@ public class MaterialFlowService : IMaterialFlowService
             var node = process.FindNode(nodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
             if ((await ResolveApproverUserIdsAsync(node, flow)).Count > 0) continue;
+
+            var ambiguous = await UserTaskApproverResolver.AmbiguousIdentityDiagnosticAsync(_db, node);
+            if (ambiguous is not null)
+                throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{ambiguous}");
 
             var assignee = node.Properties.GetValueOrDefault("assignee");
             if (assignee == "supervisor")
@@ -1089,7 +1046,8 @@ public class MaterialFlowService : IMaterialFlowService
             foreach (var group in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
                 var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(_db, group);
-                EnsureUnambiguousResolution(resolution);
+                if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
+                    continue;
                 foreach (var uid in resolution.UserIds)
                     if (!result.Contains(uid)) result.Add(uid);
             }
@@ -1101,15 +1059,10 @@ public class MaterialFlowService : IMaterialFlowService
     private async Task AddExplicitApproverUserIds(List<int> result, string value)
     {
         var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, value);
-        EnsureUnambiguousResolution(resolution);
+        if (resolution.Status != ApproverIdentityResolutionStatus.Unique)
+            return;
         foreach (var userId in resolution.UserIds)
             if (!result.Contains(userId)) result.Add(userId);
-    }
-
-    private static void EnsureUnambiguousResolution(ApproverIdentityResolution resolution)
-    {
-        if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
-            throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{resolution.Diagnostic}");
     }
 
     private async Task<ProgressRenderContext> BuildProgressRenderContextAsync(IReadOnlyCollection<MaterialFlow> flows)

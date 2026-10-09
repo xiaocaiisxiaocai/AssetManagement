@@ -47,7 +47,10 @@ const props = defineProps<{
   material: MaterialItem | null;
   projectLocked?: boolean;
   projects: TestProjectItem[];
-  searchUsers?: (keyword: string) => Promise<void>;
+  searchUsers?: (
+    keyword: string,
+    keepIds?: Array<null | number | undefined>,
+  ) => Promise<void>;
   userOptionsLoading?: boolean;
   users: (UserDto | UserOptionDto)[];
 }>();
@@ -79,6 +82,10 @@ const form = reactive({
   remark: '',
   vendorName: '',
 });
+
+function searchCustodians(keyword: string) {
+  return props.searchUsers?.(keyword, [form.custodianId]);
+}
 
 const isEdit = computed(() => props.material !== null);
 const custodianDepartment = computed(() =>
@@ -426,7 +433,7 @@ const debouncedSave = useDebounceFn(save, 300);
             v-model="form.custodianId"
             :disabled="isEdit"
             :loading="userOptionsLoading"
-            :remote-method="searchUsers"
+            :remote-method="searchCustodians"
             clearable
             filterable
             placeholder="选择保管人"

@@ -13,8 +13,14 @@ const rules = {
 
 describe('资产分类编码规则', () => {
   it('按层级生成提示文案', () => {
+    expect(categoryCodeRuleHint(1, rules)).toBe(
+      '当前为一级分类，编码段要求：2-4 位，只能输入字母',
+    );
     expect(categoryCodeRuleHint(2, rules)).toBe(
-      '当前为二级分类，编码段要求：3-5 位，可输入字母和数字',
+      '当前为二级分类，编码段要求：3-5 位，只能输入数字',
+    );
+    expect(categoryCodeRuleHint(3, rules)).toBe(
+      '当前为三级分类，编码段要求：2-6 位，可输入字母和数字',
     );
   });
 

@@ -51,7 +51,10 @@ import {
   createPageSizeOptions,
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
-import { mergeUserOptions } from '#/utils/user-options';
+import {
+  replaceUserOptions,
+  selectableTransferees,
+} from '#/utils/user-options';
 import { buildApprovalActionAccess } from '#/views/permissions/action-access';
 
 import {
@@ -128,6 +131,12 @@ const assetSelectCopy = computed(() =>
 );
 const selectedAsset = computed(() =>
   assets.value.find((asset) => asset.id === form.assetId),
+);
+const transfereeOptions = computed(() =>
+  selectableTransferees(users.value, [
+    Number(userStore.userInfo?.userId || 0),
+    selectedAsset.value?.custodianId,
+  ]),
 );
 const inheritedReturnDate = computed(
   () => selectedAsset.value?.returnDate || '无（当前资产未借出）',
@@ -278,7 +287,9 @@ async function searchUsers(keyword = '') {
   try {
     const result = await getUserOptionsPageApi(keyword, 1, 50);
     if (!userOptionsRequestGuard.isLatest(requestGeneration)) return;
-    users.value = mergeUserOptions(users.value, result.items);
+    users.value = replaceUserOptions(users.value, result.items, [
+      form.transfereeId,
+    ]);
   } catch {
     // 请求层已提示，保留已回填选项。
   } finally {
@@ -746,7 +757,7 @@ onMounted(async () => {
               style="width: 100%"
             >
               <ElOption
-                v-for="user in users"
+                v-for="user in transfereeOptions"
                 :key="user.id"
                 :label="`${user.name}（${user.employeeNo}）`"
                 :value="user.id"

@@ -20,12 +20,13 @@ public class AssetNoGeneratorTests
             "IT-旧台账-015",
             "IT-0007",
             "IT-012",
+            "it-013",
             "OTHER-099",
             "IT-",
             "IT-12A",
         };
 
-        AssetNoGenerator.MaxSequence("IT", assetNos).Should().Be(12);
+        AssetNoGenerator.MaxSequence("IT", assetNos).Should().Be(13);
     }
 
     [Fact]

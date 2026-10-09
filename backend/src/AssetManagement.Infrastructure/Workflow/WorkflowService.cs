@@ -1217,68 +1217,7 @@ public class WorkflowService : IWorkflowService
             return resolvedIds.Contains(user.Id);
         }
 
-        // 从节点属性中获取审批人配置
-        var assignee = node.Properties.GetValueOrDefault("assignee");
-        var candidateUsers = node.Properties.GetValueOrDefault("candidateUsers");
-        var candidateGroups = node.Properties.GetValueOrDefault("candidateGroups");
-
-        // 指定用户
-        if (!string.IsNullOrEmpty(assignee))
-        {
-            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
-            {
-                var approverIds = await OrganizationApprovalResolver.ResolveApproverUserIdsAsync(
-                    _db, flow.ApplicantId, assignee);
-                return approverIds.Contains(user.Id);
-            }
-            else if (assignee == "deptManager")
-            {
-                var targetDeptId = await ResolveDeptManagerTargetDepartmentIdAsync(node, flow);
-                if (targetDeptId is null)
-                {
-                    return false;
-                }
-
-                var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetDeptId.Value);
-                if (user.Id == flow.ApplicantId) return false;
-                var isSameDeptAdmin = user.DepartmentId == targetDeptId &&
-                                      user.UserRoles.Any(ur => ur.Role is { Code: "supervisor", IsActive: true });
-                var isDepartmentManager = department?.ManagerId == user.Id;
-                return isSameDeptAdmin || isDepartmentManager;
-            }
-            else if (assignee == "supervisor")
-            {
-                var approverIds = await ResolveSupervisorApproverUserIdsAsync(flow);
-                return approverIds.Contains(user.Id);
-            }
-            else
-            {
-                var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, assignee);
-                return resolution.IsResolved && resolution.UserIds.Contains(user.Id);
-            }
-        }
-
-        // 候选用户列表
-        if (!string.IsNullOrEmpty(candidateUsers))
-        {
-            foreach (var candidateUser in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, candidateUser);
-                if (resolution.IsResolved && resolution.UserIds.Contains(user.Id)) return true;
-            }
-        }
-
-        // 候选角色
-        if (!string.IsNullOrEmpty(candidateGroups))
-        {
-            foreach (var candidateGroup in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(_db, candidateGroup);
-                if (resolution.IsResolved && resolution.UserIds.Contains(user.Id)) return true;
-            }
-        }
-
-        return false;
+        return (await ResolveApproverUserIdsAsync(node, flow)).Contains(user.Id);
     }
 
     private bool IsAdmin(User user)
@@ -1365,6 +1304,10 @@ public class WorkflowService : IWorkflowService
             if (node?.Type != BpmnNodeType.UserTask) continue;
             if ((await ResolveApproverUserIdsAsync(node, flow)).Count > 0) continue;
 
+            var ambiguous = await UserTaskApproverResolver.AmbiguousIdentityDiagnosticAsync(_db, node);
+            if (ambiguous is not null)
+                throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{ambiguous}");
+
             var assignee = node.Properties.GetValueOrDefault("assignee");
             if (assignee == "supervisor")
                 throw new BizException(4051, "申请人未配置直属主管，无法发起审批");
@@ -1432,70 +1375,22 @@ public class WorkflowService : IWorkflowService
     /// </summary>
     private async Task<List<int>> ResolveApproverUserIdsAsync(BpmnNode node, ApprovalFlow flow)
     {
-        var result = new List<int>();
-        var assignee = node.Properties.GetValueOrDefault("assignee");
-        var candidateUsers = node.Properties.GetValueOrDefault("candidateUsers");
-        var candidateGroups = node.Properties.GetValueOrDefault("candidateGroups");
-
-        if (!string.IsNullOrEmpty(assignee))
+        int? assetDepartmentId = null;
+        if (UserTaskApproverResolver.NeedsAssetDepartment(flow.BizType, node))
         {
-            if (OrganizationApprovalResolver.IsOrganizationAssignee(assignee))
-            {
-                result.AddRange(await OrganizationApprovalResolver.ResolveApproverUserIdsAsync(
-                    _db, flow.ApplicantId, assignee));
-            }
-            else if (assignee == "deptManager")
-            {
-                var targetDeptId = await ResolveDeptManagerTargetDepartmentIdAsync(node, flow);
-                if (targetDeptId is not null)
-                {
-                    var dept = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetDeptId.Value);
-                    if (dept?.ManagerId is int managerId && managerId != flow.ApplicantId &&
-                        await _db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
-                        result.Add(managerId);
-                    var deptAdmins = await _db.Users
-                        .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
-                        .Where(u => u.Id != flow.ApplicantId && u.IsActive && u.DepartmentId == targetDeptId &&
-                                    u.UserRoles.Any(ur => ur.Role != null && ur.Role.IsActive && ur.Role.Code == "supervisor"))
-                        .Select(u => u.Id)
-                        .ToListAsync();
-                    foreach (var uid in deptAdmins)
-                        if (!result.Contains(uid)) result.Add(uid);
-                }
-            }
-            else if (assignee == "supervisor")
-            {
-                foreach (var supervisorId in await ResolveSupervisorApproverUserIdsAsync(flow))
-                {
-                    if (!result.Contains(supervisorId)) result.Add(supervisorId);
-                }
-            }
-            else
-            {
-                await AddExplicitApproverUserIdsAsync(result, assignee);
-            }
+            assetDepartmentId = await _db.Assets.AsNoTracking()
+                .Where(asset => asset.Id == flow.AssetId)
+                .Select(asset => asset.DepartmentId)
+                .SingleOrDefaultAsync();
         }
 
-        if (!string.IsNullOrEmpty(candidateUsers))
-        {
-            foreach (var part in candidateUsers.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            {
-                await AddExplicitApproverUserIdsAsync(result, part.Trim());
-            }
-        }
-
-        if (!string.IsNullOrEmpty(candidateGroups))
-        {
-            foreach (var group in candidateGroups.Split(',', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var resolution = await BpmnApproverIdentityResolver.ResolveGroupUsersAsync(_db, group);
-                EnsureUnambiguousResolution(resolution);
-                foreach (var uid in resolution.UserIds)
-                    if (!result.Contains(uid)) result.Add(uid);
-            }
-        }
-
-        return result;
+        return await UserTaskApproverResolver.ResolveAsync(
+            _db,
+            node,
+            flow.ApplicantId,
+            flow.TransfereeId,
+            flow.BizType,
+            assetDepartmentId);
     }
 
     private async Task<int[]> DescendantDepartmentIdsAsync(int rootId)
@@ -1534,45 +1429,6 @@ public class WorkflowService : IWorkflowService
             }
         }
         return ids.ToArray();
-    }
-
-    private async Task<List<int>> ResolveSupervisorApproverUserIdsAsync(ApprovalFlow flow)
-    {
-        var result = new List<int>();
-        var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
-        if (applicant?.DepartmentId is not null)
-        {
-            var department = await _db.Departments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == applicant.DepartmentId.Value);
-            if (department?.ManagerId is int managerId && managerId != flow.ApplicantId &&
-                await _db.Users.AsNoTracking().AnyAsync(x => x.Id == managerId && x.IsActive))
-            {
-                result.Add(managerId);
-            }
-        }
-
-        // 兼容旧数据：组织节点未配置负责人时，仍可使用历史维护的直属上级。
-        if (result.Count == 0 && applicant?.SupervisorId is int supervisorId && supervisorId != flow.ApplicantId &&
-            await _db.Users.AsNoTracking().AnyAsync(x => x.Id == supervisorId && x.IsActive))
-        {
-            result.Add(supervisorId);
-        }
-
-        result.RemoveAll(id => id == flow.ApplicantId);
-        return result;
-    }
-
-    private async Task AddExplicitApproverUserIdsAsync(List<int> result, string value)
-    {
-        var resolution = await BpmnApproverIdentityResolver.ResolveUsersAsync(_db, value);
-        EnsureUnambiguousResolution(resolution);
-        foreach (var userId in resolution.UserIds)
-            if (!result.Contains(userId)) result.Add(userId);
-    }
-
-    private static void EnsureUnambiguousResolution(ApproverIdentityResolution resolution)
-    {
-        if (resolution.Status == ApproverIdentityResolutionStatus.Ambiguous)
-            throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{resolution.Diagnostic}");
     }
 
     private async Task<string?> DepartmentName(int? deptId)
@@ -1670,18 +1526,6 @@ public class WorkflowService : IWorkflowService
             if (levelCode == "department") context["requiresDepartmentApproval"] = value;
         }
         return context;
-    }
-
-    private async Task<int?> ResolveDeptManagerTargetDepartmentIdAsync(BpmnNode node, ApprovalFlow flow)
-    {
-        if (flow.BizType == "transfer" && node.Id == "Task_receiver" && flow.TransfereeId.HasValue)
-        {
-            var transferee = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.TransfereeId.Value);
-            return transferee?.DepartmentId;
-        }
-
-        var applicant = await _db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.ApplicantId);
-        return applicant?.DepartmentId;
     }
 
     private async Task AddRecord(

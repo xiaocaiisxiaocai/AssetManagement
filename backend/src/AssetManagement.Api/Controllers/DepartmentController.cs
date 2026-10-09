@@ -3,6 +3,7 @@ using AssetManagement.Application.Common;
 using AssetManagement.Infrastructure.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace AssetManagement.Api.Controllers;
 
@@ -30,7 +31,21 @@ public class DepartmentController : ControllerBase
     [HttpGet("options")]
     [Authorize]
     public async Task<ApiResult<List<DepartmentOptionDto>>> Options()
-        => ApiResult<List<DepartmentOptionDto>>.Ok(ToOptions(await _service.GetDepartmentTreeAsync()));
+    {
+        var tree = await _service.GetDepartmentTreeAsync();
+        if (User.IsInRole("supervisor") && !User.IsInRole("admin"))
+        {
+            if (!int.TryParse(User.FindFirstValue("departmentId"), out var departmentId))
+            {
+                return ApiResult<List<DepartmentOptionDto>>.Ok([]);
+            }
+
+            var scoped = FindSubtree(tree, departmentId);
+            tree = scoped is null ? [] : [scoped];
+        }
+
+        return ApiResult<List<DepartmentOptionDto>>.Ok(ToOptions(tree));
+    }
 
     [HttpPost]
     [HasPermission("department:create")]
@@ -48,6 +63,25 @@ public class DepartmentController : ControllerBase
     {
         await _service.DeleteDepartmentAsync(id);
         return ApiResult.Ok();
+    }
+
+    private static DepartmentNodeDto? FindSubtree(IEnumerable<DepartmentNodeDto> nodes, int id)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Id == id)
+            {
+                return node;
+            }
+
+            var child = FindSubtree(node.Children, id);
+            if (child is not null)
+            {
+                return child;
+            }
+        }
+
+        return null;
     }
 
     private static List<DepartmentOptionDto> ToOptions(IEnumerable<DepartmentNodeDto> departments)

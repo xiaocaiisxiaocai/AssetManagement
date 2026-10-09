@@ -29,6 +29,7 @@ import {
   createUserApi,
   deleteUserApi,
   downloadUserImportTemplateApi,
+  getApproverOptionsApi,
   getUserListApi,
   importUsersApi,
   resetUserPasswordApi,
@@ -46,7 +47,7 @@ import {
 } from '#/utils/runtime-settings';
 import {
   mergeSelectedUserOption,
-  mergeUserOptions,
+  replaceUserOptions,
 } from '#/utils/user-options';
 import { buildUserActionAccess } from '#/views/permissions/action-access';
 
@@ -176,13 +177,12 @@ async function searchSupervisors(keyword = '') {
   const generation = supervisorOptionsRequestGuard.next();
   supervisorOptionsLoading.value = true;
   try {
-    const result = await getUserListApi(keyword, 1, 50);
+    const result = await getApproverOptionsApi(keyword);
     if (!supervisorOptionsRequestGuard.isLatest(generation)) return;
-    supervisorOptions.value = mergeUserOptions(
+    supervisorOptions.value = replaceUserOptions(
       supervisorOptions.value,
-      result.items.filter(
-        (user) => user.isActive && user.id !== editingId.value,
-      ),
+      result.filter((user) => user.id !== editingId.value),
+      [form.supervisorId],
     );
   } catch {
     // 请求层已提示，保留现有选项。

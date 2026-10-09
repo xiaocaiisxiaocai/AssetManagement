@@ -328,7 +328,11 @@ public class AssetService : IAssetService
 
     public async Task PurgeAsync(int id)
     {
-        var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var asset = await _db.Assets
+            .FromSqlInterpolated($"SELECT * FROM assets WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "资产不存在");
         EnsureCanManage(asset);
         if (!asset.IsDeleted)
@@ -350,6 +354,11 @@ public class AssetService : IAssetService
         {
             throw new BizException(4090, "资产已被其他操作更新，请刷新后重试");
         }
+        catch (DbUpdateException ex) when (IsForeignKeyViolation(ex))
+        {
+            throw new BizException(4094, "资产已被其他数据使用，不能彻底删除");
+        }
+        await transaction.CommitAsync();
     }
 
     public async Task RestoreAsync(int id)
@@ -816,6 +825,9 @@ public class AssetService : IAssetService
 
     private static bool IsDuplicateKey(DbUpdateException ex)
         => ex.InnerException is MySqlException { Number: 1062 };
+
+    private static bool IsForeignKeyViolation(DbUpdateException ex)
+        => ex.InnerException is MySqlException { Number: 1451 or 1452 };
 
     private static bool IsDeadlock(Exception ex)
         => ex is MySqlException { Number: 1213 } ||

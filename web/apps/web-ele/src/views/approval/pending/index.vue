@@ -435,6 +435,10 @@ async function addSign() {
 
 async function approve() {
   if (!selected.value) return;
+  if (opinion.value.length > 380) {
+    ElMessage.warning('审批意见不能超过 380 个字符');
+    return;
+  }
   if (!ensureNodeSelected()) return;
   actionLoading.value = true;
   try {
@@ -459,6 +463,10 @@ async function reject() {
   }
   if (!opinion.value.trim()) {
     ElMessage.warning('请填写驳回理由');
+    return;
+  }
+  if (opinion.value.length > 500) {
+    ElMessage.warning('驳回理由不能超过 500 个字符');
     return;
   }
   if (!ensureNodeSelected()) return;
@@ -517,6 +525,8 @@ async function rejectMaterial(item: ApprovalWorkItem) {
       '驳回',
       {
         inputPlaceholder: '驳回原因',
+        inputValidator: (value: string) =>
+          (value ?? '').length <= 500 || '驳回原因不能超过 500 个字符',
       },
     );
     reason = result.value || reason;
@@ -949,8 +959,10 @@ onMounted(async () => {
         <div class="pending-opinion-panel">
           <ElInput
             v-model="opinion"
+            :maxlength="500"
             :rows="3"
-            placeholder="请输入审批意见"
+            placeholder="审批意见最多 380 字，驳回理由最多 500 字"
+            show-word-limit
             type="textarea"
           />
         </div>

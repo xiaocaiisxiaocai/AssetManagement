@@ -3,7 +3,7 @@ import type { CategoryNode } from '#/api/base-data';
 import type { BorrowReportQuery, BorrowReportRow } from '#/api/report';
 import type { UserOptionDto } from '#/api/user';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
@@ -22,26 +22,32 @@ import {
 } from 'element-plus';
 
 import { getCategoryTreeApi } from '#/api/base-data';
-import { getBorrowReportApi } from '#/api/report';
+import { exportBorrowReportApi, getBorrowReportApi } from '#/api/report';
 import { getUserOptionsPageApi } from '#/api/user';
 import { formatDateTime } from '#/utils/date-format';
 import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
+import { downloadBlob } from '#/utils/download';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
 import {
   createPageSizeOptions,
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
-import { mergeUserOptions } from '#/utils/user-options';
+import { replaceUserOptions } from '#/utils/user-options';
+import { buildReportActionAccess } from '#/views/permissions/action-access';
 
 defineOptions({ name: 'ReportBorrow' });
 
 const router = useRouter();
 const { hasAccessByCodes } = useAccess();
+const reportActionAccess = computed(() =>
+  buildReportActionAccess(hasAccessByCodes),
+);
 const listRequestGuard = createLatestRequestGuard();
 const userOptionsLoading = ref(false);
 const userOptionsRequestGuard = createLatestRequestGuard();
 const loading = ref(false);
+const exporting = ref(false);
 const rows = ref<BorrowReportRow[]>([]);
 const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
@@ -102,9 +108,10 @@ async function searchBorrowers(keyword = '') {
   try {
     const result = await getUserOptionsPageApi(keyword, 1, 50);
     if (!userOptionsRequestGuard.isLatest(requestGeneration)) return;
-    borrowerOptions.value = mergeUserOptions(
+    borrowerOptions.value = replaceUserOptions(
       borrowerOptions.value,
       result.items,
+      [query.borrowerId],
     );
   } catch {
     // 请求层已提示，保留已回填选项。
@@ -114,16 +121,29 @@ async function searchBorrowers(keyword = '') {
   }
 }
 
-function flattenCategories(nodes: CategoryNode[]): CategoryNode[] {
-  return nodes.flatMap((node) => [
-    node,
-    ...flattenCategories(node.children ?? []),
-  ]);
+function flattenCategories(nodes: CategoryNode[], level = 0): CategoryNode[] {
+  return nodes.flatMap((node) => {
+    const children = flattenCategories(node.children ?? [], level + 1);
+    return level === 2 ? [node, ...children] : children;
+  });
 }
 
 function search() {
   query.page = 1;
   runHandled(loadData());
+}
+
+async function exportReport() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const response = await exportBorrowReportApi(buildQuery());
+    downloadBlob(response.data, '借用明细.xlsx');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    exporting.value = false;
+  }
 }
 
 function resetQuery() {
@@ -232,6 +252,13 @@ onMounted(async () => {
           <ElFormItem>
             <ElButton type="primary" @click="search">查询</ElButton>
             <ElButton @click="resetQuery">重置</ElButton>
+            <ElButton
+              v-if="reportActionAccess.canExport"
+              :loading="exporting"
+              @click="exportReport"
+            >
+              导出
+            </ElButton>
           </ElFormItem>
         </ElForm>
       </div>

@@ -22,12 +22,18 @@ public class OverdueNotificationWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var waitForSchedule = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await WaitUntilMidnight(stoppingToken);
+                if (waitForSchedule)
+                {
+                    await WaitUntilMidnight(stoppingToken);
+                }
+
                 await ScanAndNotifyAsync(stoppingToken);
+                waitForSchedule = true;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -35,7 +41,16 @@ public class OverdueNotificationWorker : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "到期提醒扫描异常");
+                waitForSchedule = false;
+                _logger.LogError(ex, "到期提醒扫描异常，将在 15 分钟后重试");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(15), stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
         }
     }
@@ -99,7 +114,8 @@ public class OverdueNotificationWorker : BackgroundService
 
             if (type == null) continue;
 
-            var key = $"{type}_{flow.Id}_{todayStr}";
+            var userId = flow.CurrentCustodianId ?? flow.ApplicantId;
+            var key = $"{type}_{flow.Id}_{todayStr}_{userId}";
             var (title, body) = BuildMessage(type, flow.AssetName, flow.AssetNo, returnDate);
             notifications.Add(new CreateNotificationRequest
             {
@@ -107,7 +123,7 @@ public class OverdueNotificationWorker : BackgroundService
                 Title = title,
                 Body = body,
                 FlowId = flow.Id,
-                UserId = flow.CurrentCustodianId ?? flow.ApplicantId,
+                UserId = userId,
                 IdempotencyKey = key,
             });
         }

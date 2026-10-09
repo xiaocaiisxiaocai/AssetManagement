@@ -6,7 +6,7 @@ defineOptions({
 
 <template>
   <div
-    class="flex-col-center dark:bg-background-deep bg-background relative px-6 py-10 lg:flex-initial lg:px-8"
+    class="flex-col-center dark:bg-background-deep bg-background relative px-6 py-10 lg:flex-initial lg:px-10"
   >
     <slot></slot>
     <!-- Router View with Transition and KeepAlive -->
@@ -16,7 +16,7 @@ defineOptions({
           <component
             :is="Component"
             :key="route.fullPath"
-            class="enter-x mt-6 w-full sm:mx-auto md:max-w-md"
+            class="enter-x mt-6 w-full sm:mx-auto sm:max-w-[25rem]"
           />
         </KeepAlive>
       </Transition>

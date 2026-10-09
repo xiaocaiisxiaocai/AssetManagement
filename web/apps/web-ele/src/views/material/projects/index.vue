@@ -78,7 +78,7 @@ import {
 } from '#/utils/runtime-settings';
 import {
   mergeSelectedUserOption,
-  mergeUserOptions,
+  replaceUserOptions,
 } from '#/utils/user-options';
 import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
 import {
@@ -411,7 +411,10 @@ async function loadUsers() {
   await searchUsers('');
 }
 
-async function searchUsers(keyword = '') {
+async function searchUsers(
+  keyword = '',
+  keepIds: Array<null | number | undefined> = [],
+) {
   const requestGeneration = userOptionsRequestGuard.next();
   const canUseBusinessOptions =
     hasAccessByCodes(['approval:create']) ||
@@ -432,7 +435,10 @@ async function searchUsers(keyword = '') {
       incoming = result.items.filter((user) => user.isActive);
     }
     if (!userOptionsRequestGuard.isLatest(requestGeneration)) return;
-    users.value = mergeUserOptions(users.value, incoming);
+    users.value = replaceUserOptions(users.value, incoming, [
+      form.ownerId,
+      ...keepIds,
+    ]);
   } catch {
     // 请求层已提示，保留已回填选项。
   } finally {
@@ -1201,7 +1207,11 @@ async function rejectFlow(row: MaterialFlowItem) {
     const result = await ElMessageBox.prompt(
       `请输入驳回原因。处理节点：${formatWorkflowNode(node)}`,
       '驳回',
-      { inputPlaceholder: '驳回原因' },
+      {
+        inputPlaceholder: '驳回原因',
+        inputValidator: (value: string) =>
+          (value ?? '').length <= 500 || '驳回原因不能超过 500 个字符',
+      },
     );
     reason = result.value || reason;
   } catch {
@@ -1515,6 +1525,7 @@ watch(materialDetailVisible, (opened) => {
       <TransferDialog
         v-model:visible="transferVisible"
         :material="transferMaterial"
+        :project-owner-id="currentProject?.ownerId"
         :search-users="searchUsers"
         :user-options-loading="userOptionsLoading"
         :users="users"

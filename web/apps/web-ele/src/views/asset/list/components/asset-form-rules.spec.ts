@@ -45,6 +45,18 @@ describe('固定资产表单规则', () => {
     expect(validateAssetForm({ ...baseForm, status: undefined })).toBeNull();
   });
 
+  it('新增时保管人必须属于所选的有效部门', () => {
+    const users = [{ departmentId: 9, id: 4 }];
+    expect(validateAssetForm(baseForm, users)).toBe('保管人与归属部门不一致');
+    expect(validateAssetForm(baseForm, [{ departmentId: null, id: 4 }])).toBe(
+      '保管人必须属于有效部门',
+    );
+    expect(validateAssetForm(baseForm, users, true)).toBeNull();
+    expect(
+      validateAssetForm(baseForm, [{ departmentId: 2, id: 4 }]),
+    ).toBeNull();
+  });
+
   it('必填项在界面上显示星号', () => {
     const componentPath = join(
       cwd(),

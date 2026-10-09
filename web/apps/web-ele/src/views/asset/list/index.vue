@@ -64,7 +64,7 @@ import {
 } from '#/utils/runtime-settings';
 import {
   mergeSelectedUserOption,
-  mergeUserOptions,
+  replaceUserOptions,
 } from '#/utils/user-options';
 
 import {
@@ -134,7 +134,10 @@ const listRequestGuard = createLatestRequestGuard();
 const userOptionsLoading = ref(false);
 const userOptionsRequestGuard = createLatestRequestGuard();
 
-async function searchUsers(keyword = '') {
+async function searchUsers(
+  keyword = '',
+  keepIds: Array<null | number | undefined> = [],
+) {
   const requestGeneration = userOptionsRequestGuard.next();
   userOptionsLoading.value = true;
   try {
@@ -151,7 +154,10 @@ async function searchUsers(keyword = '') {
       incoming = response.items.filter((user) => user.isActive);
     }
     if (!userOptionsRequestGuard.isLatest(requestGeneration)) return;
-    users.value = mergeUserOptions(users.value, incoming);
+    users.value = replaceUserOptions(users.value, incoming, [
+      query.custodianId,
+      ...keepIds,
+    ]);
   } catch {
     // 请求层已提示，保留已回填选项。
   } finally {

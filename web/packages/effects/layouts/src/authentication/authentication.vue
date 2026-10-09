@@ -47,7 +47,7 @@ const { authPanelCenter, authPanelLeft, authPanelRight, isDark } =
     <!-- 左侧认证面板 -->
     <AuthenticationFormView
       v-if="authPanelLeft"
-      class="min-h-full w-2/5 flex-1"
+      class="min-h-full w-full flex-1 lg:w-[28rem] xl:w-[30rem]"
       transition-name="slide-left"
     >
       <template v-if="copyright" #copyright>
@@ -117,7 +117,7 @@ const { authPanelCenter, authPanelLeft, authPanelRight, isDark } =
     <!-- 右侧认证面板 -->
     <AuthenticationFormView
       v-if="authPanelRight"
-      class="min-h-full w-[34%] flex-1"
+      class="min-h-full w-full flex-1 lg:w-[32rem] xl:w-[36rem]"
     >
       <template v-if="copyright" #copyright>
         <slot name="copyright">

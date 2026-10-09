@@ -7,6 +7,7 @@ public interface IRbacService
     Task<PagedResult<UserDto>> GetUsersAsync(string? keyword, int page, int pageSize, int? departmentId = null, int? roleId = null);
     Task<PagedResult<UserOptionDto>> GetActiveUserOptionsAsync(string? keyword = null, int page = 1, int pageSize = 50);
     Task<List<UserOptionDto>> GetActiveSupervisorOptionsAsync(string? keyword = null);
+    Task<List<UserOptionDto>> GetDepartmentManagerOptionsAsync(string? keyword = null, int? departmentId = null);
     Task<WorkflowDesignerOptionsDto> GetWorkflowDesignerOptionsAsync(string? keyword = null, int page = 1, int pageSize = 50);
     Task<UserDto> CreateUserAsync(CreateUserRequest request, bool canAssignRole);
     Task<UserDto> UpdateUserAsync(int id, UpdateUserRequest request, int currentUserId, bool canAssignRole);

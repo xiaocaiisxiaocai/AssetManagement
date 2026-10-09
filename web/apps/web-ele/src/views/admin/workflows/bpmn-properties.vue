@@ -21,7 +21,7 @@ import {
 import { getWorkflowDesignerOptionsApi } from '#/api/workflow';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
-import { mergeUserOptions } from '#/utils/user-options';
+import { replaceUserOptions } from '#/utils/user-options';
 
 import {
   loadAssigneeSelection,
@@ -179,15 +179,25 @@ const assigneeValuePlaceholder = computed(() => {
   return '选择审批人员';
 });
 
+function selectedAssigneeUserIds() {
+  const value = assigneeValue.value;
+  const values = Array.isArray(value) ? value : [value];
+  return values.flatMap((item) => {
+    const match = /^user:(\d+)$/.exec(String(item ?? ''));
+    return match ? [Number(match[1])] : [];
+  });
+}
+
 async function loadAssigneeOptions(keyword = '') {
   const requestGeneration = assigneeOptionsRequestGuard.next();
   assigneeOptionsLoading.value = true;
   try {
     const options = await getWorkflowDesignerOptionsApi(keyword, 1, 50);
     if (!assigneeOptionsRequestGuard.isLatest(requestGeneration)) return;
-    userOptions.value = mergeUserOptions(
+    userOptions.value = replaceUserOptions(
       userOptions.value,
       options.users.items,
+      selectedAssigneeUserIds(),
     );
     roleOptions.value = options.roles;
     departmentOptions.value = options.departments.map((department) => ({

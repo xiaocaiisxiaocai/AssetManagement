@@ -248,6 +248,8 @@ public static class DbSeeder
                     transferWorkflow.BpmnXml = defaultTransferWorkflow.BpmnXml;
                 }
             }
+
+            RepairStockDepartmentScopeWorkflows(db);
         }
 
         if (!db.SystemSettings.Any(x => x.Key == "audit_retention_months"))
@@ -1303,6 +1305,38 @@ public static class DbSeeder
         db.SaveChanges();
     }
 
+    /// <summary>
+    /// 内置归还节点和转让管理员分支原先使用全体部门主管角色。
+    /// 只改写仍保持出厂特征的模板，进行中的流程也原地更新，节点编号保持不变。
+    /// </summary>
+    private static void RepairStockDepartmentScopeWorkflows(AppDbContext db)
+    {
+        var returnWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "return" && x.IsActive);
+        if (returnWorkflow?.BpmnXml is { } returnXml && IsStockReturnRoleGroup(returnXml))
+        {
+            returnWorkflow.BpmnXml = returnXml.Replace(
+                "camunda:candidateGroups=\"role:supervisor\"",
+                "camunda:assignee=\"deptManager\"",
+                StringComparison.Ordinal);
+        }
+
+        const string stockAdminTask = "id=\"Task_adminRole\" name=\"部门主管审批\" camunda:candidateGroups=\"role:supervisor\"";
+        const string scopedAdminTask = "id=\"Task_adminRole\" name=\"部门主管审批\" camunda:assignee=\"deptManager\"";
+        var transferWorkflow = db.Workflows.SingleOrDefault(x => x.BizType == "transfer" && x.IsActive);
+        if (transferWorkflow?.BpmnXml is { } transferXml
+            && transferXml.Contains(stockAdminTask, StringComparison.Ordinal))
+        {
+            transferWorkflow.BpmnXml = transferXml.Replace(stockAdminTask, scopedAdminTask, StringComparison.Ordinal);
+        }
+    }
+
+    private static bool IsStockReturnRoleGroup(string xml)
+        => (xml.Contains("Process_return", StringComparison.Ordinal)
+            || xml.Contains("Definitions_return", StringComparison.Ordinal))
+           && xml.Contains("部门主管确认", StringComparison.Ordinal)
+           && xml.Contains("camunda:candidateGroups=\"role:supervisor\"", StringComparison.Ordinal)
+           && !xml.Contains("exclusiveGateway", StringComparison.OrdinalIgnoreCase);
+
     internal static string HistoricalWorkflowName(WorkflowEntity workflow)
     {
         var suffix = $"（历史版本 {workflow.Id}）";
@@ -1538,7 +1572,7 @@ public static class DbSeeder
       <bpmn:outgoing>Flow_admin</bpmn:outgoing>
       <bpmn:outgoing>Flow_supervisorRole</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:userTask id=""Task_adminRole"" name=""部门主管审批"" camunda:candidateGroups=""role:supervisor"">
+    <bpmn:userTask id=""Task_adminRole"" name=""部门主管审批"" camunda:assignee=""deptManager"">
       <bpmn:incoming>Flow_admin</bpmn:incoming>
       <bpmn:outgoing>Flow_admin_to_receiver</bpmn:outgoing>
     </bpmn:userTask>
@@ -1629,7 +1663,7 @@ public static class DbSeeder
     <bpmn:startEvent id=""StartEvent_1"" name=""发起归还申请"">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:userTask id=""Task_supervisor"" name=""部门主管确认"" camunda:candidateGroups=""role:supervisor"">
+    <bpmn:userTask id=""Task_supervisor"" name=""部门主管确认"" camunda:assignee=""deptManager"">
       <bpmn:incoming>Flow_1</bpmn:incoming>
       <bpmn:outgoing>Flow_2</bpmn:outgoing>
     </bpmn:userTask>

@@ -60,10 +60,31 @@ public class UserController : ControllerBase
         return ApiResult<PagedResult<UserOptionDto>>.Ok(await _rbac.GetActiveUserOptionsAsync(keyword, page, pageSize));
     }
 
+    private void EnsureAnyPermission(params string[] codes)
+    {
+        var permissions = User.FindAll("perm").Select(claim => claim.Value).ToHashSet(StringComparer.Ordinal);
+        if (!codes.Any(permissions.Contains))
+        {
+            throw new BizException(4030, "无权读取用户选项");
+        }
+    }
+
     [HttpGet("approver-options")]
-    [HasPermission("approval:add-sign")]
+    [Authorize]
     public async Task<ApiResult<List<UserOptionDto>>> ApproverOptions(string? keyword = null)
-        => ApiResult<List<UserOptionDto>>.Ok(await _rbac.GetActiveSupervisorOptionsAsync(keyword));
+    {
+        EnsureAnyPermission("approval:add-sign", "user:create", "user:edit");
+        return ApiResult<List<UserOptionDto>>.Ok(await _rbac.GetActiveSupervisorOptionsAsync(keyword));
+    }
+
+    [HttpGet("manager-options")]
+    [Authorize]
+    public async Task<ApiResult<List<UserOptionDto>>> ManagerOptions(string? keyword = null, int? departmentId = null)
+    {
+        EnsureAnyPermission("department:create", "department:edit");
+        return ApiResult<List<UserOptionDto>>.Ok(
+            await _rbac.GetDepartmentManagerOptionsAsync(keyword, departmentId));
+    }
 
     [HttpPost]
     [HasPermission("user:create")]

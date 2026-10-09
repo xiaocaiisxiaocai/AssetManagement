@@ -17,7 +17,7 @@ public static class AssetNoGenerator
         foreach (var assetNo in assetNos)
         {
             if (string.IsNullOrEmpty(assetNo)
-                || !assetNo.StartsWith(prefix, StringComparison.Ordinal))
+                || !assetNo.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }

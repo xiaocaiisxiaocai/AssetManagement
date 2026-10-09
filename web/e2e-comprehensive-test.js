@@ -352,7 +352,7 @@ async function runComprehensiveTest() {
     // 4.2 借用明细
     if (await safeGoto('/report/borrow', '借用明细')) {
       await checkContentWithRetry(
-        ['借用', '人', '时间', '借用人', '借用时间'],
+        ['借用', '借用人', '借用时间'],
         '借用明细',
         'report-borrow-fail',
       );
@@ -400,7 +400,7 @@ async function runComprehensiveTest() {
     // 5.4 审计日志
     if (await safeGoto('/admin/audit', '审计日志')) {
       await checkContentWithRetry(
-        ['日志', '操作', '人', '时间', '操作日志', '操作人', '操作时间'],
+        ['日志', '操作', '操作日志', '操作人', '操作时间'],
         '审计日志',
         'admin-audit-fail',
       );

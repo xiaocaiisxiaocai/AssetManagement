@@ -102,6 +102,10 @@ public class RbacService : IRbacService
                     Id = x.Id,
                     EmployeeNo = x.EmployeeNo,
                     Name = x.Name,
+                    DepartmentId = _db.Departments
+                        .Where(d => d.Id == x.DepartmentId && d.IsActive)
+                        .Select(d => (int?)d.Id)
+                        .FirstOrDefault(),
                     DepartmentName = x.DepartmentId.HasValue
                         ? _db.Departments.Where(d => d.Id == x.DepartmentId.Value).Select(d => d.Name).FirstOrDefault()
                         : null
@@ -186,10 +190,57 @@ public class RbacService : IRbacService
                 Id = x.Id,
                 EmployeeNo = x.EmployeeNo,
                 Name = x.Name,
+                DepartmentId = x.DepartmentId,
                 DepartmentName = _db.Departments
                     .Where(d => d.Id == x.DepartmentId!.Value)
                     .Select(d => d.Name)
                     .FirstOrDefault()
+            })
+            .ToListAsync();
+    }
+
+    public async Task<List<UserOptionDto>> GetDepartmentManagerOptionsAsync(string? keyword = null, int? departmentId = null)
+    {
+        var occupiedDepartments = _db.Departments
+            .Where(department => department.IsActive && department.ManagerId.HasValue);
+        if (departmentId.HasValue)
+        {
+            var currentDepartmentId = departmentId.Value;
+            occupiedDepartments = occupiedDepartments.Where(department => department.Id != currentDepartmentId);
+        }
+
+        var occupiedManagerIds = occupiedDepartments.Select(department => department.ManagerId!.Value);
+        var query = _db.Users.Where(user =>
+            user.IsActive &&
+            !occupiedManagerIds.Contains(user.Id) &&
+            (user.UserRoles.Any(ur => ur.Role.Code == "admin" && ur.Role.IsActive)
+             || (user.DepartmentId.HasValue
+                 && _db.Departments.Any(department => department.Id == user.DepartmentId.Value && department.IsActive)
+                 && user.UserRoles.Any(ur => ur.Role.Code == "supervisor" && ur.Role.IsActive))));
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var value = keyword.Trim();
+            query = query.Where(user => user.EmployeeNo.Contains(value) || user.Name.Contains(value));
+        }
+
+        return await query
+            .OrderBy(user => user.EmployeeNo.Length)
+            .ThenBy(user => user.EmployeeNo)
+            .Take(500)
+            .Select(user => new UserOptionDto
+            {
+                Id = user.Id,
+                EmployeeNo = user.EmployeeNo,
+                Name = user.Name,
+                DepartmentId = _db.Departments
+                    .Where(department => department.Id == user.DepartmentId && department.IsActive)
+                    .Select(department => (int?)department.Id)
+                    .FirstOrDefault(),
+                DepartmentName = user.DepartmentId.HasValue
+                    ? _db.Departments.Where(department => department.Id == user.DepartmentId.Value)
+                        .Select(department => department.Name)
+                        .FirstOrDefault()
+                    : null
             })
             .ToListAsync();
     }
@@ -1035,6 +1086,12 @@ public class RbacService : IRbacService
                 .Select(x => new { x.Id, x.BpmnXml })
                 .ToDictionaryAsync(x => x.Id, x => (string?)x.BpmnXml);
         var processes = new Dictionary<int, BpmnProcess?>();
+        var assetIds = flows.OfType<ApprovalFlow>().Select(flow => flow.AssetId).Distinct().ToArray();
+        var assetDepartments = assetIds.Length == 0
+            ? new Dictionary<int, int?>()
+            : await _db.Assets.AsNoTracking()
+                .Where(asset => assetIds.Contains(asset.Id))
+                .ToDictionaryAsync(asset => asset.Id, asset => asset.DepartmentId);
 
         foreach (var flow in flows)
         {
@@ -1078,8 +1135,15 @@ public class RbacService : IRbacService
                     continue;
                 }
 
+                int? assetDepartmentId = null;
+                if (flow is ApprovalFlow assetFlow
+                    && assetDepartments.TryGetValue(assetFlow.AssetId, out var departmentId))
+                {
+                    assetDepartmentId = departmentId;
+                }
+
                 var approverIds = await UserTaskApproverResolver.ResolveAsync(
-                    _db, node, applicantId, transfereeId, bizType);
+                    _db, node, applicantId, transfereeId, bizType, assetDepartmentId);
                 if (approverIds.Count == 1 && approverIds[0] == userId)
                 {
                     return true;
