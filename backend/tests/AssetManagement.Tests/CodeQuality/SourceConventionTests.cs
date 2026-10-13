@@ -229,6 +229,13 @@ public class SourceConventionTests
         program.Should().Contain("DatabaseBackup:Path");
         program.Should().Contain("database_backup_path");
         program.Should().Contain("IsReplacementValue");
+        program.Should().Contain("EnsureProductionSecrets");
+
+        var seedIndex = program.IndexOf("DbSeeder.Seed(db,", StringComparison.Ordinal);
+        var emptyPasswordCheck = program.IndexOf(
+            "string.IsNullOrWhiteSpace(builder.Configuration[\"ASSET_ADMIN_PASSWORD\"])",
+            StringComparison.Ordinal);
+        emptyPasswordCheck.Should().BeInRange(0, seedIndex - 1, "空库初始化仍须在播种前拒绝空白管理员密码");
     }
 
     [Fact]

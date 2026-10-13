@@ -3,6 +3,7 @@ import type { MenuRecordRaw } from '@vben/types';
 
 import { computed, type Slots, useSlots, watch } from 'vue';
 
+import { ELEMENT_ID_MAIN_CONTENT } from '@vben/constants';
 import { useRefresh } from '@vben/hooks';
 import { $t } from '@vben/locales';
 import {
@@ -338,7 +339,7 @@ const headerSlots = computed<string[]>(() => {
           @clear-preferences-and-logout="clearPreferencesAndLogout"
         />
       </template>
-      <VbenBackTop />
+      <VbenBackTop :target="`#${ELEMENT_ID_MAIN_CONTENT}`" />
     </template>
   </VbenAdminLayout>
 </template>

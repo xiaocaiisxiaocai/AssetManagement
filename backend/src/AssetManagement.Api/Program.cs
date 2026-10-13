@@ -22,6 +22,7 @@ using AssetManagement.Infrastructure.Reports;
 using AssetManagement.Infrastructure.Rbac;
 using AssetManagement.Infrastructure.TestMaterials;
 using AssetManagement.Infrastructure.Workflow;
+using AssetManagement.Api.Configuration;
 using AssetManagement.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -54,20 +55,21 @@ try
 
 var builder = WebApplication.CreateBuilder(args);
 
-static bool IsReplacementValue(string? value)
-    => !string.IsNullOrWhiteSpace(value)
-       && value.Contains("REPLACE_", StringComparison.OrdinalIgnoreCase);
-
 if (!builder.Environment.IsDevelopment())
 {
-    if (IsReplacementValue(builder.Configuration["Attachment:Path"]))
+    if (ProductionConfigurationGuard.IsReplacementValue(builder.Configuration["Attachment:Path"]))
     {
         throw new InvalidOperationException("生产环境必须配置真实的 Attachment:Path，不能使用 REPLACE 占位值");
     }
-    if (IsReplacementValue(builder.Configuration["DatabaseBackup:Path"]))
+    if (ProductionConfigurationGuard.IsReplacementValue(builder.Configuration["DatabaseBackup:Path"]))
     {
         throw new InvalidOperationException("生产环境必须配置真实的 DatabaseBackup:Path，不能使用 REPLACE 占位值");
     }
+    ProductionConfigurationGuard.EnsureProductionSecrets(
+        isDevelopment: false,
+        builder.Configuration["Jwt:Key"],
+        builder.Configuration["ASSET_ADMIN_PASSWORD"],
+        builder.Configuration.GetConnectionString("Default"));
 }
 
 // 使用 Serilog 替换默认日志
@@ -211,12 +213,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     {
         var jwtKey = builder.Configuration["Jwt:Key"]
             ?? throw new InvalidOperationException("缺少 Jwt:Key 配置，请通过环境变量 Jwt__Key 注入");
-        // 生产环境纵深防御:禁止以占位符或弱密钥(<32 字符)启动,密钥应通过环境变量 Jwt__Key 注入
-        if (!builder.Environment.IsDevelopment()
-            && (jwtKey.Length < AppConstants.JwtKeyMinLength || jwtKey.StartsWith("REPLACE_WITH", StringComparison.Ordinal)))
-        {
-            throw new InvalidOperationException($"生产环境必须配置强随机 Jwt:Key(至少 {AppConstants.JwtKeyMinLength} 字符),请通过环境变量 Jwt__Key 注入");
-        }
+        // 非开发环境的长度与占位值检查在 ProductionConfigurationGuard.EnsureProductionSecrets。
         var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "AssetManagement";
         o.TokenValidationParameters = new TokenValidationParameters
         {
@@ -313,7 +310,7 @@ using (var scope = app.Services.CreateScope())
             .Where(x => x.Key == "database_backup_path")
             .Select(x => x.Value)
             .SingleOrDefault();
-        if (IsReplacementValue(backupPath))
+        if (ProductionConfigurationGuard.IsReplacementValue(backupPath))
         {
             throw new InvalidOperationException("生产环境系统参数 database_backup_path 不能使用 REPLACE 占位值");
         }
