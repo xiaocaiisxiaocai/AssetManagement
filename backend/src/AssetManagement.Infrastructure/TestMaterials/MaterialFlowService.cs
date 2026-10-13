@@ -827,11 +827,11 @@ public class MaterialFlowService : IMaterialFlowService
         {
             var node = process.FindNode(nodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
-            if ((await ResolveApproverUserIdsAsync(node, flow)).Count > 0) continue;
-
+            // 节点里任一历史标识出现同名或数字碰撞都拒绝执行，不能只靠其余可解析的审批人继续推进。
             var ambiguous = await UserTaskApproverResolver.AmbiguousIdentityDiagnosticAsync(_db, node);
             if (ambiguous is not null)
                 throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{ambiguous}");
+            if ((await ResolveApproverUserIdsAsync(node, flow)).Count > 0) continue;
 
             var assignee = node.Properties.GetValueOrDefault("assignee");
             if (assignee == "supervisor")

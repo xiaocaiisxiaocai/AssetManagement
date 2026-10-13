@@ -135,7 +135,8 @@ export function bindProjectCatalogListActions(page: Record<string, any>) {
   }
 
   async function loadBaseOptions() {
-    const departmentTree = await getDepartmentOptionsApi();
+    // 只用于料件归属部门选择，按后端可归属范围收窄。
+    const departmentTree = await getDepartmentOptionsApi('assignable');
     departments.value = departmentTree;
   }
 

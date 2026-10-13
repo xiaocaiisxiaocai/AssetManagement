@@ -29,7 +29,8 @@ public class PendingApprovalReminderWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var waitForSchedule = false;
+        // 9 点前启动时等到 9 点；9 点后启动只补跑当天一次（幂等键按天去重），不在任意重启时刻额外催办。
+        var waitForSchedule = BusinessClock.Now.TimeOfDay < TimeSpan.FromHours(9);
         while (!stoppingToken.IsCancellationRequested)
         {
             try

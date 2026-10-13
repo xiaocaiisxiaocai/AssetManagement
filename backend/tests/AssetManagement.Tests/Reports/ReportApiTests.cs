@@ -96,6 +96,38 @@ public class ReportApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Borrowed_report_category_filter_includes_descendant_categories()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var otherCategory = await CreateCategory();
+        var asset = await CreateAsset(category.Id, null, "上级分类筛选资产");
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "分类筛选验证",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
+        });
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            await LoginToken("TEST-SUPERVISOR", "123456"));
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
+            new ApprovalActionRequest { Opinion = "同意" });
+        approved.Data!.Status.Should().Be("approved");
+
+        await Login();
+        var byParent = await _client.GetFromJsonAsync<ApiResult<PagedResult<BorrowReportRow>>>(
+            $"/api/reports/borrowed?categoryId={category.ParentId}&pageSize=100");
+        byParent!.Data!.Items.Should().Contain(x => x.FlowId == flow.Data.Id,
+            "选中二级分类时应包含其下第三级分类的资产");
+
+        var byOther = await _client.GetFromJsonAsync<ApiResult<PagedResult<BorrowReportRow>>>(
+            $"/api/reports/borrowed?categoryId={otherCategory.ParentId}&pageSize=100");
+        byOther!.Data!.Items.Should().NotContain(x => x.FlowId == flow.Data.Id);
+    }
+
+    [Fact]
     public async Task Overdue_report_and_remind_creates_notification()
     {
         await Login();

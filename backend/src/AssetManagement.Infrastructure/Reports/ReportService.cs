@@ -394,7 +394,12 @@ public class ReportService : IReportService
 
         if (query.CategoryId.HasValue)
         {
-            queryable = queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted && a.CategoryId == query.CategoryId.Value));
+            // 资产只挂第三级分类；选中一、二级分类时按层级编码前缀包含全部下级分类。
+            var categoryId = query.CategoryId.Value;
+            var rootCode = _db.AssetCategories.Where(c => c.Id == categoryId).Select(c => c.Code);
+            queryable = queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted
+                && _db.AssetCategories.Any(c => c.Id == a.CategoryId
+                    && rootCode.Any(code => c.Code == code || c.Code.StartsWith(code + "-")))));
         }
 
         return queryable;

@@ -112,11 +112,12 @@ async function searchBorrowers(keyword = '') {
   }
 }
 
-function flattenCategories(nodes: CategoryNode[], level = 0): CategoryNode[] {
-  return nodes.flatMap((node) => {
-    const children = flattenCategories(node.children ?? [], level + 1);
-    return level === 2 ? [node, ...children] : children;
-  });
+/** 筛选可选任意层级；后端按分类编码前缀包含下级分类。 */
+function flattenCategories(nodes: CategoryNode[]): CategoryNode[] {
+  return nodes.flatMap((node) => [
+    node,
+    ...flattenCategories(node.children ?? []),
+  ]);
 }
 
 function search() {

@@ -26,7 +26,7 @@ import {
 const props = withDefaults(defineProps<{ forced?: boolean }>(), {
   forced: false,
 });
-const emit = defineEmits<{ changed: [] }>();
+const emit = defineEmits<{ changed: []; logout: [] }>();
 const showPopup = defineModel<boolean>('open', { default: false });
 interface FormDataVO {
   oldPassword: string;
@@ -107,8 +107,8 @@ watch(
     :close-on-click-modal="false"
     :close-on-press-escape="!props.forced && !submitting"
     :show-close="!props.forced && !submitting"
-    :width="PASSWORD_DIALOG_WIDTH"
     :title="props.forced ? '请先修改默认密码' : '修改密码'"
+    :width="PASSWORD_DIALOG_WIDTH"
   >
     <ElForm
       ref="formRef"
@@ -154,6 +154,9 @@ watch(
         @click="showPopup = false"
       >
         取消
+      </ElButton>
+      <ElButton v-else :disabled="submitting" @click="emit('logout')">
+        退出登录
       </ElButton>
       <ElButton :loading="submitting" type="primary" @click="handleSubmit">
         提交

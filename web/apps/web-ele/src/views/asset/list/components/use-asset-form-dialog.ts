@@ -90,8 +90,21 @@ export function useAssetFormDialog(options: {
     }
     return departmentOptions;
   });
+  // 只有第三级分类可选；历史资产仍挂在上级分类时保留原值，避免下拉框显示裸 ID。
+  const selectableCategoryOptions = computed(() => {
+    const categoryOptions = [...props.categoryOptions];
+    const currentId = props.asset?.categoryId;
+    if (currentId && !categoryOptions.some((item) => item.id === currentId)) {
+      categoryOptions.unshift({
+        code: props.asset?.categoryCode ?? '',
+        id: currentId,
+        label: `${props.asset?.categoryCode || '原分类'}（非第三级）`,
+      });
+    }
+    return categoryOptions;
+  });
   const assetNoPreview = computed(() => {
-    const cat = props.categoryOptions.find(
+    const cat = selectableCategoryOptions.value.find(
       (item) => item.id === form.categoryId,
     );
     return cat?.code ? `${cat.code}-自动流水` : '选择分类后生成';
@@ -135,7 +148,12 @@ export function useAssetFormDialog(options: {
       );
     } else {
       Object.assign(form, {
-        categoryId: props.defaultCategoryId,
+        // 左侧树选中的一、二级分类不能直接挂资产，不预填。
+        categoryId: props.categoryOptions.some(
+          (item) => item.id === props.defaultCategoryId,
+        )
+          ? props.defaultCategoryId
+          : 0,
         custodianId: undefined,
         departmentId: undefined,
         locationName: '',
@@ -226,6 +244,7 @@ export function useAssetFormDialog(options: {
     onImageRemove: images.onImageRemove,
     saving,
     searchCustodians,
+    selectableCategoryOptions,
     selectableConditionOptions,
     selectableDepartmentOptions,
     statusOptions,

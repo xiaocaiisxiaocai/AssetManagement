@@ -22,6 +22,7 @@ const {
   onImageRemove,
   saving,
   searchCustodians,
+  selectableCategoryOptions,
   selectableConditionOptions,
   selectableDepartmentOptions,
   statusOptions,
@@ -48,7 +49,7 @@ const {
         :asset-no-preview="assetNoPreview"
         :before-image-upload="beforeImageUpload"
         :can-upload-images="canUploadImages"
-        :category-options="categoryOptions"
+        :category-options="selectableCategoryOptions"
         :custom-image-upload="customImageUpload"
         :is-edit="isEdit"
         :on-image-exceed="onImageExceed"

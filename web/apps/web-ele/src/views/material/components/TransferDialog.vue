@@ -22,7 +22,6 @@ import { selectableTransferees } from '#/utils/user-options';
 
 const props = defineProps<{
   material: MaterialItem | null;
-  projectOwnerId?: null | number;
   searchUsers?: (
     keyword: string,
     keepIds?: Array<null | number | undefined>,
@@ -39,17 +38,17 @@ const transfereeOptions = computed(() =>
   selectableTransferees(props.users, [
     Number(userStore.userInfo?.userId || 0),
     props.material?.custodianId,
-    props.projectOwnerId,
   ]),
 );
 
-function searchTransferees(keyword: string) {
-  return props.searchUsers?.(keyword, [form.transfereeId]);
-}
 const form = reactive({
   reason: '',
   transfereeId: undefined as number | undefined,
 });
+
+function searchTransferees(keyword: string) {
+  return props.searchUsers?.(keyword, [form.transfereeId]);
+}
 
 watch(visible, (opened) => {
   if (opened) {

@@ -28,12 +28,17 @@ public class DepartmentController : ControllerBase
     public async Task<ApiResult<List<OrganizationLevelDto>>> Levels()
         => ApiResult<List<OrganizationLevelDto>>.Ok(await _service.GetOrganizationLevelsAsync());
 
+    /// <summary>
+    /// 默认返回全组织部门，供筛选和跨部门人员维护使用。
+    /// scope=assignable 时只返回当前部门主管可把料件归属到的本部门及子部门。
+    /// </summary>
     [HttpGet("options")]
     [Authorize]
-    public async Task<ApiResult<List<DepartmentOptionDto>>> Options()
+    public async Task<ApiResult<List<DepartmentOptionDto>>> Options(string? scope = null)
     {
         var tree = await _service.GetDepartmentTreeAsync();
-        if (User.IsInRole("supervisor") && !User.IsInRole("admin"))
+        if (string.Equals(scope, "assignable", StringComparison.OrdinalIgnoreCase)
+            && User.IsInRole("supervisor") && !User.IsInRole("admin"))
         {
             if (!int.TryParse(User.FindFirstValue("departmentId"), out var departmentId))
             {

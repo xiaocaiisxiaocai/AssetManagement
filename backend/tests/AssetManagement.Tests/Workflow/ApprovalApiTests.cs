@@ -1200,6 +1200,207 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Pending_list_resolves_return_approvers_per_asset_department_for_same_applicant()
+    {
+        await Login();
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
+        var employeeRole = roles.Data.Items.Single(r => r.Code == "employee");
+        var firstDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("归还缓存一部") });
+        var secondDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("归还缓存二部") });
+        var firstSupervisorNo = Unique("RC-S1");
+        var firstSupervisor = await CreateTestUser(firstSupervisorNo, firstDepartment.Data!.Id, supervisorRole.Id);
+        var secondSupervisorNo = Unique("RC-S2");
+        var secondSupervisor = await CreateTestUser(secondSupervisorNo, secondDepartment.Data!.Id, supervisorRole.Id);
+        var applicantNo = Unique("RC-APP");
+        var applicant = await CreateTestUser(applicantNo, firstDepartment.Data.Id, employeeRole.Id);
+        var firstAsset = await CreateAsset(firstDepartment.Data.Id, firstSupervisor.Id);
+        var secondAsset = await CreateAsset(secondDepartment.Data.Id, secondSupervisor.Id);
+        await MarkBorrowedBy(firstAsset, applicant);
+        await MarkBorrowedBy(secondAsset, applicant);
+
+        Auth(await LoginToken(applicantNo, "TestPass123"));
+        var firstFlow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "return",
+            AssetId = firstAsset.Id,
+            Reason = "归还一部资产"
+        });
+        firstFlow.Code.Should().Be(0, firstFlow.Message);
+        var secondFlow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "return",
+            AssetId = secondAsset.Id,
+            Reason = "归还二部资产"
+        });
+        secondFlow.Code.Should().Be(0, secondFlow.Message);
+
+        Auth(await LoginToken(firstSupervisorNo, "TestPass123"));
+        var firstPending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
+        firstPending!.Data.Should().Contain(x => x.Id == firstFlow.Data!.Id);
+        firstPending.Data.Should().NotContain(x => x.Id == secondFlow.Data!.Id,
+            "同一申请人的另一笔归还属于其他部门资产，不能沿用前一笔的审批人缓存");
+
+        Auth(await LoginToken(secondSupervisorNo, "TestPass123"));
+        var secondPending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
+        secondPending!.Data.Should().Contain(x => x.Id == secondFlow.Data!.Id);
+        secondPending.Data.Should().NotContain(x => x.Id == firstFlow.Data!.Id);
+    }
+
+    [Fact]
+    public async Task Return_approval_falls_back_to_parent_department_supervisor()
+    {
+        await Login();
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var supervisorRole = roles!.Data!.Items.Single(r => r.Code == "supervisor");
+        var employeeRole = roles.Data.Items.Single(r => r.Code == "employee");
+        var parent = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("归还上级部门") });
+        var child = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("归还无主管子部门"), ParentId = parent.Data!.Id });
+        var parentSupervisorNo = Unique("RF-SUP");
+        await CreateTestUser(parentSupervisorNo, parent.Data.Id, supervisorRole.Id);
+        var applicantNo = Unique("RF-APP");
+        var applicant = await CreateTestUser(applicantNo, child.Data!.Id, employeeRole.Id);
+        var asset = await CreateAsset(child.Data.Id, applicant.Id);
+        await MarkBorrowedBy(asset, applicant);
+
+        Auth(await LoginToken(applicantNo, "TestPass123"));
+        var flow = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "return",
+            AssetId = asset.Id,
+            Reason = "子部门无主管时归还"
+        });
+        flow.Code.Should().Be(0, flow.Message);
+
+        Auth(await LoginToken(parentSupervisorNo, "TestPass123"));
+        var pending = await _client.GetFromJsonAsync<ApiResult<List<ApprovalFlowDto>>>("/api/approvals/pending");
+        pending!.Data.Should().Contain(x => x.Id == flow.Data!.Id,
+            "资产所属部门没有可用主管时，应由管理该子部门的上级部门主管审批");
+        var approved = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flow.Data!.Id}/approve",
+            new ApprovalActionRequest { Opinion = "上级部门同意" });
+        approved.Code.Should().Be(0, approved.Message);
+        approved.Data!.Status.Should().Be("approved");
+    }
+
+    [Fact]
+    public async Task Start_rejects_node_with_any_ambiguous_identity_even_if_others_resolve()
+    {
+        await Login();
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles");
+        var employeeRole = roles!.Data!.Items.Single(r => r.Code == "employee");
+        var department = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("歧义审批部门") });
+        var sharedName = Unique("同名审批人");
+        await CreateTestUser(Unique("AMB-A"), department.Data!.Id, employeeRole.Id, sharedName);
+        await CreateTestUser(Unique("AMB-B"), department.Data.Id, employeeRole.Id, sharedName);
+        var asset = await CreateAsset();
+        string? originalXml;
+        int workflowId;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var admin = await db.Users.AsNoTracking().SingleAsync(user => user.EmployeeNo == "1001");
+            var workflow = await db.Workflows.AsTracking().SingleAsync(item => item.BizType == "borrow" && item.IsActive);
+            workflowId = workflow.Id;
+            originalXml = workflow.BpmnXml;
+            workflow.BpmnXml = SingleCandidateTaskBpmn($"user:{admin.Id},{sharedName}");
+            await db.SaveChangesAsync();
+        }
+
+        try
+        {
+            var response = await _client.PostAsJsonAsync("/api/approvals", new StartApprovalRequest
+            {
+                BizType = "borrow",
+                AssetId = asset.Id,
+                Reason = "歧义审批人",
+                ReturnDate = DateTime.Today.AddDays(5).ToString("yyyy-MM-dd")
+            });
+            var result = (await response.Content.ReadFromJsonAsync<ApiResult<ApprovalFlowDto>>())!;
+            result.Code.Should().Be(4051, result.Message);
+            result.Message.Should().Contain("歧义");
+        }
+        finally
+        {
+            await using var scope = _factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var workflow = await db.Workflows.AsTracking().SingleAsync(item => item.Id == workflowId);
+            workflow.BpmnXml = originalXml;
+            await db.SaveChangesAsync();
+        }
+    }
+
+    private async Task<UserDto> CreateTestUser(string employeeNo, int? departmentId, int? roleId, string? name = null)
+    {
+        var user = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = name ?? Unique("测试用户"),
+            Password = "TestPass123",
+            DepartmentId = departmentId,
+            RoleIds = roleId is int id ? new[] { id } : Array.Empty<int>()
+        });
+        user.Code.Should().Be(0, user.Message);
+        return user.Data!;
+    }
+
+    private async Task MarkBorrowedBy(AssetDto asset, UserDto borrower)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var borrowed = await db.Assets.AsTracking().SingleAsync(item => item.Id == asset.Id);
+        var sourceCustodianId = borrowed.CustodianId;
+        borrowed.Status = AssetStatus.Borrowed;
+        borrowed.CustodianId = borrower.Id;
+        borrowed.RowVersion++;
+        var borrowWorkflowId = await db.Workflows.AsNoTracking()
+            .Where(item => item.BizType == "borrow" && item.IsActive)
+            .Select(item => item.Id)
+            .SingleAsync();
+        db.ApprovalFlows.Add(new ApprovalFlow
+        {
+            FlowNo = Unique("BOR"),
+            BizType = "borrow",
+            WorkflowId = borrowWorkflowId,
+            AssetId = asset.Id,
+            AssetNo = asset.AssetNo,
+            AssetName = asset.Name,
+            ApplicantId = borrower.Id,
+            Applicant = borrower.Name,
+            SourceCustodianId = sourceCustodianId,
+            Status = "approved",
+            ReturnDate = DateOnly.FromDateTime(DateTime.Today.AddDays(3)),
+            ApplyTime = DateTime.UtcNow.AddDays(-1),
+            Deadline = DateTime.UtcNow.AddDays(1)
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static string SingleCandidateTaskBpmn(string candidateUsers) => $$"""
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn">
+  <bpmn:process id="Process_ambiguous" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_ambiguous" name="歧义审批" camunda:candidateUsers="{{candidateUsers}}">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_1">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Task_ambiguous" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_ambiguous" targetRef="EndEvent_1" />
+  </bpmn:process>
+</bpmn:definitions>
+""";
+
+    [Fact]
     public async Task Exclusive_gateway_routes_based_on_condition()
     {
         // 测试 BPMN ExclusiveGateway 根据条件选择不同分支

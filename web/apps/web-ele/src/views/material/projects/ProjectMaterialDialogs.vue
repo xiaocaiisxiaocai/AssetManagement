@@ -48,7 +48,6 @@ const {
   <TransferDialog
     v-model:visible="transferVisible"
     :material="transferMaterial"
-    :project-owner-id="currentProject?.ownerId"
     :search-users="searchUsers"
     :user-options-loading="userOptionsLoading"
     :users="users"

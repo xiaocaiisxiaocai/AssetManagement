@@ -115,7 +115,10 @@ public class OverdueNotificationWorker : BackgroundService
             if (type == null) continue;
 
             var userId = flow.CurrentCustodianId ?? flow.ApplicantId;
-            var key = $"{type}_{flow.Id}_{todayStr}_{userId}";
+            // 接收人仍是申请人时沿用旧幂等键，避免升级当天重复提醒；保管人变更后再按接收人区分。
+            var key = userId == flow.ApplicantId
+                ? $"{type}_{flow.Id}_{todayStr}"
+                : $"{type}_{flow.Id}_{todayStr}_{userId}";
             var (title, body) = BuildMessage(type, flow.AssetName, flow.AssetNo, returnDate);
             notifications.Add(new CreateNotificationRequest
             {

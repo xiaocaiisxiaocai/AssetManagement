@@ -240,6 +240,58 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Department_options_return_full_tree_for_supervisor_unless_assignable_scope_is_requested()
+    {
+        await Login();
+        var roles = await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?page=1&pageSize=100");
+        var supervisorRole = roles!.Data!.Items.Single(x => x.Code == "supervisor");
+        var ownDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("主管本部门") });
+        var ownChild = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("主管子部门"), ParentId = ownDepartment.Data!.Id });
+        var otherDepartment = await Post<ApiResult<DepartmentNodeDto>>("/api/departments",
+            new CreateDepartmentRequest { Name = Unique("其他部门") });
+        var employeeNo = Unique("sup");
+        await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = employeeNo,
+            Name = "部门选项主管",
+            Password = "TestPass123",
+            DepartmentId = ownDepartment.Data.Id,
+            RoleIds = new[] { supervisorRole.Id }
+        });
+        var login = await Post<ApiResult<LoginResponse>>("/api/auth/login", new { employeeNo, password = "TestPass123" });
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Data!.Token);
+
+        var all = await ReadDepartmentOptionIds("/api/departments/options");
+        all.Should().Contain(new[] { ownDepartment.Data.Id, ownChild.Data!.Id, otherDepartment.Data!.Id },
+            "部门主管需要跨部门筛选和维护人员，默认选项必须是全组织");
+
+        var assignable = await ReadDepartmentOptionIds("/api/departments/options?scope=assignable");
+        assignable.Should().Contain(new[] { ownDepartment.Data.Id, ownChild.Data.Id });
+        assignable.Should().NotContain(otherDepartment.Data.Id);
+    }
+
+    private async Task<List<int>> ReadDepartmentOptionIds(string url)
+    {
+        var response = await _client.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+        using var body = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        var ids = new List<int>();
+        void Collect(JsonElement nodes)
+        {
+            foreach (var node in nodes.EnumerateArray())
+            {
+                ids.Add(node.GetProperty("id").GetInt32());
+                Collect(node.GetProperty("children"));
+            }
+        }
+
+        Collect(body.RootElement.GetProperty("data"));
+        return ids;
+    }
+
+    [Fact]
     public async Task Department_rejects_duplicate_name_with_business_message()
     {
         await Login();

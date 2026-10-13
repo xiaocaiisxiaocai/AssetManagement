@@ -1302,11 +1302,11 @@ public class WorkflowService : IWorkflowService
         {
             var node = process.FindNode(nodeId);
             if (node?.Type != BpmnNodeType.UserTask) continue;
-            if ((await ResolveApproverUserIdsAsync(node, flow)).Count > 0) continue;
-
+            // 节点里任一历史标识出现同名或数字碰撞都拒绝执行，不能只靠其余可解析的审批人继续推进。
             var ambiguous = await UserTaskApproverResolver.AmbiguousIdentityDiagnosticAsync(_db, node);
             if (ambiguous is not null)
                 throw new BizException(4051, $"审批人配置存在歧义，请在流程设计器重新选择。{ambiguous}");
+            if ((await ResolveApproverUserIdsAsync(node, flow)).Count > 0) continue;
 
             var assignee = node.Properties.GetValueOrDefault("assignee");
             if (assignee == "supervisor")
@@ -1697,6 +1697,10 @@ public class WorkflowService : IWorkflowService
 
     private static string ProgressApproverCacheKey(int workflowId, BpmnNode node, ApprovalFlow flow)
     {
+        // 归还与转让 Task_adminRole 按资产所属部门解析，同一申请人的不同资产不能共用缓存。
+        if (UserTaskApproverResolver.NeedsAssetDepartment(flow.BizType, node))
+            return $"{workflowId}|{node.Id}|{flow.BizType}|{flow.ApplicantId}|{flow.TransfereeId}|asset:{flow.AssetId}";
+
         var assignee = node.Properties.GetValueOrDefault("assignee");
         var isDynamic = !string.IsNullOrWhiteSpace(assignee) &&
                         (OrganizationApprovalResolver.IsOrganizationAssignee(assignee)

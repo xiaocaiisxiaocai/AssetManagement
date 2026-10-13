@@ -6,7 +6,8 @@ namespace AssetManagement.Infrastructure.Workflow;
 
 /// <summary>
 /// 解析当前用户任务仍可审批的启用用户。歧义标识跳过，不猜其中一人。
-/// 资产归还，以及转让流程的 Task_adminRole，按资产所属部门的主管解析并排除申请人。
+/// 资产归还，以及转让流程的 Task_adminRole，按资产所属部门的主管解析并排除申请人；
+/// 该部门没有可用主管时逐级向上级部门查找，与主管管理本部门及子部门资产的范围一致。
 /// 资产转让的 Task_receiver 按接收人部门解析。
 /// </summary>
 public static class UserTaskApproverResolver
@@ -80,7 +81,7 @@ public static class UserTaskApproverResolver
         {
             if (assetDepartmentId is int scopedDepartmentId)
             {
-                await AddDepartmentSupervisorsAsync(db, scopedDepartmentId, applicantId, result);
+                await AddAssetDepartmentSupervisorsAsync(db, scopedDepartmentId, applicantId, result);
             }
 
             return result;
@@ -191,7 +192,7 @@ public static class UserTaskApproverResolver
         {
             if (assetDepartmentId is int departmentId)
             {
-                await AddDepartmentSupervisorsAsync(db, departmentId, applicantId, result);
+                await AddAssetDepartmentSupervisorsAsync(db, departmentId, applicantId, result);
             }
 
             return;
@@ -227,6 +228,35 @@ public static class UserTaskApproverResolver
         }
 
         await AddDepartmentSupervisorsAsync(db, departmentId, applicantId, result);
+    }
+
+    private static async Task AddAssetDepartmentSupervisorsAsync(
+        AppDbContext db,
+        int departmentId,
+        int excludeUserId,
+        List<int> result)
+    {
+        var visited = new HashSet<int>();
+        int? currentId = departmentId;
+        while (currentId is int id && visited.Add(id))
+        {
+            var found = new List<int>();
+            await AddDepartmentSupervisorsAsync(db, id, excludeUserId, found);
+            if (found.Count > 0)
+            {
+                foreach (var userId in found)
+                {
+                    Add(result, userId);
+                }
+
+                return;
+            }
+
+            currentId = await db.Departments.AsNoTracking()
+                .Where(x => x.Id == id)
+                .Select(x => x.ParentId)
+                .SingleOrDefaultAsync();
+        }
     }
 
     private static async Task AddDepartmentSupervisorsAsync(

@@ -17,14 +17,15 @@ const authStore = useAuthStore();
 const accessStore = useAccessStore();
 const mustChangePassword = ref(false);
 
-function openForcedPasswordDialog() {
-  if (tokenRequiresPasswordChange(accessStore.accessToken)) {
-    mustChangePassword.value = true;
-  }
+// 弹窗状态始终跟随令牌：令牌被清除（401 登出、改密后退出）时一并关闭，避免卡在无法关闭的弹窗。
+function syncForcedPasswordDialog() {
+  mustChangePassword.value = tokenRequiresPasswordChange(
+    accessStore.accessToken,
+  );
 }
 
-onMounted(openForcedPasswordDialog);
-watch(() => accessStore.accessToken, openForcedPasswordDialog);
+onMounted(syncForcedPasswordDialog);
+watch(() => accessStore.accessToken, syncForcedPasswordDialog);
 
 const formSchema = computed((): VbenFormSchema[] => {
   return [
@@ -60,7 +61,7 @@ async function handleLogin(values: any) {
   }
 }
 
-async function handlePasswordChanged() {
+async function leaveForcedPasswordChange() {
   mustChangePassword.value = false;
   await authStore.logout(false);
 }
@@ -82,7 +83,8 @@ async function handlePasswordChanged() {
     <Password
       v-model:open="mustChangePassword"
       forced
-      @changed="handlePasswordChanged"
+      @changed="leaveForcedPasswordChange"
+      @logout="leaveForcedPasswordChange"
     />
   </div>
 </template>

@@ -155,6 +155,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
   - 组织架构：部门主管可新增、编辑和删除全组织范围的部门；存在子部门或被人员、资产、测试料件引用时沿用完整性保护，禁止删除
   - 用户管理：部门主管可跨部门查看全部用户并编辑其基础资料，可新增和删除普通员工；新增人员自动赋予普通员工角色，不能删除管理员或其他主管，也不能分配角色
   - 普通员工通常只有查看和申请权限，具体操作仍由权限码控制
+- **部门选项**:`GET /api/departments/options` 默认返回全组织(筛选、跨部门人员维护使用);`?scope=assignable` 只返回部门主管可归属的本部门及子部门(测试料件表单使用)。
 - **实现方式**:`AssetService.ApplyQuery` 不按当前用户部门裁剪查看结果；管理动作通过 `IHttpContextAccessor` 读取角色和 `departmentId`，由 `EnsureCanManage`/`EnsureCanAssignDepartment` 强制校验部门范围。`AssetDto.CanManage` 供前端隐藏跨部门管理入口。
 - 参考设计文档:`docs/多部门预留设计.md`。
 
@@ -279,6 +280,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **接口解耦**: `IBpmnFlowInstance` 避免 Domain 层依赖 Entities
 - **标准兼容**: 使用 Camunda 扩展属性存储审批人配置
 - **纯函数引擎**: `BpmnEngine` 只操作内存状态，不访问数据库
+- **按资产部门解析主管**:归还流程,以及转让流程中管理员发起分支的 `Task_adminRole`,按资产所属部门解析部门主管/负责人并排除申请人;该部门无可用主管时逐级向上级部门查找。待办列表的审批人缓存键必须包含资产 ID。
 - **审批人隔离**:`GET /api/approvals/pending` 与料件待办只返回当前用户实际可处理的活跃节点；`admin` 角色没有隐式代审、越级通过或越级驳回特权。管理员仍可按已知 ID 查看流程详情，只有 BPMN 明确将节点指派给该管理员用户/角色时才可处理。
 - **审批人稳定身份**:流程设计器保存指定人员时使用 `user:<User.Id>`，保存候选角色时使用 `role:<Role.Code>`；`supervisor`/`deptManager` 保留动态组织语义。历史裸值仅在用户 ID、工号、姓名最终唯一指向同一启用用户时兼容，出现同名或数字碰撞必须拒绝执行并要求重新选择；授权、待办、通知统一使用同一解析规则。停用用户、停用角色及其旧 JWT 均不能继续审批。
 - **并行节点待办契约**:`CurrentNodeIds` 始终表示流程实例的全部活跃节点，`ActionableNodeIds` 只表示当前调用人可处理的活跃节点。前端审批、驳回、加签必须从 `ActionableNodeIds` 选择并显式提交 `nodeId`，不得默认使用 `CurrentNodeIds[0]`；资产审批与料件流转遵循同一规则。

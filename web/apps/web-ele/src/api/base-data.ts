@@ -108,11 +108,14 @@ export const getOrganizationLevelsApi = () =>
     requestClient.get<ApiResult<OrganizationLevel[]>>('/departments/levels'),
   );
 
-/** 业务表单部门选择器；只返回活动部门。 */
-export const getDepartmentOptionsApi = () =>
+/**
+ * 业务部门选择器。默认返回全组织；`assignable` 只返回当前部门主管可归属的本部门及子部门。
+ */
+export const getDepartmentOptionsApi = (scope?: 'assignable') =>
   unwrap(
     requestClient.get<ApiResult<DepartmentOptionNode[]>>(
       '/departments/options',
+      { params: scope ? { scope } : undefined },
     ),
   );
 
