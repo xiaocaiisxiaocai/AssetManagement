@@ -10,7 +10,15 @@ defineProps<{
   selectedMenuCount: number;
 }>();
 
+const emit = defineEmits<{
+  check: [];
+}>();
+
 const menuTreeRef = ref<InstanceType<typeof ElTree>>();
+
+function onCheck() {
+  emit('check');
+}
 
 function readSelection() {
   return {
@@ -41,6 +49,7 @@ defineExpose({ readSelection, setCheckedKeys });
         default-expand-all
         node-key="id"
         show-checkbox
+        @check="onCheck"
       />
     </div>
   </section>

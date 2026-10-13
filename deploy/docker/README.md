@@ -9,6 +9,8 @@ nano deploy/docker/.env
 docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/.env up -d --build
 ```
 
+编辑 `.env` 时必须替换所有 `CHANGE_ME_*` 占位值（数据库密码、`JWT_KEY`、`ASSET_ADMIN_PASSWORD`）。`JWT_KEY` 至少 32 个字符且应为随机字符串。后端发现 `JWT_KEY`、`ASSET_ADMIN_PASSWORD` 或数据库密码仍含 `CHANGE_ME` 会拒绝启动，此时 `logs -f api` 会显示需要替换的配置项。
+
 首次启动后查看状态：
 
 ```bash

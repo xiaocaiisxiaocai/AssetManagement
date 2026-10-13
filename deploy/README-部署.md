@@ -35,7 +35,7 @@ dotnet publish backend/src/AssetManagement.Api -c Release -o deploy/api --self-c
   示例：`Server=localhost;Port=3306;Database=assetmgmt;User=assetmgmt_user;Password=YourStrongPassword;CharSet=utf8mb4;`
 - `Attachment:Path` 与 `DatabaseBackup:Path`：必须替换占位值，使用两个彼此独立、互不包含的绝对目录；禁止把备份放进附件目录或 Web 静态目录。
 
-生产环境发现任一 `REPLACE_` 配置占位符会拒绝启动，不要把模板文件原样投入生产。
+生产环境发现任一 `REPLACE_` 配置占位符会拒绝启动，不要把模板文件原样投入生产。`Jwt:Key`、`ASSET_ADMIN_PASSWORD` 或连接串中的数据库密码含 `CHANGE_ME`（Docker 示例 `.env.example` 的占位值）时同样拒绝启动。
 
 更推荐由服务管理器或部署平台注入敏感配置，避免把真实凭据写入发布目录：
 

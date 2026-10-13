@@ -118,6 +118,7 @@ watch(visible, async (opened) => {
         ref="menuPanel"
         :page-menu-tree="pageMenuTree"
         :selected-menu-count="selectedMenuCount"
+        @check="syncTreeSelection"
       />
       <RolePermissionPanel
         v-model:permission-keyword="permissionKeyword"

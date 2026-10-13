@@ -117,6 +117,7 @@ $env:ASSET_ADMIN_PASSWORD = '<首次初始化管理员的强密码>' # 可选；
 
 - **配置键**:`ConnectionStrings:Default`、`Jwt:Key`。
 - **生产模板**:`deploy\appsettings.Production.json` 仅含占位符，部署时必须替换或用环境变量覆盖。
+- **启动检查**:非开发环境由 `Api/Configuration/ProductionConfigurationGuard` 拒绝 `REPLACE_` 路径占位值，以及含 `CHANGE_ME` 的 `Jwt:Key`、`ASSET_ADMIN_PASSWORD`、连接串数据库密码(Docker `.env.example` 的占位值)。
 - **初始化账号**:工号 `1001`;未设置 `ASSET_ADMIN_PASSWORD` 时仅在本地回退 `123456`。生产环境仍必须通过环境变量设置强密码。
 
 ## 前后端集成约定(关键)
@@ -305,8 +306,8 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **`Domain/Entities/Notification.cs`**：通知实体（`Id`、`Type`、`Title`、`Body`、`FlowId`、`UserId`、`IsRead`、`CreatedAt`、`IdempotencyKey`）。
 - **`Application/Notifications/INotificationService.cs`**：接口，含 `GetMyNotificationsAsync`/`GetUnreadCountAsync`/`MarkReadAsync`/`MarkAllReadAsync`/`CreateAsync`/`CreateBatchAsync`（`CreateNotificationRequest` 带可选幂等键）。
 - **`Infrastructure/Notifications/NotificationService.cs`**：实现，`CreateAsync`/`CreateBatchAsync` 做幂等检查（相同 `IdempotencyKey` 静默跳过）。
-- **`Infrastructure/Notifications/OverdueNotificationWorker.cs`**：`BackgroundService`，每天午夜运行，扫描借用超期/即将到期，生成 `overdue`/`due_soon_1d`/`due_soon_3d` 通知。幂等键 `{type}_{flowId}_{yyyyMMdd}`。
-- **`Infrastructure/Notifications/PendingApprovalReminderWorker.cs`**：`BackgroundService`，每天早 9 点运行，扫描等待超过 1 天的待审批资产流和料件流，向审批人发催办通知。幂等键 `pending_remind_{flowId}_{yyyyMMdd}_{userId}`。
+- **`Infrastructure/Notifications/OverdueNotificationWorker.cs`**：`BackgroundService`，启动时先扫描一次，之后每天午夜运行；扫描失败 15 分钟后重试。扫描借用超期/即将到期，生成 `overdue`/`due_soon_1d`/`due_soon_3d` 通知。幂等键 `{type}_{flowId}_{yyyyMMdd}`；接收人（当前保管人）不是申请人时追加 `_{userId}`。
+- **`Infrastructure/Notifications/PendingApprovalReminderWorker.cs`**：`BackgroundService`，每天早 9 点运行（9 点后启动会先补跑当天一次，9 点前启动则等到 9 点；失败 15 分钟后重试），扫描等待超过 1 天的待审批资产流和料件流，向审批人发催办通知。幂等键 `pending_remind_{flowId}_{yyyyMMdd}_{userId}`。
 - **`Infrastructure/Workflow/WorkflowService.cs`**：在 `StartAsync`/`ApproveAsync`/`RejectAsync`/`ConfirmReturnAsync` 中注入 `INotificationService`，触发对应通知。
 - **`Infrastructure/TestMaterials/MaterialFlowService.cs`**：在 `InitiateTransferAsync`/`ApproveAsync`/`RejectAsync` 中注入 `INotificationService`，触发对应通知。
 - **`Api/Controllers/NotificationController.cs`**：REST 接口（路由 `api/notifications`），`[Authorize]` 鉴权。
