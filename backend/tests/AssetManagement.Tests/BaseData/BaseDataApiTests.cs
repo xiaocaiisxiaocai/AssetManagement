@@ -783,6 +783,37 @@ public class BaseDataApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Category_with_assets_cannot_move_out_of_third_level()
+    {
+        await Login();
+        var leaf = await CreateCategory();
+        var asset = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "分类移动防护资产",
+            CategoryId = leaf.Id
+        });
+        asset.Code.Should().Be(0, asset.Message);
+
+        var toRoot = await _client.PutAsJsonAsync($"/api/categories/{leaf.Id}", new UpdateCategoryRequest
+        {
+            ParentId = null,
+            CodeSeg = leaf.CodeSeg
+        });
+        var rejected = await toRoot.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
+        rejected!.Code.Should().Be(4095);
+        rejected.Message.Should().Contain("第三级");
+
+        var otherLeaf = await CreateCategory();
+        var moved = await _client.PutAsJsonAsync($"/api/categories/{leaf.Id}", new UpdateCategoryRequest
+        {
+            ParentId = otherLeaf.ParentId,
+            CodeSeg = leaf.CodeSeg
+        });
+        var movedBody = await moved.Content.ReadFromJsonAsync<ApiResult<CategoryNodeDto>>();
+        movedBody!.Code.Should().Be(0, "移到另一个二级分类下仍是第三级，应允许");
+    }
+
+    [Fact]
     public async Task Department_with_asset_or_material_references_cannot_be_deleted()
     {
         await Login();

@@ -20,13 +20,12 @@ public class DatabaseBackupSafetyTests
     [Fact]
     public async Task Cancelling_backup_wait_terminates_child_process()
     {
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            ArgumentList = { "-NoProfile", "-Command", "Start-Sleep -Seconds 30" },
-            CreateNoWindow = true,
-            UseShellExecute = false,
-        });
+        var startInfo = OperatingSystem.IsWindows()
+            ? new ProcessStartInfo("powershell.exe") { ArgumentList = { "-NoProfile", "-Command", "Start-Sleep -Seconds 30" } }
+            : new ProcessStartInfo("sleep") { ArgumentList = { "30" } };
+        startInfo.CreateNoWindow = true;
+        startInfo.UseShellExecute = false;
+        using var process = Process.Start(startInfo);
         process.Should().NotBeNull();
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
 
@@ -101,7 +100,7 @@ public class DatabaseBackupSafetyTests
         }
     }
 
-    [Fact]
+    [WindowsOnlyFact]
     public async Task Current_sql_cleanup_failure_fails_backup_and_removes_generated_package()
     {
         var root = Path.Combine(Path.GetTempPath(), "assetmgmt-backup-current-lock", Guid.NewGuid().ToString("N"));
@@ -131,7 +130,7 @@ public class DatabaseBackupSafetyTests
         }
     }
 
-    [Fact]
+    [WindowsOnlyFact]
     public async Task Legacy_sql_cleanup_failure_warns_without_deleting_new_package()
     {
         var root = Path.Combine(Path.GetTempPath(), "assetmgmt-backup-legacy-lock", Guid.NewGuid().ToString("N"));

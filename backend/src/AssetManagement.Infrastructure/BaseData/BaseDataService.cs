@@ -489,7 +489,9 @@ public class BaseDataService : IBaseDataService
         var subtreeDepth = CategorySubtreeDepth(id, all);
         EnsureCategoryMaxDepth(targetDepth + subtreeDepth - 1);
 
+        var depthGuard = await CaptureAssetCategoryDepthsAsync(category, all);
         category.ParentId = request.ParentId;
+        EnsureAssetCategoriesStayThirdLevel(depthGuard, all);
         category.CodeSeg = request.CodeSeg.Trim();
         category.Remark = CategoryRemark(request.ParentId, request.Remark);
         await ValidateCategorySubtreeCodeSegsAsync(category, all, targetDepth);
@@ -854,6 +856,35 @@ public class BaseDataService : IBaseDataService
 
         return all.SingleOrDefault(x => x.Id == id.Value)
             ?? throw new BizException(4046, "资产分类不存在");
+    }
+
+    /// <summary>
+    /// 资产只能挂第三级分类。记录子树中挂有资产（含已删除资产）的分类当前层级，供移动后比对。
+    /// </summary>
+    private async Task<Dictionary<int, int>> CaptureAssetCategoryDepthsAsync(AssetCategory category, List<AssetCategory> all)
+    {
+        var subtreeIds = DescendantCategoryIds(category.Id, all).Append(category.Id).ToArray();
+        var usedIds = await _db.Assets.AsNoTracking()
+            .Where(x => subtreeIds.Contains(x.CategoryId))
+            .Select(x => x.CategoryId)
+            .Distinct()
+            .ToListAsync();
+        return usedIds.ToDictionary(id => id, id => CategoryDepth(all.Single(x => x.Id == id), all));
+    }
+
+    /// <summary>
+    /// 移动导致挂有资产的分类离开第三级时拒绝；层级未变的历史数据仍允许改编码和备注。
+    /// </summary>
+    private static void EnsureAssetCategoriesStayThirdLevel(Dictionary<int, int> previousDepths, List<AssetCategory> all)
+    {
+        foreach (var (id, previousDepth) in previousDepths)
+        {
+            var depth = CategoryDepth(all.Single(x => x.Id == id), all);
+            if (depth != previousDepth && depth != MaxCategoryDepth)
+            {
+                throw new BizException(4095, "该分类下挂有资产，移动后资产将不在第三级分类，不能移动");
+            }
+        }
     }
 
     private static int CategoryDepth(AssetCategory category, List<AssetCategory> all)
