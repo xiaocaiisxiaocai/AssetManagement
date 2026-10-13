@@ -1,0 +1,209 @@
+/* ========== 搜索栏 ========== */
+.asset-filter-strip {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.asset-filter-strip label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--asset-page-text-secondary);
+}
+
+/* ========== 分类列表 ========== */
+.asset-class-list {
+  display: grid;
+  flex: 1;
+  gap: 8px;
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.asset-class-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) 1fr auto;
+  min-height: 72px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.asset-class-row:hover,
+.asset-class-row:focus-visible {
+  border-color: var(--asset-page-border-strong);
+  outline: none;
+  box-shadow: 0 8px 20px hsl(211deg 70% 35% / 14%);
+  transform: translateY(-4px);
+}
+
+.asset-class-code {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 10px 14px;
+  overflow: hidden;
+  color: #fff;
+  background: var(--asset-page-panel-header-solid);
+}
+
+.asset-class-code span {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  padding: 4px 10px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgb(255 255 255 / 20%);
+  backdrop-filter: blur(10px);
+  border-radius: 999px;
+}
+
+.asset-class-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 10px 16px;
+}
+
+.asset-class-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--asset-page-text);
+  letter-spacing: -0.01em;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.asset-class-desc {
+  margin-top: 8px;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-class-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 260px;
+  padding: 10px 16px;
+}
+
+.asset-row-warning {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--el-color-warning);
+  white-space: nowrap;
+}
+
+.asset-row-warning::before {
+  margin-right: 4px;
+  color: var(--el-color-warning-light-3);
+  content: '●';
+}
+
+.asset-enter-button {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--el-color-primary);
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.asset-enter-button:hover {
+  color: var(--el-color-primary-dark-2);
+}
+
+/* ========== 空状态 ========== */
+.asset-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+  background: var(--asset-page-surface);
+  border: 2px dashed var(--asset-page-border);
+  border-radius: 12px;
+}
+
+/* ========== 分页器 ========== */
+.asset-pager {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--asset-page-surface);
+  border-top: 1px solid var(--asset-page-border);
+}
+
+.asset-pager-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.asset-pager-divider {
+  color: var(--asset-page-border);
+}
+
+/* ========== 响应式 ========== */
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
+@media (max-width: 768px) {
+  .asset-pager {
+    align-items: stretch;
+  }
+
+  .asset-class-row {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-class-code {
+    min-height: 48px;
+  }
+
+  .asset-class-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    min-width: 0;
+    padding-top: 0;
+  }
+}

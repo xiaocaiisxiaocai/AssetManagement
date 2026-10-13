@@ -1,0 +1,151 @@
+.asset-detail {
+  min-height: 420px;
+}
+
+.ad-header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.ad-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--el-text-color-primary);
+}
+
+.ad-sub {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.ad-no {
+  font-family: var(--el-font-family-mono, monospace);
+}
+
+.ad-dot {
+  color: var(--el-text-color-disabled);
+}
+
+.ad-sub-tag {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  background-color: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.ad-log-summary {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.ad-tags {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.ad-deleted-banner {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--el-color-danger);
+  background-color: var(--el-color-danger-light-9);
+  border: 1px solid var(--el-color-danger-light-7);
+  border-radius: 6px;
+}
+
+.ad-desc {
+  margin-bottom: 16px;
+}
+
+.ad-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+
+.ad-tabs :deep(.el-tabs__item) {
+  min-width: 112px;
+  height: 44px;
+  font-weight: 500;
+}
+
+.ad-tab-content {
+  min-height: 330px;
+  max-height: 56vh;
+  padding: 18px 2px 4px;
+  overflow: auto;
+}
+
+.ad-timeline-section {
+  padding: 6px 12px 0 4px;
+}
+
+.ad-initial-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.ad-initial-custodian {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.ad-section {
+  margin-bottom: 20px;
+}
+
+.ad-section:last-child {
+  margin-bottom: 0;
+}
+
+.ad-section-title {
+  padding-left: 9px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--el-text-color-primary);
+  border-left: 3px solid var(--el-color-primary);
+}
+
+.ad-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ad-photo {
+  width: 88px;
+  height: 88px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+}
+
+@media (max-width: 640px) {
+  .ad-header {
+    flex-direction: column;
+  }
+
+  .ad-sub {
+    flex-wrap: wrap;
+  }
+
+  .ad-tabs :deep(.el-tabs__item) {
+    min-width: auto;
+    padding: 0 12px;
+  }
+}

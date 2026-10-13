@@ -1,0 +1,162 @@
+/* 全局样式，不使用 scoped，确保能覆盖 bpmn-js */
+
+/* bpmn-js 的 SVG 与浮动工具条是运行时插入的 DOM，需要全局命名空间覆盖。 */
+.dark .bpmn-modeler-wrapper {
+  --workflow-page-bg: var(--el-bg-color-page);
+  --workflow-panel-bg: var(--el-bg-color);
+  --workflow-panel-soft-bg: rgb(34 37 43);
+  --workflow-section-bg: rgb(32 35 40);
+  --workflow-card-bg: var(--el-fill-color-light);
+  --workflow-card-icon-bg: rgb(42 47 55);
+  --workflow-border: rgb(64 68 77);
+  --workflow-border-soft: rgb(58 62 70);
+  --workflow-border-dashed: rgb(72 76 86);
+  --workflow-text: var(--el-text-color-primary);
+  --workflow-title: var(--el-text-color-primary);
+  --workflow-muted: var(--el-text-color-secondary);
+  --workflow-muted-strong: var(--el-text-color-regular);
+  --workflow-primary: var(--el-color-primary);
+  --workflow-grid-line: rgb(255 255 255 / 5%);
+  --workflow-shadow: none;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container {
+  --workflow-canvas-bg: var(--el-bg-color-page);
+  --workflow-node-bg: rgb(38 42 49);
+  --workflow-node-stroke: rgb(116 134 162);
+  --workflow-node-text: var(--el-text-color-primary);
+  --workflow-flow-stroke: rgb(156 170 190);
+  --workflow-label-text: var(--el-text-color-primary);
+  --workflow-tool-bg: rgb(34 37 43);
+  --workflow-tool-border: rgb(79 86 99);
+  --workflow-tool-icon: var(--el-text-color-primary);
+}
+
+.bpmn-modeler-wrapper .bpmn-container .viewport,
+.bpmn-modeler-wrapper .bpmn-container .djs-container,
+.bpmn-modeler-wrapper .bpmn-container .djs-canvas,
+.bpmn-modeler-wrapper .bpmn-container svg[data-element-id] {
+  background-color: var(--workflow-canvas-bg) !important;
+  background-image: linear-gradient(
+      var(--workflow-grid-line) 1px,
+      transparent 1px
+    ),
+    linear-gradient(90deg, var(--workflow-grid-line) 1px, transparent 1px) !important;
+  background-size: 16px 16px !important;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container svg,
+.dark .bpmn-modeler-wrapper .bpmn-container .viewport,
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-container,
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-canvas,
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-dragger {
+  background-color: var(--workflow-canvas-bg) !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > rect,
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > circle,
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > ellipse,
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > polygon,
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual > path,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > rect,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > circle,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > ellipse,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > polygon,
+.bpmn-modeler-wrapper .bpmn-container .djs-dragger .djs-visual > path {
+  fill: var(--workflow-node-bg) !important;
+  stroke: var(--workflow-node-stroke) !important;
+  stroke-width: 1.8px !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-shape .djs-visual text,
+.bpmn-modeler-wrapper .bpmn-container .djs-label .djs-visual text,
+.bpmn-modeler-wrapper .bpmn-container .djs-label .djs-visual tspan {
+  font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif !important;
+  font-size: 12px !important;
+  fill: var(--workflow-node-text) !important;
+  stroke: none !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-connection .djs-visual > path,
+.bpmn-modeler-wrapper .bpmn-container .djs-connection .djs-visual > polyline,
+.bpmn-modeler-wrapper .bpmn-container .djs-connection .djs-visual marker path {
+  stroke: var(--workflow-flow-stroke) !important;
+  stroke-width: 2px !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-connection .djs-visual marker path {
+  fill: var(--workflow-flow-stroke) !important;
+}
+
+.bpmn-modeler-wrapper
+  .bpmn-container
+  .djs-connection.selected
+  .djs-visual
+  > path {
+  stroke: var(--workflow-primary) !important;
+  stroke-width: 3px !important;
+}
+
+.bpmn-modeler-wrapper
+  .bpmn-container
+  .djs-element[data-element-id$='_label']
+  .djs-visual
+  text,
+.bpmn-modeler-wrapper
+  .bpmn-container
+  .djs-element[data-element-id$='_label']
+  .djs-visual
+  tspan {
+  font-weight: 600 !important;
+  fill: var(--workflow-label-text) !important;
+  stroke: var(--workflow-canvas-bg) !important;
+  stroke-linejoin: round !important;
+  stroke-width: 5px !important;
+  paint-order: stroke !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-palette,
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad {
+  background: var(--workflow-tool-bg) !important;
+  border: 1px solid var(--workflow-tool-border) !important;
+  border-radius: 4px !important;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-palette,
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-context-pad {
+  box-shadow: 0 8px 20px rgb(0 0 0 / 28%) !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-palette .entry,
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry {
+  color: var(--workflow-tool-icon) !important;
+  background-color: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 3px;
+  box-shadow: none !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-palette .entry:hover,
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry:hover {
+  color: var(--workflow-primary) !important;
+  background: var(--workflow-card-icon-bg) !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad .group {
+  background: var(--workflow-tool-bg) !important;
+}
+
+.bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry::before,
+.bpmn-modeler-wrapper .bpmn-container .djs-palette .entry::before {
+  color: currentcolor !important;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry {
+  background-color: rgb(34 37 43) !important;
+  border-color: rgb(79 86 99) !important;
+}
+
+.dark .bpmn-modeler-wrapper .bpmn-container .djs-context-pad .entry:hover {
+  color: var(--workflow-primary) !important;
+  background-color: rgb(46 54 66) !important;
+}

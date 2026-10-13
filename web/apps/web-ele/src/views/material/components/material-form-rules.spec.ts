@@ -147,7 +147,15 @@ describe('测试料件表单规则', () => {
       cwd(),
       'apps/web-ele/src/views/material/components/MaterialFormDialog.vue',
     );
-    const source = readFileSync(componentPath, 'utf8');
+    const stylePath = join(
+      cwd(),
+      'apps/web-ele/src/views/material/components/MaterialFormDialog.css',
+    );
+    const fieldsPath = join(
+      cwd(),
+      'apps/web-ele/src/views/material/components/MaterialFormFields.vue',
+    );
+    const source = `${readFileSync(componentPath, 'utf8')}\n${readFileSync(fieldsPath, 'utf8')}\n${readFileSync(stylePath, 'utf8')}`;
 
     expect(source).toContain('class="material-form-dialog"');
     expect(source).toContain('width="840px"');

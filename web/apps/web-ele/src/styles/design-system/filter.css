@@ -1,0 +1,38 @@
+/* ========== 筛选面板 ========== */
+.filter-panel {
+  flex-shrink: 0;
+  padding: 8px var(--asset-panel-padding-inline);
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.role-filter-panel,
+.user-filter-panel,
+.filter-panel {
+  padding-block: 10px !important;
+  padding-inline: var(--asset-panel-padding-inline) !important;
+  background: var(--asset-page-surface) !important;
+  border-color: var(--asset-page-border) !important;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.role-filter-panel .filter-form .el-form-item,
+.user-filter-panel .filter-form .el-form-item,
+.filter-panel .filter-form .el-form-item {
+  margin-right: 12px;
+  margin-bottom: 0;
+}
+
+.filter-form .el-form-item__label {
+  padding: 0 8px 0 0 !important;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 32px !important;
+  color: var(--asset-page-muted);
+}
+
+.filter-form .el-form-item__content {
+  line-height: 32px;
+}

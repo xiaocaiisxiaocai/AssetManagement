@@ -1,0 +1,41 @@
+.audit-detail {
+  padding: 8px 16px 12px;
+}
+
+.audit-error {
+  padding: 8px 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+  border: 1px solid var(--el-color-danger-light-7);
+  border-radius: 4px;
+}
+
+.audit-changes {
+  margin-top: 12px;
+}
+
+.audit-changes-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.audit-changes-empty {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-lighter);
+  border-radius: 4px;
+}
+
+.audit-value-before {
+  color: var(--el-text-color-secondary);
+  text-decoration: line-through;
+}
+
+.audit-value-after {
+  color: var(--el-color-success);
+}

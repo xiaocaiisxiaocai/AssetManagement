@@ -1,0 +1,233 @@
+.condition-builder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 78px;
+  gap: 6px;
+  width: 100%;
+}
+
+.condition-builder > :deep(.el-select) {
+  width: 100% !important;
+  min-width: 0;
+}
+
+.condition-builder > :deep(.el-select:nth-child(3)) {
+  grid-column: 1 / -1;
+}
+
+.expression-input {
+  margin-top: 8px;
+}
+
+.tip-box {
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+  background: var(--workflow-card-bg, var(--el-fill-color-light));
+  border: 1px solid var(--workflow-border, var(--el-border-color));
+  border-radius: 4px;
+}
+
+.branch-condition {
+  padding: 12px;
+  margin-top: 10px;
+  background: var(--workflow-panel-bg, var(--el-bg-color));
+  border: 1px solid var(--workflow-border-soft, var(--el-border-color));
+  border-radius: 6px;
+}
+
+.branch-card-header,
+.branch-identity,
+.branch-tags {
+  display: flex;
+  align-items: center;
+}
+
+.branch-card-header {
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.branch-identity {
+  gap: 8px;
+  min-width: 0;
+}
+
+.branch-identity > div {
+  min-width: 0;
+}
+
+.branch-identity strong,
+.branch-identity span {
+  display: block;
+}
+
+.branch-identity strong {
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--workflow-title, var(--el-text-color-primary));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-identity span {
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-number {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 26px;
+  color: var(--workflow-primary, var(--el-color-primary));
+  text-align: center;
+  background: var(--workflow-card-icon-bg, var(--el-color-primary-light-9));
+  border-radius: 50%;
+}
+
+.branch-tags {
+  gap: 6px;
+  padding: 7px 8px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+  background: var(--workflow-card-bg, var(--el-fill-color-light));
+  border-radius: 4px;
+}
+
+.branch-health {
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  line-height: 18px;
+  border: 1px solid;
+  border-radius: 4px;
+}
+
+.branch-health.is-ready {
+  color: var(--el-color-success-dark-2);
+  background: var(--el-color-success-light-9);
+  border-color: var(--el-color-success-light-7);
+}
+
+.branch-health.is-warning {
+  color: var(--el-color-danger-dark-2);
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-7);
+}
+
+.branch-health.is-parallel {
+  color: var(--el-color-warning-dark-2);
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning-light-7);
+}
+
+.field-help {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--workflow-muted, var(--el-text-color-secondary));
+}
+
+.default-rule {
+  width: 100%;
+  padding: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--el-color-success-dark-2);
+  background: var(--el-color-success-light-9);
+  border: 1px dashed var(--el-color-success-light-5);
+  border-radius: 4px;
+}
+
+.branch-expression {
+  width: 100%;
+  word-break: break-all;
+}
+
+.empty-branch {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+  background: var(--workflow-card-bg, var(--el-fill-color-light));
+  border: 1px dashed var(--workflow-border-dashed, var(--el-border-color));
+  border-radius: 4px;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+
+:deep(.el-form-item__label) {
+  font-size: 12px;
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-select__wrapper),
+:deep(.el-textarea__inner) {
+  color: var(--workflow-text, var(--el-text-color-primary));
+  background-color: var(--workflow-card-bg, var(--el-fill-color-light));
+  border: 1px solid var(--workflow-border, var(--el-border-color));
+  box-shadow: none;
+}
+
+:deep(.el-input__wrapper:hover),
+:deep(.el-select__wrapper:hover),
+:deep(.el-textarea__inner:hover) {
+  border-color: var(--workflow-primary, var(--el-color-primary));
+  box-shadow: none;
+}
+
+:deep(.el-input__wrapper.is-focus),
+:deep(.el-select__wrapper.is-focused),
+:deep(.el-textarea__inner:focus) {
+  border-color: var(--workflow-primary, var(--el-color-primary));
+  box-shadow: 0 0 0 1px var(--workflow-primary, var(--el-color-primary));
+}
+
+:deep(.el-input__inner),
+:deep(.el-select__placeholder),
+:deep(.el-textarea__inner) {
+  color: var(--workflow-text, var(--el-text-color-primary));
+}
+
+:deep(.el-select__selected-item),
+:deep(.el-select__placeholder) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:deep(.el-radio-button__inner) {
+  color: var(--workflow-muted-strong, var(--el-text-color-regular));
+  background: var(--workflow-card-bg, var(--el-fill-color-light));
+  border-color: var(--workflow-border, var(--el-border-color));
+}
+
+:deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  color: #fff;
+  background: var(--workflow-primary, var(--el-color-primary));
+  border-color: var(--workflow-primary, var(--el-color-primary));
+}
+
+:global(.dark) .property-section,
+:global(.dark) .branch-condition,
+:global(.dark) .readonly-field,
+:global(.dark) .tip-box,
+:global(.dark) .empty-branch,
+:global(.dark) :deep(.el-input__wrapper),
+:global(.dark) :deep(.el-select__wrapper),
+:global(.dark) :deep(.el-textarea__inner),
+:global(.dark) :deep(.el-radio-button__inner) {
+  border-color: var(--workflow-border, var(--el-border-color));
+}

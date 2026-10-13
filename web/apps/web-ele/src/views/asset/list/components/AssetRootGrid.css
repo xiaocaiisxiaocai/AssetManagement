@@ -1,0 +1,125 @@
+/* ========== 一级分类网格 ========== */
+.asset-root-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(auto-fill, 300px);
+  gap: var(--asset-page-gap);
+  align-content: start;
+  align-items: start;
+  min-height: 0;
+  padding: 4px 0 8px;
+  overflow-y: auto;
+}
+
+.asset-root-card {
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.asset-root-card:hover,
+.asset-root-card:focus-visible {
+  border-color: var(--asset-page-border-strong);
+  outline: none;
+  box-shadow: 0 8px 20px hsl(211deg 70% 35% / 14%);
+  transform: translateY(-4px);
+}
+
+.asset-root-card-code {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  overflow: hidden;
+  color: #fff;
+  background: var(--asset-page-panel-header-solid);
+}
+
+.asset-root-card-code span {
+  position: relative;
+  z-index: 1;
+  max-width: calc(100% - 24px);
+  padding: 4px 10px;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgb(255 255 255 / 20%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 8px;
+}
+
+.asset-root-card-body {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 60px;
+  padding: 12px 14px;
+  background: var(--asset-page-surface);
+}
+
+.asset-root-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 8px;
+  justify-content: center;
+}
+
+.asset-row-warning {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--el-color-warning);
+  white-space: nowrap;
+}
+
+.asset-row-warning::before {
+  margin-right: 4px;
+  color: var(--el-color-warning-light-3);
+  content: '●';
+}
+
+.asset-enter-button {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--el-color-primary);
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.asset-enter-button:hover {
+  color: var(--el-color-primary-dark-2);
+}
+
+/* ========== 空状态 ========== */
+.asset-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+  background: var(--asset-page-surface);
+  border: 2px dashed var(--asset-page-border);
+  border-radius: 12px;
+}
+
+/* ========== 响应式 ========== */
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
+@media (max-width: 768px) {
+  .asset-root-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,6 @@
+.form-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--el-text-color-secondary);
+}

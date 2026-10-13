@@ -1,0 +1,129 @@
+/* ========== 空状态文本 ========== */
+.empty-text {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.category-code-link {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 8px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--el-color-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--el-color-primary-light-9);
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: 4px;
+}
+
+.category-code-link:hover,
+.category-code-link:focus-visible {
+  background: var(--asset-page-surface-soft);
+  border-color: var(--el-color-primary);
+  outline: none;
+}
+
+.el-form-item {
+  margin-bottom: 16px;
+}
+
+.el-form-item__label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.el-input__inner {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.el-textarea__inner {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.el-descriptions {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.el-descriptions__label {
+  font-weight: 500;
+  color: var(--asset-page-muted);
+}
+
+.el-descriptions__content {
+  color: var(--asset-page-text);
+}
+
+/* ========== 统计卡片 ========== */
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.stat-card {
+  padding: 16px;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.stat-card:hover {
+  box-shadow: var(--asset-page-shadow-hover);
+}
+
+.report-stat-cards .stat-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 12px 16px;
+}
+
+.report-stat-cards .stat-label {
+  margin-bottom: 0;
+  font-weight: 500;
+}
+
+.report-stat-cards .stat-value {
+  font-size: 26px;
+  line-height: 32px;
+}
+
+.stat-label {
+  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+  color: var(--asset-page-text);
+}
+
+.stat-value-success {
+  color: var(--el-color-success);
+}
+
+.stat-value-warning {
+  color: var(--el-color-warning);
+}
+
+.stat-value-danger {
+  color: var(--el-color-danger);
+}

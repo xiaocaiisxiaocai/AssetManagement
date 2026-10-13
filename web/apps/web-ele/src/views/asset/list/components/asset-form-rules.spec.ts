@@ -6,6 +6,15 @@ import { describe, expect, it } from 'vitest';
 
 import { validateAssetForm } from './asset-form-rules';
 
+function readAssetFormDialogSource() {
+  const dir = join(cwd(), 'apps/web-ele/src/views/asset/list/components');
+  return [
+    readFileSync(join(dir, 'AssetFormDialog.vue'), 'utf8'),
+    readFileSync(join(dir, 'AssetFormFields.vue'), 'utf8'),
+    readFileSync(join(dir, 'AssetFormDialog.css'), 'utf8'),
+  ].join('\n');
+}
+
 const baseForm = {
   categoryId: 1,
   custodianId: 4,
@@ -58,11 +67,7 @@ describe('固定资产表单规则', () => {
   });
 
   it('必填项在界面上显示星号', () => {
-    const componentPath = join(
-      cwd(),
-      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
-    );
-    const source = readFileSync(componentPath, 'utf8');
+    const source = readAssetFormDialogSource();
     const requiredLabels = [
       '资产名称',
       '资产分类',
@@ -96,11 +101,7 @@ describe('固定资产表单规则', () => {
   });
 
   it('数量字段注册并渲染数字输入控件', () => {
-    const componentPath = join(
-      cwd(),
-      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
-    );
-    const source = readFileSync(componentPath, 'utf8');
+    const source = readAssetFormDialogSource();
 
     expect(source).toMatch(
       /import\s*\{[\s\S]*?\bElInputNumber\b[\s\S]*?\}\s*from 'element-plus';/,
@@ -111,11 +112,7 @@ describe('固定资产表单规则', () => {
   });
 
   it('桌面端使用紧凑双列布局避免弹窗超出视口', () => {
-    const componentPath = join(
-      cwd(),
-      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
-    );
-    const source = readFileSync(componentPath, 'utf8');
+    const source = readAssetFormDialogSource();
 
     expect(source).toContain('align-center');
     expect(source).toContain('width="840px"');
@@ -130,11 +127,7 @@ describe('固定资产表单规则', () => {
   });
 
   it('资产登记字段仅选择日期', () => {
-    const componentPath = join(
-      cwd(),
-      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
-    );
-    const source = readFileSync(componentPath, 'utf8');
+    const source = readAssetFormDialogSource();
 
     expect(source).toContain('<ElFormItem label="登记日期">');
     expect(source).toContain('placeholder="选择资产登记日期"');
@@ -143,11 +136,7 @@ describe('固定资产表单规则', () => {
   });
 
   it('目前状况使用数据字典下拉选择', () => {
-    const componentPath = join(
-      cwd(),
-      'apps/web-ele/src/views/asset/list/components/AssetFormDialog.vue',
-    );
-    const source = readFileSync(componentPath, 'utf8');
+    const source = readAssetFormDialogSource();
 
     expect(source).toContain('placeholder="请选择资产目前状况"');
     expect(source).toContain('v-for="option in selectableConditionOptions"');

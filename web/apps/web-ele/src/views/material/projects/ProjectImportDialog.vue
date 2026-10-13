@@ -178,32 +178,4 @@ async function confirmImport() {
   </ElDialog>
 </template>
 
-<style scoped>
-.project-import-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.project-import-file-input {
-  display: none;
-}
-
-.project-import-file-name {
-  min-width: 180px;
-  max-width: 320px;
-  overflow: hidden;
-  color: var(--asset-page-text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-import-hint {
-  margin-bottom: 12px;
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--asset-page-muted);
-}
-</style>
+<style scoped src="./ProjectImportDialog.css"></style>

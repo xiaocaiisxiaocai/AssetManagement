@@ -1,388 +1,61 @@
 <script lang="ts" setup>
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
-
-import { useAccess } from '@vben/access';
-
-import {
-  ElButton,
-  ElDialog,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElMessage,
-  ElMessageBox,
-  ElOption,
-  ElSelect,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus';
-
-import {
-  createWorkflowApi,
-  deleteWorkflowApi,
-  getWorkflowsApi,
-  saveWorkflowApi,
-  saveWorkflowDesignApi,
-  type SaveWorkflowPayload,
-  setWorkflowStatusApi,
-  type WorkflowItem,
-} from '#/api/workflow';
-import { createSingleFlight } from '#/utils/single-flight';
-import { buildWorkflowActionAccess } from '#/views/permissions/action-access';
-
-import { isWorkflowDesignerBusy } from './designer-save-state';
+import { useWorkflowAdmin } from './use-workflow-admin';
+import WorkflowFormDialog from './WorkflowFormDialog.vue';
+import WorkflowHeader from './WorkflowHeader.vue';
+import WorkflowTable from './WorkflowTable.vue';
 
 defineOptions({ name: 'AdminWorkflows' });
 
-const BpmnModeler = defineAsyncComponent(() => import('./bpmn-modeler.vue'));
-
-const { hasAccessByCodes } = useAccess();
-const workflowActionAccess = computed(() =>
-  buildWorkflowActionAccess(hasAccessByCodes),
-);
-const loading = ref(false);
-const workflows = ref<WorkflowItem[]>([]);
-const dialogVisible = ref(false);
-const currentWorkflow = ref<null | WorkflowItem>(null);
-const formDialogVisible = ref(false);
-const formSaving = ref(false);
-const designSaving = ref(false);
-const designerExporting = ref(false);
-const designerBusy = computed(() =>
-  isWorkflowDesignerBusy(designerExporting.value, designSaving.value),
-);
-const editingWorkflow = ref<null | WorkflowItem>(null);
-const workflowForm = ref<SaveWorkflowPayload>({
-  bizType: '',
-  bpmnXml: null,
-  name: '',
-});
-
-const bizTypeOptions = [
-  { label: '资产借用', value: 'borrow' },
-  { label: '借用延期', value: 'extension' },
-  { label: '资产转让', value: 'transfer' },
-  { label: '资产归还', value: 'return' },
-  { label: '测试料件流转', value: 'material_transfer' },
-];
-
-const bpmnStatusMap = {
-  configured: { label: '已配置', type: 'success' },
-  empty: { label: '未配置', type: 'warning' },
-  invalid: { label: '配置异常', type: 'danger' },
-} as const;
-
-const loadWorkflows = async () => {
-  loading.value = true;
-  try {
-    workflows.value = await getWorkflowsApi();
-  } catch {
-    // 错误已由 request.ts 拦截器统一弹出
-  } finally {
-    loading.value = false;
-  }
-};
-
-const openDesigner = (workflow: WorkflowItem) => {
-  currentWorkflow.value = workflow;
-  designerExporting.value = false;
-  dialogVisible.value = true;
-};
-
-const openCreateDialog = () => {
-  editingWorkflow.value = null;
-  workflowForm.value = {
-    bizType: '',
-    bpmnXml: null,
-    name: '',
-  };
-  formDialogVisible.value = true;
-};
-
-const openEditDialog = (workflow: WorkflowItem) => {
-  editingWorkflow.value = workflow;
-  workflowForm.value = {
-    bizType: workflow.bizType,
-    bpmnXml: workflow.bpmnXml || null,
-    name: workflow.name,
-  };
-  formDialogVisible.value = true;
-};
-
-const handleFormSave = async () => {
-  const name = workflowForm.value.name.trim();
-  const bizType = workflowForm.value.bizType.trim();
-  if (!name) {
-    ElMessage.warning('请填写流程名称');
-    return;
-  }
-  if (!bizType) {
-    ElMessage.warning('请填写业务类型');
-    return;
-  }
-
-  formSaving.value = true;
-  try {
-    const payload = {
-      ...workflowForm.value,
-      bizType,
-      name,
-    };
-
-    if (editingWorkflow.value) {
-      await saveWorkflowApi(editingWorkflow.value.id, payload);
-      ElMessage.success('修改成功');
-    } else {
-      await createWorkflowApi(payload);
-      ElMessage.success('新增成功');
-    }
-
-    formDialogVisible.value = false;
-    await loadWorkflows();
-  } catch {
-    // 错误已由 request.ts 拦截器统一弹出
-  } finally {
-    formSaving.value = false;
-  }
-};
-
-const handleDelete = async (workflow: WorkflowItem) => {
-  try {
-    await ElMessageBox.confirm(
-      `确认删除工作流「${workflow.name}」？删除后不可恢复。`,
-      '删除工作流',
-      { type: 'warning' },
-    );
-    await deleteWorkflowApi(workflow.id);
-    ElMessage.success('删除成功');
-    await loadWorkflows();
-  } catch {
-    // 其他错误已由 request.ts 拦截器统一弹出
-  }
-};
-
-const handleToggleStatus = async (workflow: WorkflowItem) => {
-  const nextActive = !workflow.isActive;
-  try {
-    await ElMessageBox.confirm(
-      `确认${nextActive ? '启用' : '停用'}工作流「${workflow.name}」？`,
-      `${nextActive ? '启用' : '停用'}工作流`,
-      { type: 'warning' },
-    );
-    await setWorkflowStatusApi(workflow.id, nextActive);
-    ElMessage.success(`${nextActive ? '启用' : '停用'}成功`);
-    await loadWorkflows();
-  } catch {}
-};
-
-const runDesignSave = createSingleFlight(async (bpmnXml: string) => {
-  const workflow = currentWorkflow.value;
-  if (!workflow) return;
-
-  designSaving.value = true;
-  try {
-    const previousId = workflow.id;
-    const saved = await saveWorkflowDesignApi(previousId, bpmnXml);
-    ElMessage.success(
-      saved.id === previousId
-        ? '保存成功'
-        : '已创建并启用新版本，进行中的申请继续使用旧版本',
-    );
-    dialogVisible.value = false;
-    await loadWorkflows();
-  } catch {
-    // 错误已由 request.ts 拦截器统一弹出
-  } finally {
-    designSaving.value = false;
-  }
-});
-
-const handleSave = async (bpmnXml: string, onComplete: () => void) => {
-  try {
-    await runDesignSave(bpmnXml);
-  } finally {
-    onComplete();
-    designerExporting.value = false;
-  }
-};
-
-const handleDesignerBeforeClose = (done: () => void) => {
-  if (designerBusy.value) {
-    ElMessage.warning('正在保存流程，请稍候');
-    return;
-  }
-  done();
-};
-
-const bizTypeLabel = (workflow: WorkflowItem) =>
-  workflow.bizTypeLabel || workflow.bizType;
-
-const bpmnStatusMeta = (status: WorkflowItem['bpmnStatus']) =>
-  bpmnStatusMap[status] ?? bpmnStatusMap.empty;
-
-onMounted(() => {
-  loadWorkflows();
-});
+const {
+  BpmnModeler,
+  workflowActionAccess,
+  loading,
+  workflows,
+  dialogVisible,
+  currentWorkflow,
+  formDialogVisible,
+  formSaving,
+  designSaving,
+  designerExporting,
+  designerBusy,
+  editingWorkflow,
+  workflowForm,
+  bizTypeOptions,
+  openDesigner,
+  openCreateDialog,
+  openEditDialog,
+  handleFormSave,
+  handleDelete,
+  handleToggleStatus,
+  handleSave,
+  handleDesignerBeforeClose,
+} = useWorkflowAdmin();
 </script>
 
 <template>
   <re-page>
     <div class="page-container">
-      <div class="page-header">
-        <div>
-          <h2 class="page-title">工作流设计器</h2>
-        </div>
-        <div class="page-actions">
-          <ElButton
-            v-if="workflowActionAccess.canCreate"
-            type="primary"
-            @click="openCreateDialog"
-          >
-            新增工作流
-          </ElButton>
-        </div>
-      </div>
-
-      <div class="table-panel">
-        <ElTable :data="workflows" border height="100%" v-loading="loading">
-          <ElTableColumn
-            align="center"
-            class-name="hide-on-mobile"
-            label="ID"
-            prop="id"
-            width="80"
-          />
-          <ElTableColumn label="名称" min-width="180" prop="name" />
-          <ElTableColumn
-            align="center"
-            label="业务类型"
-            prop="bizType"
-            width="120"
-          >
-            <template #default="{ row }">
-              <ElTag size="small">{{ bizTypeLabel(row) }}</ElTag>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn
-            align="center"
-            class-name="hide-on-mobile"
-            label="BPMN 状态"
-            width="120"
-          >
-            <template #default="{ row }">
-              <ElTag
-                :title="row.bpmnValidationErrors?.join('；')"
-                :type="bpmnStatusMeta(row.bpmnStatus).type"
-                size="small"
-              >
-                {{ bpmnStatusMeta(row.bpmnStatus).label }}
-              </ElTag>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn align="center" label="状态" width="100">
-            <template #default="{ row }">
-              <ElTag :type="row.isActive ? 'success' : 'info'" size="small">
-                {{ row.isActive ? '启用' : '停用' }}
-              </ElTag>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn
-            v-if="
-              workflowActionAccess.canDesign ||
-              workflowActionAccess.canEdit ||
-              workflowActionAccess.canDelete
-            "
-            align="center"
-            fixed="right"
-            label="操作"
-            width="290"
-          >
-            <template #default="{ row }">
-              <ElButton
-                v-if="workflowActionAccess.canDesign"
-                link
-                size="small"
-                type="primary"
-                @click="openDesigner(row)"
-              >
-                设计流程
-              </ElButton>
-              <ElButton
-                v-if="workflowActionAccess.canEdit"
-                link
-                size="small"
-                type="primary"
-                @click="openEditDialog(row)"
-              >
-                编辑
-              </ElButton>
-              <ElButton
-                v-if="workflowActionAccess.canEdit"
-                :type="row.isActive ? 'warning' : 'success'"
-                link
-                size="small"
-                @click="handleToggleStatus(row)"
-              >
-                {{ row.isActive ? '停用' : '启用' }}
-              </ElButton>
-              <ElButton
-                v-if="workflowActionAccess.canDelete"
-                link
-                size="small"
-                type="danger"
-                @click="handleDelete(row)"
-              >
-                删除
-              </ElButton>
-            </template>
-          </ElTableColumn>
-        </ElTable>
-      </div>
-
-      <ElDialog
-        v-model="formDialogVisible"
-        :close-on-click-modal="false"
-        :title="editingWorkflow ? '编辑工作流' : '新增工作流'"
-        width="520px"
-      >
-        <ElForm label-position="top" label-width="90px">
-          <ElFormItem label="流程名称" required>
-            <ElInput
-              v-model="workflowForm.name"
-              placeholder="如：资产借用流程"
-            />
-          </ElFormItem>
-          <ElFormItem label="业务类型" required>
-            <ElSelect
-              v-model="workflowForm.bizType"
-              allow-create
-              filterable
-              placeholder="请选择业务类型"
-              style="width: 100%"
-            >
-              <ElOption
-                v-for="item in bizTypeOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </ElSelect>
-          </ElFormItem>
-        </ElForm>
-
-        <template #footer>
-          <ElButton @click="formDialogVisible = false">取消</ElButton>
-          <ElButton
-            :loading="formSaving"
-            type="primary"
-            @click="handleFormSave"
-          >
-            保存
-          </ElButton>
-        </template>
-      </ElDialog>
-
+      <WorkflowHeader
+        :access="workflowActionAccess"
+        @create="openCreateDialog"
+      />
+      <WorkflowTable
+        :access="workflowActionAccess"
+        :loading="loading"
+        :workflows="workflows"
+        @delete="handleDelete"
+        @design="openDesigner"
+        @edit="openEditDialog"
+        @toggle-status="handleToggleStatus"
+      />
+      <WorkflowFormDialog
+        v-model:form="workflowForm"
+        v-model:visible="formDialogVisible"
+        :biz-type-options="bizTypeOptions"
+        :editing="!!editingWorkflow"
+        :saving="formSaving"
+        @save="handleFormSave"
+      />
       <!-- BPMN 设计器对话框 -->
       <ElDialog
         v-model="dialogVisible"
@@ -408,50 +81,4 @@ onMounted(() => {
   </re-page>
 </template>
 
-<style>
-.workflow-designer-dialog {
-  --el-dialog-bg-color: #eef3f9;
-
-  background: #eef3f9;
-}
-
-.dark .workflow-designer-dialog {
-  --el-dialog-bg-color: var(--el-bg-color-page);
-
-  background: var(--el-bg-color-page);
-}
-
-.workflow-designer-dialog .el-dialog__header {
-  display: flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 16px;
-  margin: 0;
-  background: #fff;
-  border-bottom: 1px solid #d8e0eb;
-}
-
-.dark .workflow-designer-dialog .el-dialog__header {
-  background: var(--el-bg-color);
-  border-bottom-color: var(--el-border-color);
-}
-
-.workflow-designer-dialog .el-dialog__title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1f3f6d;
-}
-
-.dark .workflow-designer-dialog .el-dialog__title {
-  color: var(--el-text-color-primary);
-}
-
-.workflow-designer-dialog .el-dialog__headerbtn {
-  top: 4px;
-}
-
-.workflow-designer-dialog .el-dialog__body {
-  height: calc(100vh - 44px);
-  padding: 0;
-}
-</style>
+<style src="./index.css"></style>

@@ -1,0 +1,21 @@
+.borrow-filter-panel {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.borrow-filter-panel .filter-form {
+  flex: 1;
+  min-width: 0;
+}
+
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
+@media (max-width: 768px) {
+  .borrow-filter-panel {
+    flex-wrap: wrap;
+  }
+
+  .borrow-filter-panel .filter-form {
+    flex-basis: 100%;
+  }
+}

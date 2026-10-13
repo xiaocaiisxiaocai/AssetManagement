@@ -1,0 +1,20 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped src 支持 :deep/:global */
+
+/* ========== 对话框优化 ========== */
+:deep(.el-dialog) {
+  border-radius: 12px;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--asset-page-border);
+}
+
+:deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid var(--asset-page-border);
+}

@@ -1,0 +1,12 @@
+.material-projects-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .material-projects-page {
+    min-height: 100%;
+    overflow-y: auto;
+  }
+}

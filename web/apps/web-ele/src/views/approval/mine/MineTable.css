@@ -1,0 +1,48 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped src 支持 :deep/:global */
+
+/* ========== 表格面板 ========== */
+.mine-table-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.mine-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.mine-table-panel :deep(.el-table th.el-table__cell) {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header-solid);
+}
+
+.mine-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.mine-table-panel :deep(.el-table td.el-table__cell),
+.mine-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: var(--asset-page-border);
+}
+
+.mine-table-panel :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+}
+
+.mine-empty-text {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}

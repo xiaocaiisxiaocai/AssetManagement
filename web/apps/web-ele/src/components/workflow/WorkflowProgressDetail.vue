@@ -91,35 +91,4 @@ function opinionText(step: WorkflowProgressStep) {
   <div v-else class="workflow-progress-empty">暂无流转记录</div>
 </template>
 
-<style scoped>
-.workflow-progress-detail {
-  padding: 8px 4px 0;
-}
-
-.workflow-step-title {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.workflow-step-people,
-.workflow-step-opinion {
-  margin-top: 6px;
-  color: var(--el-text-color-secondary);
-}
-
-.workflow-step-person {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  max-width: 360px;
-  padding: 4px 0;
-}
-
-.workflow-progress-empty {
-  padding: 24px;
-  color: var(--el-text-color-secondary);
-  text-align: center;
-}
-</style>
+<style scoped src="./WorkflowProgressDetail.css"></style>

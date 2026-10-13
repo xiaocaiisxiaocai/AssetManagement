@@ -1,0 +1,21 @@
+/* ========== 筛选面板 ========== */
+.user-filter-panel {
+  flex-shrink: 0;
+  padding: 16px 20px;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.user-search-form :deep(.el-form-item) {
+  margin-right: 12px;
+  margin-bottom: 0;
+}
+
+.user-search-form :deep(.el-form-item__label) {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--asset-page-text-secondary);
+}

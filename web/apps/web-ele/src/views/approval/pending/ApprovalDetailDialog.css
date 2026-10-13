@@ -1,0 +1,23 @@
+/* ========== 审批详情 ========== */
+.pending-node-tip {
+  margin-left: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--asset-page-muted);
+}
+
+.pending-sign-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pending-sign-item {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pending-opinion-panel {
+  margin-top: 20px;
+}

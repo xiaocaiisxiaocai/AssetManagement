@@ -1,0 +1,42 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped src 支持 :deep/:global */
+:deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+:deep(.el-form-item__label) {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--asset-page-text-secondary);
+}
+
+.start-approval-form :deep(.el-form-item__label) {
+  align-items: center;
+  line-height: var(--el-component-size);
+}
+
+.asset-select-help {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--asset-page-muted);
+}
+
+.asset-select-empty {
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+  text-align: center;
+}
+
+:deep(.el-input__inner) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+:deep(.el-textarea__inner) {
+  font-size: 14px;
+  line-height: 20px;
+}

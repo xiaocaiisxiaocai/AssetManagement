@@ -5,28 +5,20 @@ import { computed, onMounted, ref } from 'vue';
 
 import { useAccess } from '@vben/access';
 
-import {
-  ElButton,
-  ElMessage,
-  ElMessageBox,
-  ElOption,
-  ElPagination,
-  ElSelect,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 import {
   backupDatabaseApi,
   downloadDatabaseBackupApi,
   getDatabaseBackupsApi,
 } from '#/api/report';
-import { formatDateTime } from '#/utils/date-format';
 import {
   createPageSizeOptions,
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
+
+import BackupHeader from './BackupHeader.vue';
+import BackupTable from './BackupTable.vue';
 
 defineOptions({ name: 'AdminBackups' });
 
@@ -86,26 +78,6 @@ async function downloadBackup(row: DatabaseBackupFile) {
   downloadBlob(response.data, row.fileName);
 }
 
-function formatSize(bytes: number) {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = bytes;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
-
-function fileTypeLabel(type: string) {
-  return type === 'package' ? '完整包' : 'SQL';
-}
-
-function fileTypeTag(type: string) {
-  return type === 'package' ? 'success' : 'info';
-}
-
 function onPageSizeChange() {
   page.value = 1;
 }
@@ -131,186 +103,24 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="backup-page">
-      <div class="backup-header">
-        <div>
-          <h2 class="backup-title">数据库备份</h2>
-        </div>
-        <div class="backup-actions">
-          <ElButton
-            v-if="canManageBackup"
-            :loading="backupLoading"
-            type="primary"
-            @click="backupDatabase"
-          >
-            生成完整备份包
-          </ElButton>
-        </div>
-      </div>
-
-      <div class="backup-table-panel">
-        <ElTable :data="pagedRows" border height="100%" v-loading="loading">
-          <ElTableColumn label="文件名" min-width="260">
-            <template #default="{ row }">
-              <div class="file-name-cell">
-                <ElTag :type="fileTypeTag(row.fileType)" size="small">
-                  {{ fileTypeLabel(row.fileType) }}
-                </ElTag>
-                <span>{{ row.fileName }}</span>
-              </div>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn align="center" label="类型" width="110">
-            <template #default="{ row }">
-              {{ fileTypeLabel(row.fileType) }}
-            </template>
-          </ElTableColumn>
-          <ElTableColumn align="right" label="大小" width="120">
-            <template #default="{ row }">
-              {{ formatSize(row.sizeBytes) }}
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="创建时间" width="180">
-            <template #default="{ row }">
-              {{ formatDateTime(row.createdAt, { seconds: true }) }}
-            </template>
-          </ElTableColumn>
-          <ElTableColumn
-            v-if="canManageBackup"
-            align="center"
-            fixed="right"
-            label="操作"
-            width="100"
-          >
-            <template #default="{ row }">
-              <ElButton
-                link
-                size="small"
-                type="primary"
-                @click="downloadBackup(row)"
-              >
-                下载
-              </ElButton>
-            </template>
-          </ElTableColumn>
-        </ElTable>
-        <div class="table-bottom-pager">
-          <div class="table-bottom-pager-left">
-            <span>共 {{ rows.length }} 条记录</span>
-            <span class="table-bottom-pager-divider">|</span>
-            <span>每页</span>
-            <ElSelect
-              v-model="pageSize"
-              style="width: 92px"
-              @change="onPageSizeChange"
-            >
-              <ElOption
-                v-for="size in pageSizeOptions"
-                :key="size"
-                :label="`${size}`"
-                :value="size"
-              />
-            </ElSelect>
-          </div>
-          <ElPagination
-            v-model:current-page="page"
-            :page-size="pageSize"
-            :total="rows.length"
-            background
-            layout="prev, pager, next"
-          />
-        </div>
-      </div>
+      <BackupHeader
+        :backup-loading="backupLoading"
+        :can-manage="canManageBackup"
+        @backup="backupDatabase"
+      />
+      <BackupTable
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :can-manage="canManageBackup"
+        :loading="loading"
+        :page-size-options="pageSizeOptions"
+        :paged-rows="pagedRows"
+        :total="rows.length"
+        @download="downloadBackup"
+        @page-size-change="onPageSizeChange"
+      />
     </div>
   </re-page>
 </template>
 
-<style scoped>
-.backup-page {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 20px;
-}
-
-.backup-header,
-.backup-table-panel {
-  background: var(--asset-page-surface);
-  border: 1px solid var(--asset-page-border);
-  border-radius: 12px;
-  box-shadow: var(--asset-page-shadow);
-}
-
-.backup-header {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  background: var(--asset-page-surface);
-  border-color: var(--asset-page-border-strong);
-}
-
-.backup-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 28px;
-  color: var(--asset-page-text);
-}
-
-.backup-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.backup-table-panel {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  border-color: var(--asset-page-border);
-}
-
-.backup-table-panel :deep(.el-table) {
-  flex: 1;
-  min-height: 0;
-}
-
-.backup-table-panel :deep(.el-table th.el-table__cell) {
-  font-weight: 600;
-  color: var(--asset-page-text-secondary);
-  background: var(--asset-page-surface-soft);
-}
-
-.backup-table-panel :deep(.el-table--border) {
-  border: none;
-}
-
-.backup-table-panel :deep(.el-table td.el-table__cell),
-.backup-table-panel :deep(.el-table th.el-table__cell) {
-  border-color: var(--asset-page-border);
-}
-
-.file-name-cell {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-}
-
-.file-name-cell span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (max-width: 768px) {
-  .backup-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
-  }
-}
-</style>
+<style scoped src="./index.css"></style>

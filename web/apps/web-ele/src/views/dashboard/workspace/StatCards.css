@@ -1,0 +1,44 @@
+.workspace-stat-card {
+  cursor: pointer;
+  border: 1px solid var(--asset-page-border);
+  transition: all 0.2s ease;
+}
+
+.workspace-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.workspace-stat-card:hover {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 4px 12px var(--el-color-primary-light-7);
+  transform: translateY(-2px);
+}
+
+.workspace-stat-primary .stat-value {
+  color: var(--el-color-primary);
+}
+
+.workspace-stat-success .stat-value {
+  color: var(--el-color-success);
+}
+
+.workspace-stat-warning .stat-value {
+  color: var(--el-color-warning);
+}
+
+.workspace-stat-danger .stat-value {
+  color: var(--el-color-danger);
+}
+
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
+@media (max-width: 1280px) {
+  .workspace-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .workspace-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}

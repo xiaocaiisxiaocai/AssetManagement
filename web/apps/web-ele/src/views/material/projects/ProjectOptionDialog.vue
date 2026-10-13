@@ -135,31 +135,4 @@ function onKindChange(kind: number | string) {
   </ElDialog>
 </template>
 
-<style scoped>
-.option-editor {
-  padding: 12px;
-  margin-bottom: 12px;
-  background: var(--el-fill-color-light);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
-}
-
-.option-form-grid {
-  display: grid;
-  grid-template-columns: 1.4fr 0.8fr 0.6fr;
-  column-gap: 12px;
-}
-
-.option-actions {
-  display: flex;
-  flex-shrink: 0;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-@media (max-width: 768px) {
-  .option-form-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
+<style scoped src="./ProjectOptionDialog.css"></style>

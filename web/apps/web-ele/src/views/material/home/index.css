@@ -1,0 +1,24 @@
+.material-home-page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.stats-error-content {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@media (max-width: 1024px) {
+  .material-home-page {
+    height: auto;
+    min-height: 100%;
+    overflow-y: auto;
+  }
+}

@@ -1,0 +1,52 @@
+.asset-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 20px;
+}
+
+.asset-form-field--wide {
+  grid-column: 1 / -1;
+}
+
+.asset-form-grid :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.asset-form-grid :deep(.el-form-item__content) {
+  min-width: 0;
+}
+
+.asset-form-photo :deep(.el-upload--picture-card),
+.asset-form-photo :deep(.el-upload-list--picture-card .el-upload-list__item) {
+  width: 104px;
+  height: 104px;
+}
+
+:global(.asset-form-dialog) {
+  max-width: calc(100vw - 32px);
+}
+
+:global(.asset-form-dialog .el-dialog__body) {
+  padding: 12px 24px 0;
+}
+
+:global(.asset-form-dialog .el-dialog__footer) {
+  padding-top: 6px;
+}
+
+@media (max-width: 768px) {
+  .asset-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .asset-form-field--wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-height: 720px) {
+  :global(.asset-form-dialog .el-dialog__body) {
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+  }
+}

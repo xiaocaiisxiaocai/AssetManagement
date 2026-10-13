@@ -1,0 +1,164 @@
+/* ========== 表格样式 ========== */
+.table-panel .el-table,
+.table-panel-with-toolbar .el-table {
+  flex: 1;
+  min-height: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.table-panel .el-table th.el-table__cell,
+.table-panel-with-toolbar .el-table th.el-table__cell {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header-solid);
+}
+
+.asset-table-panel .el-table th.el-table__cell,
+.backup-table-panel .el-table th.el-table__cell,
+.drawer-table-panel .el-table th.el-table__cell,
+.flow-table-panel .el-table th.el-table__cell,
+.material-table-panel .el-table th.el-table__cell,
+.mine-table-panel .el-table th.el-table__cell,
+.pending-table-panel .el-table th.el-table__cell,
+.project-table-panel .el-table th.el-table__cell,
+.role-table-panel .el-table th.el-table__cell,
+.summary-table-panel .el-table th.el-table__cell,
+.user-table-panel .el-table th.el-table__cell,
+.el-table.workspace-table th.el-table__cell,
+.workspace-table .el-table th.el-table__cell {
+  color: var(--asset-page-panel-header-text) !important;
+  background: var(--asset-page-panel-header-solid) !important;
+}
+
+.el-table td.el-table__cell > .cell,
+.el-table th.el-table__cell > .cell {
+  text-align: center !important;
+}
+
+.asset-table-panel .el-table td.el-table__cell,
+.asset-table-panel .el-table th.el-table__cell,
+.backup-table-panel .el-table td.el-table__cell,
+.backup-table-panel .el-table th.el-table__cell,
+.drawer-table-panel .el-table td.el-table__cell,
+.drawer-table-panel .el-table th.el-table__cell,
+.flow-table-panel .el-table td.el-table__cell,
+.flow-table-panel .el-table th.el-table__cell,
+.material-table-panel .el-table td.el-table__cell,
+.material-table-panel .el-table th.el-table__cell,
+.mine-table-panel .el-table td.el-table__cell,
+.mine-table-panel .el-table th.el-table__cell,
+.pending-table-panel .el-table td.el-table__cell,
+.pending-table-panel .el-table th.el-table__cell,
+.project-table-panel .el-table td.el-table__cell,
+.project-table-panel .el-table th.el-table__cell,
+.role-table-panel .el-table td.el-table__cell,
+.role-table-panel .el-table th.el-table__cell,
+.summary-table-panel .el-table td.el-table__cell,
+.summary-table-panel .el-table th.el-table__cell,
+.user-table-panel .el-table td.el-table__cell,
+.user-table-panel .el-table th.el-table__cell,
+.el-table.workspace-table td.el-table__cell,
+.el-table.workspace-table th.el-table__cell,
+.workspace-table .el-table td.el-table__cell,
+.workspace-table .el-table th.el-table__cell {
+  border-color: var(--asset-page-border) !important;
+}
+
+.asset-table-panel .el-table tr,
+.asset-table-panel .el-table td.el-table__cell,
+.backup-table-panel .el-table tr,
+.backup-table-panel .el-table td.el-table__cell,
+.drawer-table-panel .el-table tr,
+.drawer-table-panel .el-table td.el-table__cell,
+.flow-table-panel .el-table tr,
+.flow-table-panel .el-table td.el-table__cell,
+.material-table-panel .el-table tr,
+.material-table-panel .el-table td.el-table__cell,
+.mine-table-panel .el-table tr,
+.mine-table-panel .el-table td.el-table__cell,
+.pending-table-panel .el-table tr,
+.pending-table-panel .el-table td.el-table__cell,
+.project-table-panel .el-table tr,
+.project-table-panel .el-table td.el-table__cell,
+.role-table-panel .el-table tr,
+.role-table-panel .el-table td.el-table__cell,
+.summary-table-panel .el-table tr,
+.summary-table-panel .el-table td.el-table__cell,
+.user-table-panel .el-table tr,
+.user-table-panel .el-table td.el-table__cell,
+.el-table.workspace-table tr,
+.el-table.workspace-table td.el-table__cell,
+.workspace-table .el-table tr,
+.workspace-table .el-table td.el-table__cell,
+.table-panel .el-table tr,
+.table-panel .el-table td.el-table__cell,
+.table-panel-with-toolbar .el-table tr,
+.table-panel-with-toolbar .el-table td.el-table__cell {
+  color: var(--asset-page-text);
+  background: var(--asset-page-surface) !important;
+}
+
+.table-panel .el-table--border,
+.table-panel-with-toolbar .el-table--border {
+  border: none;
+}
+
+.table-panel .el-table td.el-table__cell,
+.table-panel .el-table th.el-table__cell,
+.table-panel-with-toolbar .el-table td.el-table__cell,
+.table-panel-with-toolbar .el-table th.el-table__cell {
+  border-color: var(--asset-page-border);
+}
+
+.table-panel .el-table .el-table__cell,
+.table-panel-with-toolbar .el-table .el-table__cell {
+  padding: var(--asset-table-cell-padding-block) 0;
+}
+
+/*
+ * 统一表格密度：
+ * 页面内的 scoped 样式曾重复写入 12px 行留白，因此这里用统一规则收口。
+ * 列宽仍由业务页面决定，只压缩表头/单元格文字两侧的视觉空白。
+ */
+.el-table .el-table__cell {
+  padding-block: var(--asset-table-cell-padding-block) !important;
+}
+
+.el-table td.el-table__cell > .cell {
+  padding-inline: var(--asset-table-cell-padding-inline) !important;
+}
+
+.el-table th.el-table__cell > .cell {
+  padding-inline: 4px !important;
+}
+
+.table-panel .el-table--striped .el-table__body tr.el-table__row--striped td,
+.table-panel-with-toolbar
+  .el-table--striped
+  .el-table__body
+  tr.el-table__row--striped
+  td {
+  background: var(--asset-page-blue-soft);
+}
+
+.table-panel .el-table--enable-row-hover .el-table__body tr:hover > td,
+.table-panel-with-toolbar
+  .el-table--enable-row-hover
+  .el-table__body
+  tr:hover
+  > td {
+  background-color: var(--asset-page-surface-hover) !important;
+}
+
+.table-panel .el-button + .el-button,
+.table-panel-with-toolbar .el-button + .el-button {
+  margin-left: 4px;
+}
+
+.table-panel .el-table__expand-icon,
+.table-panel-with-toolbar .el-table__expand-icon {
+  color: var(--el-color-primary);
+}

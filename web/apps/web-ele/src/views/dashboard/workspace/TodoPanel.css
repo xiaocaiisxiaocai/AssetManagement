@@ -1,0 +1,35 @@
+.workspace-todo-list {
+  display: grid;
+  gap: 8px;
+}
+
+.workspace-todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 12px;
+  cursor: pointer;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.workspace-todo-item:hover {
+  background: var(--asset-page-surface-soft);
+  border-color: var(--el-color-primary);
+}
+
+.workspace-todo-item span {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-text-secondary);
+}
+
+.workspace-todo-item strong {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--el-color-primary);
+}

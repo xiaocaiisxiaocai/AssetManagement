@@ -1,0 +1,150 @@
+/* ========== 搜索栏 ========== */
+.asset-filter-strip {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.asset-filter-strip label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--asset-page-text-secondary);
+}
+
+/* ========== 表格面板 ========== */
+.asset-table-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.asset-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
+}
+
+.asset-table-panel :deep(.el-table th.el-table__cell) {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
+}
+
+.asset-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.asset-table-panel :deep(.el-table td.el-table__cell),
+.asset-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: var(--asset-page-border);
+}
+
+.asset-table-panel
+  :deep(.el-table--striped .el-table__body tr.el-table__row--striped td) {
+  background: var(--asset-page-surface-soft);
+}
+
+.asset-table-panel
+  :deep(.el-table--enable-row-hover .el-table__body tr:hover > td) {
+  background-color: var(--asset-page-surface-hover) !important;
+}
+
+.asset-table-panel :deep(.asset-row-deleted td.el-table__cell) {
+  color: var(--asset-page-muted);
+  background-color: var(--el-fill-color-light) !important;
+}
+
+.asset-table-panel :deep(.asset-row-deleted .el-tag:not(.el-tag--danger)) {
+  opacity: 0.72;
+}
+
+.asset-table-panel
+  :deep(
+    .el-table--enable-row-hover .el-table__body tr.asset-row-deleted:hover > td
+  ) {
+  background-color: var(--el-fill-color) !important;
+}
+
+.asset-table-panel :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.asset-table-panel :deep(.el-button + .el-button) {
+  margin-left: 4px;
+}
+
+.asset-row-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+.asset-row-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.asset-status-tags {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.asset-status-tags :deep(.el-tag) {
+  padding-inline: 4px;
+}
+
+/* ========== 分页器 ========== */
+.asset-pager {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--asset-page-surface);
+  border-top: 1px solid var(--asset-page-border);
+}
+
+.asset-pager-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.asset-pager-divider {
+  color: var(--asset-page-border);
+}
+
+/* ========== 响应式 ========== */
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
+@media (max-width: 768px) {
+  .asset-pager {
+    align-items: stretch;
+  }
+}

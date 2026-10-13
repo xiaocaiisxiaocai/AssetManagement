@@ -1,0 +1,50 @@
+/* ========== 表格面板 ========== */
+.user-table-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.user-empty-text {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.user-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.user-table-panel :deep(.el-table th.el-table__cell) {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
+}
+
+.user-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.user-table-panel :deep(.el-table td.el-table__cell),
+.user-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: var(--asset-page-border);
+}
+
+.user-table-panel :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+}
+
+.user-table-panel :deep(.el-button + .el-button) {
+  margin-left: 4px;
+}

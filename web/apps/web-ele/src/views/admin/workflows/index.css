@@ -1,0 +1,47 @@
+.workflow-designer-dialog {
+  --el-dialog-bg-color: #eef3f9;
+
+  background: #eef3f9;
+}
+
+.dark .workflow-designer-dialog {
+  --el-dialog-bg-color: var(--el-bg-color-page);
+
+  background: var(--el-bg-color-page);
+}
+
+.workflow-designer-dialog .el-dialog__header {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 16px;
+  margin: 0;
+  background: #fff;
+  border-bottom: 1px solid #d8e0eb;
+}
+
+.dark .workflow-designer-dialog .el-dialog__header {
+  background: var(--el-bg-color);
+  border-bottom-color: var(--el-border-color);
+}
+
+.workflow-designer-dialog .el-dialog__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f3f6d;
+}
+
+.dark .workflow-designer-dialog .el-dialog__title {
+  color: var(--el-text-color-primary);
+}
+
+.workflow-designer-dialog .el-dialog__headerbtn {
+  top: 4px;
+}
+
+.workflow-designer-dialog .el-dialog__body {
+  height: calc(100dvh - 44px);
+  max-height: calc(100dvh - 44px);
+  padding: 0;
+  overflow: hidden;
+}

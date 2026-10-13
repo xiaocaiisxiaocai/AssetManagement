@@ -1,0 +1,55 @@
+.asset-workspace-head {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--asset-page-border);
+}
+
+/* ========== 标题与路径 ========== */
+.asset-section-title {
+  margin-bottom: 2px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  color: var(--asset-page-text);
+  letter-spacing: -0.02em;
+}
+
+.asset-path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 20px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.asset-path a {
+  color: var(--el-color-primary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.asset-path a:hover {
+  color: var(--el-color-primary-dark-2);
+}
+
+.asset-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ========== 响应式 ========== */
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
+@media (max-width: 768px) {
+  .asset-workspace-head {
+    align-items: stretch;
+  }
+}

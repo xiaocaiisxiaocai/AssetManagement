@@ -1,0 +1,207 @@
+/* ========== 表格面板 ========== */
+.table-panel {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: auto;
+  max-height: none;
+  overflow: visible;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.table-panel-with-toolbar {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: auto;
+  max-height: none;
+  overflow: visible;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.asset-workspace,
+.asset-class-list,
+.asset-root-grid,
+.asset-table-panel,
+.backup-table-panel,
+.drawer-table-panel,
+.flow-table-panel,
+.material-table-panel,
+.mine-table-panel,
+.pending-table-panel,
+.project-table-panel,
+.role-table-panel,
+.summary-table-panel,
+.user-table-panel,
+.workspace-dashboard,
+.workspace-panel,
+.table-panel,
+.table-panel-with-toolbar {
+  flex: 1 0 auto !important;
+  min-width: 0;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.asset-table-panel,
+.backup-table-panel,
+.drawer-table-panel,
+.flow-table-panel,
+.material-table-panel,
+.mine-table-panel,
+.pending-table-panel,
+.project-table-panel,
+.role-table-panel,
+.summary-table-panel,
+.user-table-panel,
+.table-panel,
+.table-panel-with-toolbar {
+  border-color: var(--asset-page-border) !important;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.asset-table-panel .el-table,
+.backup-table-panel .el-table,
+.drawer-table-panel .el-table,
+.flow-table-panel .el-table,
+.material-table-panel .el-table,
+.mine-table-panel .el-table,
+.page-container .el-table,
+.pending-table-panel .el-table,
+.project-table-panel .el-table,
+.role-table-panel .el-table,
+.summary-table-panel .el-table,
+.user-table-panel .el-table,
+.material-projects-page .el-table,
+.table-panel .el-table,
+.table-panel-with-toolbar .el-table,
+.asset-table-panel .el-table .el-table__inner-wrapper,
+.backup-table-panel .el-table .el-table__inner-wrapper,
+.drawer-table-panel .el-table .el-table__inner-wrapper,
+.flow-table-panel .el-table .el-table__inner-wrapper,
+.material-table-panel .el-table .el-table__inner-wrapper,
+.mine-table-panel .el-table .el-table__inner-wrapper,
+.page-container .el-table .el-table__inner-wrapper,
+.pending-table-panel .el-table .el-table__inner-wrapper,
+.project-table-panel .el-table .el-table__inner-wrapper,
+.role-table-panel .el-table .el-table__inner-wrapper,
+.summary-table-panel .el-table .el-table__inner-wrapper,
+.user-table-panel .el-table .el-table__inner-wrapper,
+.material-projects-page .el-table .el-table__inner-wrapper,
+.table-panel .el-table .el-table__inner-wrapper,
+.table-panel-with-toolbar .el-table .el-table__inner-wrapper,
+.asset-table-panel .el-table .el-table__body-wrapper,
+.backup-table-panel .el-table .el-table__body-wrapper,
+.drawer-table-panel .el-table .el-table__body-wrapper,
+.flow-table-panel .el-table .el-table__body-wrapper,
+.material-table-panel .el-table .el-table__body-wrapper,
+.mine-table-panel .el-table .el-table__body-wrapper,
+.page-container .el-table .el-table__body-wrapper,
+.pending-table-panel .el-table .el-table__body-wrapper,
+.project-table-panel .el-table .el-table__body-wrapper,
+.role-table-panel .el-table .el-table__body-wrapper,
+.summary-table-panel .el-table .el-table__body-wrapper,
+.user-table-panel .el-table .el-table__body-wrapper,
+.material-projects-page .el-table .el-table__body-wrapper,
+.table-panel .el-table .el-table__body-wrapper,
+.table-panel-with-toolbar .el-table .el-table__body-wrapper,
+.page-container .el-scrollbar__wrap,
+.asset-list-page .el-scrollbar__wrap,
+.asset-table-panel .el-scrollbar__wrap,
+.user-page .el-scrollbar__wrap,
+.role-page .el-scrollbar__wrap,
+.pending-page .el-scrollbar__wrap,
+.mine-page .el-scrollbar__wrap,
+.backup-page .el-scrollbar__wrap,
+.material-projects-page .el-scrollbar__wrap,
+.material-home-page .el-scrollbar__wrap,
+.workspace-container .el-scrollbar__wrap {
+  height: auto !important;
+  max-height: none !important;
+}
+
+.asset-table-panel .el-table,
+.backup-table-panel .el-table,
+.drawer-table-panel .el-table,
+.flow-table-panel .el-table,
+.material-table-panel .el-table,
+.mine-table-panel .el-table,
+.pending-table-panel .el-table,
+.project-table-panel .el-table,
+.role-table-panel .el-table,
+.summary-table-panel .el-table,
+.user-table-panel .el-table,
+.el-table.workspace-table,
+.workspace-table .el-table,
+.table-panel .el-table,
+.table-panel-with-toolbar .el-table {
+  --el-table-bg-color: var(--asset-page-surface);
+  --el-table-tr-bg-color: var(--asset-page-surface);
+  --el-table-row-hover-bg-color: var(--asset-page-surface-hover);
+  --el-table-header-bg-color: var(--asset-page-panel-header-solid);
+  --el-table-header-text-color: var(--asset-page-panel-header-text);
+  --el-table-text-color: var(--asset-page-text);
+
+  color: var(--asset-page-text);
+  background: var(--asset-page-surface);
+}
+
+.table-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px var(--asset-panel-padding-inline);
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header);
+  border-bottom: 1px solid var(--asset-page-border-strong);
+}
+
+.table-total {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-panel-header-muted);
+}
+
+.table-pagination {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+.table-bottom-pager {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px var(--asset-panel-padding-inline);
+  background: var(--asset-page-surface);
+  border-top: 1px solid var(--asset-page-border-strong);
+}
+
+.table-bottom-pager-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.table-bottom-pager-divider {
+  color: var(--asset-page-border);
+}

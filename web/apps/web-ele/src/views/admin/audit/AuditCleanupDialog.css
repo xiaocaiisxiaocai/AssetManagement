@@ -1,0 +1,27 @@
+.cleanup-preview {
+  min-height: 116px;
+  padding: 12px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+}
+
+.preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: var(--el-text-color-regular);
+}
+
+.preview-row strong {
+  color: var(--el-text-color-primary);
+}
+
+.preview-tip {
+  padding-top: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--el-text-color-secondary);
+  border-top: 1px dashed var(--el-border-color);
+}

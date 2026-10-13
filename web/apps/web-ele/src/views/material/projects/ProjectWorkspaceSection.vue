@@ -1,0 +1,125 @@
+<script lang="ts" setup>
+import type { MaterialFlowItem } from '#/api/material';
+
+import { useProjectPageContext } from './project-page-context';
+import ProjectWorkspaceDrawer from './ProjectWorkspaceDrawer.vue';
+
+defineProps<{
+  handledFlows: MaterialFlowItem[];
+}>();
+
+const {
+  activeProjectTab,
+  approveFlow,
+  canEditCurrentProjectMaterial,
+  canWriteCurrentProjectMaterial,
+  cancelFollowupEdit,
+  currentMaterialActionAccess,
+  currentProject,
+  currentUserId,
+  deleteFollowup,
+  editingFollowupId,
+  editFollowup,
+  flowActiveTab,
+  flowPageSizeOptions,
+  followupDrawerVisible,
+  followupFormModel,
+  followupLoading,
+  followupSaving,
+  followups,
+  handledFlowLoading,
+  handledFlowQueryModel,
+  handledFlowTotal,
+  isCurrentProjectReadOnly,
+  isCurrentUserSupervisor,
+  loadProjectFlows,
+  loadProjectMaterials,
+  materialLoading,
+  materialPageSizeOptions,
+  materialQueryModel,
+  materials,
+  materialTotal,
+  myFlowLoading,
+  myFlowQueryModel,
+  myFlows,
+  myFlowTotal,
+  onFlowTabChange,
+  onHandledFlowPageSizeChange,
+  onMaterialPageSizeChange,
+  onMaterialRowCommand,
+  onMyFlowPageSizeChange,
+  onPendingFlowPageSizeChange,
+  onProjectTabChange,
+  openCreateMaterial,
+  openEditMaterial,
+  openMaterialDetail,
+  pendingFlowLoading,
+  pendingFlowQueryModel,
+  pendingFlows,
+  pendingFlowTotal,
+  rejectFlow,
+  resetMaterialQuery,
+  saveFollowup,
+  searchMaterials,
+  withdrawFlow,
+} = useProjectPageContext();
+</script>
+
+<template>
+  <ProjectWorkspaceDrawer
+    v-model:active-tab="activeProjectTab"
+    v-model:flow-active-tab="flowActiveTab"
+    v-model:followup-form="followupFormModel"
+    v-model:handled-query="handledFlowQueryModel"
+    v-model:material-query="materialQueryModel"
+    v-model:my-query="myFlowQueryModel"
+    v-model:pending-query="pendingFlowQueryModel"
+    v-model:visible="followupDrawerVisible"
+    :can-create="canWriteCurrentProjectMaterial"
+    :can-edit="canEditCurrentProjectMaterial"
+    :current-project="currentProject"
+    :current-user-id="currentUserId"
+    :editing-followup-id="editingFollowupId"
+    :followup-loading="followupLoading"
+    :followup-saving="followupSaving"
+    :followups="followups"
+    :handled-count="handledFlowTotal"
+    :handled-flows="handledFlows"
+    :handled-loading="handledFlowLoading"
+    :is-supervisor="isCurrentUserSupervisor"
+    :material-access="currentMaterialActionAccess"
+    :material-loading="materialLoading"
+    :material-page-size-options="materialPageSizeOptions"
+    :material-total="materialTotal"
+    :materials="materials"
+    :my-count="myFlowTotal"
+    :my-flows="myFlows"
+    :my-loading="myFlowLoading"
+    :page-size-options="flowPageSizeOptions"
+    :pending-count="pendingFlowTotal"
+    :pending-flows="pendingFlows"
+    :pending-loading="pendingFlowLoading"
+    :read-only="isCurrentProjectReadOnly"
+    @approve="approveFlow"
+    @command="onMaterialRowCommand"
+    @create="openCreateMaterial"
+    @detail="openMaterialDetail"
+    @edit="openEditMaterial"
+    @flow-page-change="loadProjectFlows"
+    @flow-tab-change="onFlowTabChange"
+    @followup-cancel-edit="cancelFollowupEdit"
+    @followup-edit="editFollowup"
+    @followup-remove="deleteFollowup"
+    @followup-save="saveFollowup"
+    @handled-page-size-change="onHandledFlowPageSizeChange"
+    @material-page-change="() => loadProjectMaterials(currentProject?.id)"
+    @material-page-size-change="onMaterialPageSizeChange"
+    @my-page-size-change="onMyFlowPageSizeChange"
+    @pending-page-size-change="onPendingFlowPageSizeChange"
+    @reject="rejectFlow"
+    @reset="resetMaterialQuery"
+    @search="searchMaterials"
+    @tab-change="onProjectTabChange"
+    @withdraw="withdrawFlow"
+  />
+</template>

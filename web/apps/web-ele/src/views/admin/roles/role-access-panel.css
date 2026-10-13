@@ -1,0 +1,201 @@
+/* ========== 权限分配面板 ========== */
+.role-access-alert {
+  margin-bottom: 16px;
+}
+
+.role-access-dialog {
+  max-height: calc(100vh - 24px);
+  margin-top: 12px;
+}
+
+.role-access-dialog :deep(.el-dialog__body) {
+  max-height: calc(100vh - 164px);
+  overflow-y: auto;
+}
+
+.role-access-shell {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 540px;
+}
+
+.role-menu-panel,
+.role-permission-panel {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 10px;
+}
+
+.role-access-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--asset-page-text);
+  background: var(--asset-page-surface-soft);
+  border-bottom: 1px solid var(--asset-page-border);
+}
+
+.role-access-section-title span:last-child {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--asset-page-muted);
+}
+
+.role-menu-tree {
+  max-height: 520px;
+  padding: 12px 10px;
+  overflow-y: auto;
+}
+
+.role-permission-panel {
+  padding: 10px;
+}
+
+.role-permission-shell {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 518px;
+}
+
+.role-permission-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 560px;
+  padding: 8px;
+  overflow-y: auto;
+  background: var(--asset-page-surface-soft);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
+}
+
+.role-module-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  color: var(--asset-page-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.role-module-item:hover,
+.role-module-item.is-active {
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
+}
+
+.role-module-name {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.role-module-count {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--asset-page-muted);
+}
+
+.role-permission-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.role-permission-tools {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.role-permission-tool-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.role-permission-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
+}
+
+.role-permission-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 430px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.role-permission-card {
+  width: 100%;
+  min-height: 72px;
+  margin-right: 0;
+}
+
+.role-permission-card :deep(.el-checkbox__label) {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.role-permission-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--asset-page-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-permission-action {
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-radius: 999px;
+}
+
+.role-permission-code {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--asset-page-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

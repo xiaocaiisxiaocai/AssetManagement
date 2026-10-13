@@ -4,23 +4,14 @@ import type { DeleteStatus } from './project-workspace-types';
 
 import type { TestProjectItem, TestProjectOption } from '#/api/test-project';
 
-import {
-  ElButton,
-  ElInput,
-  ElOption,
-  ElPagination,
-  ElSelect,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus';
+import { ElButton, ElTable, ElTableColumn, ElTag } from 'element-plus';
 
 import { formatDate } from '#/utils/date-format';
 
-import {
-  canUpdateProjectProgress,
-  projectFollowUpStatusMeta,
-} from './project-workspace-rules';
+import { projectFollowUpStatusMeta } from './project-workspace-rules';
+import ProjectTablePager from './ProjectTablePager.vue';
+import ProjectTableRowActions from './ProjectTableRowActions.vue';
+import ProjectTableToolbar from './ProjectTableToolbar.vue';
 
 type ProjectActionAccess = {
   canCreate: boolean;
@@ -82,97 +73,23 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
 </script>
 
 <template>
-  <div class="project-toolbar">
-    <div class="project-toolbar-left">
-      <ElInput
-        v-model="filter.code"
-        aria-label="项目编号"
-        clearable
-        placeholder="项目编号"
-        style="width: 150px"
-        @keyup.enter="emit('search')"
-      />
-      <ElInput
-        v-model="filter.name"
-        aria-label="项目名称"
-        clearable
-        placeholder="项目名称"
-        style="width: 180px"
-        @keyup.enter="emit('search')"
-      />
-      <ElSelect
-        v-model="filter.projectTypeCode"
-        aria-label="项目类型"
-        clearable
-        placeholder="项目类型"
-        style="width: 130px"
-      >
-        <ElOption
-          v-for="item in projectTypeOptions"
-          :key="item.id"
-          :label="item.label"
-          :value="item.code"
-        />
-      </ElSelect>
-      <ElSelect
-        v-model="filter.ownerId"
-        :loading="userOptionsLoading"
-        :remote-method="(keyword: string) => emit('userSearch', keyword)"
-        aria-label="负责人"
-        clearable
-        filterable
-        placeholder="负责人"
-        remote
-        style="width: 150px"
-      >
-        <ElOption
-          v-for="user in ownerOptions"
-          :key="user.id"
-          :label="user.name"
-          :value="user.id"
-        />
-      </ElSelect>
-      <ElSelect
-        v-model="filter.progressCode"
-        aria-label="项目进度"
-        clearable
-        placeholder="进度"
-        style="width: 130px"
-      >
-        <ElOption
-          v-for="item in progressOptions"
-          :key="item.id"
-          :label="item.label"
-          :value="item.code"
-        />
-      </ElSelect>
-      <ElSelect
-        v-model="deleteStatus"
-        aria-label="项目删除状态"
-        placeholder="删除状态"
-        style="width: 130px"
-        @change="emit('statusChange')"
-      >
-        <ElOption label="全部" value="all" />
-        <ElOption label="未删除" value="active" />
-        <ElOption label="已删除" value="deleted" />
-      </ElSelect>
-      <ElButton type="primary" @click="emit('search')">查询</ElButton>
-      <ElButton @click="emit('reset')">重置</ElButton>
-    </div>
-    <div class="project-toolbar-right">
-      <ElButton v-if="access.canOption" @click="emit('options')">配置</ElButton>
-      <ElButton v-if="access.canImport" @click="emit('import')">
-        批量导入
-      </ElButton>
-      <ElButton v-if="access.canExport" @click="emit('export')">
-        导出 Excel
-      </ElButton>
-      <ElButton v-if="access.canCreate" type="primary" @click="emit('create')">
-        新增项目
-      </ElButton>
-    </div>
-  </div>
+  <ProjectTableToolbar
+    v-model:delete-status="deleteStatus"
+    v-model:filter="filter"
+    :access="access"
+    :owner-options="ownerOptions"
+    :progress-options="progressOptions"
+    :project-type-options="projectTypeOptions"
+    :user-options-loading="userOptionsLoading"
+    @create="emit('create')"
+    @export="emit('export')"
+    @import="emit('import')"
+    @options="emit('options')"
+    @reset="emit('reset')"
+    @search="emit('search')"
+    @status-change="emit('statusChange')"
+    @user-search="emit('userSearch', $event)"
+  />
 
   <div class="project-table-panel">
     <ElTable
@@ -262,162 +179,27 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       </ElTableColumn>
       <ElTableColumn align="center" fixed="right" label="操作" width="160">
         <template #default="{ row }">
-          <template v-if="!row.isDeleted">
-            <ElButton
-              v-if="access.canEdit && !row.closedDate"
-              link
-              size="small"
-              type="primary"
-              @click="emit('edit', row)"
-            >
-              编辑
-            </ElButton>
-            <ElButton
-              v-else-if="canUpdateProjectProgress(row, currentUserId)"
-              link
-              size="small"
-              type="primary"
-              @click="emit('progress', row)"
-            >
-              更新进展
-            </ElButton>
-            <ElButton
-              v-if="access.canDelete"
-              link
-              size="small"
-              type="danger"
-              @click="emit('remove', row)"
-            >
-              删除
-            </ElButton>
-          </template>
-          <template v-else>
-            <ElButton
-              v-if="access.canRestore"
-              link
-              size="small"
-              type="success"
-              @click="emit('restore', row)"
-            >
-              撤销删除
-            </ElButton>
-            <ElButton
-              v-if="access.canPurge"
-              link
-              size="small"
-              type="danger"
-              @click="emit('purge', row)"
-            >
-              彻底删除
-            </ElButton>
-          </template>
+          <ProjectTableRowActions
+            :access="access"
+            :current-user-id="currentUserId"
+            :row="row"
+            @edit="emit('edit', row)"
+            @progress="emit('progress', row)"
+            @purge="emit('purge', row)"
+            @remove="emit('remove', row)"
+            @restore="emit('restore', row)"
+          />
         </template>
       </ElTableColumn>
     </ElTable>
-    <div class="table-bottom-pager">
-      <div class="table-bottom-pager-left">
-        <span>共 {{ filteredTotal }} 条记录</span>
-        <span class="table-bottom-pager-divider">|</span>
-        <span>每页</span>
-        <ElSelect
-          v-model="query.pageSize"
-          aria-label="项目列表每页条数"
-          style="width: 92px"
-          @change="emit('pageSizeChange')"
-        >
-          <ElOption
-            v-for="size in pageSizeOptions"
-            :key="size"
-            :label="`${size}`"
-            :value="size"
-          />
-        </ElSelect>
-      </div>
-      <ElPagination
-        v-model:current-page="query.page"
-        :page-size="query.pageSize"
-        :total="filteredTotal"
-        background
-        layout="prev, pager, next"
-        @current-change="emit('pageChange')"
-      />
-    </div>
+    <ProjectTablePager
+      v-model:query="query"
+      :page-size-options="pageSizeOptions"
+      :total="filteredTotal"
+      @page-change="emit('pageChange')"
+      @page-size-change="emit('pageSizeChange')"
+    />
   </div>
 </template>
 
-<style scoped>
-.project-toolbar {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.project-toolbar-left,
-.project-toolbar-right {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-}
-
-.project-toolbar-right {
-  justify-content: flex-end;
-}
-
-.project-table-panel {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--asset-page-surface);
-  border: 1px solid var(--asset-page-border);
-  border-radius: 12px;
-  box-shadow: var(--asset-page-shadow);
-}
-
-.project-table-panel :deep(.el-table) {
-  flex: 1;
-  min-height: 0;
-}
-
-.table-bottom-pager {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: var(--asset-page-surface);
-  border-top: 1px solid var(--asset-page-border);
-}
-
-.table-bottom-pager-left {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--asset-page-muted);
-}
-
-.table-bottom-pager-divider {
-  color: var(--asset-page-border);
-}
-
-:deep(.project-row-deleted td.el-table__cell) {
-  color: var(--el-text-color-disabled);
-  background-color: var(--el-fill-color-light) !important;
-}
-
-@media (max-width: 768px) {
-  .project-toolbar {
-    align-items: stretch;
-  }
-}
-</style>
+<style scoped src="./ProjectTable.css"></style>

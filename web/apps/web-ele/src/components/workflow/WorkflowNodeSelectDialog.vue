@@ -103,8 +103,8 @@ defineExpose({ selectNode });
       <ElFormItem :label="`请选择本次${actionLabel}的并行节点`" required>
         <ElSelect
           v-model="selectedNodeId"
+          class="workflow-node-select"
           placeholder="请选择处理节点"
-          style="width: 100%"
         >
           <ElOption
             v-for="node in nodes"
@@ -128,3 +128,5 @@ defineExpose({ selectNode });
     </template>
   </ElDialog>
 </template>
+
+<style scoped src="./WorkflowNodeSelectDialog.css"></style>

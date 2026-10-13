@@ -1,0 +1,49 @@
+.backup-table-panel {
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.backup-table-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-color: var(--asset-page-border);
+}
+
+.backup-table-panel :deep(.el-table) {
+  flex: 1;
+  min-height: 0;
+}
+
+.backup-table-panel :deep(.el-table th.el-table__cell) {
+  font-weight: 600;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
+}
+
+.backup-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.backup-table-panel :deep(.el-table td.el-table__cell),
+.backup-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: var(--asset-page-border);
+}
+
+.file-name-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.file-name-cell span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

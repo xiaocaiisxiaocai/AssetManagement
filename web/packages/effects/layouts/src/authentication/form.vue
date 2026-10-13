@@ -6,7 +6,7 @@ defineOptions({
 
 <template>
   <div
-    class="flex-col-center dark:bg-background-deep bg-background relative px-6 py-10 lg:flex-initial lg:px-10"
+    class="auth-panel dark:bg-background-deep bg-background relative px-6 py-10 lg:px-10"
   >
     <slot></slot>
     <!-- Router View with Transition and KeepAlive -->
@@ -31,3 +31,13 @@ defineOptions({
     </div>
   </div>
 </template>
+
+<style scoped>
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  min-height: 100%;
+}
+</style>

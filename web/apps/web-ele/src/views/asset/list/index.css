@@ -1,0 +1,31 @@
+/* 间距系统: 4px 基础单位 */
+
+/* 圆角系统: 8px(小) 12px(中) 16px(大) */
+
+/* 字体系统: 12px(辅助) 14px(正文) 16px(小标题) 18px(标题) 20px(大标题) */
+
+/* 颜色系统: 见下方定义 */
+
+/* ========== 布局容器 ========== */
+.asset-list-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--asset-page-gap);
+}
+
+.asset-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--asset-page-gap);
+  min-height: 0;
+  max-height: 100%;
+  padding: var(--asset-page-padding);
+  overflow: hidden;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+/* ========== 设计系统规范 ========== */

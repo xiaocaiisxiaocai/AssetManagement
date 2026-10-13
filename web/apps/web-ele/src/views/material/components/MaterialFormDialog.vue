@@ -1,337 +1,35 @@
 <script lang="ts" setup>
-import type { UploadRequestOptions, UploadUserFile } from 'element-plus';
+import type { MaterialFormDialogProps } from './use-material-form-dialog';
 
-import type { MaterialItem, SaveMaterialPayload } from '#/api/material';
-import type { TestProjectItem } from '#/api/test-project';
-import type { UserDto, UserOptionDto } from '#/api/user';
+import { ElButton, ElDialog, ElForm } from 'element-plus';
 
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import MaterialFormFields from './MaterialFormFields.vue';
+import { useMaterialFormDialog } from './use-material-form-dialog';
 
-import { useAccess } from '@vben/access';
-
-import { useDebounceFn } from '@vueuse/core';
-import {
-  ElButton,
-  ElDatePicker,
-  ElDialog,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElInputNumber,
-  ElMessage,
-  ElOption,
-  ElSelect,
-  ElUpload,
-} from 'element-plus';
-
-import { loadAssetImageObjectUrl, uploadAssetImageApi } from '#/api/asset';
-import { createMaterialApi, updateMaterialApi } from '#/api/material';
-import { createAsyncSessionTracker } from '#/utils/async-session-tracker';
-import { createObjectUrlLifecycle } from '#/utils/object-url-lifecycle';
-import { getRuntimeSettings } from '#/utils/runtime-settings';
-import { buildFileActionAccess } from '#/views/permissions/action-access';
-
-import {
-  getDefaultCustodianId,
-  nextCustodianDepartmentId,
-  resolveCustodianDepartment,
-  validateCustodianDepartment,
-  validateMaterialForm,
-} from './material-form-rules';
-
-type FlatOption = { id: number; label: string };
-
-const props = defineProps<{
-  defaultProjectId?: number;
-  departmentOptions: FlatOption[];
-  material: MaterialItem | null;
-  projectLocked?: boolean;
-  projects: TestProjectItem[];
-  searchUsers?: (
-    keyword: string,
-    keepIds?: Array<null | number | undefined>,
-  ) => Promise<void>;
-  userOptionsLoading?: boolean;
-  users: (UserDto | UserOptionDto)[];
-}>();
+const props = defineProps<MaterialFormDialogProps>();
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
-const { hasAccessByCodes } = useAccess();
-const canUploadImages = computed(
-  () => buildFileActionAccess(hasAccessByCodes).canUploadAndPreview,
-);
-
-const saving = ref(false);
-const attachmentMaxMb = ref(5);
-const pendingUploads = createAsyncSessionTracker();
-const uploading = ref(false);
-type AuthenticatedUploadFile = { rawUrl?: string } & UploadUserFile;
-const imageFileList = ref<AuthenticatedUploadFile[]>([]);
-let imageLoadGeneration = 0;
-const uploadedImageUrls = createObjectUrlLifecycle();
-const form = reactive({
-  brand: '',
-  custodianId: undefined as number | undefined,
-  departmentId: undefined as number | undefined,
-  locationName: '',
-  model: '',
-  name: '',
-  projectId: undefined as number | undefined,
-  quantity: 1,
-  receivedDate: undefined as string | undefined,
-  remark: '',
-  vendorName: '',
+const {
+  beforeImageUpload,
+  canUploadImages,
+  customImageUpload,
+  debouncedSave,
+  form,
+  imageFileList,
+  isCustodianDepartmentRequired,
+  isEdit,
+  onImageExceed,
+  onImageRemove,
+  saving,
+  searchCustodians,
+  selectableDepartmentOptions,
+  syncCustodianDepartment,
+  uploading,
+} = useMaterialFormDialog({
+  onSaved: () => emit('saved'),
+  props,
+  visible,
 });
-
-function searchCustodians(keyword: string) {
-  return props.searchUsers?.(keyword, [form.custodianId]);
-}
-
-const isEdit = computed(() => props.material !== null);
-const custodianDepartment = computed(() =>
-  resolveCustodianDepartment(
-    props.users,
-    props.departmentOptions,
-    form.custodianId,
-  ),
-);
-const isCustodianDepartmentRequired = computed(
-  () =>
-    custodianDepartment.value.resolved &&
-    custodianDepartment.value.departmentId !== undefined,
-);
-const selectableDepartmentOptions = computed(() => {
-  const options = [...props.departmentOptions];
-  const currentId = props.material?.departmentId;
-  if (currentId && !options.some((item) => item.id === currentId)) {
-    options.unshift({
-      id: currentId,
-      label: `${props.material?.departmentName || '原归属部门'}（停用）`,
-    });
-  }
-  return options;
-});
-
-function revokeImageObjectUrls() {
-  imageFileList.value.forEach((file) => {
-    if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
-    const responseUrl = (file.response as { url?: string } | undefined)?.url;
-    if (responseUrl?.startsWith('blob:') && responseUrl !== file.url)
-      URL.revokeObjectURL(responseUrl);
-  });
-}
-
-onBeforeUnmount(() => {
-  uploadedImageUrls.close();
-  revokeImageObjectUrls();
-});
-
-function onImageRemove(file: AuthenticatedUploadFile) {
-  if (file.url?.startsWith('blob:')) URL.revokeObjectURL(file.url);
-  const responseUrl = (file.response as { url?: string } | undefined)?.url;
-  if (responseUrl?.startsWith('blob:') && responseUrl !== file.url)
-    URL.revokeObjectURL(responseUrl);
-}
-
-function syncCustodianDepartment() {
-  if (isEdit.value) return;
-  form.departmentId = nextCustodianDepartmentId(
-    form.departmentId,
-    form.custodianId,
-    custodianDepartment.value,
-  );
-}
-
-watch([() => props.users, () => props.departmentOptions], () => {
-  if (visible.value && !isEdit.value) syncCustodianDepartment();
-});
-
-watch(visible, async (opened) => {
-  const generation = ++imageLoadGeneration;
-  if (!opened) {
-    pendingUploads.close();
-    uploading.value = false;
-    uploadedImageUrls.close();
-    revokeImageObjectUrls();
-    imageFileList.value = [];
-    return;
-  }
-  pendingUploads.start();
-  uploadedImageUrls.open();
-  void getRuntimeSettings()
-    .then((settings) => {
-      attachmentMaxMb.value = settings.attachmentMaxMb;
-    })
-    .catch(() => {});
-  if (props.material) {
-    Object.assign(form, {
-      brand: props.material.brand ?? '',
-      custodianId: props.material.custodianId ?? undefined,
-      departmentId: props.material.departmentId ?? undefined,
-      locationName: props.material.locationName ?? '',
-      model: props.material.model ?? '',
-      name: props.material.name,
-      projectId: props.material.projectId,
-      quantity: props.material.quantity,
-      receivedDate: props.material.receivedDate ?? undefined,
-      remark: props.material.remark ?? '',
-      vendorName: props.material.vendorName ?? '',
-    });
-    const results = await Promise.allSettled(
-      (props.material.images ?? []).map(async (rawUrl, index) => ({
-        name: rawUrl.split('/').pop() ?? rawUrl,
-        rawUrl,
-        status: 'success' as const,
-        uid: -(index + 1),
-        url: await loadAssetImageObjectUrl(rawUrl),
-      })),
-    );
-    const sourceImages = props.material.images ?? [];
-    const files: AuthenticatedUploadFile[] = results.map((result, index) => {
-      if (result.status === 'fulfilled') return result.value;
-      const rawUrl = sourceImages[index]!;
-      return {
-        name: rawUrl.split('/').pop() ?? rawUrl,
-        rawUrl,
-        status: 'success',
-        uid: -(index + 1),
-      };
-    });
-    if (generation !== imageLoadGeneration || !visible.value) {
-      files.forEach((file) => {
-        if (file.url) URL.revokeObjectURL(file.url);
-      });
-      return;
-    }
-    imageFileList.value = files;
-    const failedCount = results.filter(
-      (result) => result.status === 'rejected',
-    ).length;
-    if (failedCount > 0) {
-      ElMessage.warning(`有 ${failedCount} 张原照片加载失败，保存前请确认`);
-    }
-  } else {
-    const projectId = props.defaultProjectId;
-    Object.assign(form, {
-      brand: '',
-      custodianId: getDefaultCustodianId(props.projects, projectId),
-      departmentId: undefined,
-      locationName: '',
-      model: '',
-      name: '',
-      projectId,
-      quantity: 1,
-      receivedDate: undefined,
-      remark: '',
-      vendorName: '',
-    });
-    syncCustodianDepartment();
-    imageFileList.value = [];
-  }
-});
-
-function buildPayload(): SaveMaterialPayload {
-  return {
-    brand: form.brand,
-    custodianId: form.custodianId,
-    departmentId: form.departmentId,
-    images: imageFileList.value
-      .map(
-        (f) =>
-          f.rawUrl ?? (f.response as { rawUrl?: string } | undefined)?.rawUrl,
-      )
-      .filter((u): u is string => !!u),
-    locationName: form.locationName.trim() || null,
-    model: form.model,
-    name: form.name,
-    projectId: form.projectId as number,
-    quantity: form.quantity,
-    receivedDate: form.receivedDate ?? null,
-    remark: form.remark,
-    vendorName: form.vendorName,
-  };
-}
-
-function beforeImageUpload(file: File) {
-  const allowed = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'];
-  if (!allowed.includes(file.type)) {
-    ElMessage.warning('仅支持 jpg/png/gif/webp 格式图片');
-    return false;
-  }
-  if (file.size > attachmentMaxMb.value * 1024 * 1024) {
-    ElMessage.warning(`单张图片大小不能超过 ${attachmentMaxMb.value}MB`);
-    return false;
-  }
-  return true;
-}
-
-function customImageUpload(options: UploadRequestOptions) {
-  const sessionToken = pendingUploads.token();
-  const uploadGeneration = uploadedImageUrls.token();
-  const request = uploadAssetImageApi(options.file).then(async (uploaded) => {
-    const url = await loadAssetImageObjectUrl(uploaded.url);
-    if (!uploadedImageUrls.adopt(url, uploadGeneration)) {
-      throw new DOMException('上传会话已关闭', 'AbortError');
-    }
-    return {
-      ...uploaded,
-      rawUrl: uploaded.url,
-      url,
-    };
-  });
-  pendingUploads.track(request, sessionToken);
-  uploading.value = true;
-  void request.then(
-    () => {
-      if (pendingUploads.isCurrent(sessionToken))
-        uploading.value = pendingUploads.hasPending(sessionToken);
-    },
-    () => {
-      if (pendingUploads.isCurrent(sessionToken))
-        uploading.value = pendingUploads.hasPending(sessionToken);
-    },
-  );
-  return request;
-}
-
-function onImageExceed() {
-  ElMessage.warning('最多上传 5 张照片');
-}
-
-async function save() {
-  const validationMessage =
-    validateMaterialForm(form) ||
-    validateCustodianDepartment(
-      form,
-      props.users,
-      props.departmentOptions,
-      isEdit.value,
-    );
-  if (validationMessage) {
-    ElMessage.warning(validationMessage);
-    return;
-  }
-  saving.value = true;
-  const sessionToken = pendingUploads.token();
-  try {
-    await Promise.all(pendingUploads.pending(sessionToken));
-    if (!pendingUploads.isCurrent(sessionToken) || !visible.value) return;
-    await nextTick();
-    await (props.material
-      ? updateMaterialApi(props.material.id, buildPayload())
-      : createMaterialApi(buildPayload()));
-    if (!pendingUploads.isCurrent(sessionToken) || !visible.value) return;
-    ElMessage.success('保存成功');
-    visible.value = false;
-    emit('saved');
-  } catch {
-    // 错误已由 request.ts 拦截器统一弹出
-  } finally {
-    saving.value = false;
-  }
-}
-
-const debouncedSave = useDebounceFn(save, 300);
 </script>
 
 <template>
@@ -343,153 +41,24 @@ const debouncedSave = useDebounceFn(save, 300);
     width="840px"
   >
     <ElForm label-width="96px">
-      <div class="material-form-grid">
-        <ElFormItem class="material-form-field--wide" label="料件名称" required>
-          <ElInput
-            v-model="form.name"
-            :maxlength="100"
-            placeholder="请输入料件名称"
-            show-word-limit
-          />
-        </ElFormItem>
-        <ElFormItem label="所属项目" required>
-          <ElSelect
-            v-model="form.projectId"
-            :disabled="props.projectLocked"
-            filterable
-            placeholder="选择测试项目"
-            style="width: 100%"
-          >
-            <ElOption
-              v-for="item in projects"
-              :key="item.id"
-              :label="item.name"
-              :value="item.id"
-            />
-          </ElSelect>
-        </ElFormItem>
-        <ElFormItem label="厂商/来源">
-          <ElInput
-            v-model="form.vendorName"
-            :maxlength="100"
-            placeholder="请输入寄件厂商名称"
-            show-word-limit
-          />
-        </ElFormItem>
-        <ElFormItem class="material-form-field--wide" label="型号品牌">
-          <div class="material-form-model">
-            <ElInput
-              v-model="form.model"
-              :maxlength="100"
-              placeholder="请输入型号"
-              show-word-limit
-            />
-            <ElInput
-              v-model="form.brand"
-              :maxlength="100"
-              placeholder="请输入品牌"
-              show-word-limit
-            />
-          </div>
-        </ElFormItem>
-        <ElFormItem label="数量" required>
-          <ElInputNumber
-            v-model="form.quantity"
-            :max="999999"
-            :min="1"
-            :precision="0"
-            :step="1"
-            style="width: 100%"
-          />
-        </ElFormItem>
-        <ElFormItem label="接收日期">
-          <ElDatePicker
-            v-model="form.receivedDate"
-            placeholder="选择接收日期"
-            style="width: 100%"
-            type="date"
-            value-format="YYYY-MM-DD"
-          />
-        </ElFormItem>
-        <ElFormItem :required="isCustodianDepartmentRequired" label="归属部门">
-          <ElSelect
-            v-model="form.departmentId"
-            :disabled="isEdit"
-            clearable
-            filterable
-            placeholder="选择部门"
-            style="width: 100%"
-          >
-            <ElOption
-              v-for="item in selectableDepartmentOptions"
-              :key="item.id"
-              :label="item.label"
-              :value="item.id"
-            />
-          </ElSelect>
-        </ElFormItem>
-        <ElFormItem label="保管人">
-          <ElSelect
-            v-model="form.custodianId"
-            :disabled="isEdit"
-            :loading="userOptionsLoading"
-            :remote-method="searchCustodians"
-            clearable
-            filterable
-            placeholder="选择保管人"
-            remote
-            style="width: 100%"
-            @change="syncCustodianDepartment"
-          >
-            <ElOption
-              v-for="user in users"
-              :key="user.id"
-              :label="`${user.name}(${user.employeeNo})`"
-              :value="user.id"
-            />
-          </ElSelect>
-        </ElFormItem>
-        <ElFormItem class="material-form-field--wide" label="存放位置">
-          <ElInput
-            v-model="form.locationName"
-            :maxlength="100"
-            clearable
-            placeholder="请输入存放位置"
-            show-word-limit
-          />
-        </ElFormItem>
-        <ElFormItem
-          class="material-form-field--wide material-form-photo"
-          label="料件照片"
-        >
-          <ElUpload
-            v-model:file-list="imageFileList"
-            :before-upload="beforeImageUpload"
-            :disabled="!canUploadImages"
-            :http-request="customImageUpload"
-            :limit="5"
-            :on-exceed="onImageExceed"
-            :on-remove="onImageRemove"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            list-type="picture-card"
-          >
-            <span v-if="canUploadImages" class="text-2xl">+</span>
-          </ElUpload>
-          <div v-if="!canUploadImages" class="text-xs text-gray-400">
-            当前账号无文件上传权限
-          </div>
-        </ElFormItem>
-        <ElFormItem class="material-form-field--wide" label="备注">
-          <ElInput
-            v-model="form.remark"
-            :maxlength="500"
-            :rows="2"
-            placeholder="可选"
-            show-word-limit
-            type="textarea"
-          />
-        </ElFormItem>
-      </div>
+      <MaterialFormFields
+        v-model:form="form"
+        v-model:image-file-list="imageFileList"
+        :before-image-upload="beforeImageUpload"
+        :can-upload-images="canUploadImages"
+        :custom-image-upload="customImageUpload"
+        :is-custodian-department-required="isCustodianDepartmentRequired"
+        :is-edit="isEdit"
+        :on-image-exceed="onImageExceed"
+        :on-image-remove="onImageRemove"
+        :project-locked="props.projectLocked"
+        :projects="projects"
+        :search-custodians="searchCustodians"
+        :selectable-department-options="selectableDepartmentOptions"
+        :sync-custodian-department="syncCustodianDepartment"
+        :user-options-loading="userOptionsLoading"
+        :users="users"
+      />
     </ElForm>
     <template #footer>
       <ElButton @click="visible = false">取消</ElButton>
@@ -504,66 +73,4 @@ const debouncedSave = useDebounceFn(save, 300);
   </ElDialog>
 </template>
 
-<style scoped>
-.material-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 20px;
-}
-
-.material-form-field--wide {
-  grid-column: 1 / -1;
-}
-
-.material-form-model {
-  display: grid;
-  width: 100%;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.material-form-grid :deep(.el-form-item) {
-  margin-bottom: 14px;
-}
-
-.material-form-grid :deep(.el-form-item__content) {
-  min-width: 0;
-}
-
-.material-form-photo :deep(.el-upload--picture-card),
-.material-form-photo
-  :deep(.el-upload-list--picture-card .el-upload-list__item) {
-  width: 104px;
-  height: 104px;
-}
-
-:global(.material-form-dialog) {
-  max-width: calc(100vw - 32px);
-}
-
-:global(.material-form-dialog .el-dialog__body) {
-  padding: 12px 24px 0;
-}
-
-:global(.material-form-dialog .el-dialog__footer) {
-  padding-top: 6px;
-}
-
-@media (max-width: 768px) {
-  .material-form-grid,
-  .material-form-model {
-    grid-template-columns: 1fr;
-  }
-
-  .material-form-field--wide {
-    grid-column: auto;
-  }
-}
-
-@media (max-height: 720px) {
-  :global(.material-form-dialog .el-dialog__body) {
-    max-height: calc(100vh - 140px);
-    overflow-y: auto;
-  }
-}
-</style>
+<style scoped src="./MaterialFormDialog.css"></style>

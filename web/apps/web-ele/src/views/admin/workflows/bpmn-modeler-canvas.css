@@ -1,0 +1,208 @@
+.bpmn-modeler-wrapper .canvas-shell {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--workflow-panel-bg);
+  border: 1px solid var(--workflow-border);
+  border-radius: 4px;
+  box-shadow: var(--workflow-shadow);
+}
+
+.bpmn-modeler-wrapper .canvas-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--workflow-muted-strong);
+  background: var(--workflow-panel-soft-bg);
+  border-bottom: 1px solid var(--workflow-border);
+}
+
+.bpmn-modeler-wrapper .bpmn-container {
+  --workflow-canvas-bg: #f6f9fd;
+  --workflow-node-bg: #fff;
+  --workflow-node-stroke: #7d95b8;
+  --workflow-node-text: #23324d;
+  --workflow-flow-stroke: #607da8;
+  --workflow-label-text: #304764;
+  --workflow-tool-bg: #fff;
+  --workflow-tool-border: #cbd8e8;
+  --workflow-tool-icon: #1d4f91;
+
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--workflow-canvas-bg);
+  border: none;
+}
+
+:global(.dark) .bpmn-modeler-wrapper .bpmn-container {
+  --workflow-canvas-bg: var(--el-bg-color-page);
+  --workflow-node-bg: rgb(38 42 49);
+  --workflow-node-stroke: rgb(116 134 162);
+  --workflow-node-text: var(--el-text-color-primary);
+  --workflow-flow-stroke: rgb(156 170 190);
+  --workflow-label-text: var(--el-text-color-primary);
+  --workflow-tool-bg: rgb(34 37 43);
+  --workflow-tool-border: rgb(79 86 99);
+  --workflow-tool-icon: var(--el-text-color-primary);
+}
+
+.bpmn-modeler-wrapper .properties-panel {
+  flex: 0 0 380px;
+  width: 380px;
+  overflow-y: auto;
+  background: var(--workflow-panel-bg);
+  border: 1px solid var(--workflow-border);
+  border-radius: 4px;
+  box-shadow: var(--workflow-shadow);
+}
+
+:deep(.bpmn-container .viewport),
+:deep(.bpmn-container .djs-container) {
+  background-color: var(--workflow-canvas-bg);
+  background-image: linear-gradient(
+      var(--workflow-grid-line) 1px,
+      transparent 1px
+    ),
+    linear-gradient(90deg, var(--workflow-grid-line) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+:deep(.bpmn-container .djs-shape .djs-visual > rect),
+:deep(.bpmn-container .djs-shape .djs-visual > circle),
+:deep(.bpmn-container .djs-shape .djs-visual > ellipse),
+:deep(.bpmn-container .djs-shape .djs-visual > polygon),
+:deep(.bpmn-container .djs-shape .djs-visual > path) {
+  fill: var(--workflow-node-bg) !important;
+  stroke: var(--workflow-node-stroke) !important;
+  stroke-width: 1.8px !important;
+}
+
+:deep(.bpmn-container .djs-shape .djs-visual text),
+:deep(.bpmn-container .djs-label .djs-visual text) {
+  font-family: 'Microsoft YaHei', 'PingFang SC', Arial, sans-serif !important;
+  font-size: 12px !important;
+  fill: var(--workflow-node-text) !important;
+  stroke: none !important;
+}
+
+:deep(.bpmn-container .djs-connection .djs-visual > path),
+:deep(.bpmn-container .djs-connection .djs-visual > polyline),
+:deep(.bpmn-container .djs-connection .djs-visual marker path) {
+  stroke: var(--workflow-flow-stroke) !important;
+}
+
+:deep(.bpmn-container .djs-connection .djs-visual marker path) {
+  fill: var(--workflow-flow-stroke) !important;
+}
+
+:deep(.bpmn-container .djs-element.djs-label .djs-visual text) {
+  fill: var(--workflow-label-text) !important;
+}
+
+:deep(.bpmn-container .djs-element[data-element-id$='_label'] .djs-visual text),
+:deep(
+  .bpmn-container .djs-element[data-element-id$='_label'] .djs-visual tspan
+) {
+  fill: var(--workflow-label-text) !important;
+}
+
+:deep(.bpmn-container .djs-palette),
+:deep(.bpmn-container .djs-context-pad) {
+  background: var(--workflow-tool-bg);
+  border: 1px solid var(--workflow-tool-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgb(31 63 109 / 12%);
+}
+
+:global(.dark) :deep(.bpmn-container .djs-palette),
+:global(.dark) :deep(.bpmn-container .djs-context-pad) {
+  box-shadow: 0 8px 20px rgb(0 0 0 / 28%);
+}
+
+:deep(.bpmn-container .djs-palette .entry),
+:deep(.bpmn-container .djs-context-pad .entry) {
+  display: none;
+  color: var(--workflow-tool-icon);
+  border-radius: 3px;
+}
+
+:deep(.bpmn-container .djs-palette .entry:hover),
+:deep(.bpmn-container .djs-context-pad .entry:hover) {
+  color: var(--workflow-primary);
+  background: var(--workflow-card-icon-bg);
+}
+
+:deep(.bpmn-container .djs-context-pad.open) {
+  background: var(--workflow-tool-bg);
+}
+
+:deep(.bpmn-container .djs-context-pad .entry::before),
+:deep(.bpmn-container .djs-palette .entry::before) {
+  color: currentcolor;
+}
+
+:global(.dark) :deep(.bpmn-container .djs-context-pad .entry:hover),
+:global(.dark) :deep(.bpmn-container .djs-palette .entry:hover) {
+  background: rgb(46 54 66);
+}
+
+:deep(.bpmn-container .djs-element.selected .djs-outline),
+:deep(.bpmn-container .djs-element.hover .djs-outline) {
+  stroke: var(--workflow-primary) !important;
+  stroke-dasharray: 4 3;
+  stroke-width: 2px !important;
+}
+
+/* 只固定连线可视层宽度，保留 bpmn-js 较宽的命中层用于拖拽和点击 */
+:deep(.bpmn-container .djs-connection .djs-visual > path),
+:deep(.bpmn-container .djs-connection .djs-visual > polyline) {
+  stroke-width: 2px !important;
+}
+
+/* 隐藏连线编辑手柄的可视层，保留 hit 层以维持点击与拖拽命中区域 */
+:deep(.bpmn-container .djs-bendpoint .djs-visual),
+:deep(.bpmn-container .djs-segment-dragger .djs-visual) {
+  display: none !important;
+}
+
+:deep(.bpmn-container .djs-bendpoint .djs-hit),
+:deep(.bpmn-container .djs-segment-dragger .djs-hit) {
+  fill: none !important;
+  stroke: transparent !important;
+}
+
+/* 审批工作流只保留业务需要的建模工具 */
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-hand-tool),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-lasso-tool),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-connection-multi),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-start-event-none),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-end-event-none),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-gateway-none),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-gateway-xor),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-gateway-parallel),
+:deep(.bpmn-container .djs-palette .entry.bpmn-icon-user-task),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-end-event-none),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-gateway-none),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-user-task),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-connection-multi),
+:deep(.bpmn-container .djs-context-pad .entry.bpmn-icon-trash) {
+  display: block;
+}
+
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
+@media (max-width: 1200px) {
+  .bpmn-modeler-wrapper .designer-sidebar {
+    display: none;
+  }
+
+  .bpmn-modeler-wrapper .properties-panel {
+    flex-basis: 340px;
+    width: 340px;
+  }
+}

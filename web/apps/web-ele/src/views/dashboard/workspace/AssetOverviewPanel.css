@@ -1,0 +1,31 @@
+.workspace-summary {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.workspace-summary-item {
+  padding: 10px 12px;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 8px;
+}
+
+.workspace-summary-item span {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.workspace-summary-item strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--asset-page-text);
+}
+
+.workspace-summary-table {
+  margin-top: 10px;
+}

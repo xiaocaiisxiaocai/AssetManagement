@@ -1,0 +1,8 @@
+.pending-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+}
+
+/* ========== 设计系统规范 ========== */

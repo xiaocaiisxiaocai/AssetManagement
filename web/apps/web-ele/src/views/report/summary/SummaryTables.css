@@ -1,0 +1,70 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped src 使用 :deep() */
+
+.summary-tables {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.summary-table-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.summary-table-title {
+  flex-shrink: 0;
+  margin-bottom: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  color: var(--asset-page-text);
+}
+
+.summary-table-panel :deep(.el-table) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.summary-table-panel :deep(.el-table th.el-table__cell) {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--asset-page-text-secondary);
+  background: var(--asset-page-surface-soft);
+}
+
+.summary-table-panel :deep(.el-table--border) {
+  border: none;
+}
+
+.summary-table-panel :deep(.el-table td.el-table__cell),
+.summary-table-panel :deep(.el-table th.el-table__cell) {
+  border-color: var(--asset-page-border);
+}
+
+.summary-table-panel :deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+}
+
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
+@media (max-width: 1280px) {
+  .summary-tables {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .summary-tables {
+    gap: 12px;
+  }
+
+  .summary-table-panel {
+    padding: 12px;
+  }
+}

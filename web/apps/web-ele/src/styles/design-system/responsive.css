@@ -1,0 +1,90 @@
+/* ========== 响应式 ========== */
+@media (max-width: 1280px) {
+  .stat-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .page-container {
+    gap: 12px;
+    height: auto;
+    padding: 12px;
+  }
+
+  .page-header,
+  .filter-panel,
+  .table-panel-with-toolbar {
+    padding: 16px;
+  }
+
+  .stat-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+
+  .page-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .table-toolbar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .table-pagination {
+    justify-content: flex-start;
+  }
+
+  .table-bottom-pager {
+    align-items: stretch;
+  }
+
+  .filter-form {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .filter-form .el-form-item {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .filter-form .el-form-item__content {
+    width: 100%;
+  }
+
+  .filter-form .el-input,
+  .filter-form .el-input-number,
+  .filter-form .el-select,
+  .filter-form .el-date-editor {
+    width: 100% !important;
+    max-width: 100%;
+  }
+}
+
+.hide-on-mobile {
+  display: revert;
+}
+
+.show-on-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  .show-on-mobile {
+    display: block !important;
+  }
+}

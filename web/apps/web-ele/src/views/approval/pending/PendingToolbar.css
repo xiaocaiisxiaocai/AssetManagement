@@ -1,0 +1,25 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped src 支持 :deep/:global */
+.pending-view-switch {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.pending-view-tip {
+  font-size: 13px;
+  color: var(--asset-page-muted);
+}
+
+:deep(.el-input__inner) {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */
+@media (max-width: 640px) {
+  .pending-view-switch {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+}

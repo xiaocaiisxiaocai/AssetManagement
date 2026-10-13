@@ -6,16 +6,7 @@ import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 
-import {
-  ElButton,
-  ElMessage,
-  ElOption,
-  ElPagination,
-  ElSelect,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus';
+import { ElButton, ElMessage } from 'element-plus';
 
 import {
   exportOverdueReportApi,
@@ -26,11 +17,15 @@ import {
 import { downloadBlob } from '#/utils/download';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
+import { reactiveObjectModel } from '#/utils/reactive-object-model';
 import {
   createPageSizeOptions,
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
 import { buildReportActionAccess } from '#/views/permissions/action-access';
+
+import OverdueStatCards from './OverdueStatCards.vue';
+import OverdueTable from './OverdueTable.vue';
 
 defineOptions({ name: 'ReportOverdue' });
 
@@ -52,6 +47,7 @@ const query = reactive({
   page: 1,
   pageSize: 20,
 });
+const queryModel = reactiveObjectModel(query);
 async function loadData() {
   const requestGeneration = listRequestGuard.next();
   loading.value = true;
@@ -157,126 +153,25 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="stat-cards report-stat-cards">
-        <div class="stat-card">
-          <div class="stat-label">逾期资产</div>
-          <div class="stat-value stat-value-warning">{{ total }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">严重逾期</div>
-          <div class="stat-value stat-value-danger">{{ seriousTotal }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">已选资产</div>
-          <div class="stat-value">{{ selectedRows.length }}</div>
-        </div>
-      </div>
-
-      <div class="table-panel">
-        <ElTable
-          :data="rows"
-          border
-          height="100%"
-          row-key="assetId"
-          v-loading="loading"
-          @selection-change="onSelectionChange"
-        >
-          <ElTableColumn
-            v-if="reportActionAccess.canRemind"
-            type="selection"
-            width="48"
-          />
-          <ElTableColumn label="资产" min-width="220">
-            <template #default="{ row }">
-              <div>{{ row.assetName }}</div>
-              <ElTag size="small">{{ row.assetNo }}</ElTag>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn
-            class-name="hide-on-mobile"
-            label="分类"
-            min-width="170"
-          >
-            <template #default="{ row }">
-              <button
-                v-if="row.categoryCode"
-                class="category-code-link"
-                type="button"
-                @click="goCategoryAssets(row.categoryCode)"
-              >
-                {{ row.categoryCode }}
-              </button>
-              <span v-else class="empty-text">-</span>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="借用人" min-width="120" prop="borrower" />
-          <ElTableColumn
-            class-name="hide-on-mobile"
-            label="部门"
-            min-width="120"
-            prop="borrowerDept"
-          />
-          <ElTableColumn
-            class-name="hide-on-mobile"
-            label="预计归还"
-            min-width="120"
-            prop="returnDate"
-          />
-          <ElTableColumn align="center" label="逾期天数" width="120">
-            <template #default="{ row }">
-              <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">
-                {{ row.overdueDays }} 天
-              </ElTag>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn
-            v-if="reportActionAccess.canRemind"
-            align="center"
-            fixed="right"
-            label="操作"
-            width="110"
-          >
-            <template #default="{ row }">
-              <ElButton
-                :loading="remindingId === row.assetId"
-                link
-                size="small"
-                type="warning"
-                @click="remind(row)"
-              >
-                催办
-              </ElButton>
-            </template>
-          </ElTableColumn>
-        </ElTable>
-        <div class="table-bottom-pager">
-          <div class="table-bottom-pager-left">
-            <span>共 {{ total }} 条记录</span>
-            <span class="table-bottom-pager-divider">|</span>
-            <span>每页</span>
-            <ElSelect
-              v-model="query.pageSize"
-              style="width: 92px"
-              @change="onPageSizeChange"
-            >
-              <ElOption
-                v-for="size in pageSizeOptions"
-                :key="size"
-                :label="`${size}`"
-                :value="size"
-              />
-            </ElSelect>
-          </div>
-          <ElPagination
-            v-model:current-page="query.page"
-            :page-size="query.pageSize"
-            :total="total"
-            background
-            layout="prev, pager, next"
-            @current-change="loadData"
-          />
-        </div>
-      </div>
+      <OverdueStatCards
+        :selected-count="selectedRows.length"
+        :serious-total="seriousTotal"
+        :total="total"
+      />
+      <OverdueTable
+        v-model:query="queryModel"
+        :can-remind="reportActionAccess.canRemind"
+        :loading="loading"
+        :page-size-options="pageSizeOptions"
+        :reminding-id="remindingId"
+        :rows="rows"
+        :total="total"
+        @category-click="goCategoryAssets"
+        @page-change="loadData"
+        @page-size-change="onPageSizeChange"
+        @remind="remind"
+        @selection-change="onSelectionChange"
+      />
     </div>
   </re-page>
 </template>

@@ -173,16 +173,4 @@ function onProgressChange(value: string) {
   </ElDialog>
 </template>
 
-<style scoped>
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 16px;
-}
-
-@media (max-width: 768px) {
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
+<style scoped src="./ProjectFormDialog.css"></style>

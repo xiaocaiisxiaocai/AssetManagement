@@ -87,7 +87,7 @@ function transformComponent(
 </script>
 
 <template>
-  <div class="relative h-full">
+  <div class="relative min-h-full">
     <IFrameRouterView />
     <RouterView v-slot="{ Component, route }">
       <Transition :name="getTransitionName(route)" appear mode="out-in">

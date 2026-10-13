@@ -8,33 +8,23 @@ import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 
-import {
-  ElButton,
-  ElDatePicker,
-  ElForm,
-  ElFormItem,
-  ElOption,
-  ElPagination,
-  ElSelect,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus';
-
 import { getCategoryTreeApi } from '#/api/base-data';
 import { exportBorrowReportApi, getBorrowReportApi } from '#/api/report';
 import { getUserOptionsPageApi } from '#/api/user';
-import { formatDateTime } from '#/utils/date-format';
 import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
 import { downloadBlob } from '#/utils/download';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
+import { reactiveObjectModel } from '#/utils/reactive-object-model';
 import {
   createPageSizeOptions,
   getDefaultPageSize,
 } from '#/utils/runtime-settings';
 import { replaceUserOptions } from '#/utils/user-options';
 import { buildReportActionAccess } from '#/views/permissions/action-access';
+
+import BorrowFilter from './BorrowFilter.vue';
+import BorrowTable from './BorrowTable.vue';
 
 defineOptions({ name: 'ReportBorrow' });
 
@@ -61,6 +51,7 @@ const query = reactive({
   pageSize: 20,
   status: undefined as string | undefined,
 });
+const queryModel = reactiveObjectModel(query);
 
 async function loadData() {
   const requestGeneration = listRequestGuard.next();
@@ -157,14 +148,6 @@ function resetQuery() {
   runHandled(loadData());
 }
 
-function statusText(status: string) {
-  return status === 'returned' ? '已归还' : '借用中';
-}
-
-function statusType(status: string) {
-  return status === 'returned' ? 'success' : 'warning';
-}
-
 function goCategoryAssets(categoryCode: string) {
   if (!categoryCode) return;
   runHandled(
@@ -186,192 +169,28 @@ onMounted(async () => {
 <template>
   <re-page>
     <div class="page-container">
-      <div class="filter-panel borrow-filter-panel">
-        <ElForm class="filter-form" inline>
-          <ElFormItem label="申请时间">
-            <ElDatePicker
-              v-model="query.dateRange"
-              end-placeholder="结束日期"
-              format="YYYY-MM-DD"
-              range-separator="至"
-              start-placeholder="开始日期"
-              style="width: 240px"
-              type="daterange"
-              value-format="YYYY-MM-DD"
-            />
-          </ElFormItem>
-          <ElFormItem label="借用人">
-            <ElSelect
-              v-model="query.borrowerId"
-              :loading="userOptionsLoading"
-              :remote-method="searchBorrowers"
-              aria-label="借用人"
-              clearable
-              filterable
-              placeholder="选择借用人"
-              remote
-              style="width: 180px"
-            >
-              <ElOption
-                v-for="user in borrowerOptions"
-                :key="user.id"
-                :label="`${user.name}（${user.employeeNo}）`"
-                :value="user.id"
-              />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem label="分类">
-            <ElSelect
-              v-model="query.categoryId"
-              aria-label="资产分类"
-              clearable
-              filterable
-              placeholder="选择分类"
-              style="width: 180px"
-            >
-              <ElOption
-                v-for="category in categoryOptions"
-                :key="category.id"
-                :label="category.code"
-                :value="category.id"
-              />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem label="状态">
-            <ElSelect
-              v-model="query.status"
-              aria-label="借用状态"
-              clearable
-              placeholder="全部状态"
-              style="width: 130px"
-            >
-              <ElOption label="借用中" value="borrowed" />
-              <ElOption label="已归还" value="returned" />
-            </ElSelect>
-          </ElFormItem>
-          <ElFormItem>
-            <ElButton type="primary" @click="search">查询</ElButton>
-            <ElButton @click="resetQuery">重置</ElButton>
-            <ElButton
-              v-if="reportActionAccess.canExport"
-              :loading="exporting"
-              @click="exportReport"
-            >
-              导出
-            </ElButton>
-          </ElFormItem>
-        </ElForm>
-      </div>
-
-      <div class="table-panel-with-toolbar">
-        <ElTable :data="rows" border height="100%" v-loading="loading">
-          <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
-          <ElTableColumn label="资产" min-width="220">
-            <template #default="{ row }">
-              <div>{{ row.assetName }}</div>
-              <ElTag size="small">{{ row.assetNo }}</ElTag>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn
-            class-name="hide-on-mobile"
-            label="分类"
-            min-width="170"
-          >
-            <template #default="{ row }">
-              <button
-                v-if="row.categoryCode"
-                class="category-code-link"
-                type="button"
-                @click="goCategoryAssets(row.categoryCode)"
-              >
-                {{ row.categoryCode }}
-              </button>
-              <span v-else class="empty-text">-</span>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="借用人" min-width="120" prop="borrower" />
-          <ElTableColumn
-            class-name="hide-on-mobile"
-            label="部门"
-            min-width="120"
-            prop="borrowerDept"
-          />
-          <ElTableColumn
-            class-name="hide-on-mobile"
-            label="申请时间"
-            min-width="160"
-          >
-            <template #default="{ row }">
-              {{ formatDateTime(row.applyTime) }}
-            </template>
-          </ElTableColumn>
-          <ElTableColumn
-            class-name="hide-on-mobile"
-            label="预计归还"
-            min-width="120"
-            prop="returnDate"
-          />
-          <ElTableColumn align="center" label="状态" width="100">
-            <template #default="{ row }">
-              <ElTag :type="statusType(row.status)" size="small">
-                {{ statusText(row.status) }}
-              </ElTag>
-            </template>
-          </ElTableColumn>
-        </ElTable>
-
-        <div class="table-bottom-pager">
-          <div class="table-bottom-pager-left">
-            <span>共 {{ total }} 条记录</span>
-            <span class="table-bottom-pager-divider">|</span>
-            <span>每页</span>
-            <ElSelect
-              v-model="query.pageSize"
-              aria-label="借用明细每页条数"
-              style="width: 92px"
-              @change="search"
-            >
-              <ElOption
-                v-for="size in pageSizeOptions"
-                :key="size"
-                :label="`${size}`"
-                :value="size"
-              />
-            </ElSelect>
-          </div>
-          <ElPagination
-            v-model:current-page="query.page"
-            :page-size="query.pageSize"
-            :total="total"
-            background
-            layout="prev, pager, next"
-            @current-change="loadData"
-          />
-        </div>
-      </div>
+      <BorrowFilter
+        v-model:query="queryModel"
+        :borrower-options="borrowerOptions"
+        :can-export="reportActionAccess.canExport"
+        :category-options="categoryOptions"
+        :exporting="exporting"
+        :user-options-loading="userOptionsLoading"
+        @export="exportReport"
+        @reset="resetQuery"
+        @search="search"
+        @user-search="searchBorrowers"
+      />
+      <BorrowTable
+        v-model:query="queryModel"
+        :loading="loading"
+        :page-size-options="pageSizeOptions"
+        :rows="rows"
+        :total="total"
+        @category-click="goCategoryAssets"
+        @page-change="loadData"
+        @page-size-change="search"
+      />
     </div>
   </re-page>
 </template>
-
-<style scoped>
-.borrow-filter-panel {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-}
-
-.borrow-filter-panel .filter-form {
-  flex: 1;
-  min-width: 0;
-}
-
-@media (max-width: 768px) {
-  .borrow-filter-panel {
-    flex-wrap: wrap;
-  }
-
-  .borrow-filter-panel .filter-form {
-    flex-basis: 100%;
-  }
-}
-</style>

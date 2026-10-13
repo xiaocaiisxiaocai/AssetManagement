@@ -1,0 +1,122 @@
+/* ========== 页面容器 ========== */
+/* 内容区（main）负责滚动。页面按内容增高，不再锁死一屏并裁掉底部。 */
+.page-container {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--asset-page-gap);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: auto !important;
+  min-height: 0;
+  max-height: none !important;
+  padding: var(--asset-page-padding);
+  overflow: visible !important;
+}
+
+.asset-list-page,
+.backup-page,
+.material-home-page,
+.mine-page,
+.pending-page,
+.role-page,
+.user-page,
+.material-projects-page,
+.workspace-container {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.asset-list-page,
+.backup-page,
+.material-home-page,
+.mine-page,
+.pending-page,
+.role-page,
+.user-page,
+.material-projects-page {
+  gap: var(--asset-page-gap) !important;
+  padding: var(--asset-page-padding) !important;
+}
+
+/* ========== 页面头部 ========== */
+.page-header {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--asset-panel-padding-block) var(--asset-panel-padding-inline);
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.backup-header,
+.mine-header,
+.role-header,
+.user-header {
+  padding: var(--asset-panel-padding-block) var(--asset-panel-padding-inline) !important;
+}
+
+.backup-title,
+.mine-title,
+.role-title,
+.user-title {
+  font-size: 16px !important;
+  line-height: 24px !important;
+}
+
+.el-card {
+  background-color: var(--asset-page-surface);
+  border-color: var(--asset-page-border-strong);
+  box-shadow: var(--asset-page-shadow);
+}
+
+.el-card__header {
+  padding: 8px 12px;
+  color: var(--asset-page-panel-header-text);
+  background: var(--asset-page-panel-header);
+  border-bottom-color: var(--asset-page-border-strong);
+}
+
+.el-card__header .page-title {
+  color: var(--asset-page-panel-header-text);
+}
+
+.el-card__header .page-subtitle {
+  color: var(--asset-page-panel-header-muted);
+}
+
+.el-card__header .el-button.is-link {
+  color: var(--asset-page-panel-header-text);
+}
+
+.page-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 28px;
+  color: var(--asset-page-text);
+  letter-spacing: 0;
+}
+
+.page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--asset-page-muted);
+}
+
+.page-actions {
+  display: flex;
+  gap: 12px;
+}
