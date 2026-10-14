@@ -42,7 +42,7 @@ function approvalActionLabel(action: null | string | undefined) {
 </script>
 
 <template>
-  <div class="pending-table-panel">
+  <div class="pending-table-panel page-fill">
     <ElTable :data="flows" border height="100%" v-loading="loading">
       <ElTableColumn label="流程单号" prop="flowNo" width="180" />
       <ElTableColumn align="center" label="来源" width="110">

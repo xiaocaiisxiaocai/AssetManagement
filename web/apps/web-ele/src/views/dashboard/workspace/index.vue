@@ -63,7 +63,7 @@ const {
         @navigate="go"
       />
 
-      <section class="workspace-dashboard">
+      <section class="workspace-dashboard page-fill">
         <div class="workspace-side">
           <TodoPanel
             :can-confirm-returns="canConfirmReturns"

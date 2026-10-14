@@ -96,7 +96,7 @@ useHomeChartCard(() => props.stats, renderChart);
 </script>
 
 <template>
-  <div class="chart-card" v-loading="loading">
+  <div class="chart-card page-fill" v-loading="loading">
     <EchartsUI
       ref="barChartRef"
       aria-label="全年结案与跟进记录统计图"

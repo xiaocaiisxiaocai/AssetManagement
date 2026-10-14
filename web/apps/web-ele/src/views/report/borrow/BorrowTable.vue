@@ -45,7 +45,7 @@ function statusType(status: string) {
 </script>
 
 <template>
-  <div class="table-panel-with-toolbar">
+  <div class="table-panel-with-toolbar page-fill">
     <ElTable :data="rows" border height="100%" v-loading="loading">
       <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
       <ElTableColumn label="资产" min-width="220">

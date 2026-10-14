@@ -47,7 +47,7 @@ function statusText(status: string) {
 </script>
 
 <template>
-  <div class="mine-table-panel">
+  <div class="mine-table-panel page-fill">
     <ElTable :data="flows" border height="100%" v-loading="loading">
       <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
       <ElTableColumn align="center" label="来源" width="110">

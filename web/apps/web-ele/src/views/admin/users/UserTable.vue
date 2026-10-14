@@ -35,7 +35,7 @@ const query = defineModel<UserListQuery>('query', { required: true });
 </script>
 
 <template>
-  <div class="user-table-panel">
+  <div class="user-table-panel page-fill">
     <ElTable :data="users" border height="100%" v-loading="loading">
       <ElTableColumn label="工号" min-width="120" prop="employeeNo" />
       <ElTableColumn label="姓名" min-width="140" prop="name" />

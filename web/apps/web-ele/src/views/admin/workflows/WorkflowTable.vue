@@ -34,7 +34,7 @@ function bpmnStatusMeta(status: WorkflowItem['bpmnStatus']) {
 </script>
 
 <template>
-  <div class="table-panel">
+  <div class="table-panel page-fill">
     <ElTable :data="workflows" border height="100%" v-loading="loading">
       <ElTableColumn
         align="center"

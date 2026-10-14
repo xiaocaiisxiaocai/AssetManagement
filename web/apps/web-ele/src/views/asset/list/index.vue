@@ -78,7 +78,7 @@ const {
 <template>
   <re-page>
     <div class="asset-list-page p-5">
-      <section class="asset-workspace">
+      <section class="asset-workspace page-fill">
         <AssetWorkspaceHeader
           :access="assetRowActionAccess"
           :category-path="categoryPath"

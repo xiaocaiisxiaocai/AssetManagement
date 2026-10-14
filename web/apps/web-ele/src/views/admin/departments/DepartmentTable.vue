@@ -33,7 +33,7 @@ const pageSize = defineModel<number>('pageSize', { required: true });
 </script>
 
 <template>
-  <div class="table-panel">
+  <div class="table-panel page-fill">
     <ElTable
       :data="pagedDepartments"
       border

@@ -35,7 +35,7 @@ const query = defineModel<RoleListQuery>('query', { required: true });
 </script>
 
 <template>
-  <div class="role-table-panel">
+  <div class="role-table-panel page-fill">
     <ElTable :data="roles" border height="100%" v-loading="loading">
       <ElTableColumn label="角色编码" min-width="130" prop="code" />
       <ElTableColumn label="角色名称" min-width="160" prop="name" />

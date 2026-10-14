@@ -32,7 +32,7 @@ function tableRowClassName({ row }: { row: CategoryNode }) {
 </script>
 
 <template>
-  <div class="table-panel">
+  <div class="table-panel page-fill">
     <ElTable
       :data="categories"
       :row-class-name="tableRowClassName"

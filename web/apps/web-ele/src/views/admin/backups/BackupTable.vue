@@ -50,7 +50,7 @@ function fileTypeTag(type: string) {
 </script>
 
 <template>
-  <div class="backup-table-panel">
+  <div class="backup-table-panel page-fill">
     <ElTable :data="pagedRows" border height="100%" v-loading="loading">
       <ElTableColumn label="文件名" min-width="260">
         <template #default="{ row }">

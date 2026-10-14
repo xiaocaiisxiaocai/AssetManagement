@@ -91,7 +91,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
     @user-search="emit('userSearch', $event)"
   />
 
-  <div class="project-table-panel">
+  <div class="project-table-panel page-fill">
     <ElTable
       :data="pagedProjects"
       :row-class-name="tableRowClassName"

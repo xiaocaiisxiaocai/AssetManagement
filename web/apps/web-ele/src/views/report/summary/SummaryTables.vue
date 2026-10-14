@@ -14,7 +14,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="summary-tables">
+  <div class="summary-tables page-fill">
     <div class="summary-table-panel">
       <div class="summary-table-title">按分类统计</div>
       <ElTable :data="summary.byCategory" border v-loading="loading">
