@@ -44,7 +44,7 @@ function bizText(type: string) {
 </script>
 
 <template>
-  <div class="table-panel-with-toolbar page-fill">
+  <div class="table-panel-with-toolbar page-fill table-scroll">
     <ElTable :data="flows" border height="100%" v-loading="loading">
       <ElTableColumn label="流程编号" min-width="160" prop="flowNo" />
       <ElTableColumn

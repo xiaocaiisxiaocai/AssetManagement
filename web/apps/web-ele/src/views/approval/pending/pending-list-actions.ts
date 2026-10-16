@@ -14,6 +14,7 @@ import type { ComputedRef, Ref } from 'vue';
 
 import { ElMessage } from 'element-plus';
 
+import { nonempty } from '#/api/repeat-params';
 import {
   listHandledFlowsPageApi,
   listPendingFlowsPageApi,
@@ -124,7 +125,7 @@ export function bindPendingListActions(state: PendingListActionContext) {
             ? getPendingApprovalsPageApi
             : getHandledApprovalsPageApi;
         const result = await request({
-          bizType: requestedFlowId ? undefined : query.bizType || undefined,
+          bizTypes: requestedFlowId ? undefined : nonempty(query.bizTypes),
           flowId: requestedFlowId,
           keyword: requestedFlowId
             ? undefined

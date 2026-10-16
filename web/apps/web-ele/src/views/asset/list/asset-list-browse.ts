@@ -3,6 +3,8 @@ import type { AssetListState } from './asset-list-state';
 
 import type { AssetQuery } from '#/api/asset';
 
+import { nonempty } from '#/api/repeat-params';
+
 import {
   exportAssetsApi,
   getAssetCategoryCountsApi,
@@ -47,13 +49,13 @@ export function bindAssetListLoading(page: AssetListLoadingPage) {
     return {
       assetNo: query.assetNo || undefined,
       categoryId: query.categoryId,
-      custodianId: query.custodianId,
+      custodianIds: nonempty(query.custodianIds),
       deleteStatus: query.deleteStatus,
-      departmentId: query.departmentId,
+      departmentIds: nonempty(query.departmentIds),
       name: query.name || undefined,
       page: query.page,
       pageSize: query.pageSize,
-      status: query.status,
+      statuses: nonempty(query.statuses),
     };
   }
 
@@ -78,12 +80,12 @@ export function bindAssetListLoading(page: AssetListLoadingPage) {
     Object.assign(query, {
       assetNo: '',
       categoryId: isAssetStage.value ? hierarchyParent.value?.id : undefined,
-      custodianId: undefined,
+      custodianIds: [],
       deleteStatus: 'all',
-      departmentId: undefined,
+      departmentIds: [],
       name: '',
       page: 1,
-      status: undefined,
+      statuses: [],
     });
     selectedCategoryId.value = isAssetStage.value
       ? (hierarchyParent.value?.id ?? null)
@@ -103,12 +105,12 @@ export function bindAssetListLoading(page: AssetListLoadingPage) {
     Object.assign(query, {
       assetNo: '',
       categoryId: undefined,
-      custodianId: undefined,
+      custodianIds: [],
       deleteStatus: 'all',
-      departmentId: undefined,
+      departmentIds: [],
       name: '',
       page: 1,
-      status: undefined,
+      statuses: [],
     });
     runHandled(loadData());
   }

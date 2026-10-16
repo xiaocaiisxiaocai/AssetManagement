@@ -28,7 +28,7 @@ const {
 
 <template>
   <re-page>
-    <div class="page-container">
+    <div class="page-container page-fit">
       <SettingsTable
         v-model:page="page"
         v-model:page-size="pageSize"

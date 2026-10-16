@@ -6,8 +6,6 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
-  ElOption,
-  ElSelect,
   ElTabPane,
   ElTabs,
 } from 'element-plus';
@@ -26,9 +24,9 @@ const activeSource = defineModel<ApprovalSource>('activeSource', {
   required: true,
 });
 const query = defineModel<{
-  bizType: string;
+  bizTypes: string[];
   keyword: string;
-  status: string;
+  statuses: string[];
 }>('query', { required: true });
 </script>
 
@@ -52,32 +50,6 @@ const query = defineModel<{
           style="width: 280px"
           @keyup.enter="emit('search')"
         />
-      </ElFormItem>
-      <ElFormItem v-if="activeSource === 'asset'" label="业务类型">
-        <ElSelect
-          v-model="query.bizType"
-          clearable
-          placeholder="全部类型"
-          style="width: 150px"
-        >
-          <ElOption label="借用" value="borrow" />
-          <ElOption label="转让" value="transfer" />
-          <ElOption label="延期" value="extension" />
-          <ElOption label="归还" value="return" />
-        </ElSelect>
-      </ElFormItem>
-      <ElFormItem label="状态">
-        <ElSelect
-          v-model="query.status"
-          clearable
-          placeholder="全部状态"
-          style="width: 130px"
-        >
-          <ElOption label="审批中" value="pending" />
-          <ElOption label="已通过" value="approved" />
-          <ElOption label="已驳回" value="rejected" />
-          <ElOption label="已撤回" value="withdrawn" />
-        </ElSelect>
       </ElFormItem>
       <ElFormItem>
         <ElButton type="primary" @click="emit('search')">查询</ElButton>

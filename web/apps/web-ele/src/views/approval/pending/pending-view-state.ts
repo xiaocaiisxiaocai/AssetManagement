@@ -56,7 +56,7 @@ export function bindPendingViewActions(state: {
   query: PendingListQuery;
 }) {
   function onSourceChange() {
-    state.query.bizType = '';
+    state.query.bizTypes = [];
     state.currentPage.value.page = 1;
     runHandled(state.loadData());
   }

@@ -281,10 +281,54 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
                 "AdminUsers",
                 "AdminRoles",
                 "AdminDepartments",
+                "AssetCategories",
                 "AdminWorkflows",
                 "AdminSettings",
                 "AdminAudit",
                 "AdminBackups");
+    }
+
+    [Fact]
+    public void Incremental_seed_moves_asset_categories_under_system_management()
+    {
+        SeedLegacyDatabaseState();
+        var assetMenu = new Menu
+        {
+            Name = "Asset",
+            Title = "资产管理",
+            Path = "/asset",
+            Component = "BasicLayout",
+            Sort = 10
+        };
+        _db.Menus.Add(assetMenu);
+        _db.SaveChanges();
+        var categoryMenu = new Menu
+        {
+            ParentId = assetMenu.Id,
+            Name = "AssetCategories",
+            Title = "资产分类",
+            Path = "/asset/categories",
+            Component = "/asset/categories/index",
+            Sort = 13,
+            PermissionCode = "category:view"
+        };
+        _db.Menus.Add(categoryMenu);
+        var customRole = new Role { Code = "catalog", Name = "分类维护" };
+        _db.Roles.Add(customRole);
+        _db.SaveChanges();
+        _db.RoleMenus.Add(new RoleMenu { RoleId = customRole.Id, MenuId = categoryMenu.Id });
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        var adminMenu = _db.Menus.Single(x => x.Name == "Admin");
+        var moved = _db.Menus.Single(x => x.Name == "AssetCategories");
+        moved.ParentId.Should().Be(adminMenu.Id);
+        moved.Path.Should().Be("/admin/categories");
+        moved.Component.Should().Be("/admin/categories/index");
+        moved.Sort.Should().Be(44);
+        _db.RoleMenus.Should().Contain(x => x.RoleId == customRole.Id && x.MenuId == adminMenu.Id);
     }
 
     [Fact]

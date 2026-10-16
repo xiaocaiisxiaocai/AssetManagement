@@ -49,7 +49,7 @@ const pageSizeOptions = ref(createPageSizeOptions(20));
 const cleanupRetentionDays = ref(30);
 const cleanupPreview = ref<AuditCleanupPreview | null>(null);
 const query = reactive<AuditListQuery>({
-  actionType: '',
+  actionTypes: [],
   dateRange: [],
   module: '',
   page: 1,
@@ -73,7 +73,7 @@ async function loadData() {
 
 function buildQuery(): AuditLogQuery {
   return {
-    actionType: query.actionType || undefined,
+    actionTypes: query.actionTypes,
     endTime: endOfSelectedDay(query.dateRange[1]),
     module: query.module || undefined,
     page: query.page,
@@ -90,7 +90,7 @@ function search() {
 
 function resetQuery() {
   Object.assign(query, {
-    actionType: '',
+    actionTypes: [],
     dateRange: [],
     module: '',
     page: 1,
@@ -153,7 +153,7 @@ onMounted(async () => {
 
 <template>
   <re-page>
-    <div class="page-container">
+    <div class="page-container page-fit">
       <AuditHeader
         :can-cleanup="canCleanupAudit"
         @cleanup="openCleanupDialog"

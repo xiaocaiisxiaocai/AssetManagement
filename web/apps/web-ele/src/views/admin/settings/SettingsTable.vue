@@ -44,7 +44,7 @@ function displaySettingValue(row: SystemSetting) {
 </script>
 
 <template>
-  <div class="table-panel page-fill">
+  <div class="table-panel page-fill table-scroll">
     <ElTable :data="pagedSettings" border height="100%" v-loading="loading">
       <ElTableColumn label="参数键" min-width="200" prop="key" />
       <ElTableColumn label="参数值" min-width="180">

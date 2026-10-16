@@ -81,9 +81,9 @@ export function bindProjectCatalogListActions(page: Record<string, any>) {
     Object.assign(projectFilter, {
       code: '',
       name: '',
-      ownerId: undefined,
-      progressCode: '',
-      projectTypeCode: '',
+      ownerIds: [],
+      progressCodes: [],
+      projectTypeCodes: [],
     });
     projectQuery.page = 1;
     runHandled(loadData());
@@ -123,6 +123,7 @@ export function bindProjectCatalogListActions(page: Record<string, any>) {
       }
       if (!userOptionsRequestGuard.isLatest(requestGeneration)) return;
       users.value = replaceUserOptions(users.value, incoming, [
+        ...projectFilter.ownerIds,
         form.ownerId,
         ...keepIds,
       ]);

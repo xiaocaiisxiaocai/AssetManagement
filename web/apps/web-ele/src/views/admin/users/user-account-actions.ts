@@ -73,8 +73,10 @@ export function bindUserAccountActions(page: Record<string, any>) {
         query.keyword,
         query.page,
         query.pageSize,
-        query.departmentId,
-        query.roleId,
+        undefined,
+        undefined,
+        query.departmentIds,
+        query.roleIds,
       );
       if (!listRequestGuard.isLatest(requestGeneration)) return;
       users.value = result.items;
@@ -223,10 +225,10 @@ export function bindUserAccountActions(page: Record<string, any>) {
   }
 
   function reset() {
-    query.departmentId = undefined;
+    query.departmentIds = [];
     query.keyword = '';
     query.page = 1;
-    query.roleId = undefined;
+    query.roleIds = [];
     runHandled(loadData());
   }
 

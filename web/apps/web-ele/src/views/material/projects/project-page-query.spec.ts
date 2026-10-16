@@ -9,9 +9,9 @@ describe('测试项目服务端分页查询', () => {
         {
           code: ' TP-1 ',
           name: ' ',
-          ownerId: 7,
-          progressCode: 'testing',
-          projectTypeCode: '',
+          ownerIds: [7],
+          progressCodes: ['testing'],
+          projectTypeCodes: [],
         },
         'active',
         3,
@@ -21,11 +21,11 @@ describe('测试项目服务端分页查询', () => {
       code: 'TP-1',
       deleteStatus: 'active',
       name: undefined,
-      ownerId: 7,
+      ownerIds: [7],
       page: 3,
       pageSize: 20,
-      progressCode: 'testing',
-      projectTypeCode: undefined,
+      progressCodes: ['testing'],
+      projectTypeCodes: undefined,
     });
   });
 });

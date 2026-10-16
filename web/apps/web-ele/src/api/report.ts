@@ -1,5 +1,6 @@
 import { requestClient } from '#/api/request';
 
+import { repeatArrayParams } from './repeat-params';
 import { unwrap } from './unwrap';
 
 interface ApiResult<T> {
@@ -43,12 +44,15 @@ export interface AssetSummary {
 
 export interface BorrowReportQuery {
   borrowerId?: number;
+  borrowerIds?: number[];
   categoryId?: number;
+  categoryIds?: number[];
   endTime?: string;
   page?: number;
   pageSize?: number;
   startTime?: string;
   status?: string;
+  statuses?: string[];
 }
 
 export interface BorrowReportRow {
@@ -91,6 +95,7 @@ export interface OverdueReportPage extends PagedResult<OverdueReportRow> {
 
 export interface AuditLogQuery {
   actionType?: string;
+  actionTypes?: string[];
   endTime?: string;
   module?: string;
   page?: number;
@@ -150,6 +155,7 @@ export const getBorrowReportApi = (params: BorrowReportQuery) =>
     requestClient.get<ApiResult<PagedResult<BorrowReportRow>>>(
       '/reports/borrowed',
       {
+        ...repeatArrayParams,
         params,
       },
     ),
@@ -157,6 +163,7 @@ export const getBorrowReportApi = (params: BorrowReportQuery) =>
 
 export const exportBorrowReportApi = (params: BorrowReportQuery) =>
   requestClient.get('/reports/borrowed/export', {
+    ...repeatArrayParams,
     params,
     responseType: 'blob',
   });
@@ -190,12 +197,17 @@ export const remindOverdueBatchApi = (assetIds: number[]) =>
 export const getAuditLogsApi = (params: AuditLogQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<AuditLogRow>>>('/audit-logs', {
+      ...repeatArrayParams,
       params,
     }),
   );
 
 export const exportAuditLogsApi = (params: AuditLogQuery) =>
-  requestClient.get('/audit-logs/export', { params, responseType: 'blob' });
+  requestClient.get('/audit-logs/export', {
+    ...repeatArrayParams,
+    params,
+    responseType: 'blob',
+  });
 
 export const getAuditCleanupPreviewApi = (retentionDays: number) =>
   unwrap(

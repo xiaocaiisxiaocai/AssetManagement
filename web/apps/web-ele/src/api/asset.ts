@@ -1,5 +1,7 @@
 import { requestClient } from '#/api/request';
 
+import { repeatArrayParams } from './repeat-params';
+
 import { unwrap } from './unwrap';
 
 interface ApiResult<T> {
@@ -46,8 +48,10 @@ export interface AssetQuery {
   assetNo?: string;
   categoryId?: null | number;
   custodianId?: null | number;
+  custodianIds?: number[];
   deleteStatus?: 'active' | 'all' | 'deleted';
   departmentId?: null | number;
+  departmentIds?: number[];
   deletedOnly?: boolean;
   excludeCustodianId?: null | number;
   name?: string;
@@ -55,6 +59,7 @@ export interface AssetQuery {
   page?: number;
   pageSize?: number;
   status?: AssetStatus | null;
+  statuses?: AssetStatus[];
 }
 
 export interface AssetPayload {
@@ -137,7 +142,10 @@ export interface AssetImportConfirmResult {
 
 export const getAssetListApi = (params: AssetQuery) =>
   unwrap(
-    requestClient.get<ApiResult<PagedResult<AssetItem>>>('/assets', { params }),
+    requestClient.get<ApiResult<PagedResult<AssetItem>>>('/assets', {
+      ...repeatArrayParams,
+      params,
+    }),
   );
 
 export const getAssetCategoryCountsApi = () =>
@@ -166,7 +174,11 @@ export const restoreAssetApi = (id: number) =>
   unwrap(requestClient.post<ApiResult<null>>(`/assets/${id}/restore`));
 
 export const exportAssetsApi = (params: AssetQuery) =>
-  requestClient.get('/assets/export', { params, responseType: 'blob' });
+  requestClient.get('/assets/export', {
+    ...repeatArrayParams,
+    params,
+    responseType: 'blob',
+  });
 
 export const downloadAssetImportTemplateApi = () =>
   requestClient.get('/assets/import/template', { responseType: 'blob' });

@@ -7,12 +7,14 @@ export interface PagedResult<T> {
 
 export interface ApprovalPageQuery {
   bizType?: string;
+  bizTypes?: string[];
   flowId?: number;
   keyword?: string;
   page: number;
   pageSize: number;
   returnDate?: string;
   status?: string;
+  statuses?: string[];
 }
 
 export interface WorkflowDesignerOptions {

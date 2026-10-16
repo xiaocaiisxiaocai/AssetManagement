@@ -102,7 +102,7 @@ onMounted(async () => {
 
 <template>
   <re-page>
-    <div class="backup-page">
+    <div class="backup-page page-fit">
       <BackupHeader
         :backup-loading="backupLoading"
         :can-manage="canManageBackup"

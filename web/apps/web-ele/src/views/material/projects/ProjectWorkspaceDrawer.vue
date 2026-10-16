@@ -96,7 +96,7 @@ const materialQuery = defineModel<{
   name: string;
   page: number;
   pageSize: number;
-  status?: MaterialStatus;
+  statuses: MaterialStatus[];
 }>('materialQuery', { required: true });
 const myQuery = defineModel<{ page: number; pageSize: number }>('myQuery', {
   required: true,

@@ -38,7 +38,7 @@ export function createWorkspaceNavigation(state: {
       },
       {
         label: '资产分类',
-        path: '/asset/categories',
+        path: '/admin/categories',
         visible: state.canViewCategories.value,
       },
       {

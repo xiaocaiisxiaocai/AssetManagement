@@ -25,9 +25,9 @@ const baseProject: TestProjectItem = {
 const emptyFilter: ProjectFilter = {
   code: '',
   name: '',
-  ownerId: undefined,
-  progressCode: '',
-  projectTypeCode: '',
+  ownerIds: [],
+  progressCodes: [],
+  projectTypeCodes: [],
 };
 
 describe('测试项目筛选', () => {
@@ -59,9 +59,9 @@ describe('测试项目筛选', () => {
 
     const result = filterProjects(projects, {
       ...emptyFilter,
-      ownerId: 11,
-      progressCode: 'testing',
-      projectTypeCode: 'trial',
+      ownerIds: [11],
+      progressCodes: ['testing'],
+      projectTypeCodes: ['trial'],
     });
 
     expect(result).toEqual([projects[1]]);

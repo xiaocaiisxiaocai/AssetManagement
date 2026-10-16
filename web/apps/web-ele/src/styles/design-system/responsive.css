@@ -88,3 +88,49 @@
     display: block !important;
   }
 }
+
+/* 矮视口回退整页滚动：宽 ≤768 或视口高度 ≤647（约等于内容区 560 + 顶栏 50 + 标签栏 38）。 */
+@media (max-width: 768px), (max-height: 647px) {
+  /* 三层类名压过页面自己的窄屏 min-height:100%，回退时页壳仍至少一屏。 */
+  .page-fit.page-fit.page-fit {
+    height: auto;
+    min-height: calc(
+      var(
+          --vben-content-height,
+          calc(100dvh - var(--vben-header-height, 0px))
+        ) -
+        var(--page-shell-offset)
+    );
+    overflow: visible;
+  }
+
+  .page-fit.page-fit .asset-workspace,
+  .page-fit.page-fit .asset-class-list,
+  .page-fit.page-fit .asset-root-grid,
+  .page-fit.page-fit .table-scroll {
+    flex: 1 0 auto;
+    min-height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .page-fit.page-fit .table-scroll .el-table {
+    flex: 0 0 auto;
+    min-height: auto;
+  }
+
+  .page-fit .table-scroll .el-table,
+  .page-fit .table-scroll .el-table .el-table__inner-wrapper,
+  .page-fit .table-scroll .el-table .el-table__body-wrapper,
+  .page-fit .table-scroll .el-scrollbar__wrap {
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  /* 回退整页滚动：面板被撑高时分页贴底；行数超出视口时分页仍紧跟表格。 */
+  .page-fit.page-fit .table-scroll > .table-bottom-pager,
+  .page-fit.page-fit .table-scroll > .asset-pager,
+  .page-fit.page-fit .asset-workspace > .asset-pager {
+    margin-top: auto;
+  }
+}

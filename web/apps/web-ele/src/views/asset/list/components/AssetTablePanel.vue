@@ -51,21 +51,21 @@ const query = defineModel<AssetListQueryState>('query', { required: true });
 <template>
   <AssetFilterStrip
     v-model:query="query"
-    :department-options="departmentOptions"
-    :user-options-loading="userOptionsLoading"
-    :users="users"
     @reset="emit('reset')"
     @search="emit('search')"
-    @user-search="emit('userSearch', $event)"
   />
   <AssetListTable
     v-model:query="query"
     :assets="assets"
+    :department-options="departmentOptions"
     :loading="loading"
     :page-size-options="pageSizeOptions"
     :total="total"
+    :user-options-loading="userOptionsLoading"
+    :users="users"
     @page-change="emit('pageChange')"
     @search="emit('search')"
+    @user-search="emit('userSearch', $event)"
   >
     <template #actions="{ row }">
       <div class="asset-row-actions">

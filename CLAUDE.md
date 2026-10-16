@@ -173,7 +173,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **查询三态**:资产 `AssetQuery.DeleteStatus`(`active`/`all`/`deleted`),主清单默认传 `all`;分类树 `GetCategoryTreeAsync(string? deleteStatus)` 同三态(旧 `deletedOnly` 布尔已废弃)。报表/可借用/工作流流转(`ReportService`/`BizEffectApplier`/`WorkflowService`)**自动排除**已删除资产。
 - **详情可见**:`AssetService.GetDetailAsync` **允许查看已删除资产**(不经会拦截已删除的 `GetAsync`),供主清单已删除行的「详情」按钮使用。
 - **角色**:系统仅保留 `admin`(系统管理员)/`supervisor`(部门主管)/`employee`(普通员工)三个角色。`warehouse`/`dept_admin` 为历史角色，增量种子会将其用户合并到 `supervisor` 并删除旧角色。
-- 前端:`asset/list`、`asset/categories` 已删除行按权限显示「撤销删除」「彻底删除」;详情对话框 `AssetDetailDialog.vue` 用 `ElDescriptions` 展示并高亮删除状态。
+- 前端:`asset/list`、`admin/categories` 已删除行按权限显示「撤销删除」「彻底删除」;详情对话框 `AssetDetailDialog.vue` 用 `ElDescriptions` 展示并高亮删除状态。
 
 ### 新产品新技术(测试料件)模块(独立模块,2026-06-25 新增,后续持续扩展)
 
@@ -375,10 +375,10 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 ## 前端约定(apps/web-ele)
 
 - 业务代码在 `apps/web-ele/src` 下:`api/`(按模块分文件,封装 `requestClient` 调用)、`views/`(各模块对应菜单路由)、`store/`(Pinia,登录逻辑在 `store/auth.ts`)。
-  - `views/asset/` — 资产管理(`list` 列表及层级视图、`categories` 分类；存放位置直接在资产表单手工填写，不维护位置字典)
+  - `views/asset/` — 资产管理(`list` 列表及层级视图；存放位置直接在资产表单手工填写，不维护位置字典)
   - `views/approval/` — 审批流程(`pending` 待我审批、`mine` 我的申请、`confirm-return` 确认入库)
   - `views/report/` — 报表(`summary` 汇总、`borrow` 借用明细、`overdue` 逾期)
-  - `views/admin/` — 基础数据与系统管理(`departments` 部门、`users` 用户、`roles` 角色、`settings` 系统参数、`audit` 审计日志、`workflows` 工作流设计器、`backups` 数据库备份)
+  - `views/admin/` — 基础数据与系统管理(`departments` 部门、`users` 用户、`roles` 角色、`categories` 资产分类、`settings` 系统参数、`audit` 审计日志、`workflows` 工作流设计器、`backups` 数据库备份)
   - `views/material/` — 新产品新技术/测试料件(`home` 项目总览仪表盘、`projects` 测试项目工作台并内嵌料件清单/流转审批 Tab、`components` 共享对话框与校验规则)
   - `views/dashboard/`、`views/demos/`、`views/_core/` — vue-vben-admin 上游模板自带目录,业务不涉及,**新功能不在此实现**
 - 复用上游 `@vben/*`、`@core/*` 包的能力(布局、请求客户端、preferences、stores),不要重复造轮子;改动 `web/packages/` 下的核心包会影响所有 app,需谨慎。

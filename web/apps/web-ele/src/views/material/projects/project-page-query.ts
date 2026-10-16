@@ -3,6 +3,8 @@ import type { DeleteStatus } from './project-workspace-types';
 
 import type { TestProjectPageQuery } from '#/api/test-project';
 
+import { nonempty } from '#/api/repeat-params';
+
 export function buildProjectPageQuery(
   filter: ProjectFilter,
   deleteStatus: DeleteStatus,
@@ -13,10 +15,10 @@ export function buildProjectPageQuery(
     code: filter.code.trim() || undefined,
     deleteStatus,
     name: filter.name.trim() || undefined,
-    ownerId: filter.ownerId,
+    ownerIds: nonempty(filter.ownerIds),
     page,
     pageSize,
-    progressCode: filter.progressCode || undefined,
-    projectTypeCode: filter.projectTypeCode || undefined,
+    progressCodes: nonempty(filter.progressCodes),
+    projectTypeCodes: nonempty(filter.projectTypeCodes),
   };
 }

@@ -7,8 +7,6 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
-  ElOption,
-  ElSelect,
 } from 'element-plus';
 
 const emit = defineEmits<{
@@ -32,22 +30,6 @@ const query = defineModel<AuditListQuery>('query', { required: true });
           type="daterange"
           value-format="YYYY-MM-DD"
         />
-      </ElFormItem>
-      <ElFormItem label="操作">
-        <ElSelect
-          v-model="query.actionType"
-          aria-label="操作类型"
-          clearable
-          placeholder="全部操作"
-          style="width: 130px"
-        >
-          <ElOption label="新增" value="POST" />
-          <ElOption label="修改" value="PUT" />
-          <ElOption label="软删除" value="soft_delete" />
-          <ElOption label="彻底删除" value="purge" />
-          <ElOption label="其他删除" value="DELETE" />
-          <ElOption label="催办" value="remind" />
-        </ElSelect>
       </ElFormItem>
       <ElFormItem label="模块">
         <ElInput

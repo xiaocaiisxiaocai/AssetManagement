@@ -77,7 +77,7 @@ const {
 
 <template>
   <re-page>
-    <div class="asset-list-page p-5">
+    <div class="asset-list-page page-fit p-5">
       <section class="asset-workspace page-fill">
         <AssetWorkspaceHeader
           :access="assetRowActionAccess"

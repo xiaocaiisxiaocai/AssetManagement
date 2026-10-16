@@ -85,28 +85,59 @@ public class AuditQueryService : IAuditQueryService
             queryable = queryable.Where(x => x.UserId == query.UserId.Value);
         }
 
-        if (!string.IsNullOrWhiteSpace(query.ActionType))
+        var actionTypes = (query.ActionTypes is { Length: > 0 }
+                ? query.ActionTypes
+                : string.IsNullOrWhiteSpace(query.ActionType) ? [] : new[] { query.ActionType })
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .Distinct()
+            .ToArray();
+        if (actionTypes.Length > 0)
         {
-            var actionType = query.ActionType.Trim();
-            if (actionType == "soft_delete")
+            var plain = actionTypes.Where(x => x is not ("soft_delete" or "purge")).ToArray();
+            var softDelete = actionTypes.Contains("soft_delete");
+            var purge = actionTypes.Contains("purge");
+            queryable = (plain.Length > 0, softDelete, purge) switch
             {
-                queryable = queryable.Where(x => x.ActionType == "soft_delete"
+                (true, false, false) => queryable.Where(x => plain.Contains(x.ActionType)),
+                (false, true, false) => queryable.Where(x => x.ActionType == "soft_delete"
                     || (x.ActionType == "DELETE"
                         && (x.TargetType == "Asset"
                             || x.TargetType == "AssetCategory"
                             || x.TargetType == "TestMaterial"
                             || x.TargetType == "TestProject")
-                        && !x.Summary.Contains("/purge")));
-            }
-            else if (actionType == "purge")
-            {
-                queryable = queryable.Where(x => x.ActionType == "purge"
-                    || (x.ActionType == "DELETE" && x.Summary.Contains("/purge")));
-            }
-            else
-            {
-                queryable = queryable.Where(x => x.ActionType == actionType);
-            }
+                        && !x.Summary.Contains("/purge"))),
+                (false, false, true) => queryable.Where(x => x.ActionType == "purge"
+                    || (x.ActionType == "DELETE" && x.Summary.Contains("/purge"))),
+                (true, true, false) => queryable.Where(x => plain.Contains(x.ActionType)
+                    || x.ActionType == "soft_delete"
+                    || (x.ActionType == "DELETE"
+                        && (x.TargetType == "Asset"
+                            || x.TargetType == "AssetCategory"
+                            || x.TargetType == "TestMaterial"
+                            || x.TargetType == "TestProject")
+                        && !x.Summary.Contains("/purge"))),
+                (true, false, true) => queryable.Where(x => plain.Contains(x.ActionType)
+                    || x.ActionType == "purge"
+                    || (x.ActionType == "DELETE" && x.Summary.Contains("/purge"))),
+                (false, true, true) => queryable.Where(x => x.ActionType == "soft_delete"
+                    || x.ActionType == "purge"
+                    || (x.ActionType == "DELETE"
+                        && ((x.TargetType == "Asset"
+                                || x.TargetType == "AssetCategory"
+                                || x.TargetType == "TestMaterial"
+                                || x.TargetType == "TestProject")
+                            || x.Summary.Contains("/purge")))),
+                _ => queryable.Where(x => plain.Contains(x.ActionType)
+                    || x.ActionType == "soft_delete"
+                    || x.ActionType == "purge"
+                    || (x.ActionType == "DELETE"
+                        && ((x.TargetType == "Asset"
+                                || x.TargetType == "AssetCategory"
+                                || x.TargetType == "TestMaterial"
+                                || x.TargetType == "TestProject")
+                            || x.Summary.Contains("/purge"))))
+            };
         }
 
         if (!string.IsNullOrWhiteSpace(query.Module))

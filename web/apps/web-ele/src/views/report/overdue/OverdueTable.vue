@@ -36,7 +36,7 @@ const query = defineModel<OverdueQueryState>('query', { required: true });
 </script>
 
 <template>
-  <div class="table-panel page-fill">
+  <div class="table-panel page-fill table-scroll">
     <ElTable
       :data="rows"
       border

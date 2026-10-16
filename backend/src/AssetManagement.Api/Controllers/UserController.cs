@@ -26,8 +26,10 @@ public class UserController : ControllerBase
         int page = 1,
         int pageSize = 20,
         int? departmentId = null,
-        int? roleId = null)
-        => ApiResult<PagedResult<UserDto>>.Ok(await _rbac.GetUsersAsync(keyword, page, pageSize, departmentId, roleId));
+        int? roleId = null,
+        [FromQuery] int[]? departmentIds = null,
+        [FromQuery] int[]? roleIds = null)
+        => ApiResult<PagedResult<UserDto>>.Ok(await _rbac.GetUsersAsync(keyword, page, pageSize, departmentId, roleId, departmentIds, roleIds));
 
     [HttpGet("options")]
     [Authorize]

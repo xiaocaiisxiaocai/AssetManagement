@@ -24,6 +24,7 @@ public record AuditLogQuery
     public DateTime? EndTime { get; init; }
     public int? UserId { get; init; }
     public string? ActionType { get; init; }
+    public string[]? ActionTypes { get; init; }
     public string? Module { get; init; }
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 20;

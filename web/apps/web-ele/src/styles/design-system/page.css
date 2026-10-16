@@ -1,6 +1,8 @@
 /* ========== 页面容器 ========== */
 
 /* 内容区（main）负责滚动。页壳至少一屏，内容更多时继续增高。 */
+
+/* 列表页加 page-fit 后改为视口内一屏工作台，见下方 .page-fit。 */
 :root {
   /* 对应 re-page 内容层 p-4，上下各 1rem。main 默认无 padding。 */
   --page-shell-offset: 2rem;
@@ -14,13 +16,26 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
+  padding: var(--asset-page-padding);
+}
+
+/* 仪表盘与未进入一屏工作台的页壳按内容增高，由 main 整页滚动。 */
+.page-container:not(.page-fit),
+.material-home-page,
+.workspace-container,
+.asset-list-page:not(.page-fit),
+.backup-page:not(.page-fit),
+.mine-page:not(.page-fit),
+.pending-page:not(.page-fit),
+.role-page:not(.page-fit),
+.user-page:not(.page-fit),
+.material-projects-page:not(.page-fit) {
   height: auto !important;
   min-height: calc(
     var(--vben-content-height, calc(100dvh - var(--vben-header-height, 0px))) -
       var(--page-shell-offset)
   ) !important;
   max-height: none !important;
-  padding: var(--asset-page-padding);
   overflow: visible !important;
 }
 
@@ -37,22 +52,48 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  height: auto !important;
-  min-height: calc(
-    var(--vben-content-height, calc(100dvh - var(--vben-header-height, 0px))) -
-      var(--page-shell-offset)
-  ) !important;
-  max-height: none !important;
-  overflow: visible !important;
 }
 
-/* 主体面板占满页壳剩余高度。表格保持内容高度，分页紧跟表格。 */
+/* 列表页一屏工作台：页壳等于可视内容区，筛选与分页留在视口内。 */
+.page-fit {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: calc(
+    var(--vben-content-height, calc(100dvh - var(--vben-header-height, 0px))) -
+      var(--page-shell-offset)
+  );
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 列表页一屏工作台：表格或卡片区占满剩余高度，分页贴在面板底部。 */
+.page-fit .table-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page-fit .table-scroll > .el-table {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* 列表页一屏工作台：分类卡片在剩余高度内滚动，分页留在工作台底部。 */
+.page-fit .asset-class-list.table-scroll,
+.page-fit .asset-root-grid.table-scroll {
+  overflow: auto;
+}
+
+/* 主体面板占满页壳剩余高度。未进入一屏工作台时，表格保持内容高度，分页紧跟表格。 */
 .page-fill {
   flex: 1 0 auto;
   max-height: none;
 }
 
-.page-fill .el-table {
+/* 列表页一屏工作台外的表格保持内容高度；table-scroll 内的表格要为分页留出高度。 */
+.page-fill:not(.table-scroll) .el-table:not(.table-scroll .el-table) {
   flex: 0 0 auto !important;
 }
 

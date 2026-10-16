@@ -4,7 +4,7 @@ namespace AssetManagement.Application.Rbac;
 
 public interface IRbacService
 {
-    Task<PagedResult<UserDto>> GetUsersAsync(string? keyword, int page, int pageSize, int? departmentId = null, int? roleId = null);
+    Task<PagedResult<UserDto>> GetUsersAsync(string? keyword, int page, int pageSize, int? departmentId = null, int? roleId = null, int[]? departmentIds = null, int[]? roleIds = null);
     Task<PagedResult<UserOptionDto>> GetActiveUserOptionsAsync(string? keyword = null, int page = 1, int pageSize = 50);
     Task<List<UserOptionDto>> GetActiveSupervisorOptionsAsync(string? keyword = null);
     Task<List<UserOptionDto>> GetDepartmentManagerOptionsAsync(string? keyword = null, int? departmentId = null);

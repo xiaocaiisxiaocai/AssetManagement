@@ -29,24 +29,41 @@
   box-shadow: var(--asset-page-shadow);
 }
 
-.asset-workspace,
-.asset-class-list,
-.asset-root-grid,
-.asset-table-panel,
-.backup-table-panel,
+/* 抽屉与总览维持内容高度，不进入列表页一屏工作台。 */
 .drawer-table-panel,
 .flow-table-panel,
 .material-table-panel,
-.mine-table-panel,
-.pending-table-panel,
-.project-table-panel,
-.role-table-panel,
 .summary-table-panel,
-.user-table-panel,
 .workspace-dashboard,
-.workspace-panel,
-.table-panel,
-.table-panel-with-toolbar {
+.workspace-panel {
+  flex: 1 0 auto !important;
+  min-width: 0;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* 未标 table-scroll 的列表面板仍按内容增高。 */
+.asset-table-panel:not(.table-scroll),
+.backup-table-panel:not(.table-scroll),
+.mine-table-panel:not(.table-scroll),
+.pending-table-panel:not(.table-scroll),
+.project-table-panel:not(.table-scroll),
+.role-table-panel:not(.table-scroll),
+.user-table-panel:not(.table-scroll),
+.table-panel:not(.table-scroll),
+.table-panel-with-toolbar:not(.table-scroll) {
+  flex: 1 0 auto !important;
+  min-width: 0;
+  min-height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* 资产列表工作台仅在 page-fit 外锁定内容高度，页内恢复局部滚动。 */
+.asset-workspace:not(.page-fit .asset-workspace),
+.asset-class-list:not(.page-fit .asset-class-list),
+.asset-root-grid:not(.page-fit .asset-root-grid) {
   flex: 1 0 auto !important;
   min-width: 0;
   min-height: auto !important;
@@ -71,60 +88,66 @@
   box-shadow: var(--asset-page-shadow);
 }
 
-.asset-table-panel .el-table,
-.backup-table-panel .el-table,
+/* 列表页一屏工作台里的 table-scroll 不再压成内容高度，其余表格维持整页滚动。 */
+.asset-table-panel:not(.table-scroll) .el-table,
+.backup-table-panel:not(.table-scroll) .el-table,
 .drawer-table-panel .el-table,
 .flow-table-panel .el-table,
 .material-table-panel .el-table,
-.mine-table-panel .el-table,
-.page-container .el-table,
-.pending-table-panel .el-table,
-.project-table-panel .el-table,
-.role-table-panel .el-table,
+.mine-table-panel:not(.table-scroll) .el-table,
+.page-container .el-table:not(.table-scroll .el-table),
+.pending-table-panel:not(.table-scroll) .el-table,
+.project-table-panel:not(.table-scroll) .el-table,
+.role-table-panel:not(.table-scroll) .el-table,
 .summary-table-panel .el-table,
-.user-table-panel .el-table,
-.material-projects-page .el-table,
-.table-panel .el-table,
-.table-panel-with-toolbar .el-table,
-.asset-table-panel .el-table .el-table__inner-wrapper,
-.backup-table-panel .el-table .el-table__inner-wrapper,
+.user-table-panel:not(.table-scroll) .el-table,
+.material-projects-page .el-table:not(.table-scroll .el-table),
+.table-panel:not(.table-scroll) .el-table,
+.table-panel-with-toolbar:not(.table-scroll) .el-table,
+.asset-table-panel:not(.table-scroll) .el-table .el-table__inner-wrapper,
+.backup-table-panel:not(.table-scroll) .el-table .el-table__inner-wrapper,
 .drawer-table-panel .el-table .el-table__inner-wrapper,
 .flow-table-panel .el-table .el-table__inner-wrapper,
 .material-table-panel .el-table .el-table__inner-wrapper,
-.mine-table-panel .el-table .el-table__inner-wrapper,
-.page-container .el-table .el-table__inner-wrapper,
-.pending-table-panel .el-table .el-table__inner-wrapper,
-.project-table-panel .el-table .el-table__inner-wrapper,
-.role-table-panel .el-table .el-table__inner-wrapper,
+.mine-table-panel:not(.table-scroll) .el-table .el-table__inner-wrapper,
+.page-container .el-table:not(.table-scroll .el-table) .el-table__inner-wrapper,
+.pending-table-panel:not(.table-scroll) .el-table .el-table__inner-wrapper,
+.project-table-panel:not(.table-scroll) .el-table .el-table__inner-wrapper,
+.role-table-panel:not(.table-scroll) .el-table .el-table__inner-wrapper,
 .summary-table-panel .el-table .el-table__inner-wrapper,
-.user-table-panel .el-table .el-table__inner-wrapper,
-.material-projects-page .el-table .el-table__inner-wrapper,
-.table-panel .el-table .el-table__inner-wrapper,
-.table-panel-with-toolbar .el-table .el-table__inner-wrapper,
-.asset-table-panel .el-table .el-table__body-wrapper,
-.backup-table-panel .el-table .el-table__body-wrapper,
+.user-table-panel:not(.table-scroll) .el-table .el-table__inner-wrapper,
+.material-projects-page
+  .el-table:not(.table-scroll .el-table)
+  .el-table__inner-wrapper,
+.table-panel:not(.table-scroll) .el-table .el-table__inner-wrapper,
+.table-panel-with-toolbar:not(.table-scroll) .el-table .el-table__inner-wrapper,
+.asset-table-panel:not(.table-scroll) .el-table .el-table__body-wrapper,
+.backup-table-panel:not(.table-scroll) .el-table .el-table__body-wrapper,
 .drawer-table-panel .el-table .el-table__body-wrapper,
 .flow-table-panel .el-table .el-table__body-wrapper,
 .material-table-panel .el-table .el-table__body-wrapper,
-.mine-table-panel .el-table .el-table__body-wrapper,
-.page-container .el-table .el-table__body-wrapper,
-.pending-table-panel .el-table .el-table__body-wrapper,
-.project-table-panel .el-table .el-table__body-wrapper,
-.role-table-panel .el-table .el-table__body-wrapper,
+.mine-table-panel:not(.table-scroll) .el-table .el-table__body-wrapper,
+.page-container .el-table:not(.table-scroll .el-table) .el-table__body-wrapper,
+.pending-table-panel:not(.table-scroll) .el-table .el-table__body-wrapper,
+.project-table-panel:not(.table-scroll) .el-table .el-table__body-wrapper,
+.role-table-panel:not(.table-scroll) .el-table .el-table__body-wrapper,
 .summary-table-panel .el-table .el-table__body-wrapper,
-.user-table-panel .el-table .el-table__body-wrapper,
-.material-projects-page .el-table .el-table__body-wrapper,
-.table-panel .el-table .el-table__body-wrapper,
-.table-panel-with-toolbar .el-table .el-table__body-wrapper,
-.page-container .el-scrollbar__wrap,
-.asset-list-page .el-scrollbar__wrap,
-.asset-table-panel .el-scrollbar__wrap,
-.user-page .el-scrollbar__wrap,
-.role-page .el-scrollbar__wrap,
-.pending-page .el-scrollbar__wrap,
-.mine-page .el-scrollbar__wrap,
-.backup-page .el-scrollbar__wrap,
-.material-projects-page .el-scrollbar__wrap,
+.user-table-panel:not(.table-scroll) .el-table .el-table__body-wrapper,
+.material-projects-page
+  .el-table:not(.table-scroll .el-table)
+  .el-table__body-wrapper,
+.table-panel:not(.table-scroll) .el-table .el-table__body-wrapper,
+.table-panel-with-toolbar:not(.table-scroll) .el-table .el-table__body-wrapper,
+.page-container .el-scrollbar__wrap:not(.table-scroll .el-scrollbar__wrap),
+.asset-list-page .el-scrollbar__wrap:not(.table-scroll .el-scrollbar__wrap),
+.asset-table-panel:not(.table-scroll) .el-scrollbar__wrap,
+.user-page .el-scrollbar__wrap:not(.table-scroll .el-scrollbar__wrap),
+.role-page .el-scrollbar__wrap:not(.table-scroll .el-scrollbar__wrap),
+.pending-page .el-scrollbar__wrap:not(.table-scroll .el-scrollbar__wrap),
+.mine-page .el-scrollbar__wrap:not(.table-scroll .el-scrollbar__wrap),
+.backup-page .el-scrollbar__wrap:not(.table-scroll .el-scrollbar__wrap),
+.material-projects-page
+  .el-scrollbar__wrap:not(.table-scroll .el-scrollbar__wrap),
 .material-home-page .el-scrollbar__wrap,
 .workspace-container .el-scrollbar__wrap {
   height: auto !important;

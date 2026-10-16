@@ -394,7 +394,10 @@ public class TestMaterialService : ITestMaterialService
             q = q.Where(x => x.Name.Contains(name));
         }
         if (query.ProjectId.HasValue) q = q.Where(x => x.ProjectId == query.ProjectId.Value);
-        if (query.Status.HasValue) q = q.Where(x => x.Status == query.Status.Value);
+        var statuses = query.Statuses is { Length: > 0 }
+            ? query.Statuses
+            : query.Status is MaterialStatus status ? [status] : [];
+        if (statuses.Length > 0) q = q.Where(x => statuses.Contains(x.Status));
         if (query.DepartmentId.HasValue)
         {
             var ids = await DescendantDepartmentIdsAsync(query.DepartmentId.Value);

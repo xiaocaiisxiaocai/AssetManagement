@@ -54,7 +54,6 @@ public static class DbSeeder
             new Menu { Id = 1, Name = "Asset", Title = "资产管理", Path = "/asset", Component = "BasicLayout", Icon = "lucide:package", Sort = 10 },
             new Menu { Id = 2, ParentId = 1, Name = "AssetList", Title = "资产列表", Path = "/asset/list", Component = "/asset/list/index", Sort = 11, PermissionCode = "asset:view" },
             // Id=3 资产层级菜单已删除,实际功能已整合到资产列表的层级视图中
-            new Menu { Id = 18, ParentId = 1, Name = "AssetCategories", Title = "资产分类", Path = "/asset/categories", Component = "/asset/categories/index", Sort = 13, PermissionCode = "category:view" },
             new Menu { Id = 4, Name = "Approval", Title = "审批管理", Path = "/approval", Component = "BasicLayout", Icon = "lucide:git-branch", Sort = 20 },
             new Menu { Id = 5, ParentId = 4, Name = "ApprovalPending", Title = "待我审批", Path = "/approval/pending", Component = "/approval/pending/index", Sort = 21, PermissionCode = "approval:handle" },
             new Menu { Id = 6, ParentId = 4, Name = "ApprovalMine", Title = "我的申请", Path = "/approval/mine", Component = "/approval/mine/index", Sort = 22, PermissionCode = "approval:view" },
@@ -67,10 +66,11 @@ public static class DbSeeder
             new Menu { Id = 11, ParentId = 10, Name = "AdminUsers", Title = "用户管理", Path = "/admin/users", Component = "/admin/users/index", Sort = 41, PermissionCode = "user:view" },
             new Menu { Id = 12, ParentId = 10, Name = "AdminRoles", Title = "角色管理", Path = "/admin/roles", Component = "/admin/roles/index", Sort = 42, PermissionCode = "role:view" },
             new Menu { Id = 20, ParentId = 10, Name = "AdminDepartments", Title = "组织架构", Path = "/admin/departments", Component = "/admin/departments/index", Sort = 43, PermissionCode = "department:view" },
-            new Menu { Id = 13, ParentId = 10, Name = "AdminWorkflows", Title = "审批流程", Path = "/admin/workflows", Component = "/admin/workflows/index", Sort = 44, PermissionCode = "workflow:view" },
-            new Menu { Id = 21, ParentId = 10, Name = "AdminSettings", Title = "系统参数", Path = "/admin/settings", Component = "/admin/settings/index", Sort = 45, PermissionCode = "setting:view" },
-            new Menu { Id = 14, ParentId = 10, Name = "AdminAudit", Title = "审计日志", Path = "/admin/audit", Component = "/admin/audit/index", Sort = 46, PermissionCode = "audit:view" },
-            new Menu { Id = 26, ParentId = 10, Name = "AdminBackups", Title = "数据库备份", Path = "/admin/backups", Component = "/admin/backups/index", Sort = 47, PermissionCode = "backup:manage" },
+            new Menu { Id = 18, ParentId = 10, Name = "AssetCategories", Title = "资产分类", Path = "/admin/categories", Component = "/admin/categories/index", Sort = 44, PermissionCode = "category:view" },
+            new Menu { Id = 13, ParentId = 10, Name = "AdminWorkflows", Title = "审批流程", Path = "/admin/workflows", Component = "/admin/workflows/index", Sort = 45, PermissionCode = "workflow:view" },
+            new Menu { Id = 21, ParentId = 10, Name = "AdminSettings", Title = "系统参数", Path = "/admin/settings", Component = "/admin/settings/index", Sort = 46, PermissionCode = "setting:view" },
+            new Menu { Id = 14, ParentId = 10, Name = "AdminAudit", Title = "审计日志", Path = "/admin/audit", Component = "/admin/audit/index", Sort = 47, PermissionCode = "audit:view" },
+            new Menu { Id = 26, ParentId = 10, Name = "AdminBackups", Title = "数据库备份", Path = "/admin/backups", Component = "/admin/backups/index", Sort = 48, PermissionCode = "backup:manage" },
             new Menu { Id = 15, ParentId = 2, Name = "AssetCreateButton", Title = "新增资产按钮", Type = "button", Sort = 1, PermissionCode = "asset:create" },
             new Menu { Id = 16, ParentId = 2, Name = "AssetEditButton", Title = "编辑资产按钮", Type = "button", Sort = 2, PermissionCode = "asset:edit" },
             new Menu { Id = 17, ParentId = 2, Name = "AssetDeleteButton", Title = "删除资产按钮", Type = "button", Sort = 3, PermissionCode = "asset:delete" }
@@ -396,10 +396,12 @@ public static class DbSeeder
         EnsureChildMenu(db, adminMenu, "AdminUsers", "用户管理", "/admin/users", "/admin/users/index", 41, "user:view");
         EnsureChildMenu(db, adminMenu, "AdminRoles", "角色管理", "/admin/roles", "/admin/roles/index", 42, "role:view");
         EnsureChildMenu(db, adminMenu, "AdminDepartments", "组织架构", "/admin/departments", "/admin/departments/index", 43, "department:view");
-        EnsureChildMenu(db, adminMenu, "AdminWorkflows", "审批流程", "/admin/workflows", "/admin/workflows/index", 44, "workflow:view");
-        EnsureChildMenu(db, adminMenu, "AdminSettings", "系统参数", "/admin/settings", "/admin/settings/index", 45, "setting:view");
-        EnsureChildMenu(db, adminMenu, "AdminAudit", "审计日志", "/admin/audit", "/admin/audit/index", 46, "audit:view");
-        EnsureChildMenu(db, adminMenu, "AdminBackups", "数据库备份", "/admin/backups", "/admin/backups/index", 47, "backup:manage");
+        var categoryMenu = EnsureChildMenu(db, adminMenu, "AssetCategories", "资产分类", "/admin/categories", "/admin/categories/index", 44, "category:view");
+        EnsureChildMenu(db, adminMenu, "AdminWorkflows", "审批流程", "/admin/workflows", "/admin/workflows/index", 45, "workflow:view");
+        EnsureChildMenu(db, adminMenu, "AdminSettings", "系统参数", "/admin/settings", "/admin/settings/index", 46, "setting:view");
+        EnsureChildMenu(db, adminMenu, "AdminAudit", "审计日志", "/admin/audit", "/admin/audit/index", 47, "audit:view");
+        EnsureChildMenu(db, adminMenu, "AdminBackups", "数据库备份", "/admin/backups", "/admin/backups/index", 48, "backup:manage");
+        EnsureGrantedMenuAncestors(db, categoryMenu);
 
         var existingHome = db.Menus.SingleOrDefault(x => x.Name == "Home");
         if (existingHome is null)
@@ -649,6 +651,38 @@ public static class DbSeeder
         menu.PermissionCode = permissionCode;
         EnsureAdminMenu(db, menu);
         return menu;
+    }
+
+    private static void EnsureGrantedMenuAncestors(AppDbContext db, Menu menu)
+    {
+        var allMenus = db.Menus.ToList();
+        var ancestorIds = new List<int>();
+        var cursor = menu;
+        while (cursor.ParentId is int parentId)
+        {
+            ancestorIds.Add(parentId);
+            cursor = allMenus.First(x => x.Id == parentId);
+        }
+
+        if (ancestorIds.Count == 0) return;
+
+        var roleIds = db.RoleMenus
+            .Where(x => x.MenuId == menu.Id)
+            .Select(x => x.RoleId)
+            .Distinct()
+            .ToList();
+        foreach (var roleId in roleIds)
+        {
+            foreach (var ancestorId in ancestorIds)
+            {
+                if (!db.RoleMenus.Any(x => x.RoleId == roleId && x.MenuId == ancestorId))
+                {
+                    db.RoleMenus.Add(new RoleMenu { RoleId = roleId, MenuId = ancestorId });
+                }
+            }
+        }
+
+        db.SaveChanges();
     }
 
     private static void EnsureAdminMenu(AppDbContext db, Menu menu)

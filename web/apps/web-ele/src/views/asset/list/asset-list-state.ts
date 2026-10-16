@@ -15,13 +15,13 @@ import { createPageSizeOptions } from '#/utils/runtime-settings';
 export type AssetListQueryState = {
   assetNo: string;
   categoryId: number | undefined;
-  custodianId: number | undefined;
+  custodianIds: number[];
   deleteStatus: 'active' | 'all' | 'deleted';
-  departmentId: number | undefined;
+  departmentIds: number[];
   name: string;
   page: number;
   pageSize: number;
-  status: AssetStatus | undefined;
+  statuses: AssetStatus[];
 };
 
 export function createAssetListState() {
@@ -58,13 +58,13 @@ export function createAssetListState() {
   const query = reactive<AssetListQueryState>({
     assetNo: '',
     categoryId: undefined,
-    custodianId: undefined,
-    departmentId: undefined,
+    custodianIds: [],
+    departmentIds: [],
     deleteStatus: 'all',
     name: '',
     page: 1,
     pageSize: 20,
-    status: undefined,
+    statuses: [],
   });
   const queryModel = reactiveObjectModel(query);
 

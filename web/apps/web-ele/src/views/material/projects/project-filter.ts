@@ -3,9 +3,9 @@ import type { TestProjectItem } from '#/api/test-project';
 export type ProjectFilter = {
   code: string;
   name: string;
-  ownerId?: number;
-  progressCode: string;
-  projectTypeCode: string;
+  ownerIds: number[];
+  progressCodes: string[];
+  projectTypeCodes: string[];
 };
 
 function includesText(value: null | string | undefined, keyword: string) {
@@ -22,9 +22,13 @@ export function filterProjects(
     (project) =>
       includesText(project.code, filter.code) &&
       includesText(project.name, filter.name) &&
-      (!filter.projectTypeCode ||
-        project.projectTypeCode === filter.projectTypeCode) &&
-      (!filter.progressCode || project.progressCode === filter.progressCode) &&
-      (!filter.ownerId || project.ownerId === filter.ownerId),
+      (filter.projectTypeCodes.length === 0 ||
+        filter.projectTypeCodes.includes(project.projectTypeCode ?? '')) &&
+      (filter.progressCodes.length === 0 ||
+        filter.progressCodes.includes(project.progressCode ?? '')) &&
+      (filter.ownerIds.length === 0 ||
+        (project.ownerId !== undefined &&
+          project.ownerId !== null &&
+          filter.ownerIds.includes(project.ownerId))),
   );
 }

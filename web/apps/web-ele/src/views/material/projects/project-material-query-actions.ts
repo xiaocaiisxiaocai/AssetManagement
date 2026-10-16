@@ -1,6 +1,7 @@
 import type { MaterialQuery } from '#/api/material';
 
 import { listMaterialsApi } from '#/api/material';
+import { nonempty } from '#/api/repeat-params';
 import { runHandled } from '#/utils/handled-promise';
 import { normalizedPage } from '#/utils/pagination';
 
@@ -30,7 +31,7 @@ export function bindProjectMaterialQueryActions(
       page: materialQuery.page,
       pageSize: materialQuery.pageSize,
       projectId,
-      status: materialQuery.status,
+      statuses: nonempty(materialQuery.statuses),
     };
   }
 
@@ -76,7 +77,7 @@ export function bindProjectMaterialQueryActions(
       materialNo: '',
       name: '',
       page: 1,
-      status: undefined,
+      statuses: [],
     });
     runHandled(loadProjectMaterials());
   }

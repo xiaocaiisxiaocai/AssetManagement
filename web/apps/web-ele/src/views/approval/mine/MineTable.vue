@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import type { ApprovalSource } from '../notification-flow-attempt';
 import type { ApprovalWorkItem } from '../approval-work-items';
 
 import {
@@ -11,11 +12,13 @@ import {
   ElTag,
 } from 'element-plus';
 
+import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
 import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 
 import { canWithdrawApproval } from '../approval-work-items';
 
 defineProps<{
+  activeSource: ApprovalSource;
   flows: ApprovalWorkItem[];
   loading: boolean;
   pageSizeOptions: number[];
@@ -26,6 +29,7 @@ defineProps<{
 const emit = defineEmits<{
   pageChange: [];
   pageSizeChange: [];
+  search: [];
   showProgress: [row: ApprovalWorkItem];
   withdraw: [row: ApprovalWorkItem];
 }>();
@@ -33,6 +37,23 @@ const emit = defineEmits<{
 const query = defineModel<{ page: number; pageSize: number }>('query', {
   required: true,
 });
+const filters = defineModel<{
+  bizTypes: string[];
+  statuses: string[];
+}>('filters', { required: true });
+
+const bizTypeOptions = [
+  { label: '借用', value: 'borrow' },
+  { label: '转让', value: 'transfer' },
+  { label: '延期', value: 'extension' },
+  { label: '归还', value: 'return' },
+];
+const statusOptions = [
+  { label: '审批中', value: 'pending' },
+  { label: '已通过', value: 'approved' },
+  { label: '已驳回', value: 'rejected' },
+  { label: '已撤回', value: 'withdrawn' },
+];
 
 function statusText(status: string) {
   return (
@@ -47,7 +68,7 @@ function statusText(status: string) {
 </script>
 
 <template>
-  <div class="mine-table-panel page-fill">
+  <div class="mine-table-panel page-fill table-scroll">
     <ElTable :data="flows" border height="100%" v-loading="loading">
       <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
       <ElTableColumn align="center" label="来源" width="110">
@@ -60,7 +81,17 @@ function statusText(status: string) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="类型" width="100">
+      <ElTableColumn align="center" label="类型" width="120">
+        <template #header>
+          <HeaderMultiFilter
+            v-if="activeSource === 'asset'"
+            v-model="filters.bizTypes"
+            :options="bizTypeOptions"
+            label="类型"
+            @change="emit('search')"
+          />
+          <span v-else>类型</span>
+        </template>
         <template #default="{ row }">
           <ElTag
             :type="
@@ -96,7 +127,15 @@ function statusText(status: string) {
           />
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="状态" width="100">
+      <ElTableColumn align="center" label="状态" width="120">
+        <template #header>
+          <HeaderMultiFilter
+            v-model="filters.statuses"
+            :options="statusOptions"
+            label="状态"
+            @change="emit('search')"
+          />
+        </template>
         <template #default="{ row }">
           <ElTag
             :type="

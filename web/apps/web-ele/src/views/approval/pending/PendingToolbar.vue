@@ -6,10 +6,8 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
-  ElOption,
   ElRadioButton,
   ElRadioGroup,
-  ElSelect,
   ElTabPane,
   ElTabs,
 } from 'element-plus';
@@ -31,7 +29,7 @@ const viewMode = defineModel<'handled' | 'pending'>('viewMode', {
 const activeSource = defineModel<ApprovalSource>('activeSource', {
   required: true,
 });
-const query = defineModel<{ bizType: string; keyword: string }>('query', {
+const query = defineModel<{ bizTypes: string[]; keyword: string }>('query', {
   required: true,
 });
 </script>
@@ -61,19 +59,6 @@ const query = defineModel<{ bizType: string; keyword: string }>('query', {
           style="width: 260px"
           @keyup.enter="emit('search')"
         />
-      </ElFormItem>
-      <ElFormItem v-if="activeSource === 'asset'" label="业务类型">
-        <ElSelect
-          v-model="query.bizType"
-          clearable
-          placeholder="全部类型"
-          style="width: 140px"
-        >
-          <ElOption label="借用" value="borrow" />
-          <ElOption label="转让" value="transfer" />
-          <ElOption label="延期" value="extension" />
-          <ElOption label="归还" value="return" />
-        </ElSelect>
       </ElFormItem>
       <ElFormItem>
         <ElButton type="primary" @click="emit('search')">查询</ElButton>

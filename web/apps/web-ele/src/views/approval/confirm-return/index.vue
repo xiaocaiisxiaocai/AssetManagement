@@ -114,7 +114,7 @@ onMounted(async () => {
 
 <template>
   <re-page>
-    <div class="page-container">
+    <div class="page-container page-fit">
       <ConfirmReturnFilter
         v-model:query="queryModel"
         @reset="resetQuery"

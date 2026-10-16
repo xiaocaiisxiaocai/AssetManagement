@@ -9,7 +9,6 @@ const {
   importDialogVisible,
   loadData,
   loading,
-  onProjectDeleteStatusChange,
   onProjectPageSizeChange,
   openCreate,
   openEdit,
@@ -64,7 +63,6 @@ const {
     @reset="resetProjectFilter"
     @restore="restore"
     @search="searchProjects"
-    @status-change="onProjectDeleteStatusChange"
     @user-search="searchUsers"
   />
 </template>

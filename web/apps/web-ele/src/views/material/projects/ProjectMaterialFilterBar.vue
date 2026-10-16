@@ -3,15 +3,10 @@ import type { DeleteStatus } from './project-workspace-types';
 
 import type { MaterialStatus } from '#/api/material';
 
-import { ElButton, ElInput, ElOption, ElSelect } from 'element-plus';
+import { ElButton, ElInput } from 'element-plus';
 
 defineProps<{
   canCreate: boolean;
-  statusOptions: Array<{
-    label: string;
-    tag: 'info' | 'success';
-    value: MaterialStatus;
-  }>;
 }>();
 
 const emit = defineEmits<{
@@ -25,7 +20,7 @@ const query = defineModel<{
   name: string;
   page: number;
   pageSize: number;
-  status?: MaterialStatus;
+  statuses: MaterialStatus[];
 }>('query', { required: true });
 </script>
 
@@ -47,31 +42,6 @@ const query = defineModel<{
       style="width: 160px"
       @keyup.enter="emit('search')"
     />
-    <ElSelect
-      v-model="query.status"
-      aria-label="料件状态"
-      clearable
-      placeholder="状态"
-      style="width: 120px"
-    >
-      <ElOption
-        v-for="item in statusOptions"
-        :key="item.value"
-        :label="item.label"
-        :value="item.value"
-      />
-    </ElSelect>
-    <ElSelect
-      v-model="query.deleteStatus"
-      aria-label="料件删除状态"
-      placeholder="删除状态"
-      style="width: 120px"
-      @change="emit('search')"
-    >
-      <ElOption label="全部" value="all" />
-      <ElOption label="未删除" value="active" />
-      <ElOption label="已删除" value="deleted" />
-    </ElSelect>
     <ElButton type="primary" @click="emit('search')">查询</ElButton>
     <ElButton @click="emit('reset')">重置</ElButton>
     <ElButton v-if="canCreate" type="primary" @click="emit('create')">

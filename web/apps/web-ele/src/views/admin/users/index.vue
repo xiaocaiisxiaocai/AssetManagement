@@ -47,7 +47,7 @@ const {
 
 <template>
   <re-page>
-    <div class="user-page">
+    <div class="user-page page-fit">
       <UserHeader
         :access="userActionAccess"
         @create="openCreate"
@@ -55,14 +55,14 @@ const {
       />
       <UserFilter
         v-model:query="queryModel"
-        :department-options="departmentOptions"
-        :roles="roles"
         @reset="reset"
         @search="search"
       />
       <UserTable
         v-model:query="queryModel"
         :access="userActionAccess"
+        :department-options="departmentOptions"
+        :roles="roles"
         :loading="loading"
         :page-size-options="pageSizeOptions"
         :total="total"

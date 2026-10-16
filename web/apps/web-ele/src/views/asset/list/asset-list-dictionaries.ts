@@ -68,7 +68,7 @@ export function bindAssetDictionaryQueries(page: AssetDictionaryPage) {
       }
       if (!userOptionsRequestGuard.isLatest(requestGeneration)) return;
       users.value = replaceUserOptions(users.value, incoming, [
-        query.custodianId,
+        ...query.custodianIds,
         ...keepIds,
       ]);
     } catch {

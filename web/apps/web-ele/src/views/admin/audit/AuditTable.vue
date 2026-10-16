@@ -15,6 +15,7 @@ import {
   ElTooltip,
 } from 'element-plus';
 
+import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
 import { formatDateTime } from '#/utils/date-format';
 
 import {
@@ -38,10 +39,19 @@ const emit = defineEmits<{
   search: [];
 }>();
 const query = defineModel<AuditListQuery>('query', { required: true });
+
+const actionFilterOptions = [
+  { label: '新增', value: 'POST' },
+  { label: '修改', value: 'PUT' },
+  { label: '软删除', value: 'soft_delete' },
+  { label: '彻底删除', value: 'purge' },
+  { label: '其他删除', value: 'DELETE' },
+  { label: '催办', value: 'remind' },
+];
 </script>
 
 <template>
-  <div class="table-panel-with-toolbar page-fill">
+  <div class="table-panel-with-toolbar page-fill table-scroll">
     <ElTable :data="rows" border height="100%" v-loading="loading">
       <ElTableColumn type="expand">
         <template #default="{ row }">
@@ -117,7 +127,15 @@ const query = defineModel<AuditListQuery>('query', { required: true });
           {{ row.userName || row.userId || '-' }}
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="操作" width="100">
+      <ElTableColumn align="center" label="操作" width="120">
+        <template #header>
+          <HeaderMultiFilter
+            v-model="query.actionTypes"
+            :options="actionFilterOptions"
+            label="操作"
+            @change="emit('search')"
+          />
+        </template>
         <template #default="{ row }">
           <ElTag :type="actionType(row.actionType)" size="small">
             {{ actionTypeLabel(row.actionType) }}

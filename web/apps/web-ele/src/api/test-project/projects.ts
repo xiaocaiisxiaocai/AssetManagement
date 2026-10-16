@@ -8,6 +8,7 @@ import type {
 
 import { requestClient } from '#/api/request';
 
+import { repeatArrayParams } from '../repeat-params';
 import { unwrap } from '../unwrap';
 
 interface ApiResult<T> {
@@ -27,12 +28,13 @@ export const listTestProjectsPageApi = (params: TestProjectPageQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<TestProjectItem>>>(
       '/test-projects/page',
-      { params },
+      { ...repeatArrayParams, params },
     ),
   );
 
 export const exportTestProjectsApi = (params: TestProjectPageQuery) =>
   requestClient.get('/test-projects/export', {
+    ...repeatArrayParams,
     params,
     responseType: 'blob',
   });

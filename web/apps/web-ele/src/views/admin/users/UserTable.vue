@@ -1,7 +1,11 @@
 <script lang="ts" setup>
 import type { UserListQuery } from './user-form';
 
+import type { RoleDto } from '#/api/role';
 import type { UserDto } from '#/api/user';
+import type { DepartmentOption } from '#/utils/department-options';
+
+import { computed } from 'vue';
 
 import {
   ElButton,
@@ -13,12 +17,15 @@ import {
   ElTag,
 } from 'element-plus';
 
+import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
 import { buildUserActionAccess } from '#/views/permissions/action-access';
 
-defineProps<{
+const props = defineProps<{
   access: ReturnType<typeof buildUserActionAccess>;
+  departmentOptions: DepartmentOption[];
   loading: boolean;
   pageSizeOptions: number[];
+  roles: RoleDto[];
   total: number;
   users: UserDto[];
 }>();
@@ -32,10 +39,20 @@ const emit = defineEmits<{
   toggleStatus: [row: UserDto];
 }>();
 const query = defineModel<UserListQuery>('query', { required: true });
+
+const departmentFilterOptions = computed(() =>
+  props.departmentOptions.map((item) => ({
+    label: item.label.trim(),
+    value: item.id,
+  })),
+);
+const roleFilterOptions = computed(() =>
+  props.roles.map((role) => ({ label: role.name, value: role.id })),
+);
 </script>
 
 <template>
-  <div class="user-table-panel page-fill">
+  <div class="user-table-panel page-fill table-scroll">
     <ElTable :data="users" border height="100%" v-loading="loading">
       <ElTableColumn label="工号" min-width="120" prop="employeeNo" />
       <ElTableColumn label="姓名" min-width="140" prop="name" />
@@ -46,6 +63,15 @@ const query = defineModel<UserListQuery>('query', { required: true });
         prop="departmentName"
         show-overflow-tooltip
       >
+        <template #header>
+          <HeaderMultiFilter
+            v-model="query.departmentIds"
+            :options="departmentFilterOptions"
+            filterable
+            label="部门"
+            @change="emit('search')"
+          />
+        </template>
         <template #default="{ row }">
           {{ row.departmentName || '--' }}
         </template>
@@ -61,6 +87,15 @@ const query = defineModel<UserListQuery>('query', { required: true });
         label="角色"
         min-width="180"
       >
+        <template #header>
+          <HeaderMultiFilter
+            v-model="query.roleIds"
+            :options="roleFilterOptions"
+            filterable
+            label="角色"
+            @change="emit('search')"
+          />
+        </template>
         <template #default="{ row }">
           <template v-if="row.roleNames && row.roleNames.length > 0">
             <ElTag

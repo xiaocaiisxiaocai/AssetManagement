@@ -44,12 +44,12 @@ const pageSizeOptions = ref(createPageSizeOptions(20));
 const borrowerOptions = ref<UserOptionDto[]>([]);
 const categoryOptions = ref<CategoryNode[]>([]);
 const query = reactive({
-  borrowerId: undefined as number | undefined,
-  categoryId: undefined as number | undefined,
+  borrowerIds: [] as number[],
+  categoryIds: [] as number[],
   dateRange: [] as string[],
   page: 1,
   pageSize: 20,
-  status: undefined as string | undefined,
+  statuses: [] as string[],
 });
 const queryModel = reactiveObjectModel(query);
 
@@ -68,13 +68,13 @@ async function loadData() {
 
 function buildQuery(): BorrowReportQuery {
   return {
-    borrowerId: query.borrowerId,
-    categoryId: query.categoryId,
+    borrowerIds: query.borrowerIds,
+    categoryIds: query.categoryIds,
     endTime: endOfSelectedDay(query.dateRange[1]),
     page: query.page,
     pageSize: query.pageSize,
     startTime: startOfSelectedDay(query.dateRange[0]),
-    status: query.status,
+    statuses: query.statuses,
   };
 }
 
@@ -102,7 +102,7 @@ async function searchBorrowers(keyword = '') {
     borrowerOptions.value = replaceUserOptions(
       borrowerOptions.value,
       result.items,
-      [query.borrowerId],
+      query.borrowerIds,
     );
   } catch {
     // 请求层已提示，保留已回填选项。
@@ -140,11 +140,11 @@ async function exportReport() {
 
 function resetQuery() {
   Object.assign(query, {
-    borrowerId: undefined,
-    categoryId: undefined,
+    borrowerIds: [],
+    categoryIds: [],
     dateRange: [],
     page: 1,
-    status: undefined,
+    statuses: [],
   });
   runHandled(loadData());
 }
@@ -169,28 +169,29 @@ onMounted(async () => {
 
 <template>
   <re-page>
-    <div class="page-container">
+    <div class="page-container page-fit">
       <BorrowFilter
         v-model:query="queryModel"
-        :borrower-options="borrowerOptions"
         :can-export="reportActionAccess.canExport"
-        :category-options="categoryOptions"
         :exporting="exporting"
-        :user-options-loading="userOptionsLoading"
         @export="exportReport"
         @reset="resetQuery"
         @search="search"
-        @user-search="searchBorrowers"
       />
       <BorrowTable
         v-model:query="queryModel"
+        :borrower-options="borrowerOptions"
+        :category-options="categoryOptions"
         :loading="loading"
         :page-size-options="pageSizeOptions"
         :rows="rows"
         :total="total"
+        :user-options-loading="userOptionsLoading"
         @category-click="goCategoryAssets"
         @page-change="loadData"
         @page-size-change="search"
+        @search="search"
+        @user-search="searchBorrowers"
       />
     </div>
   </re-page>

@@ -68,9 +68,9 @@ export function useMineApprovals() {
   });
   const formModel = reactiveObjectModel(form);
   const query = reactive({
-    bizType: '',
+    bizTypes: [] as string[],
     keyword: '',
-    status: '',
+    statuses: [] as string[],
   });
   const queryModel = reactiveObjectModel(query);
   const showReturnDate = computed(() =>

@@ -2,6 +2,9 @@
 import type { DeleteStatus } from './project-workspace-types';
 
 import type { MaterialItem, MaterialStatus } from '#/api/material';
+import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
+
+import { computed } from 'vue';
 
 import {
   ElOption,
@@ -12,6 +15,12 @@ import {
   ElTabPane,
   ElTag,
 } from 'element-plus';
+
+import {
+  deleteFlagsFromStatus,
+  deleteStatusFromFlags,
+} from '#/components/table/header-multi-filter';
+import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
 
 import ProjectMaterialFilterBar from './ProjectMaterialFilterBar.vue';
 import ProjectMaterialRowActions from './ProjectMaterialRowActions.vue';
@@ -53,7 +62,7 @@ const query = defineModel<{
   name: string;
   page: number;
   pageSize: number;
-  status?: MaterialStatus;
+  statuses: MaterialStatus[];
 }>('query', { required: true });
 
 const statusOptions: Array<{
@@ -63,6 +72,35 @@ const statusOptions: Array<{
 }> = [
   { label: '在用', tag: 'success', value: 0 },
   { label: '已退回厂商', tag: 'info', value: 1 },
+];
+
+const statusHeader = computed<HeaderFilterValue[]>({
+  get: () => [
+    ...query.value.statuses,
+    ...deleteFlagsFromStatus(query.value.deleteStatus),
+  ],
+  set: (values) => {
+    query.value.statuses = values.filter(
+      (value): value is MaterialStatus => value === 0 || value === 1,
+    );
+    query.value.deleteStatus = deleteStatusFromFlags(values);
+  },
+});
+const statusGroups = [
+  {
+    label: '业务状态',
+    options: [
+      { label: '在用', value: 0 },
+      { label: '已退回厂商', value: 1 },
+    ],
+  },
+  {
+    label: '删除状态',
+    options: [
+      { label: '未删除', value: 'active' },
+      { label: '已删除', value: 'deleted' },
+    ],
+  },
 ];
 
 function statusMeta(status: MaterialStatus) {
@@ -85,7 +123,6 @@ function rowClassName({ row }: { row: MaterialItem }) {
     <ProjectMaterialFilterBar
       v-model:query="query"
       :can-create="canCreate"
-      :status-options="statusOptions"
       @create="emit('create')"
       @reset="emit('reset')"
       @search="emit('search')"
@@ -137,7 +174,15 @@ function rowClassName({ row }: { row: MaterialItem }) {
         <ElTableColumn label="备注" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">{{ row.remark || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn align="center" label="状态" width="130">
+        <ElTableColumn align="center" label="状态" width="140">
+          <template #header>
+            <HeaderMultiFilter
+              v-model="statusHeader"
+              :groups="statusGroups"
+              label="状态"
+              @change="emit('search')"
+            />
+          </template>
           <template #default="{ row }">
             <ElTag :type="statusMeta(row.status).tag" size="small">
               {{ statusMeta(row.status).label }}

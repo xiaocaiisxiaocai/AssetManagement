@@ -56,7 +56,7 @@ const menuPermissionModules: Record<string, string[]> = {
   Approval: ['approval'],
   ApprovalMine: ['approval'],
   ApprovalPending: ['approval'],
-  Asset: ['asset', 'category', 'file'],
+  Asset: ['asset', 'file'],
   AssetCategories: ['category'],
   AssetList: ['asset', 'file'],
   ConfirmReturn: ['approval'],

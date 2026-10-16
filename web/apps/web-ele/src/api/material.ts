@@ -2,6 +2,7 @@ import type { BpmnToken, WorkflowProgressStep } from './workflow';
 
 import { requestClient } from '#/api/request';
 
+import { repeatArrayParams } from './repeat-params';
 import { unwrap } from './unwrap';
 
 interface ApiResult<T> {
@@ -24,6 +25,7 @@ export interface MaterialFlowPageQuery {
   pageSize: number;
   projectId?: number;
   status?: string;
+  statuses?: string[];
 }
 
 // 0=在用 1=已退回厂商
@@ -60,6 +62,7 @@ export interface MaterialQuery {
   projectId?: null | number;
   departmentId?: null | number;
   status?: MaterialStatus | null;
+  statuses?: MaterialStatus[];
   deleteStatus?: 'active' | 'all' | 'deleted';
   page?: number;
   pageSize?: number;
@@ -125,6 +128,7 @@ export interface MaterialDetail {
 export const listMaterialsApi = (params: MaterialQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<MaterialItem>>>('/test-materials', {
+      ...repeatArrayParams,
       params,
     }),
   );
@@ -204,7 +208,7 @@ export const listMyFlowsPageApi = (params: MaterialFlowPageQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<MaterialFlowItem>>>(
       '/material-flows/mine-page',
-      { params },
+      { ...repeatArrayParams, params },
     ),
   );
 

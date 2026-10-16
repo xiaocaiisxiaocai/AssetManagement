@@ -59,7 +59,7 @@ function categoryChildLabel() {
     <ElButton @click="emit('reset')">重置</ElButton>
   </div>
 
-  <div v-if="filteredHierarchyNodes.length > 0" class="asset-class-list">
+  <div v-if="filteredHierarchyNodes.length > 0" class="asset-class-list table-scroll">
     <article
       v-for="node in pagedHierarchyNodes"
       :key="node.id"

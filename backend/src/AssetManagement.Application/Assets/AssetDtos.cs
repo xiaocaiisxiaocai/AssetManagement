@@ -38,9 +38,12 @@ public record AssetQuery
     public string? Name { get; init; }
     public int? CategoryId { get; init; }
     public int? DepartmentId { get; init; }
+    public int[]? DepartmentIds { get; init; }
     public int? CustodianId { get; init; }
+    public int[]? CustodianIds { get; init; }
     public int? ExcludeCustodianId { get; init; }
     public AssetStatus? Status { get; init; }
+    public AssetStatus[]? Statuses { get; init; }
     public string? DeleteStatus { get; init; }
     public bool DeletedOnly { get; init; }
     public int Page { get; init; } = 1;

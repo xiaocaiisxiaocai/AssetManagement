@@ -31,7 +31,9 @@ public class RbacService : IRbacService
         int page,
         int pageSize,
         int? departmentId = null,
-        int? roleId = null)
+        int? roleId = null,
+        int[]? departmentIds = null,
+        int[]? roleIds = null)
     {
         (page, pageSize) = Pagination.Normalize(page, pageSize);
         var query = _db.Users
@@ -44,13 +46,19 @@ public class RbacService : IRbacService
             var kw = keyword.Trim();
             query = query.Where(x => x.EmployeeNo.Contains(kw) || x.Name.Contains(kw));
         }
-        if (departmentId.HasValue)
+        var selectedDepartments = departmentIds is { Length: > 0 }
+            ? departmentIds
+            : departmentId is int selectedDepartmentId ? [selectedDepartmentId] : [];
+        if (selectedDepartments.Length > 0)
         {
-            query = query.Where(x => x.DepartmentId == departmentId.Value);
+            query = query.Where(x => x.DepartmentId.HasValue && selectedDepartments.Contains(x.DepartmentId.Value));
         }
-        if (roleId.HasValue)
+        var selectedRoles = roleIds is { Length: > 0 }
+            ? roleIds
+            : roleId is int selectedRoleId ? [selectedRoleId] : [];
+        if (selectedRoles.Length > 0)
         {
-            query = query.Where(x => x.UserRoles.Any(r => r.RoleId == roleId.Value));
+            query = query.Where(x => x.UserRoles.Any(r => selectedRoles.Contains(r.RoleId)));
         }
 
         var total = await query.CountAsync();

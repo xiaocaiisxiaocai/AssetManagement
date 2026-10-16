@@ -164,6 +164,7 @@ public class TestMaterialQuery
     public int? ProjectId { get; set; }
     public int? DepartmentId { get; set; }
     public MaterialStatus? Status { get; set; }
+    public MaterialStatus[]? Statuses { get; set; }
     /// <summary>active(默认未删除) / all(全部) / deleted(仅已删除)</summary>
     public string? DeleteStatus { get; set; }
     public int Page { get; set; } = 1;
@@ -231,8 +232,11 @@ public class TestProjectPageQuery
     public string? Code { get; init; }
     public string? Name { get; init; }
     public int? OwnerId { get; init; }
+    public int[]? OwnerIds { get; init; }
     public string? ProgressCode { get; init; }
+    public string[]? ProgressCodes { get; init; }
     public string? ProjectTypeCode { get; init; }
+    public string[]? ProjectTypeCodes { get; init; }
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 20;
 }
@@ -243,6 +247,7 @@ public class MaterialFlowPageQuery
     public int PageSize { get; set; } = 20;
     public string? Keyword { get; set; }
     public string? Status { get; set; }
+    public string[]? Statuses { get; set; }
     public int? ProjectId { get; set; }
     public int? FlowId { get; set; }
 }

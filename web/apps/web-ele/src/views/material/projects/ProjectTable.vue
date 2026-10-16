@@ -3,9 +3,17 @@ import type { ProjectFilter } from './project-filter';
 import type { DeleteStatus } from './project-workspace-types';
 
 import type { TestProjectItem, TestProjectOption } from '#/api/test-project';
+import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
+
+import { computed } from 'vue';
 
 import { ElButton, ElTable, ElTableColumn, ElTag } from 'element-plus';
 
+import {
+  deleteFlagsFromStatus,
+  deleteStatusFromFlags,
+} from '#/components/table/header-multi-filter';
+import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
 import { formatDate } from '#/utils/date-format';
 
 import { projectFollowUpStatusMeta } from './project-workspace-rules';
@@ -24,7 +32,7 @@ type ProjectActionAccess = {
   canRestore: boolean;
 };
 
-defineProps<{
+const props = defineProps<{
   access: ProjectActionAccess;
   currentUserId: number;
   filteredTotal: number;
@@ -52,7 +60,6 @@ const emit = defineEmits<{
   reset: [];
   restore: [project: TestProjectItem];
   search: [];
-  statusChange: [];
   userSearch: [keyword: string];
 }>();
 const filter = defineModel<ProjectFilter>('filter', { required: true });
@@ -62,6 +69,36 @@ const query = defineModel<{ page: number; pageSize: number }>('query', {
 const deleteStatus = defineModel<DeleteStatus>('deleteStatus', {
   required: true,
 });
+
+const projectTypeFilterOptions = computed(() =>
+  props.projectTypeOptions.map((item) => ({
+    label: item.label,
+    value: item.code,
+  })),
+);
+const progressFilterOptions = computed(() =>
+  props.progressOptions.map((item) => ({
+    label: item.label,
+    value: item.code,
+  })),
+);
+const ownerFilterOptions = computed(() =>
+  props.ownerOptions.map((item) => ({ label: item.name, value: item.id })),
+);
+const deleteHeader = computed<HeaderFilterValue[]>({
+  get: () => deleteFlagsFromStatus(deleteStatus.value),
+  set: (values) => {
+    deleteStatus.value = deleteStatusFromFlags(values);
+  },
+});
+const deleteGroups = [
+  {
+    options: [
+      { label: '未删除', value: 'active' },
+      { label: '已删除', value: 'deleted' },
+    ],
+  },
+];
 
 function optionalText(value?: null | string) {
   return value && value.trim() ? value : '-';
@@ -74,24 +111,17 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
 
 <template>
   <ProjectTableToolbar
-    v-model:delete-status="deleteStatus"
     v-model:filter="filter"
     :access="access"
-    :owner-options="ownerOptions"
-    :progress-options="progressOptions"
-    :project-type-options="projectTypeOptions"
-    :user-options-loading="userOptionsLoading"
     @create="emit('create')"
     @export="emit('export')"
     @import="emit('import')"
     @options="emit('options')"
     @reset="emit('reset')"
     @search="emit('search')"
-    @status-change="emit('statusChange')"
-    @user-search="emit('userSearch', $event)"
   />
 
-  <div class="project-table-panel page-fill">
+  <div class="project-table-panel page-fill table-scroll">
     <ElTable
       :data="pagedProjects"
       :row-class-name="tableRowClassName"
@@ -115,12 +145,33 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
           </ElButton>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="项目类型" min-width="120">
+      <ElTableColumn label="项目类型" min-width="130">
+        <template #header>
+          <HeaderMultiFilter
+            v-model="filter.projectTypeCodes"
+            :options="projectTypeFilterOptions"
+            filterable
+            label="项目类型"
+            @change="emit('search')"
+          />
+        </template>
         <template #default="{ row }">
           {{ row.projectTypeLabel || row.projectTypeCode || '-' }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="负责人" min-width="110">
+      <ElTableColumn label="负责人" min-width="130">
+        <template #header>
+          <HeaderMultiFilter
+            v-model="filter.ownerIds"
+            :loading="userOptionsLoading"
+            :options="ownerFilterOptions"
+            filterable
+            label="负责人"
+            remote
+            @change="emit('search')"
+            @search="emit('userSearch', $event)"
+          />
+        </template>
         <template #default="{ row }">{{ row.ownerName || '-' }}</template>
       </ElTableColumn>
       <ElTableColumn align="center" label="开始时间" width="110">
@@ -138,7 +189,16 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
           {{ formatDate(row.closedDate) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="进度" min-width="110">
+      <ElTableColumn label="进度" min-width="120">
+        <template #header>
+          <HeaderMultiFilter
+            v-model="filter.progressCodes"
+            :options="progressFilterOptions"
+            filterable
+            label="进度"
+            @change="emit('search')"
+          />
+        </template>
         <template #default="{ row }">
           <ElTag size="small" type="info">
             {{ row.progressLabel || row.progressCode || '-' }}
@@ -169,7 +229,15 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
         prop="materialCount"
         width="80"
       />
-      <ElTableColumn align="center" label="状态" width="90">
+      <ElTableColumn align="center" label="状态" width="110">
+        <template #header>
+          <HeaderMultiFilter
+            v-model="deleteHeader"
+            :groups="deleteGroups"
+            label="状态"
+            @change="emit('search')"
+          />
+        </template>
         <template #default="{ row }">
           <ElTag v-if="row.isDeleted" size="small" type="danger">
             已删除

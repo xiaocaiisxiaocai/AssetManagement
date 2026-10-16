@@ -36,8 +36,11 @@ public record BorrowReportQuery
     public DateTime? StartTime { get; init; }
     public DateTime? EndTime { get; init; }
     public int? CategoryId { get; init; }
+    public int[]? CategoryIds { get; init; }
     public int? BorrowerId { get; init; }
+    public int[]? BorrowerIds { get; init; }
     public string? Status { get; init; }
+    public string[]? Statuses { get; init; }
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 20;
 }

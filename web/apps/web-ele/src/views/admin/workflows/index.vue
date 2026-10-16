@@ -34,7 +34,7 @@ const {
 
 <template>
   <re-page>
-    <div class="page-container">
+    <div class="page-container page-fit">
       <WorkflowHeader
         :access="workflowActionAccess"
         @create="openCreateDialog"

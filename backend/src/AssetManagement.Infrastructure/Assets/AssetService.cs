@@ -647,20 +647,29 @@ public class AssetService : IAssetService
             queryable = queryable.Where(x => x.CategoryId == query.CategoryId.Value);
         }
 
-        if (query.Status.HasValue)
+        var statuses = query.Statuses is { Length: > 0 }
+            ? query.Statuses
+            : query.Status is AssetStatus status ? [status] : [];
+        if (statuses.Length > 0)
         {
-            queryable = queryable.Where(x => x.Status == query.Status.Value);
+            queryable = queryable.Where(x => statuses.Contains(x.Status));
         }
 
-        if (query.DepartmentId.HasValue)
+        var selectedDepartments = query.DepartmentIds is { Length: > 0 }
+            ? query.DepartmentIds
+            : query.DepartmentId is int departmentId ? [departmentId] : [];
+        if (selectedDepartments.Length > 0)
         {
-            var departmentIds = DescendantDepartmentIds(query.DepartmentId.Value);
+            var departmentIds = selectedDepartments.SelectMany(DescendantDepartmentIds).Distinct().ToArray();
             queryable = queryable.Where(x => x.DepartmentId.HasValue && departmentIds.Contains(x.DepartmentId.Value));
         }
 
-        if (query.CustodianId.HasValue)
+        var custodianIds = query.CustodianIds is { Length: > 0 }
+            ? query.CustodianIds
+            : query.CustodianId is int custodianId ? [custodianId] : [];
+        if (custodianIds.Length > 0)
         {
-            queryable = queryable.Where(x => x.CustodianId == query.CustodianId.Value);
+            queryable = queryable.Where(x => x.CustodianId.HasValue && custodianIds.Contains(x.CustodianId.Value));
         }
 
         if (query.ExcludeCustodianId.HasValue)

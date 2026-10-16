@@ -29,7 +29,7 @@ const {
 
 <template>
   <re-page>
-    <div class="page-container">
+    <div class="page-container page-fit">
       <div class="page-header">
         <div>
           <h2 class="page-title">资产分类编码树</h2>

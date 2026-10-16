@@ -129,7 +129,7 @@ onMounted(async () => {
 
 <template>
   <re-page>
-    <div class="page-container">
+    <div class="page-container page-fit">
       <div class="page-header">
         <div>
           <h2 class="page-title">逾期资产报表</h2>

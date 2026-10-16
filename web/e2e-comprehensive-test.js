@@ -287,7 +287,7 @@ async function runComprehensiveTest() {
     }
 
     // 2.2 资产分类管理
-    if (await safeGoto('/asset/categories', '资产分类')) {
+    if (await safeGoto('/admin/categories', '资产分类')) {
       await checkContentWithRetry(
         ['分类', '编码', '添加', '新增', '分类名称'],
         '资产分类',

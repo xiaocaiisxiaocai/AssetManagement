@@ -844,18 +844,29 @@ public class TestProjectService : ITestProjectService
             var name = query.Name.Trim();
             projectsQuery = projectsQuery.Where(x => x.Name.Contains(name));
         }
-        if (query.OwnerId.HasValue)
-            projectsQuery = projectsQuery.Where(x => x.OwnerId == query.OwnerId.Value);
-        if (!string.IsNullOrWhiteSpace(query.ProgressCode))
-        {
-            var progressCode = query.ProgressCode.Trim();
-            projectsQuery = projectsQuery.Where(x => x.ProgressCode == progressCode);
-        }
-        if (!string.IsNullOrWhiteSpace(query.ProjectTypeCode))
-        {
-            var projectTypeCode = query.ProjectTypeCode.Trim();
-            projectsQuery = projectsQuery.Where(x => x.ProjectTypeCode == projectTypeCode);
-        }
+        var ownerIds = query.OwnerIds is { Length: > 0 }
+            ? query.OwnerIds
+            : query.OwnerId is int ownerId ? [ownerId] : [];
+        if (ownerIds.Length > 0)
+            projectsQuery = projectsQuery.Where(x => x.OwnerId.HasValue && ownerIds.Contains(x.OwnerId.Value));
+        var progressCodes = (query.ProgressCodes is { Length: > 0 }
+                ? query.ProgressCodes
+                : string.IsNullOrWhiteSpace(query.ProgressCode) ? [] : new[] { query.ProgressCode })
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .Distinct()
+            .ToArray();
+        if (progressCodes.Length > 0)
+            projectsQuery = projectsQuery.Where(x => x.ProgressCode != null && progressCodes.Contains(x.ProgressCode));
+        var projectTypeCodes = (query.ProjectTypeCodes is { Length: > 0 }
+                ? query.ProjectTypeCodes
+                : string.IsNullOrWhiteSpace(query.ProjectTypeCode) ? [] : new[] { query.ProjectTypeCode })
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .Distinct()
+            .ToArray();
+        if (projectTypeCodes.Length > 0)
+            projectsQuery = projectsQuery.Where(x => x.ProjectTypeCode != null && projectTypeCodes.Contains(x.ProjectTypeCode));
         return projectsQuery;
     }
 

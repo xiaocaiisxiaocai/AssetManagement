@@ -58,7 +58,7 @@ const {
 
 <template>
   <re-page>
-    <div class="pending-page">
+    <div class="pending-page page-fit">
       <PendingToolbar
         v-model:active-source="activeSource"
         v-model:query="queryModel"
@@ -71,7 +71,9 @@ const {
       />
 
       <PendingTable
+        v-model:filters="queryModel"
         v-model:query="currentPageModel"
+        :active-source="activeSource"
         :flows="flows"
         :loading="loading"
         :material-action-loading-ids="materialActionLoadingIds"
@@ -84,6 +86,7 @@ const {
         @page-change="loadData"
         @page-size-change="onPageSizeChange"
         @reject-material="rejectMaterial"
+        @search="search"
       />
 
       <ApprovalDetailDialog

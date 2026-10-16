@@ -10,6 +10,7 @@ import type {
 
 import { requestClient } from '#/api/request';
 
+import { repeatArrayParams } from '../repeat-params';
 import { unwrap } from '../unwrap';
 
 interface ApiResult<T> {
@@ -31,7 +32,7 @@ export const getPendingApprovalsPageApi = (params: ApprovalPageQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<ApprovalFlow>>>(
       '/approvals/pending-page',
-      { params },
+      { ...repeatArrayParams, params },
     ),
   );
 
@@ -39,7 +40,7 @@ export const getHandledApprovalsPageApi = (params: ApprovalPageQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<ApprovalFlow>>>(
       '/approvals/handled-page',
-      { params },
+      { ...repeatArrayParams, params },
     ),
   );
 
@@ -47,7 +48,7 @@ export const getMineApprovalsPageApi = (params: ApprovalPageQuery) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<ApprovalFlow>>>(
       '/approvals/mine-page',
-      { params },
+      { ...repeatArrayParams, params },
     ),
   );
 

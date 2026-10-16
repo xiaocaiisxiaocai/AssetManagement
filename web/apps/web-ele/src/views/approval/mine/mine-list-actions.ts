@@ -3,6 +3,7 @@ import type { ApprovalWorkItem } from '../approval-work-items';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 import { listMyFlowsPageApi, withdrawMaterialFlowApi } from '#/api/material';
+import { nonempty } from '#/api/repeat-params';
 import { getMineApprovalsPageApi, withdrawApprovalApi } from '#/api/workflow';
 import { runHandled } from '#/utils/handled-promise';
 
@@ -59,12 +60,12 @@ export function bindMineListActions(page: Record<string, any>) {
       }
       if (activeSource.value === 'asset') {
         const result = await getMineApprovalsPageApi({
-          bizType: flowId ? undefined : query.bizType || undefined,
+          bizTypes: flowId ? undefined : nonempty(query.bizTypes),
           flowId: route.query.source === 'material' ? undefined : flowId,
           keyword: flowId ? undefined : query.keyword.trim() || undefined,
           page: flowId ? 1 : page.page,
           pageSize: page.pageSize,
-          status: flowId ? undefined : query.status || undefined,
+          statuses: flowId ? undefined : nonempty(query.statuses),
         });
         if (!listRequestGuard.isLatest(requestGeneration)) return;
         const lastPage = Math.max(1, Math.ceil(result.total / page.pageSize));
@@ -83,7 +84,7 @@ export function bindMineListActions(page: Record<string, any>) {
           keyword: flowId ? undefined : query.keyword.trim() || undefined,
           page: flowId ? 1 : page.page,
           pageSize: page.pageSize,
-          status: flowId ? undefined : query.status || undefined,
+          statuses: flowId ? undefined : nonempty(query.statuses),
         });
         if (!listRequestGuard.isLatest(requestGeneration)) return;
         const lastPage = Math.max(1, Math.ceil(result.total / page.pageSize));
@@ -160,16 +161,16 @@ export function bindMineListActions(page: Record<string, any>) {
 
   function resetQuery() {
     Object.assign(query, {
-      bizType: '',
+      bizTypes: [],
       keyword: '',
-      status: '',
+      statuses: [],
     });
     currentPage.value.page = 1;
     runHandled(loadData());
   }
 
   function onSourceChange() {
-    query.bizType = '';
+    query.bizTypes = [];
     currentPage.value.page = 1;
     runHandled(loadData());
   }

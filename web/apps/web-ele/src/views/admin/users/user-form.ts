@@ -1,11 +1,11 @@
 import type { UserDto, UserPayload } from '#/api/user';
 
 export interface UserListQuery {
-  departmentId?: number;
+  departmentIds: number[];
   keyword: string;
   page: number;
   pageSize: number;
-  roleId?: number;
+  roleIds: number[];
 }
 
 export interface UserFormState {

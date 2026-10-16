@@ -2,6 +2,10 @@
 import type { AssetListQueryState } from '../asset-list-state';
 
 import type { AssetItem, AssetStatus } from '#/api/asset';
+import type { UserOptionDto } from '#/api/user';
+import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
+
+import { computed } from 'vue';
 
 import {
   ElOption,
@@ -12,18 +16,27 @@ import {
   ElTag,
 } from 'element-plus';
 
+import {
+  deleteFlagsFromStatus,
+  deleteStatusFromFlags,
+} from '#/components/table/header-multi-filter';
+import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
 import { formatDate } from '#/utils/date-format';
 
-defineProps<{
+const props = defineProps<{
   assets: AssetItem[];
+  departmentOptions: { id: number; label: string }[];
   loading: boolean;
   pageSizeOptions: number[];
   total: number;
+  userOptionsLoading: boolean;
+  users: UserOptionDto[];
 }>();
 
 const emit = defineEmits<{
   pageChange: [];
   search: [];
+  userSearch: [keyword: string];
 }>();
 
 defineSlots<{
@@ -31,6 +44,50 @@ defineSlots<{
 }>();
 
 const query = defineModel<AssetListQueryState>('query', { required: true });
+
+const statusGroups = [
+  {
+    label: '业务状态',
+    options: [
+      { label: '在库', value: 0 },
+      { label: '借出', value: 1 },
+    ],
+  },
+  {
+    label: '删除状态',
+    options: [
+      { label: '未删除', value: 'active' },
+      { label: '已删除', value: 'deleted' },
+    ],
+  },
+];
+
+const statusHeader = computed<HeaderFilterValue[]>({
+  get: () => [
+    ...query.value.statuses,
+    ...deleteFlagsFromStatus(query.value.deleteStatus),
+  ],
+  set: (values) => {
+    query.value.statuses = values.filter(
+      (value): value is AssetStatus => value === 0 || value === 1,
+    );
+    query.value.deleteStatus = deleteStatusFromFlags(values);
+  },
+});
+
+const departmentFilterOptions = computed(() =>
+  props.departmentOptions.map((item) => ({
+    label: item.label,
+    value: item.id,
+  })),
+);
+
+const custodianFilterOptions = computed(() =>
+  props.users.map((user) => ({
+    label: `${user.name}（${user.employeeNo}）`,
+    value: user.id,
+  })),
+);
 
 const statusOptions: Array<{
   label: string;
@@ -57,7 +114,7 @@ function tableRowClassName({ row }: { row: AssetItem }) {
 </script>
 
 <template>
-  <div class="asset-table-panel">
+  <div class="asset-table-panel table-scroll">
     <ElTable
       :data="assets"
       :row-class-name="tableRowClassName"
@@ -67,21 +124,30 @@ function tableRowClassName({ row }: { row: AssetItem }) {
       stripe
       v-loading="loading"
     >
-      <ElTableColumn label="资产编号" min-width="160" prop="assetNo" sortable />
+      <ElTableColumn label="资产编号" min-width="160" prop="assetNo" />
       <ElTableColumn
         label="资产名称"
         min-width="180"
         prop="name"
         show-overflow-tooltip
-        sortable
       />
       <ElTableColumn
         class-name="hide-on-mobile"
         label="归属部门"
         prop="departmentName"
         show-overflow-tooltip
-        width="140"
-      />
+        width="150"
+      >
+        <template #header>
+          <HeaderMultiFilter
+            v-model="query.departmentIds"
+            :options="departmentFilterOptions"
+            filterable
+            label="归属部门"
+            @change="emit('search')"
+          />
+        </template>
+      </ElTableColumn>
       <ElTableColumn
         class-name="hide-on-mobile"
         label="存放位置"
@@ -94,8 +160,21 @@ function tableRowClassName({ row }: { row: AssetItem }) {
         label="保管人"
         prop="custodianName"
         show-overflow-tooltip
-        width="110"
-      />
+        width="130"
+      >
+        <template #header>
+          <HeaderMultiFilter
+            v-model="query.custodianIds"
+            :loading="userOptionsLoading"
+            :options="custodianFilterOptions"
+            filterable
+            label="保管人"
+            remote
+            @change="emit('search')"
+            @search="emit('userSearch', $event)"
+          />
+        </template>
+      </ElTableColumn>
       <ElTableColumn align="center" label="数量" prop="quantity" width="80" />
       <ElTableColumn
         align="center"
@@ -148,7 +227,15 @@ function tableRowClassName({ row }: { row: AssetItem }) {
           <span v-else class="text-gray-400">-</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="状态" width="90">
+      <ElTableColumn align="center" label="状态" width="120">
+        <template #header>
+          <HeaderMultiFilter
+            v-model="statusHeader"
+            :groups="statusGroups"
+            label="状态"
+            @change="emit('search')"
+          />
+        </template>
         <template #default="{ row }">
           <div class="asset-status-tags">
             <ElTag :type="statusMeta(row.status).tag" size="small">

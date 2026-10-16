@@ -50,7 +50,7 @@ const {
 
 <template>
   <re-page>
-    <div class="mine-page">
+    <div class="mine-page page-fit">
       <MineHeader
         :can-create="approvalActionAccess.canCreate"
         @start="openStart"
@@ -66,13 +66,16 @@ const {
       />
 
       <MineTable
+        v-model:filters="queryModel"
         v-model:query="currentPageModel"
+        :active-source="activeSource"
         :flows="flows"
         :loading="loading"
         :page-size-options="pageSizeOptions"
         :total="currentTotal"
         :withdrawing-keys="withdrawingKeys"
         @page-change="loadData"
+        @search="search"
         @page-size-change="onPageSizeChange"
         @show-progress="showProgress"
         @withdraw="withdraw"

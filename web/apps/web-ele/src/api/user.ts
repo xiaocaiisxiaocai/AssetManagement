@@ -1,5 +1,6 @@
 import { requestClient } from '#/api/request';
 
+import { nonempty, repeatArrayParams } from './repeat-params';
 import { unwrap } from './unwrap';
 
 interface ApiResult<T> {
@@ -72,10 +73,21 @@ export const getUserListApi = (
   pageSize: number = 20,
   departmentId?: number,
   roleId?: number,
+  departmentIds?: number[],
+  roleIds?: number[],
 ) =>
   unwrap(
     requestClient.get<ApiResult<PagedResult<UserDto>>>('/users', {
-      params: { departmentId, keyword, page, pageSize, roleId },
+      ...repeatArrayParams,
+      params: {
+        departmentId,
+        departmentIds: nonempty(departmentIds),
+        keyword,
+        page,
+        pageSize,
+        roleId,
+        roleIds: nonempty(roleIds),
+      },
     }),
   );
 

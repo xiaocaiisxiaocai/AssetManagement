@@ -44,7 +44,9 @@ public record ApprovalFlowPageQuery
     public int PageSize { get; init; } = 20;
     public string? Keyword { get; init; }
     public string? BizType { get; init; }
+    public string[]? BizTypes { get; init; }
     public string? Status { get; init; }
+    public string[]? Statuses { get; init; }
     public int? FlowId { get; init; }
     public string? ReturnDate { get; init; }
 }

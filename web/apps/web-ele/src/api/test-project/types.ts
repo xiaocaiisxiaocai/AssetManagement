@@ -10,10 +10,13 @@ export interface TestProjectPageQuery {
   deleteStatus?: string;
   name?: string;
   ownerId?: number;
+  ownerIds?: number[];
   page: number;
   pageSize: number;
   progressCode?: string;
+  progressCodes?: string[];
   projectTypeCode?: string;
+  projectTypeCodes?: string[];
 }
 
 export interface TestProjectItem {

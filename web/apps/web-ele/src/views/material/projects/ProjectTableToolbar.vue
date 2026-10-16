@@ -1,10 +1,7 @@
 <script lang="ts" setup>
 import type { ProjectFilter } from './project-filter';
-import type { DeleteStatus } from './project-workspace-types';
 
-import type { TestProjectOption } from '#/api/test-project';
-
-import { ElButton, ElInput, ElOption, ElSelect } from 'element-plus';
+import { ElButton, ElInput } from 'element-plus';
 
 type ProjectActionAccess = {
   canCreate: boolean;
@@ -19,10 +16,6 @@ type ProjectActionAccess = {
 
 defineProps<{
   access: ProjectActionAccess;
-  ownerOptions: { id: number; name: string }[];
-  progressOptions: TestProjectOption[];
-  projectTypeOptions: TestProjectOption[];
-  userOptionsLoading?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -32,13 +25,8 @@ const emit = defineEmits<{
   options: [];
   reset: [];
   search: [];
-  statusChange: [];
-  userSearch: [keyword: string];
 }>();
 const filter = defineModel<ProjectFilter>('filter', { required: true });
-const deleteStatus = defineModel<DeleteStatus>('deleteStatus', {
-  required: true,
-});
 </script>
 
 <template>
@@ -60,63 +48,6 @@ const deleteStatus = defineModel<DeleteStatus>('deleteStatus', {
         style="width: 180px"
         @keyup.enter="emit('search')"
       />
-      <ElSelect
-        v-model="filter.projectTypeCode"
-        aria-label="项目类型"
-        clearable
-        placeholder="项目类型"
-        style="width: 130px"
-      >
-        <ElOption
-          v-for="item in projectTypeOptions"
-          :key="item.id"
-          :label="item.label"
-          :value="item.code"
-        />
-      </ElSelect>
-      <ElSelect
-        v-model="filter.ownerId"
-        :loading="userOptionsLoading"
-        :remote-method="(keyword: string) => emit('userSearch', keyword)"
-        aria-label="负责人"
-        clearable
-        filterable
-        placeholder="负责人"
-        remote
-        style="width: 150px"
-      >
-        <ElOption
-          v-for="user in ownerOptions"
-          :key="user.id"
-          :label="user.name"
-          :value="user.id"
-        />
-      </ElSelect>
-      <ElSelect
-        v-model="filter.progressCode"
-        aria-label="项目进度"
-        clearable
-        placeholder="进度"
-        style="width: 130px"
-      >
-        <ElOption
-          v-for="item in progressOptions"
-          :key="item.id"
-          :label="item.label"
-          :value="item.code"
-        />
-      </ElSelect>
-      <ElSelect
-        v-model="deleteStatus"
-        aria-label="项目删除状态"
-        placeholder="删除状态"
-        style="width: 130px"
-        @change="emit('statusChange')"
-      >
-        <ElOption label="全部" value="all" />
-        <ElOption label="未删除" value="active" />
-        <ElOption label="已删除" value="deleted" />
-      </ElSelect>
       <ElButton type="primary" @click="emit('search')">查询</ElButton>
       <ElButton @click="emit('reset')">重置</ElButton>
     </div>

@@ -1,5 +1,5 @@
 export interface AuditListQuery {
-  actionType: string;
+  actionTypes: string[];
   dateRange: string[];
   module: string;
   page: number;

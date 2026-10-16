@@ -17,7 +17,7 @@ const { handledFlows } = page;
 
 <template>
   <re-page>
-    <div class="material-projects-page p-5">
+    <div class="material-projects-page page-fit p-5">
       <ProjectCatalogSection />
       <ProjectRecordDialogs />
       <ProjectWorkspaceSection :handled-flows="handledFlows" />

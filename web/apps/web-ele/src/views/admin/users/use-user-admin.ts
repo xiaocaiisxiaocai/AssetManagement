@@ -47,11 +47,11 @@ export function useUserAdmin() {
   const pageSizeOptions = ref(createPageSizeOptions(20));
 
   const query = reactive<UserListQuery>({
-    departmentId: undefined,
+    departmentIds: [],
     keyword: '',
     page: 1,
     pageSize: 20,
-    roleId: undefined,
+    roleIds: [],
   });
 
   const form = reactive<UserFormState>({

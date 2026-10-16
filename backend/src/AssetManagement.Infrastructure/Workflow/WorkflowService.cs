@@ -968,15 +968,27 @@ public class WorkflowService : IWorkflowService
         ApprovalFlowPageQuery filter)
     {
         if (filter.FlowId.HasValue) query = query.Where(flow => flow.Id == filter.FlowId.Value);
-        if (!string.IsNullOrWhiteSpace(filter.BizType))
+        var bizTypes = (filter.BizTypes is { Length: > 0 }
+                ? filter.BizTypes
+                : string.IsNullOrWhiteSpace(filter.BizType) ? [] : new[] { filter.BizType })
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .Distinct()
+            .ToArray();
+        if (bizTypes.Length > 0)
         {
-            var bizType = filter.BizType.Trim();
-            query = query.Where(flow => flow.BizType == bizType);
+            query = query.Where(flow => bizTypes.Contains(flow.BizType));
         }
-        if (!string.IsNullOrWhiteSpace(filter.Status))
+        var statuses = (filter.Statuses is { Length: > 0 }
+                ? filter.Statuses
+                : string.IsNullOrWhiteSpace(filter.Status) ? [] : new[] { filter.Status })
+            .Select(x => x.Trim().ToLowerInvariant())
+            .Where(x => x.Length > 0)
+            .Distinct()
+            .ToArray();
+        if (statuses.Length > 0)
         {
-            var status = filter.Status.Trim().ToLowerInvariant();
-            query = query.Where(flow => flow.Status == status);
+            query = query.Where(flow => statuses.Contains(flow.Status));
         }
         if (!string.IsNullOrWhiteSpace(filter.ReturnDate))
         {

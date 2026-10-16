@@ -370,36 +370,45 @@ public class ReportService : IReportService
                 : queryable.Where(x => x.ApplyTime <= end);
         }
 
-        if (query.BorrowerId.HasValue)
+        var borrowerIds = query.BorrowerIds is { Length: > 0 }
+            ? query.BorrowerIds
+            : query.BorrowerId is int borrowerId ? [borrowerId] : [];
+        if (borrowerIds.Length > 0)
         {
-            var borrowerId = query.BorrowerId.Value;
             queryable = queryable.Where(x =>
-                (x.ConfirmedAt != null && x.ApplicantId == borrowerId) ||
+                (x.ConfirmedAt != null && borrowerIds.Contains(x.ApplicantId)) ||
                 (x.ConfirmedAt == null && _db.Assets.Any(asset =>
-                    asset.Id == x.AssetId && asset.CustodianId == borrowerId)) ||
-                (x.ConfirmedAt == null && x.ApplicantId == borrowerId &&
+                    asset.Id == x.AssetId && asset.CustodianId.HasValue && borrowerIds.Contains(asset.CustodianId.Value))) ||
+                (x.ConfirmedAt == null && borrowerIds.Contains(x.ApplicantId) &&
                     _db.Assets.Any(asset => asset.Id == x.AssetId && !asset.CustodianId.HasValue)));
         }
 
-        if (!string.IsNullOrWhiteSpace(query.Status))
+        var statuses = (query.Statuses is { Length: > 0 } ? query.Statuses : string.IsNullOrWhiteSpace(query.Status) ? [] : new[] { query.Status })
+            .Select(x => x.Trim().ToLowerInvariant())
+            .Where(x => x.Length > 0)
+            .Distinct()
+            .ToArray();
+        var wantReturned = statuses.Contains("returned");
+        var wantBorrowed = statuses.Contains("borrowed");
+        if (wantReturned && !wantBorrowed)
         {
-            var status = query.Status.Trim().ToLowerInvariant();
-            queryable = status switch
-            {
-                "returned" => queryable.Where(x => x.ConfirmedAt != null),
-                "borrowed" => queryable.Where(x => x.ConfirmedAt == null),
-                _ => queryable
-            };
+            queryable = queryable.Where(x => x.ConfirmedAt != null);
+        }
+        else if (wantBorrowed && !wantReturned)
+        {
+            queryable = queryable.Where(x => x.ConfirmedAt == null);
         }
 
-        if (query.CategoryId.HasValue)
+        var categoryIds = query.CategoryIds is { Length: > 0 }
+            ? query.CategoryIds
+            : query.CategoryId is int categoryId ? [categoryId] : [];
+        if (categoryIds.Length > 0)
         {
-            // 资产只挂第三级分类；选中一、二级分类时按层级编码前缀包含全部下级分类。
-            var categoryId = query.CategoryId.Value;
-            var rootCode = _db.AssetCategories.Where(c => c.Id == categoryId).Select(c => c.Code);
+            // 资产只挂第三级分类；选中一、二级分类时按层级编码前缀包含全部下级分类。多个分类取并集。
+            var rootCodes = _db.AssetCategories.Where(c => categoryIds.Contains(c.Id)).Select(c => c.Code);
             queryable = queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted
                 && _db.AssetCategories.Any(c => c.Id == a.CategoryId
-                    && rootCode.Any(code => c.Code == code || c.Code.StartsWith(code + "-")))));
+                    && rootCodes.Any(code => c.Code == code || c.Code.StartsWith(code + "-")))));
         }
 
         return queryable;

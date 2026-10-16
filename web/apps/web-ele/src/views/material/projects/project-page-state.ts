@@ -42,9 +42,9 @@ export function createProjectPageState() {
   const projectFilter = reactive<ProjectFilter>({
     code: '',
     name: '',
-    ownerId: undefined,
-    progressCode: '',
-    projectTypeCode: '',
+    ownerIds: [],
+    progressCodes: [],
+    projectTypeCodes: [],
   });
   const options = ref<TestProjectOption[]>([]);
   const users = ref<UserOptionDto[]>([]);
@@ -122,7 +122,7 @@ export function createProjectPageState() {
     name: '',
     page: 1,
     pageSize: 10,
-    status: undefined as MaterialStatus | undefined,
+    statuses: [] as MaterialStatus[],
   });
   const materialPageSizeOptions = ref(createPageSizeOptions(20));
   const flowActiveTab = ref('mine');

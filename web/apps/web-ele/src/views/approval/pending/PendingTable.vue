@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import type { ApprovalSource } from '../notification-flow-attempt';
 import type { ApprovalWorkItem } from '../approval-work-items';
 
 import {
@@ -11,10 +12,12 @@ import {
   ElTag,
 } from 'element-plus';
 
+import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
 import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 import { formatDateTime } from '#/utils/date-format';
 
 defineProps<{
+  activeSource: ApprovalSource;
   flows: ApprovalWorkItem[];
   loading: boolean;
   materialActionLoadingIds: Set<number>;
@@ -30,11 +33,21 @@ const emit = defineEmits<{
   pageChange: [];
   pageSizeChange: [];
   rejectMaterial: [item: ApprovalWorkItem];
+  search: [];
 }>();
 
 const query = defineModel<{ page: number; pageSize: number }>('query', {
   required: true,
 });
+const filters = defineModel<{ bizTypes: string[] }>('filters', {
+  required: true,
+});
+const bizTypeOptions = [
+  { label: '借用', value: 'borrow' },
+  { label: '转让', value: 'transfer' },
+  { label: '延期', value: 'extension' },
+  { label: '归还', value: 'return' },
+];
 
 function approvalActionLabel(action: null | string | undefined) {
   return action === 'reject' ? '已驳回' : '已通过';
@@ -42,7 +55,7 @@ function approvalActionLabel(action: null | string | undefined) {
 </script>
 
 <template>
-  <div class="pending-table-panel page-fill">
+  <div class="pending-table-panel page-fill table-scroll">
     <ElTable :data="flows" border height="100%" v-loading="loading">
       <ElTableColumn label="流程单号" prop="flowNo" width="180" />
       <ElTableColumn align="center" label="来源" width="110">
@@ -59,8 +72,18 @@ function approvalActionLabel(action: null | string | undefined) {
         align="center"
         label="业务类型"
         prop="bizType"
-        width="120"
+        width="130"
       >
+        <template #header>
+          <HeaderMultiFilter
+            v-if="activeSource === 'asset'"
+            v-model="filters.bizTypes"
+            :options="bizTypeOptions"
+            label="业务类型"
+            @change="emit('search')"
+          />
+          <span v-else>业务类型</span>
+        </template>
         <template #default="{ row }">
           <ElTag
             v-if="row.bizType === 'borrow'"

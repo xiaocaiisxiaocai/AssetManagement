@@ -13,7 +13,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div v-if="hierarchyNodes.length > 0" class="asset-root-grid">
+  <div v-if="hierarchyNodes.length > 0" class="asset-root-grid table-scroll">
     <article
       v-for="node in hierarchyNodes"
       :key="node.id"

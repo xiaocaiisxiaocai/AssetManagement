@@ -15,7 +15,6 @@ const builtInMenuOrder: Record<string, number> = {
   Material: 15,
   MaterialHome: 16,
   MaterialProjects: 17,
-  AssetCategories: 18,
   Approval: 20,
   ApprovalPending: 21,
   ApprovalMine: 22,
@@ -28,10 +27,11 @@ const builtInMenuOrder: Record<string, number> = {
   AdminUsers: 41,
   AdminRoles: 42,
   AdminDepartments: 43,
-  AdminWorkflows: 44,
-  AdminSettings: 45,
-  AdminAudit: 46,
-  AdminBackups: 47,
+  AssetCategories: 44,
+  AdminWorkflows: 45,
+  AdminSettings: 46,
+  AdminAudit: 47,
+  AdminBackups: 48,
 };
 
 function orderOf(item: OrderedMenuLike) {

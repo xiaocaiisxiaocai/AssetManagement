@@ -53,7 +53,7 @@ const {
 
 <template>
   <re-page>
-    <div class="role-page">
+    <div class="role-page page-fit">
       <RoleHeader :access="roleActionAccess" @create="openCreate" />
       <RoleFilter v-model:query="queryModel" @reset="reset" @search="search" />
       <RoleTable
