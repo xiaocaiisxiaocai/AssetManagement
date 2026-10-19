@@ -41,12 +41,7 @@
   min-height: 0;
   padding: 18px 20px 16px;
   overflow: auto;
-  background: linear-gradient(
-      180deg,
-      rgb(235 244 252 / 70%) 0,
-      transparent 180px
-    ),
-    var(--el-bg-color-page);
+  background: var(--el-bg-color-page);
 }
 
 .drawer-workspace-title {
