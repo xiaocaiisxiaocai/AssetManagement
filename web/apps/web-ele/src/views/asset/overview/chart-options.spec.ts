@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCategoryDistribution,
   buildCategoryStatusSeries,
-  categoryShare,
 } from './chart-options';
 
 const stats: AssetOverview = {
@@ -57,8 +56,7 @@ describe('资产总览二级分类图表', () => {
       borrowed: [1, 1],
     });
   });
-
-  it('空数据可呈现且占比不会出现 NaN', () => {
+  it('空数据可呈现', () => {
     expect(
       buildCategoryDistribution({
         ...stats,
@@ -67,7 +65,5 @@ describe('资产总览二级分类图表', () => {
         uncategorizedTotal: 0,
       }),
     ).toEqual([]);
-    expect(categoryShare(0, 0)).toBe(0);
-    expect(categoryShare(1, 3)).toBe(33.33);
   });
 });

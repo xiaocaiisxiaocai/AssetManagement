@@ -2,19 +2,11 @@
 import { onActivated, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import {
-  ElAlert,
-  ElButton,
-  ElEmpty,
-  ElSkeleton,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus';
+import { ElAlert, ElButton, ElEmpty, ElSkeleton } from 'element-plus';
 
 import { type AssetOverview, getAssetOverviewApi } from '#/api/asset-overview';
 import { runHandled } from '#/utils/handled-promise';
 
-import { categoryShare } from './chart-options';
 import OverviewCharts from './OverviewCharts.vue';
 
 defineOptions({ name: 'AssetOverview' });
@@ -108,58 +100,6 @@ onBeforeUnmount(() => {
               type="info"
             />
             <OverviewCharts :stats="stats" />
-            <section class="overview-table-card">
-              <h3>二级分类汇总</h3>
-              <ElTable
-                :data="stats.categories"
-                border
-                empty-text="暂无二级分类"
-              >
-                <ElTableColumn
-                  label="一级分类"
-                  min-width="100"
-                  prop="parentCode"
-                />
-                <ElTableColumn label="二级分类" min-width="120" prop="label" />
-                <ElTableColumn
-                  label="完整分类编码"
-                  min-width="160"
-                  prop="categoryCode"
-                />
-                <ElTableColumn
-                  label="备注"
-                  min-width="160"
-                  show-overflow-tooltip
-                >
-                  <template #default="{ row }">
-                    {{ row.remark || '—' }}
-                  </template>
-                </ElTableColumn>
-                <ElTableColumn
-                  align="right"
-                  label="总数"
-                  prop="total"
-                  width="90"
-                />
-                <ElTableColumn
-                  align="right"
-                  label="在库"
-                  prop="available"
-                  width="90"
-                />
-                <ElTableColumn
-                  align="right"
-                  label="借出"
-                  prop="borrowed"
-                  width="90"
-                />
-                <ElTableColumn align="right" label="资产占比" width="110">
-                  <template #default="{ row }">
-                    {{ categoryShare(row.total, stats.total) }}%
-                  </template>
-                </ElTableColumn>
-              </ElTable>
-            </section>
           </template>
           <ElEmpty v-else description="资产统计暂不可用，请点击刷新重试" />
         </template>

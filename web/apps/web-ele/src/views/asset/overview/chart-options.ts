@@ -17,7 +17,3 @@ export function buildCategoryStatusSeries(stats: AssetOverview) {
     labels: stats.categories.map((item) => item.categoryCode),
   };
 }
-
-export function categoryShare(total: number, all: number) {
-  return all > 0 ? Math.round((total * 10_000) / all) / 100 : 0;
-}
