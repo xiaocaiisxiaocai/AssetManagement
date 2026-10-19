@@ -122,7 +122,7 @@ public class TestProjectService : ITestProjectService
 
         var materialRows = new List<string[]>
         {
-            new[] { "项目编号", "项目名称", "料件编号", "料件名称", "厂商", "型号", "品牌", "数量", "部门", "位置", "保管人", "收件日期", "状态", "备注", "删除状态" }
+            new[] { "项目编号", "项目名称", "料件编号", "料件名称", "厂商", "型号", "品牌", "数量", "对接厂商", "部门", "位置", "保管人", "收件日期", "状态", "备注", "删除状态" }
         };
         materialRows.AddRange(materials.Select(x =>
         {
@@ -137,6 +137,7 @@ public class TestProjectService : ITestProjectService
                 x.Model ?? "",
                 x.Brand ?? "",
                 x.Quantity.ToString(),
+                x.DockingVendorName ?? "",
                 x.DepartmentId.HasValue ? departmentNames.GetValueOrDefault(x.DepartmentId.Value, "") : "",
                 x.LocationName ?? "",
                 x.CustodianId.HasValue ? userNames.GetValueOrDefault(x.CustodianId.Value, "") : "",
@@ -459,6 +460,9 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4092, "该项目下仍有测试料件(含已删除),不能彻底删除");
         if (await _db.TestProjectFollowups.AnyAsync(x => x.ProjectId == id))
             throw new BizException(4092, "该项目仍有跟进历史,不能彻底删除");
+        if (await _db.ProjectTestStages.AnyAsync(x => x.ProjectId == id) ||
+            await _db.ProjectReportDocuments.AnyAsync(x => x.ProjectId == id))
+            throw new BizException(4092, "该项目仍有测试阶段或报告归档，不能彻底删除");
         _db.TestProjects.Remove(project);
         try
         {

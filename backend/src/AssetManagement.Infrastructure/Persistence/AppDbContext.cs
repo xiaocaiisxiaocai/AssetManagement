@@ -28,6 +28,8 @@ public class AppDbContext : DbContext
     public DbSet<TestProject> TestProjects => Set<TestProject>();
     public DbSet<TestProjectOption> TestProjectOptions => Set<TestProjectOption>();
     public DbSet<TestProjectFollowup> TestProjectFollowups => Set<TestProjectFollowup>();
+    public DbSet<ProjectTestStage> ProjectTestStages => Set<ProjectTestStage>();
+    public DbSet<ProjectReportDocument> ProjectReportDocuments => Set<ProjectReportDocument>();
     public DbSet<TestMaterial> TestMaterials => Set<TestMaterial>();
     public DbSet<TestMaterialRecord> TestMaterialRecords => Set<TestMaterialRecord>();
     public DbSet<MaterialFlow> MaterialFlows => Set<MaterialFlow>();

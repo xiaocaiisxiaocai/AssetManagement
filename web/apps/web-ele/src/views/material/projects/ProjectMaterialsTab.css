@@ -1,3 +1,4 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep(). */
 .tab-count {
   display: inline-flex;
   align-items: center;
@@ -19,7 +20,35 @@
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
+}
+
+.workspace-materials {
+  flex: none;
+  padding: 12px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+}
+
+.material-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.material-section-heading h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.material-section-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .drawer-table-panel {
@@ -34,12 +63,12 @@
 }
 
 .drawer-table-panel :deep(.el-table) {
-  flex: 1;
+  flex: none;
   min-height: 0;
 }
 
 .material-table-panel {
-  flex: 1;
+  flex: none;
   height: auto;
   min-height: 0;
 }

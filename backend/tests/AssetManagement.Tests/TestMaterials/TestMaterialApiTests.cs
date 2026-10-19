@@ -37,6 +37,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             Name = "锂电池样品",
             ProjectId = project.Id,
             VendorName = "宁德时代",
+            DockingVendorName = "测试服务商",
             Model = "LFP-280",
             Brand = "CATL",
             Quantity = 10,
@@ -45,6 +46,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
 
         created.Data!.MaterialNo.Should().StartWith("TM-");
         created.Data.ProjectName.Should().Be("电池测试项目");
+        created.Data.DockingVendorName.Should().Be("测试服务商");
         created.Data.LocationName.Should().Be("二楼实验室 B-08");
         created.Data.Status.Should().Be(MaterialStatus.InUse);
 
@@ -1016,6 +1018,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             Name = $"导出料件-{marker}",
             ProjectId = project.Id,
             VendorName = "导出厂商",
+            DockingVendorName = "导出对接厂商",
             Quantity = 2,
             Remark = $"导出备注-{marker}"
         });
@@ -1039,6 +1042,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             .Select(entry => ReadZipXml(entry).ToString()));
         allWorksheetText.Should().Contain(project.Name);
         allWorksheetText.Should().Contain($"导出料件-{marker}");
+        allWorksheetText.Should().Contain("导出对接厂商");
         allWorksheetText.Should().Contain($"导出备注-{marker}");
     }
 

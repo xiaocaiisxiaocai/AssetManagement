@@ -23,6 +23,7 @@ public class RequestLengthValidationTests
     {
         InvalidMember(new SaveTestMaterialRequest { Name = new string('料', 101) }, nameof(SaveTestMaterialRequest.Name));
         InvalidMember(new SaveTestMaterialRequest { VendorName = new string('供', 101) }, nameof(SaveTestMaterialRequest.VendorName));
+        InvalidMember(new SaveTestMaterialRequest { DockingVendorName = new string('对', 101) }, nameof(SaveTestMaterialRequest.DockingVendorName));
         InvalidMember(new SaveTestMaterialRequest { Model = new string('型', 101) }, nameof(SaveTestMaterialRequest.Model));
         InvalidMember(new SaveTestMaterialRequest { Brand = new string('牌', 101) }, nameof(SaveTestMaterialRequest.Brand));
         InvalidMember(new SaveTestMaterialRequest { Remark = new string('备', 501) }, nameof(SaveTestMaterialRequest.Remark));

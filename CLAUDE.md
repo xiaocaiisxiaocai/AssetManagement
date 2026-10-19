@@ -187,6 +187,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **`TestProject`**(测评项目):`Name`(必填)、`Code`、`ProjectTypeCode`(项目类型,取自选项字典)、`ProgressCode`(进度状态,取自选项字典)、`OwnerId`(负责人)、`StartDate`/`PlannedFinishDate`/`ClosedDate`(开始/计划完成/结案)、`TestStatus`、`FollowUpIntervalDays`(跟进周期天数,默认 14)、软删除字段。**已从早期薄分组实体扩展为完整项目生命周期实体**。
 - **`TestProjectOption`**(项目选项字典):`Kind`(分组,如项目类型 `project_type`/进度状态 `project_progress`)、`Code`/`Label`/`Sort`/`IsActive`。为项目类型、进度等下拉提供可维护字典项。
 - **`TestProjectFollowup`**(项目跟进记录):`ProjectId`、`DueDate`(跟进到期日)、`Content`、`FilledById`/`FilledAt`。按 `FollowUpIntervalDays` 周期性跟进。
+- **`ProjectTestStage` / `ProjectReportDocument`**：项目测试阶段台账与阶段/项目报告归档。工作台顶部常驻紧凑料件清单，下方展示整体进度和阶段表；负责人/管理员维护测试目标、内容、结果、结论、起止日期及状态。同一项目最多一个当前阶段，支持阶段/整项目 Word 报告与包含原附件的 ZIP 资料包。详细口径见 `docs/项目测试阶段与报告.md`。
 - **`TestMaterial`**(测试料件):`MaterialNo`(自动生成 `TM-YYYYMMDD-XXX`)、`Name`(必填)、`ProjectId`(必填,外键到 `TestProject`)、`VendorName`(厂商)、`Model`/`Brand`/`Quantity`、`DepartmentId`/`CustodianId`(可选)、`LocationName`(用户手工填写的存放位置文本)、`ReceivedDate`(接收日期)、`Status`(0=在用、1=已退回厂商)、`Images`(JSON 数组,复用 `FileStorageService`)、`Remark`、软删除字段、`HasPendingFlow`(计算属性,标识有待审批流转)。
 - **`TestMaterialRecord`**(料件生命周期操作记录):`MaterialId`、`Action`(当前含 `return_to_vendor`)、`OperatorUserId`/`Operator`、`Comment`、`OperatedAt`;独立于人员流转审批单，确保退回厂商等动作可追溯。
 - **`MaterialFlow`**(流转记录):`FlowNo`(流转单号 `MF-YYYYMMDD-XXX`)、`MaterialId`、`ApplicantId`/`TransfereeId`(受让人)、`Reason`、`Status`(pending/approved/rejected)、`DirectTransfer`(布尔,标识绕过审批直接转移)、`BpmnTokens`(BPMN 引擎状态,JSON)、`CurrentNodeIds`(活跃节点列表,JSON)。

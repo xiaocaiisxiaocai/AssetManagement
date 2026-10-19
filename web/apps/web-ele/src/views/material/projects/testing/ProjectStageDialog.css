@@ -1,0 +1,34 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :global(). */
+:global(.project-stage-dialog .el-dialog__body) {
+  max-height: min(68vh, 720px);
+  padding: 16px 20px 4px;
+  overflow-y: auto;
+}
+
+:global(.project-stage-dialog .el-dialog__footer) {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--asset-page-border);
+}
+
+.stage-form-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.34fr) minmax(260px, 1fr) minmax(
+      160px,
+      0.42fr
+    );
+  gap: 0 14px;
+}
+
+.stage-date-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-column: 1 / -1;
+  gap: 14px;
+}
+
+@media (max-width: 720px) {
+  .stage-form-grid,
+  .stage-date-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -34,6 +34,9 @@ defineProps<{
     <ElDescriptionsItem label="数量">
       {{ detail.material.quantity }}
     </ElDescriptionsItem>
+    <ElDescriptionsItem label="对接厂商">
+      {{ detail.material.dockingVendorName ?? '-' }}
+    </ElDescriptionsItem>
     <ElDescriptionsItem label="状态">
       <ElTag
         :type="detail.material.status === 0 ? 'success' : 'info'"

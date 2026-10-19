@@ -13,6 +13,7 @@ public class TestMaterial
     public string Name { get; set; } = "";
     public int ProjectId { get; set; }
     public string? VendorName { get; set; }
+    public string? DockingVendorName { get; set; }
     public string? Model { get; set; }
     public string? Brand { get; set; }
     public int Quantity { get; set; } = 1;

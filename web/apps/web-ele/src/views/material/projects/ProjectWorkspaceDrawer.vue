@@ -10,7 +10,7 @@ import type { TestProjectFollowup, TestProjectItem } from '#/api/test-project';
 
 import { computed } from 'vue';
 
-import { ElDrawer, ElTabs, ElTag } from 'element-plus';
+import { ElDrawer, ElTabPane, ElTabs, ElTag } from 'element-plus';
 
 import { formatDate } from '#/utils/date-format';
 
@@ -18,6 +18,7 @@ import { projectFollowUpStatusMeta } from './project-workspace-rules';
 import ProjectFlowsTab from './ProjectFlowsTab.vue';
 import ProjectFollowupsTab from './ProjectFollowupsTab.vue';
 import ProjectMaterialsTab from './ProjectMaterialsTab.vue';
+import ProjectTestingWorkspace from './testing/ProjectTestingWorkspace.vue';
 
 type MaterialActionAccess = {
   canApprove: boolean;
@@ -128,7 +129,7 @@ function statusMeta(project: TestProjectItem) {
 </script>
 
 <template>
-  <ElDrawer v-model="visible" class="project-workspace-drawer" size="78%">
+  <ElDrawer v-model="visible" class="project-workspace-drawer" size="88%">
     <template #header>
       <div class="drawer-workspace-title">
         <span>新产品新技术</span>
@@ -136,17 +137,45 @@ function statusMeta(project: TestProjectItem) {
       </div>
     </template>
     <div v-if="currentProject" class="followup-panel">
-      <section class="project-brief">
-        <div class="project-brief-main">
-          <div class="project-kicker">项目跟进工作台</div>
+      <header class="workspace-project-heading">
+        <div>
           <h2 class="project-title">{{ currentProject.name }}</h2>
           <div class="project-meta-line">
             <span>{{ currentProjectCodeText }}</span>
             <span>{{ currentProjectTypeText }}</span>
-            <span>{{ currentProjectProgressText }}</span>
           </div>
         </div>
+        <ElTag v-if="readOnly" type="info">已删除项目 · 只读归档</ElTag>
+      </header>
+
+      <ProjectMaterialsTab
+        v-model:query="materialQuery"
+        :access="materialAccess"
+        :can-create="canCreate"
+        :can-edit="canEdit"
+        :current-user-id="currentUserId"
+        :is-supervisor="isSupervisor"
+        :loading="materialLoading"
+        :materials="materials"
+        :page-size-options="materialPageSizeOptions"
+        :project-owner-id="currentProject.ownerId"
+        :total="materialTotal"
+        @command="(command, row) => emit('command', command, row)"
+        @create="emit('create')"
+        @detail="emit('detail', $event)"
+        @edit="emit('edit', $event)"
+        @page-change="emit('materialPageChange')"
+        @page-size-change="emit('materialPageSizeChange')"
+        @reset="emit('reset')"
+        @search="emit('search')"
+      />
+
+      <section aria-label="项目进度与跟进概况" class="project-brief">
         <div class="project-brief-stats">
+          <div class="brief-stat">
+            <span class="brief-stat-label">项目整体进度</span>
+            <strong>{{ currentProjectProgressText }}</strong>
+          </div>
           <div class="brief-stat">
             <span class="brief-stat-label">负责人</span>
             <strong>{{ currentProject.ownerName || '-' }}</strong>
@@ -178,27 +207,13 @@ function statusMeta(project: TestProjectItem) {
         class="project-work-tabs"
         @tab-change="emit('tabChange', $event)"
       >
-        <ProjectMaterialsTab
-          v-model:query="materialQuery"
-          :access="materialAccess"
-          :can-create="canCreate"
-          :can-edit="canEdit"
-          :current-user-id="currentUserId"
-          :is-supervisor="isSupervisor"
-          :loading="materialLoading"
-          :materials="materials"
-          :page-size-options="materialPageSizeOptions"
-          :project-owner-id="currentProject.ownerId"
-          :total="materialTotal"
-          @command="(command, row) => emit('command', command, row)"
-          @create="emit('create')"
-          @detail="emit('detail', $event)"
-          @edit="emit('edit', $event)"
-          @page-change="emit('materialPageChange')"
-          @page-size-change="emit('materialPageSizeChange')"
-          @reset="emit('reset')"
-          @search="emit('search')"
-        />
+        <ElTabPane label="测试阶段与报告" name="stages">
+          <ProjectTestingWorkspace
+            :key="currentProject.id"
+            :enabled="visible"
+            :project-id="currentProject.id"
+          />
+        </ElTabPane>
 
         <ProjectFlowsTab
           v-model:active-tab="flowActiveTab"

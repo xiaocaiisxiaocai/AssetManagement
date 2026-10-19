@@ -201,6 +201,8 @@ builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
 builder.Services.AddScoped<IAuditMaintenanceService, AuditMaintenanceService>();
 builder.Services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
 builder.Services.AddScoped<ITestProjectService, TestProjectService>();
+builder.Services.AddScoped<ProjectReportStorage>();
+builder.Services.AddScoped<IProjectWorkspaceService, ProjectWorkspaceService>();
 builder.Services.AddScoped<ITestMaterialService, TestMaterialService>();
 builder.Services.AddScoped<IMaterialFlowService, MaterialFlowService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();

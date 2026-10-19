@@ -58,6 +58,7 @@ export function useMaterialFormDialog(options: {
     brand: '',
     custodianId: undefined,
     departmentId: undefined,
+    dockingVendorName: '',
     locationName: '',
     model: '',
     name: '',
@@ -131,6 +132,7 @@ export function useMaterialFormDialog(options: {
         brand: props.material.brand ?? '',
         custodianId: props.material.custodianId ?? undefined,
         departmentId: props.material.departmentId ?? undefined,
+        dockingVendorName: props.material.dockingVendorName ?? '',
         locationName: props.material.locationName ?? '',
         model: props.material.model ?? '',
         name: props.material.name,
@@ -151,6 +153,7 @@ export function useMaterialFormDialog(options: {
         brand: '',
         custodianId: getDefaultCustodianId(props.projects, projectId),
         departmentId: undefined,
+        dockingVendorName: '',
         locationName: '',
         model: '',
         name: '',
@@ -170,6 +173,7 @@ export function useMaterialFormDialog(options: {
       brand: form.brand,
       custodianId: form.custodianId,
       departmentId: form.departmentId,
+      dockingVendorName: form.dockingVendorName.trim() || null,
       images: images.imageFileList.value
         .map(
           (file) =>

@@ -152,6 +152,7 @@ public class TestMaterialService : ITestMaterialService
                 Name = name,
                 ProjectId = request.ProjectId,
                 VendorName = request.VendorName?.Trim(),
+                DockingVendorName = request.DockingVendorName?.Trim(),
                 Model = request.Model?.Trim(),
                 Brand = request.Brand?.Trim(),
                 Quantity = EnsureQuantity(request.Quantity),
@@ -211,6 +212,7 @@ public class TestMaterialService : ITestMaterialService
         m.Name = name;
         m.ProjectId = request.ProjectId;
         m.VendorName = request.VendorName?.Trim();
+        m.DockingVendorName = request.DockingVendorName?.Trim();
         m.Model = request.Model?.Trim();
         m.Brand = request.Brand?.Trim();
         m.Quantity = EnsureQuantity(request.Quantity);
@@ -564,6 +566,7 @@ public class TestMaterialService : ITestMaterialService
             ProjectId = x.ProjectId,
             ProjectName = projects.GetValueOrDefault(x.ProjectId),
             VendorName = x.VendorName,
+            DockingVendorName = x.DockingVendorName,
             Model = x.Model,
             Brand = x.Brand,
             Quantity = x.Quantity,
@@ -587,6 +590,7 @@ public class TestMaterialService : ITestMaterialService
     {
         EnsureMaxLength(request.Name, 100, "料件名称");
         EnsureMaxLength(request.VendorName, 100, "供应商");
+        EnsureMaxLength(request.DockingVendorName, 100, "对接厂商");
         EnsureMaxLength(request.Model, 100, "型号");
         EnsureMaxLength(request.Brand, 100, "品牌");
         EnsureMaxLength(request.LocationName, 100, "存放位置");

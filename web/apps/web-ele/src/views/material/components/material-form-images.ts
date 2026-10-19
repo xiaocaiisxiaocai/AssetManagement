@@ -14,6 +14,7 @@ export type MaterialFormState = {
   brand: string;
   custodianId?: number;
   departmentId?: number;
+  dockingVendorName: string;
   locationName: string;
   model: string;
   name: string;

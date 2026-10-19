@@ -12,7 +12,6 @@ import {
   ElSelect,
   ElTable,
   ElTableColumn,
-  ElTabPane,
   ElTag,
 } from 'element-plus';
 
@@ -116,10 +115,13 @@ function rowClassName({ row }: { row: MaterialItem }) {
 </script>
 
 <template>
-  <ElTabPane name="materials">
-    <template #label>
-      <span>料件清单</span><span class="tab-count">{{ total }}</span>
-    </template>
+  <section aria-label="项目料件清单" class="workspace-materials">
+    <div class="material-section-heading">
+      <h3>
+        料件清单 <span class="tab-count">{{ total }}</span>
+      </h3>
+      <span class="material-section-hint">项目测试使用的样品与物料</span>
+    </div>
     <ProjectMaterialFilterBar
       v-model:query="query"
       :can-create="canCreate"
@@ -130,9 +132,9 @@ function rowClassName({ row }: { row: MaterialItem }) {
     <div class="drawer-table-panel material-table-panel">
       <ElTable
         :data="materials"
+        :max-height="260"
         :row-class-name="rowClassName"
         border
-        height="100%"
         scrollbar-always-on
         stripe
         v-loading="loading"
@@ -145,12 +147,18 @@ function rowClassName({ row }: { row: MaterialItem }) {
           show-overflow-tooltip
         />
         <ElTableColumn
+          class-name="hide-on-mobile"
           label="厂商"
           min-width="120"
           prop="vendorName"
           show-overflow-tooltip
         />
-        <ElTableColumn label="型号品牌" min-width="140" show-overflow-tooltip>
+        <ElTableColumn
+          class-name="hide-on-mobile"
+          label="型号品牌"
+          min-width="140"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">
             <span v-if="row.model || row.brand">
               {{ row.model }} {{ row.brand }}
@@ -160,18 +168,32 @@ function rowClassName({ row }: { row: MaterialItem }) {
         </ElTableColumn>
         <ElTableColumn align="center" label="数量" prop="quantity" width="70" />
         <ElTableColumn
+          class-name="hide-on-mobile"
+          label="对接厂商"
+          min-width="120"
+          prop="dockingVendorName"
+          show-overflow-tooltip
+        />
+        <ElTableColumn
+          class-name="hide-on-mobile"
           label="部门"
           min-width="110"
           prop="departmentName"
           show-overflow-tooltip
         />
         <ElTableColumn
+          class-name="hide-on-mobile"
           label="保管人"
           min-width="100"
           prop="custodianName"
           show-overflow-tooltip
         />
-        <ElTableColumn label="备注" min-width="180" show-overflow-tooltip>
+        <ElTableColumn
+          class-name="hide-on-mobile"
+          label="备注"
+          min-width="180"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">{{ row.remark || '-' }}</template>
         </ElTableColumn>
         <ElTableColumn align="center" label="状态" width="140">
@@ -192,7 +214,13 @@ function rowClassName({ row }: { row: MaterialItem }) {
             </ElTag>
           </template>
         </ElTableColumn>
-        <ElTableColumn align="center" fixed="right" label="操作" width="150">
+        <ElTableColumn
+          align="center"
+          class-name="table-action-cell"
+          fixed="right"
+          label="操作"
+          width="150"
+        >
           <template #default="{ row }">
             <ProjectMaterialRowActions
               :access="access"
@@ -208,7 +236,7 @@ function rowClassName({ row }: { row: MaterialItem }) {
           </template>
         </ElTableColumn>
       </ElTable>
-      <div class="table-bottom-pager">
+      <div v-if="total > 3 || query.page > 1" class="table-bottom-pager">
         <div class="table-bottom-pager-left">
           <span>共 {{ total }} 条记录</span>
           <span class="table-bottom-pager-divider">|</span>
@@ -237,7 +265,7 @@ function rowClassName({ row }: { row: MaterialItem }) {
         />
       </div>
     </div>
-  </ElTabPane>
+  </section>
 </template>
 
 <style scoped src="./ProjectMaterialsTab.css"></style>

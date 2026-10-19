@@ -30,6 +30,8 @@ export function bindProjectFollowupActions(
     followupForm,
     followupRequestGuard,
     materialRequestGuard,
+    materials,
+    materialTotal,
     pendingFlowRequestGuard,
     handledFlowRequestGuard,
     myFlowRequestGuard,
@@ -50,6 +52,8 @@ export function bindProjectFollowupActions(
     handledFlowRequestGuard.invalidate();
     myFlowRequestGuard.invalidate();
     currentProject.value = row;
+    materials.value = [];
+    materialTotal.value = 0;
     pendingFlows.value = [];
     handledFlows.value = [];
     myFlows.value = [];
@@ -60,7 +64,8 @@ export function bindProjectFollowupActions(
     handledFlowQuery.page = 1;
     myFlowQuery.page = 1;
     deps.resetMaterialQuery();
-    activeProjectTab.value = 'materials';
+    activeProjectTab.value = 'stages';
+    followups.value = [];
     editingFollowupId.value = null;
     Object.assign(followupForm, {
       content: '',

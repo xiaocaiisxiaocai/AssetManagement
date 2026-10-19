@@ -87,7 +87,7 @@ export function createProjectPageState() {
     sort: 0,
   });
   const followupDrawerVisible = ref(false);
-  const activeProjectTab = ref('materials');
+  const activeProjectTab = ref('stages');
   const followups = ref<TestProjectFollowup[]>([]);
   const followupLoading = ref(false);
   const followupSaving = ref(false);

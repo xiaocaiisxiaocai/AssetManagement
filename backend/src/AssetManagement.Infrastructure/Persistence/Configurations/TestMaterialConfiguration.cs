@@ -13,6 +13,7 @@ public class TestMaterialConfiguration : IEntityTypeConfiguration<TestMaterial>
         b.Property(x => x.MaterialNo).HasMaxLength(100).IsRequired();
         b.Property(x => x.Name).HasMaxLength(100).IsRequired();
         b.Property(x => x.VendorName).HasMaxLength(100);
+        b.Property(x => x.DockingVendorName).HasMaxLength(100);
         b.Property(x => x.Model).HasMaxLength(100);
         b.Property(x => x.Brand).HasMaxLength(100);
         b.Property(x => x.LocationName).HasMaxLength(100);

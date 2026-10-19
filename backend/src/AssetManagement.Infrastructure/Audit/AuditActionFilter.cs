@@ -47,7 +47,8 @@ public class AuditActionFilter : IAsyncActionFilter
         "Password",
         "PasswordHash",
         "Token",
-        "BpmnXml"
+        "BpmnXml",
+        "StoredName"
     };
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -72,7 +73,8 @@ public class AuditActionFilter : IAsyncActionFilter
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var controllerName = (context.ActionDescriptor as ControllerActionDescriptor)?.ControllerName;
-        var targetId = RouteValue(context, "id") ?? RouteValue(context, "assetId");
+        var targetId = RouteValue(context, "id") ?? RouteValue(context, "assetId")
+            ?? RouteValue(context, "stageId") ?? RouteValue(context, "documentId");
         var before = await TryTakeSnapshot(context, controllerName, targetId);
 
         var stopwatch = Stopwatch.StartNew();
@@ -255,6 +257,12 @@ public class AuditActionFilter : IAsyncActionFilter
         }
 
         var entityTypeName = ControllerEntityMap.GetValueOrDefault(controllerName, controllerName);
+        if (string.Equals(controllerName, "ProjectWorkspace", StringComparison.OrdinalIgnoreCase))
+        {
+            var action = (context.ActionDescriptor as ControllerActionDescriptor)?.ActionName ?? "";
+            entityTypeName = action.Contains("Stage", StringComparison.Ordinal)
+                ? nameof(ProjectTestStage) : nameof(ProjectReportDocument);
+        }
         var entityType = _db.Model.GetEntityTypes()
             .FirstOrDefault(x => string.Equals(x.ClrType.Name, entityTypeName, StringComparison.OrdinalIgnoreCase));
         var key = entityType?.FindPrimaryKey();

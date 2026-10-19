@@ -19,6 +19,7 @@ type MaterialFormState = {
   brand: string;
   custodianId?: number;
   departmentId?: number;
+  dockingVendorName: string;
   locationName: string;
   model: string;
   name: string;
@@ -110,6 +111,14 @@ const imageFileList = defineModel<AuthenticatedUploadFile[]>('imageFileList', {
         :precision="0"
         :step="1"
         style="width: 100%"
+      />
+    </ElFormItem>
+    <ElFormItem label="对接厂商">
+      <ElInput
+        v-model="form.dockingVendorName"
+        :maxlength="100"
+        placeholder="请输入对接厂商名称"
+        show-word-limit
       />
     </ElFormItem>
     <ElFormItem label="接收日期">

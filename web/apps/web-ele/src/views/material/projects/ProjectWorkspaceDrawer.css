@@ -1,8 +1,10 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep() and :global(). */
 .followup-panel {
   display: flex;
+  flex: none;
   flex-direction: column;
-  gap: 14px;
-  height: 100%;
+  gap: 12px;
+  height: auto;
   min-height: 0;
 }
 
@@ -37,19 +39,14 @@
   flex-direction: column;
   height: auto;
   min-height: 0;
-  overflow: auto;
   padding: 18px 20px 16px;
+  overflow: auto;
   background: linear-gradient(
       180deg,
       rgb(235 244 252 / 70%) 0,
       transparent 180px
     ),
     var(--el-bg-color-page);
-}
-
-:global(.project-workspace-drawer .el-drawer__body > *) {
-  flex: 1 0 auto;
-  min-height: auto;
 }
 
 .drawer-workspace-title {
@@ -76,9 +73,8 @@
 .project-brief {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(520px, 1.4fr);
-  gap: 16px;
-  padding: 18px 18px 18px 22px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 10px 12px;
   overflow: hidden;
   background: var(--el-fill-color-blank);
   border: 1px solid
@@ -89,6 +85,15 @@
     );
   border-radius: 10px;
   box-shadow: 0 8px 24px rgb(31 78 121 / 7%);
+}
+
+.workspace-project-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 2px;
 }
 
 .project-brief::before {
@@ -154,7 +159,7 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
   overflow: hidden;
   background: color-mix(
@@ -168,7 +173,7 @@
 
 .brief-stat {
   min-width: 0;
-  padding: 12px;
+  padding: 8px 12px;
   border-right: 1px solid var(--el-border-color-lighter);
 }
 
@@ -202,15 +207,16 @@
 
 .project-work-tabs {
   display: flex;
-  flex: 1;
+  flex: none;
   flex-direction: column;
   min-height: 0;
 }
 
 .project-work-tabs :deep(.el-tabs__content) {
-  flex: 1;
+  flex: none;
   order: 1;
   min-height: 0;
+  overflow: visible;
 }
 
 .project-work-tabs :deep(.el-tabs__header) {
@@ -231,17 +237,26 @@
 .project-work-tabs :deep(.el-tab-pane) {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: auto;
   min-height: 0;
 }
 
+.project-work-tabs :deep(.flow-table-panel) {
+  flex: none;
+  height: 440px;
+}
+
 @media (max-width: 768px) {
-  :deep(.el-drawer) {
+  :global(.project-workspace-drawer.el-drawer) {
     width: 100% !important;
   }
 
   .project-brief,
   .project-brief-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-brief {
+    display: block;
   }
 }

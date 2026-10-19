@@ -138,6 +138,7 @@ public class TestMaterialDto
     public int ProjectId { get; set; }
     public string? ProjectName { get; set; }
     public string? VendorName { get; set; }
+    public string? DockingVendorName { get; set; }
     public string? Model { get; set; }
     public string? Brand { get; set; }
     public int Quantity { get; set; }
@@ -178,6 +179,8 @@ public class SaveTestMaterialRequest
     public int ProjectId { get; set; }
     [StringLength(100)]
     public string? VendorName { get; set; }
+    [StringLength(100)]
+    public string? DockingVendorName { get; set; }
     [StringLength(100)]
     public string? Model { get; set; }
     [StringLength(100)]

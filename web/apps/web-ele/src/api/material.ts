@@ -38,6 +38,7 @@ export interface MaterialItem {
   projectId: number;
   projectName?: null | string;
   vendorName?: null | string;
+  dockingVendorName?: null | string;
   model?: null | string;
   brand?: null | string;
   quantity: number;
@@ -72,6 +73,7 @@ export interface SaveMaterialPayload {
   name: string;
   projectId: number;
   vendorName?: null | string;
+  dockingVendorName?: null | string;
   model?: null | string;
   brand?: null | string;
   quantity: number;
