@@ -95,7 +95,12 @@ async function renderCharts() {
           type: 'bar',
           stack: 'total',
           barMaxWidth: 24,
-          label: { show: true, position: 'inside', formatter: '{c}' },
+          label: {
+            show: true,
+            position: 'inside',
+            formatter: (params) =>
+              Number(params.value) > 0 ? `${params.value}` : '',
+          },
           data: series.available,
           color: '#22a884',
         },
@@ -104,7 +109,12 @@ async function renderCharts() {
           type: 'bar',
           stack: 'total',
           barMaxWidth: 24,
-          label: { show: true, position: 'inside', formatter: '{c}' },
+          label: {
+            show: true,
+            position: 'inside',
+            formatter: (params) =>
+              Number(params.value) > 0 ? `${params.value}` : '',
+          },
           data: series.borrowed,
           color: '#e9a23b',
         },
