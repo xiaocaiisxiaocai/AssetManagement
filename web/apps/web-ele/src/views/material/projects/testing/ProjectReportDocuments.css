@@ -1,0 +1,72 @@
+.stage-report-cell,
+.stage-report-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stage-report-cell {
+  align-items: center;
+}
+
+.stage-report-links {
+  width: 100%;
+}
+
+.stage-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage-report-cell.is-compact {
+  display: inline-flex;
+}
+
+.stage-report-file {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-report-popover {
+  max-width: min(380px, calc(100vw - 64px));
+  max-height: 340px;
+  overflow: auto;
+}
+
+.stage-report-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.stage-report-item:last-child {
+  border-bottom: 0;
+}
+
+.stage-report-meta,
+.stage-report-description {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  overflow-wrap: anywhere;
+}
+
+.report-native-file {
+  display: none;
+}
+
+.upload-error {
+  font-size: 12px;
+  color: var(--el-color-danger);
+}

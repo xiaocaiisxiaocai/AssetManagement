@@ -58,6 +58,7 @@ const {
   stageForm,
   uploadDocument,
   uploadingDocument,
+  uploadingStageId,
   workspace,
   writeBusy,
 } = useProjectTestingWorkspace(props);
@@ -77,14 +78,6 @@ const completedCount = computed(
   () =>
     orderedStages.value.filter((stage) => stage.status === 'completed').length,
 );
-const documentCounts = computed(() => {
-  const counts = new Map<number, number>();
-  workspace.value?.documents.forEach((document) => {
-    if (document.stageId === null || document.stageId === undefined) return;
-    counts.set(document.stageId, (counts.get(document.stageId) ?? 0) + 1);
-  });
-  return counts;
-});
 
 const statusMap: Record<
   ProjectStageStatus,
@@ -120,7 +113,6 @@ function dateRange(stage: ProjectStageDto) {
             <ElSkeletonItem style="width: 28%; height: 38px" variant="rect" />
           </div>
           <ElSkeletonItem style="width: 100%; height: 280px" variant="rect" />
-          <ElSkeletonItem style="width: 100%; height: 180px" variant="rect" />
         </template>
       </ElSkeleton>
     </div>
@@ -164,6 +156,24 @@ function dateRange(stage: ProjectStageDto) {
         </div>
         <div class="testing-summary-actions">
           <ElTag v-if="!canManage" size="small" type="info">只读</ElTag>
+          <ProjectReportDocuments
+            v-if="
+              canManage ||
+              workspace.documents.some((document) => !document.stageId)
+            "
+            :can-manage="canManage"
+            :deleting-document-id="deletingDocumentId"
+            :documents="workspace.documents"
+            :downloading-key="downloadingKey"
+            :stage-id="null"
+            :uploading="uploadingDocument && uploadingStageId === null"
+            :write-busy="writeBusy"
+            compact
+            scope-name="项目总报告"
+            @download="downloadDocument"
+            @remove="removeDocument"
+            @upload="uploadDocument"
+          />
           <ElButton
             v-if="canExport"
             :disabled="
@@ -210,6 +220,7 @@ function dateRange(stage: ProjectStageDto) {
             border
             class="compact-table stage-ledger-table"
             empty-text="暂无测试阶段"
+            row-key="id"
             table-layout="fixed"
           >
             <ElTableColumn align="center" label="阶段序号" width="88">
@@ -254,9 +265,27 @@ function dateRange(stage: ProjectStageDto) {
                 </ElTag>
               </template>
             </ElTableColumn>
-            <ElTableColumn align="center" label="报告数" width="82">
+            <ElTableColumn
+              align="center"
+              fixed="right"
+              label="报告附件"
+              width="210"
+            >
               <template #default="{ row }">
-                {{ documentCounts.get(row.id) ?? 0 }}
+                <ProjectReportDocuments
+                  :key="row.id"
+                  :can-manage="canManage"
+                  :deleting-document-id="deletingDocumentId"
+                  :documents="workspace.documents"
+                  :downloading-key="downloadingKey"
+                  :scope-name="`第${row.sequence}阶段：${row.name}`"
+                  :stage-id="row.id"
+                  :uploading="uploadingDocument && uploadingStageId === row.id"
+                  :write-busy="writeBusy"
+                  @download="downloadDocument"
+                  @remove="removeDocument"
+                  @upload="uploadDocument"
+                />
               </template>
             </ElTableColumn>
             <ElTableColumn
@@ -304,7 +333,7 @@ function dateRange(stage: ProjectStageDto) {
                     type="primary"
                     @click="downloadReport(row)"
                   >
-                    阶段报告
+                    导出报告
                   </ElButton>
                   <ElButton
                     v-if="canExport"
@@ -332,19 +361,6 @@ function dateRange(stage: ProjectStageDto) {
           />
         </div>
       </section>
-
-      <ProjectReportDocuments
-        :can-manage="canManage"
-        :deleting-document-id="deletingDocumentId"
-        :documents="workspace.documents"
-        :downloading-key="downloadingKey"
-        :stages="orderedStages"
-        :uploading="uploadingDocument"
-        :write-busy="writeBusy"
-        @download="downloadDocument"
-        @remove="removeDocument"
-        @upload="uploadDocument"
-      />
     </template>
 
     <ProjectStageDialog

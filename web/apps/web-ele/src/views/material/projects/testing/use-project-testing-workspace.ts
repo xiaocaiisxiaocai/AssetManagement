@@ -66,6 +66,7 @@ export function useProjectTestingWorkspace(
   const savingStage = ref(false);
   const deletingStageId = ref<null | number>(null);
   const uploadingDocument = ref(false);
+  const uploadingStageId = ref<null | number | undefined>();
   const deletingDocumentId = ref<null | number>(null);
   const downloadingKey = ref('');
   const stageForm = reactive(createEmptyStageForm());
@@ -101,6 +102,7 @@ export function useProjectTestingWorkspace(
     savingStage.value = false;
     deletingStageId.value = null;
     uploadingDocument.value = false;
+    uploadingStageId.value = undefined;
     deletingDocumentId.value = null;
     downloadingKey.value = '';
   }
@@ -260,6 +262,7 @@ export function useProjectTestingWorkspace(
       return;
     }
     uploadingDocument.value = true;
+    uploadingStageId.value = stageId;
     try {
       await uploadProjectDocumentApi(
         projectId,
@@ -276,6 +279,7 @@ export function useProjectTestingWorkspace(
     } finally {
       if (isCurrentOperation(projectId, generation)) {
         uploadingDocument.value = false;
+        uploadingStageId.value = undefined;
       }
     }
   }
@@ -429,6 +433,7 @@ export function useProjectTestingWorkspace(
     stageForm,
     uploadDocument,
     uploadingDocument,
+    uploadingStageId,
     workspace,
     writeBusy,
   };
