@@ -13,6 +13,7 @@ export type AssetHierarchyDrillPage = {
   categoryPage: AssetListState['categoryPage'];
   categoryPath: AssetListState['categoryPath'];
   findCategoryPathByCode: AssetHierarchyModel['findCategoryPathByCode'];
+  flatMode: AssetListState['flatMode'];
   getHierarchyContext: AssetHierarchyModel['getHierarchyContext'];
   hierarchyKeyword: AssetListState['hierarchyKeyword'];
   MAX_CATEGORY_LEVEL: AssetHierarchyModel['MAX_CATEGORY_LEVEL'];
@@ -30,6 +31,7 @@ export function bindAssetHierarchyDrill(
     categoryPage,
     categoryPath,
     findCategoryPathByCode,
+    flatMode,
     getHierarchyContext,
     hierarchyKeyword,
     MAX_CATEGORY_LEVEL,
@@ -41,17 +43,20 @@ export function bindAssetHierarchyDrill(
   async function applyCategoryCodeFromRoute() {
     const rawCode = route.query.categoryCode;
     const categoryCode = Array.isArray(rawCode) ? rawCode[0] : rawCode;
-    if (!categoryCode) return false;
+    const path = categoryCode
+      ? findCategoryPathByCode(categories.value, categoryCode)
+      : [];
 
-    const path = findCategoryPathByCode(categories.value, categoryCode);
-    if (path.length === 0) return false;
-
+    // 无分类参数或分类已失效时恢复全部明细，避免保留上一次分类结果。
+    flatMode.value = path.length === 0;
     categoryPath.value = path;
     selectedCategoryId.value = path[path.length - 1] ?? null;
     query.categoryId = selectedCategoryId.value ?? undefined;
     query.page = 1;
     hierarchyKeyword.value = '';
     categoryPage.value = 1;
+    if (path.length === 0) return false;
+
     await loadData();
     return true;
   }
@@ -60,6 +65,7 @@ export function bindAssetHierarchyDrill(
     if (categoryPath.value.length >= MAX_CATEGORY_LEVEL) {
       return;
     }
+    flatMode.value = false;
     const nextPath = [...categoryPath.value, node.id];
     categoryPath.value = nextPath;
     selectedCategoryId.value = node.id;
@@ -74,6 +80,7 @@ export function bindAssetHierarchyDrill(
   }
 
   function drillToCategoryPath(index: number) {
+    flatMode.value = false;
     categoryPath.value =
       index < 0 ? [] : categoryPath.value.slice(0, index + 1);
     const parent = getHierarchyContext().parent;

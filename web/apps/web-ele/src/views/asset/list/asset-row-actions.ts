@@ -40,7 +40,7 @@ export function canShowAllAssetExport(
   flatMode: boolean,
   canExport: boolean,
 ) {
-  return currentCategoryLevel === 0 && !flatMode && canExport;
+  return (flatMode || currentCategoryLevel === 0) && canExport;
 }
 
 export function canBorrowAvailableAsset(

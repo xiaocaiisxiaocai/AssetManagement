@@ -33,7 +33,7 @@ const emit = defineEmits<{
     <div>
       <div class="asset-section-title">{{ currentLevelTitle }}</div>
       <div class="asset-path">
-        <template v-if="flatMode">
+        <template v-if="flatMode && !hierarchyParent">
           <span class="text-muted-foreground">
             跨分类查看全部资产，可用下方条件筛选
           </span>
@@ -54,7 +54,7 @@ const emit = defineEmits<{
         批量导入
       </ElButton>
       <ElButton
-        v-if="currentCategoryLevel === 0 && !flatMode"
+        v-if="!flatMode || hierarchyParent"
         @click="emit('enterFlatMode')"
       >
         查看全部资产
@@ -67,7 +67,7 @@ const emit = defineEmits<{
         导出全部资产
       </ElButton>
       <ElButton v-if="flatMode" @click="emit('exitFlatMode')">
-        返回分类浏览
+        分类浏览
       </ElButton>
       <ElButton
         v-if="hierarchyParent && !flatMode"

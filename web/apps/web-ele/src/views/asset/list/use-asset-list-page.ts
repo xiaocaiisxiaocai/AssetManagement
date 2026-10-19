@@ -1,4 +1,4 @@
-import { computed, onMounted, watch } from 'vue';
+import { computed, onActivated, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { useAccess } from '@vben/access';
@@ -25,6 +25,7 @@ export function useAssetListPage() {
   const userStore = useUserStore();
   const currentUserId = computed(() => Number(userStore.userInfo?.userId || 0));
   const state = createAssetListState();
+  let dictionariesReady = false;
   const hierarchy = bindAssetHierarchy({
     categories: state.categories,
     categoryPage: state.categoryPage,
@@ -64,7 +65,6 @@ export function useAssetListPage() {
     loadHierarchyAssetCounts: queries.loadHierarchyAssetCounts,
   });
   const {
-    categories,
     categoryPageSize,
     detail,
     detailLoading,
@@ -79,6 +79,7 @@ export function useAssetListPage() {
     categoryPageSize.value = query.pageSize;
     pageSizeOptions.value = createPageSizeOptions(query.pageSize);
     await queries.loadDictionaries();
+    dictionariesReady = true;
     const routed = await queries.applyCategoryCodeFromRoute();
     await Promise.all([
       routed ? Promise.resolve() : queries.loadData(),
@@ -86,12 +87,17 @@ export function useAssetListPage() {
     ]);
   });
 
+  onActivated(() => {
+    if (dictionariesReady && !route.query.categoryCode && !state.flatMode.value)
+      queries.enterFlatMode();
+  });
+
   watch(
     () => route.query.categoryCode,
     async (categoryCode, oldCategoryCode) => {
-      if (categoryCode === oldCategoryCode || categories.value.length === 0)
-        return;
-      await queries.applyCategoryCodeFromRoute();
+      if (categoryCode === oldCategoryCode || !dictionariesReady) return;
+      const routed = await queries.applyCategoryCodeFromRoute();
+      if (!routed) await queries.loadData();
     },
   );
 

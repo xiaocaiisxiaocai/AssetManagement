@@ -34,7 +34,7 @@ export function createAssetListState() {
   const editingAsset = ref<AssetItem | null>(null);
   const formDefaultCategoryId = ref(0);
   const selectedCategoryId = ref<null | number>(null);
-  const flatMode = ref(false);
+  const flatMode = ref(true);
   const assets = ref<AssetItem[]>([]);
   const categoryAssetCounts = ref<Record<string, number>>({});
   const total = ref(0);

@@ -51,11 +51,12 @@ describe('资产清单行操作权限', () => {
 });
 
 describe('资产导出入口', () => {
-  it('仅在一级分类页面且具有权限时显示', () => {
+  it('全部资产清单与一级分类页面均按权限显示全量导出', () => {
     expect(canShowAllAssetExport(0, false, true)).toBe(true);
     expect(canShowAllAssetExport(1, false, true)).toBe(false);
     expect(canShowAllAssetExport(3, false, true)).toBe(false);
-    expect(canShowAllAssetExport(0, true, true)).toBe(false);
+    expect(canShowAllAssetExport(0, true, true)).toBe(true);
+    expect(canShowAllAssetExport(0, true, false)).toBe(false);
     expect(canShowAllAssetExport(0, false, false)).toBe(false);
   });
 });
