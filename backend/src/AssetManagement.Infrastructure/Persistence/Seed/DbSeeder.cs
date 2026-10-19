@@ -205,7 +205,7 @@ public static class DbSeeder
         overview.Title = "资产总览";
         overview.Path = "/asset/overview";
         overview.Component = "/asset/overview/index";
-        overview.Icon = "lucide:chart-pie";
+        overview.Icon = null;
         overview.PermissionCode = "asset:view";
         overview.Sort = 11;
         list.Sort = 12;

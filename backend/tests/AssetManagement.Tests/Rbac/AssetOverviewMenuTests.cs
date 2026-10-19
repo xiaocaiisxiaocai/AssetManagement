@@ -28,6 +28,7 @@ public class AssetOverviewMenuTests : MySqlFixtureBase
         menu.Sort.Should().BeLessThan(_db.Menus.Single(x => x.Name == "AssetList").Sort);
         menu.Path.Should().Be("/asset/overview");
         menu.Component.Should().Be("/asset/overview/index");
+        menu.Icon.Should().BeNull();
         menu.PermissionCode.Should().Be("asset:view");
         _db.RoleMenus.Where(x => x.MenuId == menu.Id).Select(x => x.RoleId).OrderBy(x => x)
             .Should().Equal(grantedRoles);
