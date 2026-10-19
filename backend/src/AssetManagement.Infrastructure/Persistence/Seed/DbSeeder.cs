@@ -29,6 +29,7 @@ public static class DbSeeder
                 RemoveLocationDictionaryArtifacts(db);
                 SeedIncremental(db);
                 SeedTestMaterialModule(db);
+                SeedAssetOverviewMenu(db);
                 EnsureEmployeeFileUploadPermission(db);
                 if (!string.IsNullOrWhiteSpace(initialDataPath)
                     && DeploymentInitialDataSeeder.FileExists(initialDataPath))
@@ -175,6 +176,7 @@ public static class DbSeeder
         tx.Commit();
 
             SeedTestMaterialModule(db);
+            SeedAssetOverviewMenu(db);
             EnsureEmployeeFileUploadPermission(db);
             MarkCoreRoleDefaultsInitialized(db);
         }
@@ -182,6 +184,44 @@ public static class DbSeeder
         {
             db.ChangeTracker.QueryTrackingBehavior = originalTrackingBehavior;
         }
+    }
+
+    // 也可独立执行此增量，不触发完整种子的权限/工作流同步。
+    public static void SeedAssetOverviewMenu(AppDbContext db)
+    {
+        var root = db.Menus.AsTracking().SingleOrDefault(x => x.Name == "Asset");
+        var list = db.Menus.AsTracking().SingleOrDefault(x => x.Name == "AssetList");
+        if (root is null || list is null) return;
+
+        using var transaction = db.Database.BeginTransaction();
+        var overview = db.Menus.AsTracking().SingleOrDefault(x => x.Name == "AssetOverview");
+        var isNew = overview is null;
+        if (overview is null)
+        {
+            overview = new Menu { Name = "AssetOverview" };
+            db.Menus.Add(overview);
+        }
+        overview.ParentId = root.Id;
+        overview.Title = "资产总览";
+        overview.Path = "/asset/overview";
+        overview.Component = "/asset/overview/index";
+        overview.Icon = "lucide:chart-pie";
+        overview.PermissionCode = "asset:view";
+        overview.Sort = 11;
+        list.Sort = 12;
+        db.SaveChanges();
+
+        // 首次升级继承资产列表已有的菜单授权，后续尊重管理员的手工调整。
+        if (isNew)
+        {
+            var roleIds = db.RoleMenus.Where(x => x.MenuId == list.Id)
+                .Where(x => db.RolePermissions.Any(rp => rp.RoleId == x.RoleId && rp.Permission.Code == "asset:view"))
+                .Select(x => x.RoleId).Distinct().ToList();
+            foreach (var roleId in roleIds)
+                db.RoleMenus.Add(new RoleMenu { RoleId = roleId, MenuId = overview.Id });
+            db.SaveChanges();
+        }
+        transaction.Commit();
     }
 
     private static void SeedIncremental(AppDbContext db)
@@ -548,6 +588,7 @@ public static class DbSeeder
     {
         var menuPermissions = new Dictionary<string, string>
         {
+            ["AssetOverview"] = "asset:view",
             ["AssetList"] = "asset:view",
             ["AssetCategories"] = "category:view",
             ["ApprovalPending"] = "approval:handle",

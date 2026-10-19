@@ -1,0 +1,125 @@
+.asset-overview-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--asset-page-gap);
+  min-width: 0;
+  padding: var(--asset-page-padding);
+}
+
+.overview-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.overview-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--asset-page-text);
+}
+
+.overview-heading p {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--asset-page-muted);
+}
+
+.overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--asset-page-gap);
+}
+
+.overview-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding: 16px;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.overview-label {
+  font-size: 14px;
+  color: var(--asset-page-muted);
+}
+
+.overview-metric strong {
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--el-color-primary);
+}
+
+.overview-metric.is-available strong {
+  color: var(--el-color-success);
+}
+
+.overview-metric.is-borrowed strong {
+  color: var(--el-color-warning);
+}
+
+.overview-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--asset-page-gap);
+  align-items: start;
+}
+
+.overview-chart-card,
+.overview-table-card {
+  min-width: 0;
+  padding: 14px;
+  background: var(--asset-page-surface);
+  border: 1px solid var(--asset-page-border);
+  border-radius: 12px;
+  box-shadow: var(--asset-page-shadow);
+}
+
+.overview-chart-card h3,
+.overview-table-card h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--asset-page-text);
+}
+
+.overview-pie {
+  height: 280px;
+}
+
+.overview-bar-scroll {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+@media (max-width: 1100px) {
+  .overview-charts {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .overview-heading {
+    align-items: stretch;
+  }
+
+  .overview-metric {
+    padding: 12px;
+  }
+}

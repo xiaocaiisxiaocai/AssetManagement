@@ -3,6 +3,22 @@ import { describe, expect, it } from 'vitest';
 import { sortBuiltInMenus } from './menu-order';
 
 describe('内置菜单排序', () => {
+  it('资产总览位于资产列表上方', () => {
+    const [asset] = sortBuiltInMenus([
+      {
+        name: 'Asset',
+        children: [
+          { name: 'AssetList', sort: 1 },
+          { name: 'AssetOverview', sort: 99 },
+        ],
+      },
+    ]);
+    expect(asset?.children?.map((item) => item.name)).toEqual([
+      'AssetOverview',
+      'AssetList',
+    ]);
+  });
+
   it('系统管理子菜单按业务顺序排序', () => {
     const [admin] = sortBuiltInMenus([
       {

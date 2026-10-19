@@ -116,6 +116,7 @@ $env:ASSET_ADMIN_PASSWORD = '<首次初始化管理员的强密码>' # 可选；
 ```
 
 - **配置键**:`ConnectionStrings:Default`、`Jwt:Key`。
+- **资产总览菜单升级**：已有库可临时注入 `Database__SeedAssetOverviewMenu=true` 并重启一次，仅补入“资产总览”菜单、继承资产列表的既有授权及调整两者顺序，不运行完整补种。部署完整初始化时 `Database:AutoSeed=true` 也会包含此增量；普通重启仍默认不改库。
 - **生产模板**:`deploy\appsettings.Production.json` 仅含占位符，部署时必须替换或用环境变量覆盖。
 - **启动检查**:非开发环境由 `Api/Configuration/ProductionConfigurationGuard` 拒绝 `REPLACE_` 路径占位值，以及含 `CHANGE_ME` 的 `Jwt:Key`、`ASSET_ADMIN_PASSWORD`、连接串数据库密码(Docker `.env.example` 的占位值)。
 - **初始化账号**:工号 `1001`;未设置 `ASSET_ADMIN_PASSWORD` 时仅在本地回退 `123456`。生产环境仍必须通过环境变量设置强密码。
@@ -376,6 +377,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 - 业务代码在 `apps/web-ele/src` 下:`api/`(按模块分文件,封装 `requestClient` 调用)、`views/`(各模块对应菜单路由)、`store/`(Pinia,登录逻辑在 `store/auth.ts`)。
   - `views/asset/` — 资产管理(`list` 列表及层级视图；存放位置直接在资产表单手工填写，不维护位置字典)
+  - `views/asset/overview` — 资产总览，位于资产列表上方；`GET /api/assets/overview` 使用 `asset:view` 权限，按真实分类父子关系汇总到二级分类，包含二级本身与下级资产，排除已删除资产；统计单位为资产记录（条），不累加 `Quantity`。未能归入有效二级分类的历史记录单独提示并计入总数。
   - `views/approval/` — 审批流程(`pending` 待我审批、`mine` 我的申请、`confirm-return` 确认入库)
   - `views/report/` — 报表(`summary` 汇总、`borrow` 借用明细、`overdue` 逾期)
   - `views/admin/` — 基础数据与系统管理(`departments` 部门、`users` 用户、`roles` 角色、`categories` 资产分类、`settings` 系统参数、`audit` 审计日志、`workflows` 工作流设计器、`backups` 数据库备份)

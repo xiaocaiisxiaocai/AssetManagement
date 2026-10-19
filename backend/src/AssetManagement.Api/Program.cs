@@ -188,6 +188,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRbacService, RbacService>();
 builder.Services.AddScoped<IBaseDataService, BaseDataService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
+builder.Services.AddScoped<IAssetOverviewService, AssetOverviewService>();
 builder.Services.AddScoped<IFileStorageService>(sp =>
     new FileStorageService(
         builder.Configuration["Attachment:Path"] ?? "App_Data/uploads",
@@ -303,6 +304,10 @@ using (var scope = app.Services.CreateScope())
             throw new InvalidOperationException("生产环境初始化空库时必须通过 ASSET_ADMIN_PASSWORD 配置初始管理员密码");
         }
         DbSeeder.Seed(db, builder.Configuration["ASSET_ADMIN_PASSWORD"]);
+    }
+    if (builder.Configuration.GetValue<bool>("Database:SeedAssetOverviewMenu"))
+    {
+        DbSeeder.SeedAssetOverviewMenu(db);
     }
     if (!builder.Environment.IsDevelopment())
     {
