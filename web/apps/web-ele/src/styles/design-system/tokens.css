@@ -29,14 +29,20 @@
   --asset-page-shadow-hover: 0 14px 30px hsl(213deg 58% 52% / 12%);
 }
 
-/* 对话框限制在可视区域内，正文滚动，页眉和底部按钮保持可见。全屏设计器单独占满视口。 */
+/* 对话框在可视区域内居中，正文滚动，页眉和底部按钮保持可见。全屏设计器单独占满视口。 */
+.el-overlay-dialog {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
 .el-dialog:not(.is-fullscreen) {
   display: flex;
   flex-direction: column;
   max-width: calc(100vw - 24px);
   max-height: calc(100dvh - 24px);
-  margin-top: 12px;
-  margin-bottom: 12px;
+  margin: 0 !important;
 }
 
 .el-dialog:not(.is-fullscreen) > .el-dialog__header,
@@ -55,10 +61,9 @@
 }
 
 @media (max-width: 640px) {
-  .el-dialog {
+  .el-dialog:not(.is-fullscreen) {
     width: calc(100vw - 24px) !important;
-    margin-right: 12px !important;
-    margin-left: 12px !important;
+    margin: 0 !important;
   }
 
   .el-dialog__header,
