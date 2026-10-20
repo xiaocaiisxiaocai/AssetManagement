@@ -12,16 +12,36 @@
 }
 
 .user-title {
+  flex-shrink: 0;
   margin: 0;
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
   color: var(--asset-page-text);
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .user-header-actions {
   display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+@media (max-width: 768px) {
+  .user-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .user-header-actions {
+    justify-content: flex-start;
+  }
+
+  .user-header-actions .el-button {
+    margin-left: 0;
+  }
 }

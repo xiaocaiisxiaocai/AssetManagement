@@ -12,10 +12,25 @@
 }
 
 .role-title {
+  flex-shrink: 0;
   margin: 0;
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
   color: var(--asset-page-text);
   letter-spacing: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .role-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .role-header > .el-button {
+    align-self: flex-start;
+    margin-left: 0;
+  }
 }

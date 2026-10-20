@@ -12,15 +12,38 @@
 }
 
 .mine-title {
+  flex-shrink: 0;
   margin: 0;
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
   color: var(--asset-page-text);
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .mine-actions {
   display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
   gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .mine-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .mine-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mine-actions .el-button {
+    min-width: 0;
+    margin-left: 0;
+  }
 }

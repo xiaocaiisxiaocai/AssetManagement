@@ -134,8 +134,10 @@
 .mine-title,
 .role-title,
 .user-title {
+  flex-shrink: 0;
   font-size: 16px !important;
   line-height: 24px !important;
+  white-space: nowrap;
 }
 
 .el-card {
@@ -164,12 +166,14 @@
 }
 
 .page-title {
+  flex-shrink: 0;
   margin: 0;
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
   color: var(--asset-page-text);
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .page-subtitle {
