@@ -22,7 +22,6 @@ const {
   summary,
   overdueRows,
   overdueTotal,
-  seriousOverdueCount,
   pendingReturns,
   failedLoadLabels,
   initialLoading,
@@ -85,7 +84,6 @@ const {
         <AssetOverviewPanel
           v-if="canViewReports"
           :category-top-rows="categoryTopRows"
-          :serious-overdue-count="seriousOverdueCount"
           :summary="summary"
           @category-click="goCategoryAssets"
           @navigate="go"

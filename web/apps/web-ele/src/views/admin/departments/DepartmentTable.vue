@@ -64,7 +64,13 @@ const pageSize = defineModel<number>('pageSize', { required: true });
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" fixed="right" label="操作" width="240">
+      <ElTableColumn
+        align="center"
+        class-name="admin-action-cell table-action-cell"
+        fixed="right"
+        label="操作"
+        width="170"
+      >
         <template #default="{ row }">
           <ElButton
             v-if="access.canCreate && canCreateChild(row)"
@@ -124,3 +130,18 @@ const pageSize = defineModel<number>('pageSize', { required: true });
     </div>
   </div>
 </template>
+
+<style scoped>
+.table-panel :deep(.admin-action-cell .cell) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  white-space: normal;
+}
+
+.table-panel :deep(.admin-action-cell .el-button + .el-button) {
+  margin-left: 0;
+}
+</style>

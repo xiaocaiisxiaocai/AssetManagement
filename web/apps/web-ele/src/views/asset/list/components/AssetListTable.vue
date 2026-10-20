@@ -247,7 +247,13 @@ function tableRowClassName({ row }: { row: AssetItem }) {
           </div>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" fixed="right" label="操作" width="160">
+      <ElTableColumn
+        align="center"
+        class-name="table-action-cell"
+        fixed="right"
+        label="操作"
+        width="160"
+      >
         <template #default="{ row }">
           <slot :row="row" name="actions"></slot>
         </template>

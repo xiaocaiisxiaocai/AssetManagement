@@ -1,3 +1,5 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep() and :global(). */
+
 .asset-import-alert {
   margin-bottom: 14px;
 }
@@ -61,4 +63,25 @@
 .missing-category {
   margin-left: auto;
   font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  :global(.asset-import-dialog) {
+    width: calc(100vw - 24px) !important;
+  }
+
+  :global(.asset-import-dialog .el-dialog__body) {
+    padding: 12px;
+    overflow-x: auto;
+  }
+
+  .asset-import-file-name {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
+  .asset-import-summary {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
 }

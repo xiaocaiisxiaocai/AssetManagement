@@ -77,8 +77,7 @@
   align-items: start;
 }
 
-.overview-chart-card,
-.overview-table-card {
+.overview-chart-card {
   min-width: 0;
   padding: 14px;
   background: var(--asset-page-surface);
@@ -87,8 +86,7 @@
   box-shadow: var(--asset-page-shadow);
 }
 
-.overview-chart-card h3,
-.overview-table-card h3 {
+.overview-chart-card h3 {
   margin: 0 0 12px;
   font-size: 15px;
   font-weight: 600;

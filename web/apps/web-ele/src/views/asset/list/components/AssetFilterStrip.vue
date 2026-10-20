@@ -14,6 +14,7 @@ const query = defineModel<AssetListQueryState>('query', { required: true });
 <template>
   <div class="asset-filter-strip asset-filter-strip-final">
     <ElInput
+      class="asset-filter-field"
       v-model="query.assetNo"
       clearable
       placeholder="资产编号"
@@ -21,6 +22,7 @@ const query = defineModel<AssetListQueryState>('query', { required: true });
       @keyup.enter="emit('search')"
     />
     <ElInput
+      class="asset-filter-field"
       v-model="query.name"
       clearable
       placeholder="资产名称"

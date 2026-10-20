@@ -1,8 +1,6 @@
 <script lang="ts" setup>
 import type { CategoryNode } from '#/api/base-data';
 
-import { ElButton } from 'element-plus';
-
 defineProps<{
   hierarchyNodes: CategoryNode[];
 }>();
@@ -14,13 +12,12 @@ const emit = defineEmits<{
 
 <template>
   <div v-if="hierarchyNodes.length > 0" class="asset-root-grid table-scroll">
-    <article
+    <button
       v-for="node in hierarchyNodes"
       :key="node.id"
       class="asset-root-card"
-      tabindex="0"
+      type="button"
       @click="emit('enter', node)"
-      @keydown.enter.prevent="emit('enter', node)"
     >
       <div class="asset-root-card-code">
         <span>{{ node.codeSeg || node.code }}</span>
@@ -29,16 +26,9 @@ const emit = defineEmits<{
         <div class="asset-row-warning">
           有 {{ node.children.length }} 个二级分类
         </div>
-        <ElButton
-          class="asset-enter-button"
-          link
-          type="primary"
-          @click.stop="emit('enter', node)"
-        >
-          进入
-        </ElButton>
+        <span class="asset-enter-button">进入</span>
       </div>
-    </article>
+    </button>
   </div>
   <div v-else class="asset-empty">
     暂无一级分类，请在“资产分类”页面维护分类。

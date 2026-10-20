@@ -67,7 +67,7 @@ function fileTypeTag(type: string) {
           {{ fileTypeLabel(row.fileType) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn align="right" label="大小" width="120">
+      <ElTableColumn align="center" label="大小" width="120">
         <template #default="{ row }">
           {{ formatSize(row.sizeBytes) }}
         </template>
@@ -80,6 +80,7 @@ function fileTypeTag(type: string) {
       <ElTableColumn
         v-if="canManage"
         align="center"
+        class-name="table-action-cell"
         fixed="right"
         label="操作"
         width="100"

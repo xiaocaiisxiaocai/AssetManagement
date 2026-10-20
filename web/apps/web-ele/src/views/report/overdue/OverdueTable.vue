@@ -65,7 +65,12 @@ const query = defineModel<OverdueQueryState>('query', { required: true });
           <span v-else class="empty-text">-</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="借用人" min-width="120" prop="borrower" />
+      <ElTableColumn
+        class-name="hide-on-mobile"
+        label="借用人"
+        min-width="120"
+        prop="borrower"
+      />
       <ElTableColumn
         class-name="hide-on-mobile"
         label="部门"
@@ -88,6 +93,7 @@ const query = defineModel<OverdueQueryState>('query', { required: true });
       <ElTableColumn
         v-if="canRemind"
         align="center"
+        class-name="table-action-cell"
         fixed="right"
         label="操作"
         width="110"

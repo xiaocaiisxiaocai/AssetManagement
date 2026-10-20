@@ -74,7 +74,12 @@ function statusType(status: string) {
 <template>
   <div class="table-panel-with-toolbar page-fill table-scroll">
     <ElTable :data="rows" border height="100%" v-loading="loading">
-      <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
+      <ElTableColumn
+        class-name="hide-on-mobile"
+        label="流程编号"
+        min-width="180"
+        prop="flowNo"
+      />
       <ElTableColumn label="资产" min-width="220">
         <template #default="{ row }">
           <div>{{ row.assetName }}</div>

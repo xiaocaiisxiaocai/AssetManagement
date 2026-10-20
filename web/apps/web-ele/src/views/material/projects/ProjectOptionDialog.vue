@@ -109,7 +109,12 @@ function onKindChange(kind: number | string) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="操作" width="130">
+      <ElTableColumn
+        align="center"
+        class-name="table-action-cell"
+        label="操作"
+        width="130"
+      >
         <template #default="{ row }">
           <ElButton
             v-if="canManage"

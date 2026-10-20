@@ -58,7 +58,13 @@ function tableRowClassName({ row }: { row: CategoryNode }) {
           </div>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" fixed="right" label="操作" width="260">
+      <ElTableColumn
+        align="center"
+        class-name="table-action-cell"
+        fixed="right"
+        label="操作"
+        width="260"
+      >
         <template #default="{ row }">
           <div v-if="!row.isDeleted" class="category-row-actions">
             <span class="category-row-action">

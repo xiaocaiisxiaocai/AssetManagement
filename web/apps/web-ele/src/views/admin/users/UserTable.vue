@@ -82,11 +82,7 @@ const roleFilterOptions = computed(() =>
         min-width="180"
         prop="email"
       />
-      <ElTableColumn
-        class-name="hide-on-mobile"
-        label="角色"
-        min-width="180"
-      >
+      <ElTableColumn class-name="hide-on-mobile" label="角色" min-width="180">
         <template #header>
           <HeaderMultiFilter
             v-model="query.roleIds"
@@ -117,7 +113,13 @@ const roleFilterOptions = computed(() =>
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" fixed="right" label="操作" width="300">
+      <ElTableColumn
+        align="center"
+        class-name="admin-action-cell table-action-cell"
+        fixed="right"
+        label="操作"
+        width="180"
+      >
         <template #default="{ row }">
           <ElButton
             v-if="access.canEdit"

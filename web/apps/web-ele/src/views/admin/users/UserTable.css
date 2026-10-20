@@ -1,3 +1,5 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep(). */
+
 /* ========== 表格面板 ========== */
 .user-table-panel {
   display: flex;
@@ -47,4 +49,17 @@
 
 .user-table-panel :deep(.el-button + .el-button) {
   margin-left: 4px;
+}
+
+.user-table-panel :deep(.admin-action-cell .cell) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  white-space: normal;
+}
+
+.user-table-panel :deep(.admin-action-cell .el-button + .el-button) {
+  margin-left: 0;
 }

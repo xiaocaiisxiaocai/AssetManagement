@@ -1,3 +1,5 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :global(). */
+
 .project-import-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -24,4 +26,20 @@
   font-size: 13px;
   line-height: 20px;
   color: var(--asset-page-muted);
+}
+
+@media (max-width: 640px) {
+  :global(.project-import-dialog) {
+    width: calc(100vw - 24px) !important;
+  }
+
+  :global(.project-import-dialog .el-dialog__body) {
+    padding: 12px;
+    overflow-x: auto;
+  }
+
+  .project-import-file-name {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
 }

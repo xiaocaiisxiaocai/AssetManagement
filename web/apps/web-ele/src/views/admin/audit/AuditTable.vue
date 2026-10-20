@@ -173,7 +173,7 @@ const actionFilterOptions = [
         prop="ip"
       />
       <ElTableColumn
-        align="right"
+        align="center"
         class-name="hide-on-mobile"
         label="耗时"
         width="96"

@@ -61,6 +61,7 @@ function displaySettingValue(row: SystemSetting) {
       <ElTableColumn
         v-if="canEdit"
         align="center"
+        class-name="table-action-cell"
         fixed="right"
         label="操作"
         width="160"

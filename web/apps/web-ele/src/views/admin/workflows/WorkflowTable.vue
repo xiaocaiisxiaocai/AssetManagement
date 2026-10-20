@@ -44,12 +44,7 @@ function bpmnStatusMeta(status: WorkflowItem['bpmnStatus']) {
         width="80"
       />
       <ElTableColumn label="名称" min-width="180" prop="name" />
-      <ElTableColumn
-        align="center"
-        label="业务类型"
-        prop="bizType"
-        width="120"
-      >
+      <ElTableColumn align="center" label="业务类型" prop="bizType" width="120">
         <template #default="{ row }">
           <ElTag size="small">{{ bizTypeLabel(row) }}</ElTag>
         </template>
@@ -80,9 +75,10 @@ function bpmnStatusMeta(status: WorkflowItem['bpmnStatus']) {
       <ElTableColumn
         v-if="access.canDesign || access.canEdit || access.canDelete"
         align="center"
+        class-name="admin-action-cell table-action-cell"
         fixed="right"
         label="操作"
-        width="290"
+        width="190"
       >
         <template #default="{ row }">
           <ElButton
@@ -126,3 +122,18 @@ function bpmnStatusMeta(status: WorkflowItem['bpmnStatus']) {
     </ElTable>
   </div>
 </template>
+
+<style scoped>
+.table-panel :deep(.admin-action-cell .cell) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  white-space: normal;
+}
+
+.table-panel :deep(.admin-action-cell .el-button + .el-button) {
+  margin-left: 0;
+}
+</style>

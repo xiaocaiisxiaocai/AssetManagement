@@ -54,7 +54,12 @@ function bizText(type: string) {
         prop="assetNo"
       />
       <ElTableColumn label="资产名称" min-width="200" prop="assetName" />
-      <ElTableColumn align="center" label="业务类型" width="100">
+      <ElTableColumn
+        align="center"
+        class-name="hide-on-mobile"
+        label="业务类型"
+        width="100"
+      >
         <template #default="{ row }">
           <ElTag size="small" type="success">
             {{ bizText(row.bizType) }}
@@ -68,7 +73,12 @@ function bizText(type: string) {
         min-width="150"
         prop="applicantDept"
       />
-      <ElTableColumn label="应归还日期" min-width="140" prop="returnDate" />
+      <ElTableColumn
+        class-name="hide-on-mobile"
+        label="应归还日期"
+        min-width="140"
+        prop="returnDate"
+      />
       <ElTableColumn
         class-name="hide-on-mobile"
         label="申请时间"
@@ -85,7 +95,13 @@ function bizText(type: string) {
         prop="reason"
         show-overflow-tooltip
       />
-      <ElTableColumn align="center" fixed="right" label="操作" width="120">
+      <ElTableColumn
+        align="center"
+        class-name="table-action-cell"
+        fixed="right"
+        label="操作"
+        width="120"
+      >
         <template #default="{ row }">
           <ElButton
             :loading="confirmingIds.has(row.id)"

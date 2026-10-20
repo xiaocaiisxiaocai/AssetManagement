@@ -1,3 +1,5 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep(). */
+
 /* ========== 搜索栏 ========== */
 .asset-filter-strip {
   display: flex;
@@ -146,5 +148,11 @@
 @media (max-width: 768px) {
   .asset-pager {
     align-items: stretch;
+  }
+
+  .asset-filter-strip-final :deep(.asset-filter-field) {
+    flex: 1 1 180px;
+    width: 100% !important;
+    max-width: 100%;
   }
 }

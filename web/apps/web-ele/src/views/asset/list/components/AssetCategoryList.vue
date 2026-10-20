@@ -59,14 +59,16 @@ function categoryChildLabel() {
     <ElButton @click="emit('reset')">重置</ElButton>
   </div>
 
-  <div v-if="filteredHierarchyNodes.length > 0" class="asset-class-list table-scroll">
-    <article
+  <div
+    v-if="filteredHierarchyNodes.length > 0"
+    class="asset-class-list table-scroll"
+  >
+    <button
       v-for="node in pagedHierarchyNodes"
       :key="node.id"
       class="asset-class-row"
-      tabindex="0"
+      type="button"
       @click="emit('enter', node)"
-      @keydown.enter.prevent="emit('enter', node)"
     >
       <div class="asset-class-code">
         <span>{{ node.codeSeg || node.code }}</span>
@@ -76,7 +78,7 @@ function categoryChildLabel() {
           {{ node.remark || '无备注' }}
         </div>
       </div>
-      <div class="asset-class-actions" @click.stop>
+      <div class="asset-class-actions">
         <span
           v-if="currentCategoryLevel === maxCategoryLevel - 1"
           class="asset-row-warning"
@@ -86,16 +88,9 @@ function categoryChildLabel() {
         <span v-else class="asset-row-warning">
           有 {{ node.children.length }} 个{{ categoryChildLabel() }}
         </span>
-        <ElButton
-          class="asset-enter-button"
-          link
-          type="primary"
-          @click.stop="emit('enter', node)"
-        >
-          进入
-        </ElButton>
+        <span class="asset-enter-button">进入</span>
       </div>
-    </article>
+    </button>
   </div>
   <div v-else class="asset-empty">
     当前分类下暂无{{ nextLevelName }}，请在“资产分类”页面维护分类。

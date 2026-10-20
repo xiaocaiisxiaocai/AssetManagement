@@ -58,7 +58,12 @@ function approvalActionLabel(action: null | string | undefined) {
   <div class="pending-table-panel page-fill table-scroll">
     <ElTable :data="flows" border height="100%" v-loading="loading">
       <ElTableColumn label="流程单号" prop="flowNo" width="180" />
-      <ElTableColumn align="center" label="来源" width="110">
+      <ElTableColumn
+        align="center"
+        class-name="hide-on-mobile"
+        label="来源"
+        width="110"
+      >
         <template #default="{ row }">
           <ElTag
             :type="row.source === 'asset' ? 'primary' : 'success'"
@@ -70,6 +75,7 @@ function approvalActionLabel(action: null | string | undefined) {
       </ElTableColumn>
       <ElTableColumn
         align="center"
+        class-name="hide-on-mobile"
         label="业务类型"
         prop="bizType"
         width="130"
@@ -85,11 +91,7 @@ function approvalActionLabel(action: null | string | undefined) {
           <span v-else>业务类型</span>
         </template>
         <template #default="{ row }">
-          <ElTag
-            v-if="row.bizType === 'borrow'"
-            size="small"
-            type="success"
-          >
+          <ElTag v-if="row.bizType === 'borrow'" size="small" type="success">
             {{ row.typeLabel }}
           </ElTag>
           <ElTag
@@ -124,11 +126,7 @@ function approvalActionLabel(action: null | string | undefined) {
         prop="participant"
         width="140"
       />
-      <ElTableColumn
-        class-name="hide-on-mobile"
-        label="申请时间"
-        width="170"
-      >
+      <ElTableColumn class-name="hide-on-mobile" label="申请时间" width="170">
         <template #default="{ row }">
           {{ formatDateTime(row.applyTime) }}
         </template>
@@ -168,7 +166,13 @@ function approvalActionLabel(action: null | string | undefined) {
           {{ formatDateTime(row.myApprovalTime) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" fixed="right" label="操作" width="150">
+      <ElTableColumn
+        align="center"
+        class-name="table-action-cell"
+        fixed="right"
+        label="操作"
+        width="150"
+      >
         <template #default="{ row }">
           <ElButton
             v-if="viewMode === 'handled'"

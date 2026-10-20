@@ -116,6 +116,7 @@ async function confirmImport() {
   <ElDialog
     v-model="visible"
     destroy-on-close
+    class="asset-import-dialog"
     title="批量导入资产"
     width="1040px"
   >

@@ -177,7 +177,6 @@ export function useWorkspace() {
     summary: assetOverview.summary,
     overdueRows: assetOverview.overdueRows,
     overdueTotal: assetOverview.overdueTotal,
-    seriousOverdueCount: assetOverview.seriousOverdueCount,
     pendingApprovals: approvalTodos.pendingApprovals,
     myPendingApprovals: approvalTodos.myPendingApprovals,
     pendingMaterialFlows: approvalTodos.pendingMaterialFlows,

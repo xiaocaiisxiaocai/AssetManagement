@@ -1,7 +1,14 @@
 .workspace-stat-card {
+  min-height: 104px;
+  padding: 16px 18px;
+  font: inherit;
+  text-align: center;
   cursor: pointer;
   border: 1px solid var(--asset-page-border);
-  transition: all 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 .workspace-stat-grid {
@@ -12,6 +19,11 @@
   border-color: var(--el-color-primary);
   box-shadow: 0 4px 12px var(--el-color-primary-light-7);
   transform: translateY(-2px);
+}
+
+.workspace-stat-card:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
 }
 
 .workspace-stat-primary .stat-value {

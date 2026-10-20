@@ -61,7 +61,13 @@ const query = defineModel<RoleListQuery>('query', { required: true });
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" fixed="right" label="操作" width="250">
+      <ElTableColumn
+        align="center"
+        class-name="admin-action-cell table-action-cell"
+        fixed="right"
+        label="操作"
+        width="160"
+      >
         <template #default="{ row }">
           <ElButton
             v-if="access.canEdit"

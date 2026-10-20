@@ -16,6 +16,7 @@
   display: grid;
   grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr);
   gap: var(--asset-page-gap);
+  align-items: start;
   max-height: none;
 }
 
@@ -23,6 +24,13 @@
   display: grid;
   grid-template-rows: auto auto;
   gap: var(--asset-page-gap);
+  align-content: start;
+  align-self: start;
+  min-width: 0;
+}
+
+.workspace-dashboard > * {
+  min-width: 0;
 }
 
 /* stylelint-disable-next-line order/order -- 响应式覆盖必须位于基础规则之后 */

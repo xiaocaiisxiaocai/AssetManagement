@@ -14,7 +14,6 @@ import { mergeSettledValue } from './dashboard-load-state';
 export interface WorkspaceAssetOverviewState {
   overdueRows: Ref<null | OverdueReportRow[]>;
   overdueTotal: Ref<null | number>;
-  seriousOverdueCount: Ref<null | number>;
   summary: Ref<AssetSummary | null>;
 }
 
@@ -25,7 +24,6 @@ export function createWorkspaceAssetOverview(access: {
   const summary = ref<AssetSummary | null>(null);
   const overdueRows = ref<null | OverdueReportRow[]>(null);
   const overdueTotal = ref<null | number>(null);
-  const seriousOverdueCount = ref<null | number>(null);
   const categoryTopRows = computed(
     () => summary.value?.byCategory.slice(0, 5) ?? [],
   );
@@ -73,7 +71,6 @@ export function createWorkspaceAssetOverview(access: {
     metricCards,
     overdueRows,
     overdueTotal,
-    seriousOverdueCount,
     summary,
   };
 }
@@ -94,7 +91,7 @@ export function createWorkspaceAssetOverviewRequests(
         items: state.overdueRows.value ?? [],
         page: 1,
         pageSize: 5,
-        seriousTotal: state.seriousOverdueCount.value ?? 0,
+        seriousTotal: 0,
         total: state.overdueTotal.value ?? 0,
       });
 
@@ -121,7 +118,7 @@ export function applyWorkspaceAssetOverviewResults(
       items: state.overdueRows.value ?? [],
       page: 1,
       pageSize: 5,
-      seriousTotal: state.seriousOverdueCount.value ?? 0,
+      seriousTotal: 0,
       total: state.overdueTotal.value ?? 0,
     },
     overdue,
@@ -130,11 +127,10 @@ export function applyWorkspaceAssetOverviewResults(
     items: state.overdueRows.value ?? [],
     page: 1,
     pageSize: 5,
-    seriousTotal: state.seriousOverdueCount.value ?? 0,
+    seriousTotal: 0,
     total: state.overdueTotal.value ?? 0,
   };
   state.overdueRows.value = nextOverdueValue.items;
   state.overdueTotal.value = nextOverdueValue.total;
-  state.seriousOverdueCount.value = nextOverdueValue.seriousTotal;
   nextErrors.overdue = nextOverdue.error;
 }

@@ -11,7 +11,6 @@ import {
 
 defineProps<{
   categoryTopRows: CategoryStatRow[];
-  seriousOverdueCount: null | number;
   summary: AssetSummary | null;
 }>();
 
@@ -19,10 +18,6 @@ const emit = defineEmits<{
   categoryClick: [categoryCode: string];
   navigate: [path: null | string];
 }>();
-
-function formatCount(value: null | number) {
-  return value ?? '—';
-}
 </script>
 
 <template>
@@ -39,17 +34,11 @@ function formatCount(value: null | number) {
         </ElButton>
       </div>
     </template>
-    <div class="workspace-summary">
-      <div class="workspace-summary-item">
-        <span>严重逾期</span>
-        <strong>{{ formatCount(seriousOverdueCount) }}</strong>
-      </div>
-    </div>
     <ElTable
       v-if="summary"
       :data="categoryTopRows"
       border
-      class="workspace-table workspace-summary-table"
+      class="workspace-table"
     >
       <ElTableColumn label="分类" min-width="180">
         <template #default="{ row }">
@@ -71,4 +60,3 @@ function formatCount(value: null | number) {
 </template>
 
 <style scoped src="./workspace-panel.css"></style>
-<style scoped src="./AssetOverviewPanel.css"></style>

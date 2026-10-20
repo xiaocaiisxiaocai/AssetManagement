@@ -71,7 +71,12 @@ function statusText(status: string) {
   <div class="mine-table-panel page-fill table-scroll">
     <ElTable :data="flows" border height="100%" v-loading="loading">
       <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
-      <ElTableColumn align="center" label="来源" width="110">
+      <ElTableColumn
+        align="center"
+        class-name="hide-on-mobile"
+        label="来源"
+        width="110"
+      >
         <template #default="{ row }">
           <ElTag
             :type="row.source === 'asset' ? 'primary' : 'success'"
@@ -81,7 +86,12 @@ function statusText(status: string) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="类型" width="120">
+      <ElTableColumn
+        align="center"
+        class-name="hide-on-mobile"
+        label="类型"
+        width="120"
+      >
         <template #header>
           <HeaderMultiFilter
             v-if="activeSource === 'asset'"
@@ -159,7 +169,13 @@ function statusText(status: string) {
         min-width="220"
         prop="reason"
       />
-      <ElTableColumn align="center" fixed="right" label="操作" width="130">
+      <ElTableColumn
+        align="center"
+        class-name="table-action-cell"
+        fixed="right"
+        label="操作"
+        width="130"
+      >
         <template #default="{ row }">
           <ElButton link type="primary" @click="emit('showProgress', row)">
             流程

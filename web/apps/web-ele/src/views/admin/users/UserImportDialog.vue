@@ -40,7 +40,12 @@ function chooseImportFile() {
 </script>
 
 <template>
-  <ElDialog v-model="visible" title="批量导入用户" width="920px">
+  <ElDialog
+    v-model="visible"
+    class="user-import-dialog"
+    title="批量导入用户"
+    width="920px"
+  >
     <div class="user-import-toolbar">
       <ElButton @click="emit('downloadTemplate')">下载模板</ElButton>
       <input

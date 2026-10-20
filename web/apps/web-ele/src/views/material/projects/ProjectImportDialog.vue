@@ -108,6 +108,7 @@ async function confirmImport() {
 <template>
   <ElDialog
     v-model="visible"
+    class="project-import-dialog"
     destroy-on-close
     title="批量导入测试项目"
     width="1080px"

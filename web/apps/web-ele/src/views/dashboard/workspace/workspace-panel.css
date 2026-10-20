@@ -3,6 +3,10 @@
 .workspace-panel {
   display: flex;
   flex-direction: column;
+  align-self: start;
+  width: 100%;
+  min-width: 0;
+  height: fit-content;
   max-height: none;
   overflow: visible;
   border: 1px solid var(--asset-page-border);
@@ -12,9 +16,9 @@
 
 .workspace-panel :deep(.el-card__header) {
   flex-shrink: 0;
-  padding: 8px 12px;
-  background: var(--asset-page-panel-header);
-  border-bottom: 1px solid var(--asset-page-border-strong);
+  padding: 10px 14px;
+  background: var(--asset-page-blue-soft);
+  border-bottom: 1px solid var(--asset-page-blue-soft-2);
 }
 
 .workspace-panel :deep(.el-card__body) {
@@ -31,11 +35,11 @@
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
-  color: var(--asset-page-panel-header-text);
+  color: var(--asset-page-text);
 }
 
 .workspace-card-header :deep(.el-button.is-link) {
-  color: var(--asset-page-panel-header-text);
+  color: var(--el-color-primary);
 }
 
 .workspace-table :deep(.el-table) {
@@ -47,8 +51,8 @@
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
-  color: var(--asset-page-panel-header-text);
-  background: var(--asset-page-panel-header-solid);
+  color: var(--asset-page-text);
+  background: var(--asset-page-blue-soft);
 }
 
 .workspace-table :deep(.el-table--border) {

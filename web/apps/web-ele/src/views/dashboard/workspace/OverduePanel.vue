@@ -37,16 +37,20 @@ const emit = defineEmits<{
       v-if="overdueRows && overdueRows.length > 0"
       :data="overdueRows.slice(0, 5)"
       border
-      class="workspace-table"
+      class="workspace-table workspace-overdue-table"
     >
       <ElTableColumn label="资产" min-width="180">
         <template #default="{ row }">
-          <div>{{ row.assetName }}</div>
-          <ElTag size="small">{{ row.assetNo }}</ElTag>
+          <div class="workspace-overdue-asset">
+            <div class="workspace-overdue-name">{{ row.assetName }}</div>
+            <ElTag class="workspace-overdue-no" size="small">
+              {{ row.assetNo }}
+            </ElTag>
+          </div>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="借用人" prop="borrower" width="100" />
-      <ElTableColumn align="center" label="逾期天数" width="120">
+      <ElTableColumn label="借用人" prop="borrower" width="96" />
+      <ElTableColumn align="center" label="逾期天数" width="104">
         <template #default="{ row }">
           <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">
             {{ row.overdueDays }} 天
@@ -60,3 +64,22 @@ const emit = defineEmits<{
 </template>
 
 <style scoped src="./workspace-panel.css"></style>
+<style scoped>
+.workspace-overdue-asset {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.workspace-overdue-name {
+  width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 20px;
+}
+
+.workspace-overdue-no {
+  max-width: 100%;
+}
+</style>

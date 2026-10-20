@@ -33,8 +33,12 @@
 .asset-class-row {
   display: grid;
   grid-template-columns: minmax(140px, 180px) 1fr auto;
+  width: 100%;
   min-height: 72px;
+  padding: 0;
   overflow: hidden;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);

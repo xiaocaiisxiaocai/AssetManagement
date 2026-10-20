@@ -12,8 +12,8 @@
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
-  color: var(--asset-page-panel-header-text);
-  background: var(--asset-page-panel-header-solid);
+  color: var(--asset-page-text);
+  background: var(--asset-page-blue-soft);
 }
 
 .asset-table-panel .el-table th.el-table__cell,
@@ -29,13 +29,8 @@
 .user-table-panel .el-table th.el-table__cell,
 .el-table.workspace-table th.el-table__cell,
 .workspace-table .el-table th.el-table__cell {
-  color: var(--asset-page-panel-header-text) !important;
-  background: var(--asset-page-panel-header-solid) !important;
-}
-
-.el-table td.el-table__cell > .cell,
-.el-table th.el-table__cell > .cell {
-  text-align: center !important;
+  color: var(--asset-page-text) !important;
+  background: var(--asset-page-blue-soft) !important;
 }
 
 .asset-table-panel .el-table td.el-table__cell,
@@ -129,10 +124,35 @@
 
 .el-table td.el-table__cell > .cell {
   padding-inline: var(--asset-table-cell-padding-inline) !important;
+  text-align: center;
+}
+
+.el-table td.el-table__cell.is-center > .cell {
+  text-align: center;
+}
+
+.el-table td.el-table__cell.is-right > .cell {
+  text-align: right;
+}
+
+.el-table td.table-action-cell > .cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  text-align: center;
+  white-space: normal;
+}
+
+.el-table td.table-action-cell > .cell .el-button + .el-button {
+  margin-left: 0;
 }
 
 .el-table th.el-table__cell > .cell {
   padding-inline: 4px !important;
+  text-align: center !important;
 }
 
 .table-panel .el-table--striped .el-table__body tr.el-table__row--striped td,

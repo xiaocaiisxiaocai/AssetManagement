@@ -33,6 +33,7 @@ const filter = defineModel<ProjectFilter>('filter', { required: true });
   <div class="project-toolbar">
     <div class="project-toolbar-left">
       <ElInput
+        class="project-filter-field"
         v-model="filter.code"
         aria-label="项目编号"
         clearable
@@ -41,6 +42,7 @@ const filter = defineModel<ProjectFilter>('filter', { required: true });
         @keyup.enter="emit('search')"
       />
       <ElInput
+        class="project-filter-field"
         v-model="filter.name"
         aria-label="项目名称"
         clearable

@@ -29,22 +29,22 @@ const emit = defineEmits<{
             </button>
           </template>
         </ElTableColumn>
-        <ElTableColumn align="right" label="总数" prop="total" width="100" />
+        <ElTableColumn align="center" label="总数" prop="total" width="100" />
         <ElTableColumn
-          align="right"
+          align="center"
           label="在库"
           prop="available"
           width="100"
         />
         <ElTableColumn
-          align="right"
+          align="center"
           class-name="hide-on-mobile"
           label="借出"
           prop="borrowed"
           width="100"
         />
         <ElTableColumn
-          align="right"
+          align="center"
           class-name="hide-on-mobile"
           label="占比"
           width="100"
@@ -62,22 +62,22 @@ const emit = defineEmits<{
             <div>{{ row.departmentName }}</div>
           </template>
         </ElTableColumn>
-        <ElTableColumn align="right" label="总数" prop="total" width="100" />
+        <ElTableColumn align="center" label="总数" prop="total" width="100" />
         <ElTableColumn
-          align="right"
+          align="center"
           label="在库"
           prop="available"
           width="100"
         />
         <ElTableColumn
-          align="right"
+          align="center"
           class-name="hide-on-mobile"
           label="借出"
           prop="borrowed"
           width="100"
         />
         <ElTableColumn
-          align="right"
+          align="center"
           class-name="hide-on-mobile"
           label="占比"
           width="100"
