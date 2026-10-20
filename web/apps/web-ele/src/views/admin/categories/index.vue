@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import { ElButton } from 'element-plus';
+
 import CategoryFormDialog from './CategoryFormDialog.vue';
 import CategoryTreeTable from './CategoryTreeTable.vue';
 import { useCategoryPage } from './use-category-page';

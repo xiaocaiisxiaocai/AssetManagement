@@ -95,10 +95,7 @@
   .page-fit.page-fit.page-fit {
     height: auto;
     min-height: calc(
-      var(
-          --vben-content-height,
-          calc(100dvh - var(--vben-header-height, 0px))
-        ) -
+      var(--vben-content-height, 100dvh - var(--vben-header-height, 0px)) -
         var(--page-shell-offset)
     );
     overflow: visible;

@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import { ElDialog } from 'element-plus';
+
 import { useWorkflowAdmin } from './use-workflow-admin';
 import WorkflowFormDialog from './WorkflowFormDialog.vue';
 import WorkflowHeader from './WorkflowHeader.vue';

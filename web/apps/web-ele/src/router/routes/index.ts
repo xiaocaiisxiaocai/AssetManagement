@@ -73,11 +73,13 @@ const routes: RouteRecordRaw[] = [
   ...coreRoutes,
   ...hiddenAuthenticatedRoutes,
   ...externalRoutes,
+  // 初次打开受保护的深层链接时，动态菜单尚未装载；先由 404 兜底接住，
+  // 权限守卫完成菜单注册后再回到原始路径，避免 Vue Router 先报 No match。
+  fallbackNotFoundRoute,
 ];
 
 /** 基本路由列表，这些路由不需要进入权限拦截 */
-// 根路径需要经过权限守卫，先装载动态路由后再跳转首页；否则首次访问时
-// Vue Router 会尝试解析尚未注册的 /home，并在控制台留下导航异常。
+// 根路径和初次深层链接都经过权限守卫，动态菜单完成后再跳转到实际页面。
 const coreRouteNames = traverseTreeValues(
   coreRoutes,
   (route) => route.name,
