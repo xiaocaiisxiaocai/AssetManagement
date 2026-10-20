@@ -278,7 +278,9 @@ const projectEmptyText = computed(() => {
       </ElTableColumn>
       <ElTableColumn align="center" label="下次跟进" width="130">
         <template #default="{ row }">
-          <div>{{ formatDate(row.nextFollowUpDueDate) }}</div>
+          <div v-if="!row.isDeleted">
+            {{ formatDate(row.nextFollowUpDueDate) }}
+          </div>
           <ElTag :type="projectFollowUpStatusMeta(row).type" size="small">
             {{ projectFollowUpStatusMeta(row).label }}
           </ElTag>
