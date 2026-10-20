@@ -50,29 +50,11 @@
   gap: 3px;
 }
 
-.drawer-workspace-title span {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--asset-page-panel-header-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-}
-
 .drawer-workspace-title strong {
   font-size: 17px;
   font-weight: 700;
   line-height: 1.35;
   color: var(--asset-page-panel-header-text);
-}
-
-.drawer-workspace-title small {
-  max-width: min(60vw, 520px);
-  overflow: hidden;
-  font-size: 12px;
-  line-height: 1.35;
-  color: var(--asset-page-panel-header-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .project-brief {
@@ -99,6 +81,15 @@
   align-items: center;
   justify-content: space-between;
   padding-inline: 2px;
+}
+
+.workspace-project-heading-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: baseline;
+  min-width: 0;
 }
 
 .workspace-project-heading-actions {
@@ -128,6 +119,7 @@
 }
 
 .project-title {
+  min-width: 0;
   margin: 0;
   overflow: hidden;
   font-size: 18px;
@@ -142,7 +134,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px 16px;
-  margin-top: 8px;
+  margin-top: 0;
   font-size: 13px;
   color: var(--el-text-color-secondary);
 }

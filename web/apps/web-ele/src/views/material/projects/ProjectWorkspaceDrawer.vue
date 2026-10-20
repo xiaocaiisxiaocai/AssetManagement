@@ -133,14 +133,12 @@ function statusMeta(project: TestProjectItem) {
   <ElDrawer v-model="visible" class="project-workspace-drawer" size="88%">
     <template #header>
       <div class="drawer-workspace-title">
-        <span>新产品新技术</span>
         <strong>项目跟进工作台</strong>
-        <small v-if="currentProject">{{ currentProject.name }}</small>
       </div>
     </template>
     <div v-if="currentProject" class="followup-panel">
       <header class="workspace-project-heading">
-        <div>
+        <div class="workspace-project-heading-main">
           <h2 class="project-title">{{ currentProject.name }}</h2>
           <div class="project-meta-line">
             <span>{{ currentProjectCodeText }}</span>
