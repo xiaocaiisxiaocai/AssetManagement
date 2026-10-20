@@ -20,13 +20,7 @@
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  margin-bottom: 10px;
-}
-
-.material-read-only-hint {
-  font-size: 12px;
-  line-height: 20px;
-  color: var(--el-text-color-secondary);
+  margin-bottom: 0;
 }
 
 .workspace-materials {
@@ -46,15 +40,17 @@
   margin-bottom: 10px;
 }
 
+.material-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .material-section-heading h3 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-}
-
-.material-section-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
 }
 
 .drawer-table-panel {

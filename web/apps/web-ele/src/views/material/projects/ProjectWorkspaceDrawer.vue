@@ -124,22 +124,6 @@ const currentProjectProgressText = computed(
     props.currentProject?.progressCode ||
     '未设置进度',
 );
-const materialReadOnlyHint = computed(() => {
-  if (props.readOnly) return '当前项目为只读归档，料件不可变更';
-
-  const progressCode = props.currentProject?.progressCode?.toLowerCase();
-  if (
-    props.currentProject?.closedDate ||
-    progressCode === 'landing' ||
-    progressCode === 'closed'
-  ) {
-    return '项目已进入落地跟进或已结案，料件已锁定';
-  }
-  if (!props.canCreate) return '当前账号没有新增料件权限';
-
-  return '';
-});
-
 function statusMeta(project: TestProjectItem) {
   return projectFollowUpStatusMeta(project);
 }
@@ -186,7 +170,6 @@ function statusMeta(project: TestProjectItem) {
         :materials="materials"
         :page-size-options="materialPageSizeOptions"
         :project-owner-id="currentProject.ownerId"
-        :read-only-hint="materialReadOnlyHint"
         :total="materialTotal"
         @command="(command, row) => emit('command', command, row)"
         @create="emit('create')"

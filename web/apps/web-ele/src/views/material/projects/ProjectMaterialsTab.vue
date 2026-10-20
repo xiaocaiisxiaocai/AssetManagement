@@ -4,7 +4,7 @@ import type { DeleteStatus } from './project-workspace-types';
 import type { MaterialItem, MaterialStatus } from '#/api/material';
 import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
 
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 import {
   ElButton,
@@ -44,7 +44,6 @@ const props = defineProps<{
   materials: MaterialItem[];
   pageSizeOptions: number[];
   projectOwnerId?: null | number;
-  readOnlyHint?: string;
   total: number;
 }>();
 
@@ -66,6 +65,7 @@ const query = defineModel<{
   pageSize: number;
   statuses: MaterialStatus[];
 }>('query', { required: true });
+const materialsCollapsed = ref(false);
 
 const statusOptions: Array<{
   label: string;
@@ -138,14 +138,27 @@ const materialEmptyText = computed(() => {
       <h3>
         料件清单 <span class="tab-count">{{ total }}</span>
       </h3>
-      <span class="material-section-hint">项目测试使用的样品与物料</span>
+      <div class="material-section-actions">
+        <ProjectMaterialFilterBar
+          :can-create="canCreate"
+          @create="emit('create')"
+        />
+        <ElButton
+          :aria-controls="'project-materials-table'"
+          :aria-expanded="!materialsCollapsed"
+          link
+          size="small"
+          @click="materialsCollapsed = !materialsCollapsed"
+        >
+          {{ materialsCollapsed ? '展开' : '收起' }}
+        </ElButton>
+      </div>
     </div>
-    <ProjectMaterialFilterBar
-      :can-create="canCreate"
-      :read-only-hint="readOnlyHint"
-      @create="emit('create')"
-    />
-    <div class="drawer-table-panel material-table-panel">
+    <div
+      v-if="!materialsCollapsed"
+      id="project-materials-table"
+      class="drawer-table-panel material-table-panel"
+    >
       <ElTable
         :data="materials"
         height="220"
