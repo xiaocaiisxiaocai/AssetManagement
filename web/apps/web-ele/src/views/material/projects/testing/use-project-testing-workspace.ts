@@ -61,8 +61,6 @@ export function useProjectTestingWorkspace(
   const loadError = ref('');
   const stageDialogVisible = ref(false);
   const editingStage = ref<null | ProjectStageDto>(null);
-  const detailStage = ref<null | ProjectStageDto>(null);
-  const detailVisible = ref(false);
   const savingStage = ref(false);
   const deletingStageId = ref<null | number>(null);
   const uploadingDocument = ref(false);
@@ -97,8 +95,6 @@ export function useProjectTestingWorkspace(
     loadError.value = '';
     stageDialogVisible.value = false;
     editingStage.value = null;
-    detailVisible.value = false;
-    detailStage.value = null;
     savingStage.value = false;
     deletingStageId.value = null;
     uploadingDocument.value = false;
@@ -150,11 +146,6 @@ export function useProjectTestingWorkspace(
     Object.assign(stageForm, stageToForm(stage));
     editingStage.value = stage;
     stageDialogVisible.value = true;
-  }
-
-  function openStageDetail(stage: ProjectStageDto) {
-    detailStage.value = stage;
-    detailVisible.value = true;
   }
 
   function buildStagePayload(): SaveProjectStagePayload {
@@ -412,8 +403,6 @@ export function useProjectTestingWorkspace(
     canManage,
     deletingDocumentId,
     deletingStageId,
-    detailStage,
-    detailVisible,
     downloadDocument,
     downloadingKey,
     downloadPackage,
@@ -424,7 +413,6 @@ export function useProjectTestingWorkspace(
     loadWorkspace,
     openCreateStage,
     openEditStage,
-    openStageDetail,
     removeDocument,
     removeStage,
     saveStage,

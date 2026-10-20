@@ -8,9 +8,6 @@ import { computed } from 'vue';
 
 import {
   ElButton,
-  ElDescriptions,
-  ElDescriptionsItem,
-  ElDialog,
   ElEmpty,
   ElResult,
   ElSkeleton,
@@ -37,8 +34,6 @@ const {
   canManage,
   deletingDocumentId,
   deletingStageId,
-  detailStage,
-  detailVisible,
   downloadDocument,
   downloadingKey,
   downloadPackage,
@@ -49,7 +44,6 @@ const {
   loadWorkspace,
   openCreateStage,
   openEditStage,
-  openStageDetail,
   removeDocument,
   removeStage,
   saveStage,
@@ -297,9 +291,6 @@ function dateRange(stage: ProjectStageDto) {
             >
               <template #default="{ row }">
                 <div class="centered-actions stage-row-actions">
-                  <ElButton link size="small" @click="openStageDetail(row)">
-                    详情
-                  </ElButton>
                   <ElButton
                     v-if="canManage"
                     :disabled="writeBusy"
@@ -370,49 +361,6 @@ function dateRange(stage: ProjectStageDto) {
       :saving="savingStage"
       @save="saveStage"
     />
-
-    <ElDialog
-      v-model="detailVisible"
-      append-to-body
-      class="project-stage-detail-dialog"
-      title="测试阶段详情"
-      width="min(920px, calc(100vw - 32px))"
-    >
-      <ElDescriptions v-if="detailStage" :column="2" border>
-        <ElDescriptionsItem label="阶段序号">
-          {{ detailStage.sequence }}
-        </ElDescriptionsItem>
-        <ElDescriptionsItem label="阶段名称">
-          {{ detailStage.name }}
-        </ElDescriptionsItem>
-        <ElDescriptionsItem label="状态">
-          {{ statusMap[detailStage.status].label }}
-        </ElDescriptionsItem>
-        <ElDescriptionsItem label="起止日期">
-          {{ dateRange(detailStage) }}
-        </ElDescriptionsItem>
-        <ElDescriptionsItem :span="2" label="阶段目标">
-          <div class="detail-long-text">
-            {{ displayText(detailStage.objective) }}
-          </div>
-        </ElDescriptionsItem>
-        <ElDescriptionsItem :span="2" label="测试内容">
-          <div class="detail-long-text">
-            {{ displayText(detailStage.testContent) }}
-          </div>
-        </ElDescriptionsItem>
-        <ElDescriptionsItem :span="2" label="测试结果">
-          <div class="detail-long-text">
-            {{ displayText(detailStage.testResult) }}
-          </div>
-        </ElDescriptionsItem>
-        <ElDescriptionsItem :span="2" label="阶段结论">
-          <div class="detail-long-text">
-            {{ displayText(detailStage.conclusion) }}
-          </div>
-        </ElDescriptionsItem>
-      </ElDescriptions>
-    </ElDialog>
   </div>
 </template>
 
