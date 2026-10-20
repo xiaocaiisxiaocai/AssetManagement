@@ -33,7 +33,9 @@ import { createWorkspaceRequestCoordinator } from './workspace-request-coordinat
 
 export interface ProjectTestingWorkspaceProps {
   enabled: boolean;
+  projectClosedDate?: null | string;
   projectId: number;
+  projectProgressCode?: null | string;
 }
 
 function errorText(error: unknown) {
@@ -71,7 +73,9 @@ export function useProjectTestingWorkspace(
 
   const canManage = computed(() => workspace.value?.canManage === true);
   const canExport = computed(
-    () => canManage.value || hasAccessByCodes(['project:export']),
+    () =>
+      workspace.value?.canExport === true ||
+      hasAccessByCodes(['project:export']),
   );
   const writeBusy = computed(
     () =>

@@ -6,6 +6,7 @@ public class ProjectWorkspaceDto
 {
     public int ProjectId { get; set; }
     public bool CanManage { get; set; }
+    public bool CanExport { get; set; }
     public List<ProjectTestStageDto> Stages { get; set; } = new();
     public List<ProjectReportDocumentDto> Documents { get; set; } = new();
 }

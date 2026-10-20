@@ -49,7 +49,13 @@ function deferred<T>() {
 
 const wrappers: ReturnType<typeof mount>[] = [];
 function workspace(projectId: number): ProjectWorkspaceDto {
-  return { canManage: true, documents: [], projectId, stages: [] };
+  return {
+    canExport: true,
+    canManage: true,
+    documents: [],
+    projectId,
+    stages: [],
+  };
 }
 function setup() {
   const props = reactive({ enabled: true, projectId: 1 });

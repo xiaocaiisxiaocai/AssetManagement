@@ -43,6 +43,7 @@ export interface ProjectDocumentDto {
 
 export interface ProjectWorkspaceDto {
   canManage: boolean;
+  canExport: boolean;
   documents: ProjectDocumentDto[];
   projectId: number;
   stages: ProjectStageDto[];

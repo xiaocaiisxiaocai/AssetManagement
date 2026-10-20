@@ -223,7 +223,9 @@ function statusMeta(project: TestProjectItem) {
           <ProjectTestingWorkspace
             :key="currentProject.id"
             :enabled="visible"
+            :project-closed-date="currentProject.closedDate"
             :project-id="currentProject.id"
+            :project-progress-code="currentProject.progressCode"
           />
         </ElTabPane>
 

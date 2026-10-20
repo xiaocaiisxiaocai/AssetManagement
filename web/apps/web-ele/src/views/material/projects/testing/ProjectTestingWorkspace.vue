@@ -26,7 +26,9 @@ defineOptions({ name: 'ProjectTestingWorkspace' });
 
 const props = defineProps<{
   enabled: boolean;
+  projectClosedDate?: null | string;
   projectId: number;
+  projectProgressCode?: null | string;
 }>();
 
 const {
@@ -71,6 +73,13 @@ const currentStage = computed(
 const completedCount = computed(
   () =>
     orderedStages.value.filter((stage) => stage.status === 'completed').length,
+);
+const testingLocked = computed(
+  () =>
+    Boolean(props.projectClosedDate) ||
+    !['planning', 'testing'].includes(
+      (props.projectProgressCode ?? '').toLowerCase(),
+    ),
 );
 
 const statusMap: Record<
@@ -130,13 +139,23 @@ function dateRange(stage: ProjectStageDto) {
           <span>当前阶段</span>
           <strong>
             {{
-              currentStage
-                ? `${currentStage.sequence}. ${currentStage.name}`
-                : '暂无进行中阶段'
+              testingLocked
+                ? '测试阶段已锁定'
+                : currentStage
+                  ? currentStage.sequence + '. ' + currentStage.name
+                  : '暂无进行中阶段'
             }}
           </strong>
+          <ElTag v-if="testingLocked" size="small" type="info">
+            {{
+              props.projectClosedDate ||
+              props.projectProgressCode?.toLowerCase() === 'closed'
+                ? '已结案'
+                : '落地跟进'
+            }}
+          </ElTag>
           <ElTag
-            v-if="currentStage"
+            v-else-if="currentStage"
             :type="statusMap[currentStage.status].type"
             size="small"
           >
@@ -149,7 +168,10 @@ function dateRange(stage: ProjectStageDto) {
           <small>已完成 / 全部</small>
         </div>
         <div class="testing-summary-actions">
-          <ElTag v-if="!canManage" size="small" type="info">只读</ElTag>
+          <ElTag v-if="testingLocked" size="small" type="info">
+            测试台账已锁定
+          </ElTag>
+          <ElTag v-else-if="!canManage" size="small" type="info">只读</ElTag>
           <ElButton
             v-if="canExport"
             :disabled="
@@ -321,7 +343,11 @@ function dateRange(stage: ProjectStageDto) {
           <ElEmpty
             v-else
             :description="
-              canManage ? '暂无测试阶段，可新增第一阶段' : '暂无测试阶段'
+              testingLocked
+                ? '测试阶段已锁定，仅保留历史记录'
+                : canManage
+                  ? '暂无测试阶段，可新增第一阶段'
+                  : '暂无测试阶段'
             "
           />
         </div>
