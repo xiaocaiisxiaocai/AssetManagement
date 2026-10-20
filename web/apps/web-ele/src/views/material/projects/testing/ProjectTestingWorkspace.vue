@@ -153,16 +153,6 @@ function dateRange(stage: ProjectStageDto) {
           <ElButton
             v-if="canExport"
             :disabled="
-              Boolean(downloadingKey) && downloadingKey !== 'report-all'
-            "
-            :loading="downloadingKey === 'report-all'"
-            @click="downloadReport()"
-          >
-            导出项目报告
-          </ElButton>
-          <ElButton
-            v-if="canExport"
-            :disabled="
               Boolean(downloadingKey) && downloadingKey !== 'package-all'
             "
             :loading="downloadingKey === 'package-all'"
