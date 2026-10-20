@@ -257,6 +257,25 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
     }
 
     [Fact]
+    public void Incremental_seed_repairs_employee_project_create_when_marker_already_exists()
+    {
+        SeedLegacyDatabaseState();
+        DbSeeder.Seed(_db);
+        var employee = _db.Roles.Single(x => x.Code == "employee");
+        var projectCreate = _db.Permissions.Single(x => x.Code == "project:create");
+        _db.RolePermissions.RemoveRange(_db.RolePermissions.Where(x =>
+            x.RoleId == employee.Id && x.PermissionId == projectCreate.Id));
+        _db.SaveChanges();
+
+        DbSeeder.Seed(_db);
+
+        _db.ChangeTracker.Clear();
+        _db.RolePermissions.Should().Contain(x =>
+            x.RoleId == employee.Id && x.PermissionId == projectCreate.Id,
+            "已有升级标记但权限关系缺失时，启动种子仍必须补齐实际权限");
+    }
+
+    [Fact]
     public void Incremental_seed_repairs_admin_menu_order_for_existing_database()
     {
         SeedLegacyDatabaseState();

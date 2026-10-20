@@ -852,8 +852,6 @@ public static class DbSeeder
 
     private static void EnsureEmployeeProjectCreatePermission(AppDbContext db)
     {
-        if (db.SystemSettings.Any(x => x.Key == EmployeeProjectCreateInitializedKey)) return;
-
         var employeeRole = db.Roles.SingleOrDefault(x => x.Code == "employee");
         var projectCreatePermission = db.Permissions.SingleOrDefault(x => x.Code == "project:create");
         if (employeeRole is not null && projectCreatePermission is not null
@@ -867,13 +865,17 @@ public static class DbSeeder
             });
         }
 
-        db.SystemSettings.Add(new SystemSetting
+        if (!db.SystemSettings.Any(x => x.Key == EmployeeProjectCreateInitializedKey))
         {
-            Key = EmployeeProjectCreateInitializedKey,
-            Value = "true",
-            Description = "普通员工测试项目创建权限已初始化"
-        });
-        db.SaveChanges();
+            db.SystemSettings.Add(new SystemSetting
+            {
+                Key = EmployeeProjectCreateInitializedKey,
+                Value = "true",
+                Description = "普通员工测试项目创建权限已初始化"
+            });
+        }
+
+        if (db.ChangeTracker.HasChanges()) db.SaveChanges();
     }
 
     private static void EnsureEmployeeFileUploadPermission(AppDbContext db)
