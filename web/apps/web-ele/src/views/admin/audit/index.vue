@@ -15,11 +15,13 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 
 import {
   cleanupAuditLogsApi,
+  exportAuditLogsApi,
   getAuditCleanupPreviewApi,
   getAuditLogsApi,
 } from '#/api/report';
 import { formatDateTime } from '#/utils/date-format';
 import { endOfSelectedDay, startOfSelectedDay } from '#/utils/date-range';
+import { downloadBlob } from '#/utils/download';
 import { runHandled } from '#/utils/handled-promise';
 import { createLatestRequestGuard } from '#/utils/latest-request';
 import { reactiveObjectModel } from '#/utils/reactive-object-model';
@@ -39,10 +41,12 @@ const listRequestGuard = createLatestRequestGuard();
 
 const { hasAccessByCodes } = useAccess();
 const canCleanupAudit = computed(() => hasAccessByCodes(['audit:cleanup']));
+const canExportAudit = computed(() => hasAccessByCodes(['audit:export']));
 const loading = ref(false);
 const cleanupLoading = ref(false);
 const cleanupPreviewLoading = ref(false);
 const cleanupDialogVisible = ref(false);
+const exporting = ref(false);
 const rows = ref<AuditLogRow[]>([]);
 const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
@@ -97,6 +101,19 @@ function resetQuery() {
     userId: undefined,
   });
   runHandled(loadData());
+}
+
+async function exportAuditLogs() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const response = await exportAuditLogsApi(buildQuery());
+    downloadBlob(response.data, '审计日志.xlsx');
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    exporting.value = false;
+  }
 }
 
 async function openCleanupDialog() {
@@ -156,7 +173,10 @@ onMounted(async () => {
     <div class="page-container page-fit">
       <AuditHeader
         :can-cleanup="canCleanupAudit"
+        :can-export="canExportAudit"
+        :exporting="exporting"
         @cleanup="openCleanupDialog"
+        @export="exportAuditLogs"
       />
       <AuditFilter
         v-model:query="queryModel"
