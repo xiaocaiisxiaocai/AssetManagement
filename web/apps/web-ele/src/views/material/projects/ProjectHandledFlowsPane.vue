@@ -38,6 +38,7 @@ function approvalActionLabel(action?: null | string) {
   <div class="drawer-table-panel flow-table-panel">
     <ElTable
       :data="handledFlows"
+      :empty-text="handledCount > 0 ? '当前页暂无已处理记录' : '暂无已处理记录'"
       border
       height="100%"
       stripe
@@ -51,9 +52,20 @@ function approvalActionLabel(action?: null | string) {
         prop="materialName"
         show-overflow-tooltip
       />
-      <ElTableColumn label="发起人" min-width="90" prop="applicant" />
-      <ElTableColumn label="受让人" min-width="90" prop="transferee" />
       <ElTableColumn
+        class-name="hide-on-mobile"
+        label="发起人"
+        min-width="90"
+        prop="applicant"
+      />
+      <ElTableColumn
+        class-name="hide-on-mobile"
+        label="受让人"
+        min-width="90"
+        prop="transferee"
+      />
+      <ElTableColumn
+        class-name="hide-on-mobile"
         label="原因"
         min-width="150"
         prop="reason"
@@ -78,7 +90,12 @@ function approvalActionLabel(action?: null | string) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="处理时间" min-width="160">
+      <ElTableColumn
+        align="center"
+        class-name="hide-on-mobile"
+        label="处理时间"
+        min-width="160"
+      >
         <template #default="{ row }">
           {{ formatDateTime(row.myApprovalTime) }}
         </template>

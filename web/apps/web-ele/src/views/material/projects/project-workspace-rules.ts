@@ -16,12 +16,13 @@ export async function refreshProjectAfterMaterialChange(
 export function canUpdateProjectProgress(
   project: Pick<TestProjectItem, 'closedDate' | 'isDeleted' | 'ownerId'>,
   currentUserId: number,
+  canManage = false,
 ) {
   return (
     !project.isDeleted &&
     !project.closedDate &&
     currentUserId > 0 &&
-    Number(project.ownerId) === currentUserId
+    Number(project.ownerId) === currentUserId || canManage
   );
 }
 

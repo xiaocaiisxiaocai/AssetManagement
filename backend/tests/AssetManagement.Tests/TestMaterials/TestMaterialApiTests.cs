@@ -1079,7 +1079,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             new[]
             {
                 "项目编号", "项目名称", "项目类型", "负责人工号", "开始时间",
-                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "测试情况"
+                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "项目摘要"
             },
             new[]
             {
@@ -1126,7 +1126,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             new[]
             {
                 "项目编号", "项目名称", "项目类型", "负责人工号", "开始时间",
-                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "测试情况"
+                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "项目摘要"
             },
             new[]
             {

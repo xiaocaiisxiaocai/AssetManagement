@@ -65,6 +65,16 @@
   color: var(--asset-page-panel-header-text);
 }
 
+.drawer-workspace-title small {
+  max-width: min(60vw, 520px);
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--asset-page-panel-header-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .project-brief {
   position: relative;
   display: grid;
@@ -91,6 +101,14 @@
   padding-inline: 2px;
 }
 
+.workspace-project-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .project-brief::before {
   position: absolute;
   inset: 0 auto 0 0;
@@ -107,20 +125,6 @@
   pointer-events: none;
   content: '';
   background: linear-gradient(125deg, transparent, rgb(64 158 255 / 7%));
-}
-
-.project-brief-main {
-  position: relative;
-  z-index: 1;
-  min-width: 0;
-}
-
-.project-kicker {
-  margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--el-color-primary);
-  letter-spacing: 0.06em;
 }
 
 .project-title {

@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 
+import { useRouter } from 'vue-router';
+
 import { ElAlert, ElButton } from 'element-plus';
 
 import {
@@ -15,6 +17,7 @@ import HomeSummaryCards from './HomeSummaryCards.vue';
 const stats = ref<null | TestProjectStats>(null);
 const statsLoading = ref(false);
 const statsError = ref('');
+const router = useRouter();
 let disposed = false;
 
 async function loadStats() {
@@ -46,6 +49,24 @@ onBeforeUnmount(() => {
 <template>
   <re-page>
     <div class="material-home-page p-4">
+      <header class="material-home-heading">
+        <div>
+          <h1>项目总览</h1>
+          <p>
+            {{
+              stats
+                ? stats.year + ' 年度项目、进度和落地跟进概况'
+                : '项目、进度和落地跟进概况'
+            }}
+          </p>
+        </div>
+        <div class="material-home-heading-actions">
+          <ElButton :loading="statsLoading" @click="loadStats">刷新</ElButton>
+          <ElButton type="primary" @click="router.push('/material/projects')">
+            查看测试项目
+          </ElButton>
+        </div>
+      </header>
       <ElAlert
         v-if="statsError"
         :closable="false"
@@ -54,7 +75,11 @@ onBeforeUnmount(() => {
         type="warning"
       >
         <div class="stats-error-content">
-          <span>已保留最近一次成功数据；未成功加载的指标显示为“—”。</span>
+          <span>{{
+            stats
+              ? '已保留最近一次成功数据；未成功加载的指标显示为“—”。'
+              : '当前未能加载统计数据，请检查服务后重试。'
+          }}</span>
           <ElButton
             :loading="statsLoading"
             link

@@ -7,7 +7,7 @@ import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
 
 import { computed } from 'vue';
 
-import { ElButton, ElTable, ElTableColumn, ElTag } from 'element-plus';
+import { ElButton, ElEmpty, ElTable, ElTableColumn, ElTag } from 'element-plus';
 
 import {
   deleteFlagsFromStatus,
@@ -27,6 +27,7 @@ type ProjectActionAccess = {
   canEdit: boolean;
   canExport: boolean;
   canImport: boolean;
+  canManage: boolean;
   canOption: boolean;
   canPurge: boolean;
   canRestore: boolean;
@@ -107,9 +108,41 @@ function optionalText(value?: null | string) {
 function tableRowClassName({ row }: { row: TestProjectItem }) {
   return row.isDeleted ? 'project-row-deleted' : '';
 }
+
+const hasProjectActions = computed(
+  () =>
+    props.access.canEdit ||
+    props.access.canDelete ||
+    props.access.canManage ||
+    props.access.canRestore ||
+    props.access.canPurge,
+);
+
+const hasProjectFilters = computed(() => {
+  return Boolean(
+    filter.value.code.trim() ||
+      filter.value.name.trim() ||
+      filter.value.ownerIds.length > 0 ||
+      filter.value.progressCodes.length > 0 ||
+      filter.value.projectTypeCodes.length > 0,
+  );
+});
+
+const projectEmptyText = computed(() => {
+  const hasFilters = hasProjectFilters.value;
+  return hasFilters
+    ? '没有符合条件的项目，请清空筛选后重试'
+    : '暂无测试项目，可新增项目';
+});
 </script>
 
 <template>
+  <header class="project-page-heading">
+    <div>
+      <h1>测试项目</h1>
+      <p>管理新产品新技术项目、料件、测试阶段和落地跟进。</p>
+    </div>
+  </header>
   <ProjectTableToolbar
     v-model:filter="filter"
     :access="access"
@@ -124,6 +157,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
   <div class="project-table-panel page-fill table-scroll">
     <ElTable
       :data="pagedProjects"
+      :empty-text="projectEmptyText"
       :row-class-name="tableRowClassName"
       border
       height="100%"
@@ -131,6 +165,13 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
       stripe
       v-loading="loading"
     >
+      <template #empty>
+        <ElEmpty :description="projectEmptyText">
+          <ElButton v-if="hasProjectFilters" @click="emit('reset')">
+            清空筛选
+          </ElButton>
+        </ElEmpty>
+      </template>
       <ElTableColumn
         fixed
         label="项目编号"
@@ -145,7 +186,11 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
           </ElButton>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="项目类型" min-width="130">
+      <ElTableColumn
+        class-name="hide-on-mobile"
+        label="项目类型"
+        min-width="130"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="filter.projectTypeCodes"
@@ -159,7 +204,7 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
           {{ row.projectTypeLabel || row.projectTypeCode || '-' }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="负责人" min-width="130">
+      <ElTableColumn class-name="hide-on-mobile" label="负责人" min-width="130">
         <template #header>
           <HeaderMultiFilter
             v-model="filter.ownerIds"
@@ -174,17 +219,33 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
         </template>
         <template #default="{ row }">{{ row.ownerName || '-' }}</template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="开始时间" width="110">
+      <ElTableColumn
+        v-if="hasProjectActions"
+        align="center"
+        class-name="hide-on-mobile"
+        label="开始时间"
+        width="110"
+      >
         <template #default="{ row }">
           {{ formatDate(row.startDate) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="计划完成" width="110">
+      <ElTableColumn
+        align="center"
+        class-name="hide-on-mobile"
+        label="计划完成"
+        width="110"
+      >
         <template #default="{ row }">
           {{ formatDate(row.plannedFinishDate) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="结案时间" width="110">
+      <ElTableColumn
+        align="center"
+        class-name="hide-on-mobile"
+        label="结案时间"
+        width="110"
+      >
         <template #default="{ row }">
           {{ formatDate(row.closedDate) }}
         </template>
@@ -205,7 +266,12 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="测试情况" min-width="120" show-overflow-tooltip>
+      <ElTableColumn
+        class-name="hide-on-mobile"
+        label="项目摘要"
+        min-width="120"
+        show-overflow-tooltip
+      >
         <template #default="{ row }">
           {{ optionalText(row.testStatus) }}
         </template>
@@ -218,13 +284,19 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="间隔" width="80">
+      <ElTableColumn
+        align="center"
+        class-name="hide-on-mobile"
+        label="间隔"
+        width="80"
+      >
         <template #default="{ row }">
           {{ row.followUpIntervalDays }}天
         </template>
       </ElTableColumn>
       <ElTableColumn
         align="center"
+        class-name="hide-on-mobile"
         label="料件数"
         prop="materialCount"
         width="80"
@@ -245,7 +317,13 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
           <ElTag v-else size="small" type="success">正常</ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" fixed="right" label="操作" width="160">
+      <ElTableColumn
+        align="center"
+        class-name="table-action-cell"
+        fixed="right"
+        label="操作"
+        width="160"
+      >
         <template #default="{ row }">
           <ProjectTableRowActions
             :access="access"

@@ -1,3 +1,4 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep(). */
 .tab-count {
   display: inline-flex;
   align-items: center;
@@ -92,5 +93,11 @@
   .flow-table-panel,
   .inner-flow-tabs {
     height: auto;
+  }
+}
+
+@media (max-height: 760px) {
+  .flow-table-panel {
+    height: 320px;
   }
 }

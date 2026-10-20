@@ -44,7 +44,7 @@ describe('测试项目总览图表配置', () => {
     expect(
       buildStatusDistribution({ closed: 3, inProgress: 4, landed: 2 }),
     ).toEqual([
-      { label: '计划/测试中', value: 4 },
+      { label: '规划/测试中项目', value: 4 },
       { label: '结案', value: 3 },
       { label: '落地跟进', value: 2 },
     ]);

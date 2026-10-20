@@ -35,6 +35,7 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
   <div class="drawer-table-panel flow-table-panel">
     <ElTable
       :data="pendingFlows"
+      :empty-text="pendingCount > 0 ? '当前页暂无待审批流转' : '暂无待审批流转'"
       border
       height="100%"
       stripe
@@ -48,9 +49,20 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
         prop="materialName"
         show-overflow-tooltip
       />
-      <ElTableColumn label="发起人" min-width="90" prop="applicant" />
-      <ElTableColumn label="受让人" min-width="90" prop="transferee" />
       <ElTableColumn
+        class-name="hide-on-mobile"
+        label="发起人"
+        min-width="90"
+        prop="applicant"
+      />
+      <ElTableColumn
+        class-name="hide-on-mobile"
+        label="受让人"
+        min-width="90"
+        prop="transferee"
+      />
+      <ElTableColumn
+        class-name="hide-on-mobile"
         label="原因"
         min-width="150"
         prop="reason"
@@ -65,7 +77,12 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
           />
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="操作" width="140">
+      <ElTableColumn
+        align="center"
+        class-name="table-action-cell"
+        label="操作"
+        width="140"
+      >
         <template #default="{ row }">
           <ElButton
             :disabled="row.actionableNodeIds.length === 0"

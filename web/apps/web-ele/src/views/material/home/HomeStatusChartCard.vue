@@ -8,6 +8,7 @@ import {
   type EchartsUIType,
   useEcharts,
 } from '@vben/plugins/echarts';
+import { ElEmpty } from 'element-plus';
 
 import { buildStatusDistribution } from './chart-options';
 import { getChartTheme } from './home-chart-theme';
@@ -20,6 +21,9 @@ const props = defineProps<{
 
 const statusDistribution = computed(() =>
   props.stats ? buildStatusDistribution(props.stats) : [],
+);
+const hasData = computed(() =>
+  statusDistribution.value.some((item) => item.value > 0),
 );
 
 const statusChartRef = ref<EchartsUIType>();
@@ -79,11 +83,13 @@ useHomeChartCard(() => props.stats, renderChart);
 <template>
   <div class="chart-card" v-loading="loading">
     <EchartsUI
+      v-if="hasData"
       ref="statusChartRef"
       aria-label="测评项目进度状态分布图"
       role="img"
       style="height: 260px"
     />
+    <ElEmpty v-else-if="!loading" :image-size="64" description="暂无项目数据" />
     <details class="chart-data-details">
       <summary>查看进度状态分布数据表</summary>
       <div class="chart-data-table-wrap">

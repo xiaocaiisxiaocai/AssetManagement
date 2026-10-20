@@ -79,11 +79,11 @@ const imageFileList = defineModel<AuthenticatedUploadFile[]>('imageFileList', {
         />
       </ElSelect>
     </ElFormItem>
-    <ElFormItem label="厂商/来源">
+    <ElFormItem label="寄件厂商">
       <ElInput
         v-model="form.vendorName"
         :maxlength="100"
-        placeholder="请输入寄件厂商名称"
+        placeholder="请输入寄件或原厂名称"
         show-word-limit
       />
     </ElFormItem>
@@ -117,7 +117,7 @@ const imageFileList = defineModel<AuthenticatedUploadFile[]>('imageFileList', {
       <ElInput
         v-model="form.dockingVendorName"
         :maxlength="100"
-        placeholder="请输入对接厂商名称"
+        placeholder="请输入实际对接或合作厂商"
         show-word-limit
       />
     </ElFormItem>

@@ -3,6 +3,7 @@ using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.TestMaterials;
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace AssetManagement.Tests.TestMaterials;
@@ -172,8 +173,8 @@ public class TestProjectServiceNoTrackingTests : MySqlFixtureBase
     {
         await using var firstDb = CreateNoTrackingContext();
         await using var secondDb = CreateNoTrackingContext();
-        var first = new TestProjectService(firstDb);
-        var second = new TestProjectService(secondDb);
+        var first = new TestProjectService(firstDb, new HttpContextAccessor());
+        var second = new TestProjectService(secondDb, new HttpContextAccessor());
         var request = new SaveTestProjectOptionRequest
         {
             Kind = TestProjectService.OptionKindProjectType,
@@ -205,5 +206,6 @@ public class TestProjectServiceNoTrackingTests : MySqlFixtureBase
             .Which.Code.Should().Be(4094);
     }
 
-    private TestProjectService CreateService() => new(CreateNoTrackingContext());
+    private TestProjectService CreateService() =>
+        new(CreateNoTrackingContext(), new HttpContextAccessor());
 }

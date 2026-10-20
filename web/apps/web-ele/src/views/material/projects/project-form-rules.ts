@@ -28,7 +28,7 @@ export function validateProjectForm(form: ProjectFormLike) {
     return '跟进间隔须为 1-365 的整数';
   }
   if (form.testStatus.trim().length > 1000)
-    return '测试情况不能超过 1000 个字符';
+    return '项目摘要不能超过 1000 个字符';
   if (!form.startDate) return '请选择开始时间';
   if (!form.plannedFinishDate) return '请选择计划完成';
   if (form.plannedFinishDate < form.startDate)

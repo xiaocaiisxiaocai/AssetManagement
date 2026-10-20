@@ -1,13 +1,14 @@
 <script lang="ts" setup>
 import type { TestProjectStats } from '#/api/test-project';
 
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
 import {
   EchartsUI,
   type EchartsUIType,
   useEcharts,
 } from '@vben/plugins/echarts';
+import { ElEmpty } from 'element-plus';
 
 import { getChartTheme } from './home-chart-theme';
 import { useHomeChartCard } from './use-home-chart-card';
@@ -16,6 +17,9 @@ const props = defineProps<{
   loading: boolean;
   stats: null | TestProjectStats;
 }>();
+const hasData = computed(() =>
+  props.stats?.typeDist.some((item) => item.count > 0),
+);
 
 const typeChartRef = ref<EchartsUIType>();
 const { renderEcharts: renderTypeChart } = useEcharts(typeChartRef);
@@ -69,11 +73,13 @@ useHomeChartCard(() => props.stats, renderChart);
 <template>
   <div class="chart-card" v-loading="loading">
     <EchartsUI
+      v-if="hasData"
       ref="typeChartRef"
       aria-label="测评类型分布图"
       role="img"
       style="height: 260px"
     />
+    <ElEmpty v-else-if="!loading" :image-size="64" description="暂无项目数据" />
     <details class="chart-data-details">
       <summary>查看测评类型分布数据表</summary>
       <div class="chart-data-table-wrap">

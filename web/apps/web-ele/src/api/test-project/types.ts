@@ -123,6 +123,7 @@ export interface SaveTestProjectFollowupPayload {
 }
 
 export interface TestProjectStats {
+  year: number;
   total: number;
   closed: number;
   inProgress: number;

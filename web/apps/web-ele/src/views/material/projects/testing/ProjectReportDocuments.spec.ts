@@ -89,6 +89,19 @@ describe('阶段行报告附件', () => {
     expect(wrapper.find('select').exists()).toBe(false);
   });
 
+  it('上传前可以补充报告说明并随当前阶段一并提交', async () => {
+    const wrapper = setup();
+    await wrapper
+      .get('input[placeholder="可选：填写报告说明"]')
+      .setValue('阶段验证总结');
+    await wrapper.get('[aria-label="上传性能测试报告"]').trigger('click');
+    const file = new File(['%PDF-1.4'], '耐久验证.pdf', {
+      type: 'application/pdf',
+    });
+    await selectFile(wrapper, file);
+    expect(wrapper.emitted('upload')).toEqual([[file, 3, '阶段验证总结']]);
+  });
+
   it('文件选择期间阶段切换时不将原文件传到新阶段', async () => {
     const wrapper = setup();
     await wrapper.get('[aria-label="上传性能测试报告"]').trigger('click');

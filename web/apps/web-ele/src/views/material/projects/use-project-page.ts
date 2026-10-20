@@ -58,6 +58,12 @@ export function useProjectPage() {
       !isCurrentProjectReadOnly.value &&
       (materialActionAccess.value.canEdit || isCurrentProjectOwner.value),
   );
+  const canUpdateCurrentProjectProgress = computed(
+    () =>
+      !isCurrentProjectReadOnly.value &&
+      !state.currentProject.value?.closedDate &&
+      (isCurrentProjectOwner.value || hasAccessByCodes(['project:manage'])),
+  );
   const projectTypeOptions = computed(() => activeOptions('project_type'));
   const progressOptions = computed(() => activeOptions('project_progress'));
   const displayedOptions = computed(() =>
@@ -161,6 +167,7 @@ export function useProjectPage() {
     activeDepartmentOptions,
     activeOptions,
     canEditCurrentProjectMaterial,
+    canUpdateCurrentProjectProgress,
     canWriteCurrentProjectMaterial,
     currentMaterialActionAccess,
     currentProjectList,

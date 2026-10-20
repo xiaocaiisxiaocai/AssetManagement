@@ -29,6 +29,7 @@ public interface ITestProjectService
 
 public class TestProjectStatsDto
 {
+    public int Year { get; set; }
     public int Total { get; set; }
     public int Closed { get; set; }
     public int InProgress { get; set; }

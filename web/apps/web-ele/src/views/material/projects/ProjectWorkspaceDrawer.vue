@@ -10,7 +10,7 @@ import type { TestProjectFollowup, TestProjectItem } from '#/api/test-project';
 
 import { computed } from 'vue';
 
-import { ElDrawer, ElTabPane, ElTabs, ElTag } from 'element-plus';
+import { ElButton, ElDrawer, ElTabPane, ElTabs, ElTag } from 'element-plus';
 
 import { formatDate } from '#/utils/date-format';
 
@@ -32,6 +32,7 @@ type MaterialActionAccess = {
 const props = defineProps<{
   canCreate: boolean;
   canEdit: boolean;
+  canUpdateProgress: boolean;
   currentProject: null | TestProjectItem;
   currentUserId: number;
   editingFollowupId: null | number;
@@ -74,6 +75,7 @@ const emit = defineEmits<{
   materialPageSizeChange: [];
   myPageSizeChange: [];
   pendingPageSizeChange: [];
+  progress: [project: TestProjectItem];
   reject: [flow: MaterialFlowItem];
   reset: [];
   search: [];
@@ -134,6 +136,7 @@ function statusMeta(project: TestProjectItem) {
       <div class="drawer-workspace-title">
         <span>新产品新技术</span>
         <strong>项目跟进工作台</strong>
+        <small v-if="currentProject">{{ currentProject.name }}</small>
       </div>
     </template>
     <div v-if="currentProject" class="followup-panel">
@@ -145,7 +148,16 @@ function statusMeta(project: TestProjectItem) {
             <span>{{ currentProjectTypeText }}</span>
           </div>
         </div>
-        <ElTag v-if="readOnly" type="info">已删除项目 · 只读归档</ElTag>
+        <div class="workspace-project-heading-actions">
+          <ElButton
+            v-if="canUpdateProgress"
+            size="small"
+            @click="emit('progress', currentProject)"
+          >
+            更新进展
+          </ElButton>
+          <ElTag v-if="readOnly" type="info">已删除项目 · 只读归档</ElTag>
+        </div>
       </header>
 
       <ProjectMaterialsTab

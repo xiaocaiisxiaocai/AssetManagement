@@ -20,7 +20,7 @@ defineProps<{
       <div class="stat-num text-purple-500">
         {{ stats?.inProgress ?? '—' }}
       </div>
-      <div class="stat-label">计划/测试中</div>
+      <div class="stat-label">规划/测试中项目</div>
     </div>
     <div class="summary-card summary-card-red">
       <div class="stat-num text-red-500">{{ stats?.landed ?? '—' }}</div>

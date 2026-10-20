@@ -75,6 +75,12 @@ describe('页面操作权限映射', () => {
     expect(access.canEdit).toBe(false);
   });
 
+  it('测试项目管理权限用于工作台进展和阶段维护', () => {
+    expect(buildProjectActionAccess(has(['project:manage'])).canManage).toBe(
+      true,
+    );
+  });
+
   it('测试项目批量导入复用 project:create 权限', () => {
     const access = buildProjectActionAccess(has(['project:create']));
 

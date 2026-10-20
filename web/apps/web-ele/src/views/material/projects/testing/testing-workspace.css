@@ -111,12 +111,6 @@
   color: var(--asset-page-muted);
 }
 
-.testing-section-meta {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--asset-page-muted);
-}
-
 .stage-ledger-section {
   height: auto;
 }

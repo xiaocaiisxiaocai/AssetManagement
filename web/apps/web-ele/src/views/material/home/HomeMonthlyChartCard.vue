@@ -42,11 +42,11 @@ function renderChart(data: TestProjectStats) {
     aria: {
       enabled: true,
       decal: { show: true },
-      label: { description: '全年结案数量与跟进记录数量统计图' },
+      label: { description: `${data.year}年结案数量与跟进记录数量统计图` },
     },
     backgroundColor: 'transparent',
     title: {
-      text: '结案与跟进记录统计',
+      text: `${data.year}年结案与跟进记录统计`,
       left: 'center',
       top: 8,
       textStyle: titleTextStyle,
@@ -104,11 +104,15 @@ useHomeChartCard(() => props.stats, renderChart);
       style="height: 280px"
     />
     <details class="chart-data-details">
-      <summary>查看全年结案与跟进数据表</summary>
+      <summary>
+        查看{{ stats?.year ? stats.year + '年' : '' }}结案与跟进数据表
+      </summary>
       <div class="chart-data-table-wrap">
         <table class="chart-data-table">
           <caption>
-            全年结案与跟进记录统计
+            {{
+              stats?.year ? stats.year + '年' : ''
+            }}结案与跟进记录统计
           </caption>
           <thead>
             <tr>

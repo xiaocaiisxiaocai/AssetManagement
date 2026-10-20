@@ -7,7 +7,9 @@ import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
 import { computed } from 'vue';
 
 import {
+  ElButton,
   ElOption,
+  ElEmpty,
   ElPagination,
   ElSelect,
   ElTable,
@@ -32,7 +34,7 @@ type MaterialActionAccess = {
   canTransfer: boolean;
 };
 
-defineProps<{
+const props = defineProps<{
   access: MaterialActionAccess;
   canCreate: boolean;
   canEdit: boolean;
@@ -112,6 +114,24 @@ function rowClassName({ row }: { row: MaterialItem }) {
   if (row.isDeleted) return 'material-row-deleted';
   return row.status === 1 ? 'material-row-returned' : '';
 }
+
+const hasMaterialFilters = computed(() => {
+  return Boolean(
+    query.value.materialNo.trim() ||
+      query.value.name.trim() ||
+      query.value.statuses.length > 0 ||
+      query.value.deleteStatus !== 'all',
+  );
+});
+
+const materialEmptyText = computed(() => {
+  const hasFilters = hasMaterialFilters.value;
+  return hasFilters
+    ? '没有符合条件的料件，请清空筛选后重试'
+    : props.canCreate
+      ? '暂无料件，可新增料件'
+      : '暂无料件';
+});
 </script>
 
 <template>
@@ -135,10 +155,18 @@ function rowClassName({ row }: { row: MaterialItem }) {
         :max-height="260"
         :row-class-name="rowClassName"
         border
+        :empty-text="materialEmptyText"
         scrollbar-always-on
         stripe
         v-loading="loading"
       >
+        <template #empty>
+          <ElEmpty :description="materialEmptyText">
+            <ElButton v-if="hasMaterialFilters" @click="emit('reset')">
+              清空筛选
+            </ElButton>
+          </ElEmpty>
+        </template>
         <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
         <ElTableColumn
           label="名称"
@@ -148,7 +176,7 @@ function rowClassName({ row }: { row: MaterialItem }) {
         />
         <ElTableColumn
           class-name="hide-on-mobile"
-          label="厂商"
+          label="寄件厂商"
           min-width="120"
           prop="vendorName"
           show-overflow-tooltip

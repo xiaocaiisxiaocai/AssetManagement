@@ -16,7 +16,7 @@ const baseForm = {
 };
 
 describe('测试项目表单规则', () => {
-  it('新增时除结案时间和测试情况外均为必填', () => {
+  it('新增时除结案时间和项目摘要外均为必填', () => {
     expect(validateProjectForm({ ...baseForm, name: '' })).toBe(
       '请填写项目名称',
     );
@@ -43,7 +43,7 @@ describe('测试项目表单规则', () => {
     );
   });
 
-  it('新增时结案时间和测试情况可以为空', () => {
+  it('新增时结案时间和项目摘要可以为空', () => {
     expect(
       validateProjectForm({ ...baseForm, closedDate: '', testStatus: '' }),
     ).toBeNull();

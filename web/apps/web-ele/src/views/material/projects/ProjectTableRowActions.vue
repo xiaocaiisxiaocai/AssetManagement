@@ -11,6 +11,7 @@ type ProjectActionAccess = {
   canEdit: boolean;
   canExport: boolean;
   canImport: boolean;
+  canManage: boolean;
   canOption: boolean;
   canPurge: boolean;
   canRestore: boolean;
@@ -43,7 +44,7 @@ const emit = defineEmits<{
       编辑
     </ElButton>
     <ElButton
-      v-else-if="canUpdateProjectProgress(row, currentUserId)"
+      v-else-if="canUpdateProjectProgress(row, currentUserId, access.canManage)"
       link
       size="small"
       type="primary"

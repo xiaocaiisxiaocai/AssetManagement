@@ -243,7 +243,7 @@ function dateRange(stage: ProjectStageDto) {
             </ElTableColumn>
             <ElTableColumn align="center" label="测试结果" min-width="240">
               <template #default="{ row }">
-                <span class="multiline-preview">
+                <span :title="row.testResult || ''" class="multiline-preview">
                   {{ displayText(row.testResult) }}
                 </span>
               </template>
@@ -282,7 +282,8 @@ function dateRange(stage: ProjectStageDto) {
               </template>
             </ElTableColumn>
             <ElTableColumn
-              :width="canManage || canExport ? 240 : 82"
+              v-if="canManage || canExport"
+              :width="canManage ? 220 : 150"
               align="center"
               class-name="table-action-cell"
               fixed="right"

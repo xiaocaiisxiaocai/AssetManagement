@@ -12,6 +12,7 @@ const {
   activeProjectTab,
   approveFlow,
   canEditCurrentProjectMaterial,
+  canUpdateCurrentProjectProgress,
   canWriteCurrentProjectMaterial,
   cancelFollowupEdit,
   currentMaterialActionAccess,
@@ -53,6 +54,7 @@ const {
   openCreateMaterial,
   openEditMaterial,
   openMaterialDetail,
+  openProgress,
   pendingFlowLoading,
   pendingFlowQueryModel,
   pendingFlows,
@@ -77,6 +79,7 @@ const {
     v-model:visible="followupDrawerVisible"
     :can-create="canWriteCurrentProjectMaterial"
     :can-edit="canEditCurrentProjectMaterial"
+    :can-update-progress="canUpdateCurrentProjectProgress"
     :current-project="currentProject"
     :current-user-id="currentUserId"
     :editing-followup-id="editingFollowupId"
@@ -116,6 +119,7 @@ const {
     @material-page-size-change="onMaterialPageSizeChange"
     @my-page-size-change="onMyFlowPageSizeChange"
     @pending-page-size-change="onPendingFlowPageSizeChange"
+    @progress="openProgress"
     @reject="rejectFlow"
     @reset="resetMaterialQuery"
     @search="searchMaterials"

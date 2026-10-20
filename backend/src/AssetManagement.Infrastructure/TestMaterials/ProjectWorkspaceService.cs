@@ -293,14 +293,16 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     }
 
     private async Task<bool> CanManageAsync(TestProject project, int userId) =>
-        userId > 0 && (project.OwnerId == userId || await _db.UserRoles
-            .AnyAsync(x => x.UserId == userId && x.Role.IsActive && x.Role.Code == "admin"));
+        userId > 0 && (project.OwnerId == userId ||
+            _http.HttpContext?.User.HasClaim("perm", "project:manage") == true ||
+            await _db.UserRoles
+                .AnyAsync(x => x.UserId == userId && x.Role.IsActive && x.Role.Code == "admin"));
 
     private async Task EnsureWritableAsync(TestProject project, int userId)
     {
         if (project.IsDeleted) throw new BizException(4092, "已删除项目为只读，不能修改测试阶段或报告");
         if (!await CanManageAsync(project, userId))
-            throw new BizException(4031, "只有项目负责人或管理员可以维护测试阶段和报告");
+            throw new BizException(4031, "只有项目负责人、项目管理人员或管理员可以维护测试阶段和报告");
     }
 
     private async Task CheckStageAsync(int projectId, int? stageId)

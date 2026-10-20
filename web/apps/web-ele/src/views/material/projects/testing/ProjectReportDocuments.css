@@ -43,6 +43,12 @@
   overflow: auto;
 }
 
+.stage-report-upload-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .stage-report-item {
   display: flex;
   flex-direction: column;

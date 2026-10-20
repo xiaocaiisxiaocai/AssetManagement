@@ -55,12 +55,12 @@ function onProgressChange(value: string) {
           value-format="YYYY-MM-DD"
         />
       </ElFormItem>
-      <ElFormItem label="测试情况">
+      <ElFormItem label="项目摘要">
         <ElInput
           v-model="form.testStatus"
           :rows="5"
           maxlength="1000"
-          placeholder="记录当前测试结论、阻塞点或风险"
+          placeholder="记录项目级进展、风险和阻塞点，不填写阶段测试结果"
           show-word-limit
           type="textarea"
         />

@@ -49,7 +49,14 @@ function flowMetaOf(status: string) {
 
 <template>
   <div class="drawer-table-panel flow-table-panel">
-    <ElTable :data="myFlows" border height="100%" stripe v-loading="myLoading">
+    <ElTable
+      :data="myFlows"
+      :empty-text="myCount > 0 ? '当前页暂无发起记录' : '暂无发起记录'"
+      border
+      height="100%"
+      stripe
+      v-loading="myLoading"
+    >
       <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
       <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
       <ElTableColumn
@@ -58,8 +65,14 @@ function flowMetaOf(status: string) {
         prop="materialName"
         show-overflow-tooltip
       />
-      <ElTableColumn label="受让人" min-width="90" prop="transferee" />
       <ElTableColumn
+        class-name="hide-on-mobile"
+        label="受让人"
+        min-width="90"
+        prop="transferee"
+      />
+      <ElTableColumn
+        class-name="hide-on-mobile"
         label="原因"
         min-width="150"
         prop="reason"
@@ -81,7 +94,13 @@ function flowMetaOf(status: string) {
           />
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" fixed="right" label="操作" width="90">
+      <ElTableColumn
+        align="center"
+        class-name="table-action-cell"
+        fixed="right"
+        label="操作"
+        width="90"
+      >
         <template #default="{ row }">
           <ElButton
             v-if="!readOnly && canWithdrawMaterialFlow(row)"

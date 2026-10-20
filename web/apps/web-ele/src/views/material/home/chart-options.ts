@@ -15,7 +15,7 @@ export function buildStatusDistribution(
   stats: Pick<TestProjectStats, 'closed' | 'inProgress' | 'landed'>,
 ) {
   return [
-    { label: '计划/测试中', value: stats.inProgress },
+    { label: '规划/测试中项目', value: stats.inProgress },
     { label: '结案', value: stats.closed },
     { label: '落地跟进', value: stats.landed },
   ];

@@ -81,7 +81,7 @@ internal static class ProjectReportBuilder
             ("结案日期", FormatDate(project.ClosedDate)), ("项目进度", project.ProgressLabel ?? project.ProgressCode),
             ("跟进间隔", $"{project.FollowUpIntervalDays} 天"), ("下次跟进", FormatDate(project.NextFollowUpDueDate)),
             ("跟进状态", project.FollowUpStatus), ("创建时间", FormatDateTime(project.CreatedAt)));
-        AppendHtmlLongText(html, "测试情况", project.TestStatus);
+        AppendHtmlLongText(html, "项目摘要", project.TestStatus);
         AppendHtmlLongText(html, "最近跟进", project.LatestFollowUpContent);
 
         AppendHtmlHeading(html, "二、整体进度");
@@ -232,7 +232,7 @@ internal static class ProjectReportBuilder
                 ("结案日期", FormatDate(project.ClosedDate)), ("项目进度", project.ProgressLabel ?? project.ProgressCode),
                 ("跟进间隔", $"{project.FollowUpIntervalDays} 天"), ("下次跟进", FormatDate(project.NextFollowUpDueDate)),
                 ("跟进状态", project.FollowUpStatus), ("创建时间", FormatDateTime(project.CreatedAt))),
-            LongTextBlock("测试情况", project.TestStatus),
+            LongTextBlock("项目摘要", project.TestStatus),
             LongTextBlock("最近跟进", project.LatestFollowUpContent),
             Heading("二、整体进度", 1),
             Paragraph(BuildProgressSummary(project, stages, data.StageId.HasValue)),

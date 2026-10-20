@@ -3,6 +3,7 @@ using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Common;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
 using System.Globalization;
@@ -19,8 +20,13 @@ public class TestProjectService : ITestProjectService
         new(StringComparer.OrdinalIgnoreCase) { ProgressLanding, ProgressClosed };
 
     private readonly AppDbContext _db;
+    private readonly IHttpContextAccessor _http;
 
-    public TestProjectService(AppDbContext db) => _db = db;
+    public TestProjectService(AppDbContext db, IHttpContextAccessor http)
+    {
+        _db = db;
+        _http = http;
+    }
 
     public async Task<List<TestProjectDto>> ListAsync(string? deleteStatus, int currentUserId)
     {
@@ -103,7 +109,7 @@ public class TestProjectService : ITestProjectService
 
         var projectRows = new List<string[]>
         {
-            new[] { "项目编号", "项目名称", "项目类型", "项目进度", "负责人", "开始时间", "计划完成时间", "结案时间", "跟进间隔(天)", "测试情况", "删除状态" }
+            new[] { "项目编号", "项目名称", "项目类型", "项目进度", "负责人", "开始时间", "计划完成时间", "结案时间", "跟进间隔(天)", "项目摘要", "删除状态" }
         };
         projectRows.AddRange(projects.Select(x => new[]
         {
@@ -170,7 +176,7 @@ public class TestProjectService : ITestProjectService
             new[]
             {
                 "项目编号", "项目名称", "项目类型", "负责人工号", "开始时间",
-                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "测试情况"
+                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "项目摘要"
             }
         };
         var instructions = new List<string[]>
@@ -185,7 +191,7 @@ public class TestProjectService : ITestProjectService
             new[] { "项目进度", "必填，请填写下方列出的中文名称" },
             new[] { "结案时间", "仅已结案项目必填，格式 yyyy-MM-dd" },
             new[] { "跟进间隔(天)", "选填，留空默认 14，范围 1-365" },
-            new[] { "测试情况", "选填，最多 1000 个字符" },
+            new[] { "项目摘要", "选填，最多 1000 个字符" },
             new[] { "", "" },
             new[] { "可用项目类型", "中文名称" }
         };
@@ -367,8 +373,9 @@ public class TestProjectService : ITestProjectService
         var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
-        if (project.OwnerId != currentUserId && !await IsAdmin(currentUserId))
-            throw new BizException(4031, "只有项目负责人或管理员可以更新项目进展");
+        if (project.OwnerId != currentUserId && !await IsAdmin(currentUserId) &&
+            !HasPermission("project:manage"))
+            throw new BizException(4031, "只有项目负责人、项目管理人员或管理员可以更新项目进展");
         EnsureProjectCanChange(project);
 
         var progressCode = request.ProgressCode?.Trim();
@@ -382,7 +389,7 @@ public class TestProjectService : ITestProjectService
         ValidateProjectProgressTimeline(project.StartDate, progressCode, closedDate);
         var testStatus = request.TestStatus?.Trim();
         if (testStatus?.Length > 1000)
-            throw new BizException(4001, "测试情况不能超过1000个字符");
+            throw new BizException(4001, "项目摘要不能超过1000个字符");
 
         project.ProgressCode = progressCode;
         project.ClosedDate = closedDate;
@@ -672,6 +679,7 @@ public class TestProjectService : ITestProjectService
                 Label = typeOptions.GetValueOrDefault(g.Key, g.Key),
                 Count = g.Count()
             })
+            .OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase)
             .ToList();
         var unknownCount = projects.Count(x => string.IsNullOrEmpty(x.ProjectTypeCode));
         if (unknownCount > 0)
@@ -687,6 +695,7 @@ public class TestProjectService : ITestProjectService
 
         return new TestProjectStatsDto
         {
+            Year = year,
             Total = projects.Count,
             Closed = closed,
             InProgress = inProgress,
@@ -717,6 +726,7 @@ public class TestProjectService : ITestProjectService
             .GroupBy(x => x.ProjectId)
             .ToDictionary(x => x.Key, x => x.First());
         var isAdmin = currentUserId.HasValue && await IsAdmin(currentUserId.Value);
+        var canManageFollowup = HasPermission("project:followup");
 
         return list.Select(x =>
         {
@@ -745,7 +755,8 @@ public class TestProjectService : ITestProjectService
                     : FollowUpStatus(nextDue),
                 LatestFollowUpContent = latest?.Content,
                 LatestFollowUpAt = latest?.FilledAt,
-                CanWriteFollowUp = !x.IsDeleted && isLanding && currentUserId.HasValue && (isAdmin || x.OwnerId == currentUserId.Value),
+                CanWriteFollowUp = !x.IsDeleted && isLanding && currentUserId.HasValue &&
+                    (isAdmin || canManageFollowup || x.OwnerId == currentUserId.Value),
                 CreatedAt = x.CreatedAt,
                 IsDeleted = x.IsDeleted,
                 DeletedAt = x.DeletedAt,
@@ -917,11 +928,12 @@ public class TestProjectService : ITestProjectService
 
     private async Task EnsureCanWriteFollowup(TestProject project, int currentUserId)
     {
-        // 落地跟进不是普通项目编辑权限：只有进入落地阶段后，项目负责人或管理员才能填写。
+        // 落地跟进不是普通项目编辑权限：只有进入落地阶段后，负责人、跟进管理人员或管理员才能填写。
         if (!IsLandingProgress(project))
             throw new BizException(4031, "项目进入落地跟进后才能填写落地跟进");
-        if (project.OwnerId == currentUserId || await IsAdmin(currentUserId)) return;
-        throw new BizException(4031, "只有项目负责人或管理员可以填写落地跟进");
+        if (project.OwnerId == currentUserId || await IsAdmin(currentUserId) ||
+            HasPermission("project:followup")) return;
+        throw new BizException(4031, "只有项目负责人、跟进管理人员或管理员可以填写落地跟进");
     }
 
     private static bool IsLandingProgress(TestProject project)
@@ -931,6 +943,9 @@ public class TestProjectService : ITestProjectService
         => await _db.UserRoles
             .Include(x => x.Role)
             .AnyAsync(x => x.UserId == userId && x.Role != null && x.Role.Code == "admin");
+
+    private bool HasPermission(string permission)
+        => _http.HttpContext?.User.HasClaim("perm", permission) == true;
 
     private async Task<TestProjectFollowup?> LatestFollowup(int projectId)
         => await _db.TestProjectFollowups
@@ -1111,7 +1126,7 @@ public class TestProjectService : ITestProjectService
             errors.Add("跟进间隔必须是 1-365 的整数");
             interval = 14;
         }
-        if (testStatus?.Length > 1000) errors.Add("测试情况不能超过 1000 个字符");
+        if (testStatus?.Length > 1000) errors.Add("项目摘要不能超过 1000 个字符");
         if (startDate.HasValue && plannedFinishDate.HasValue && plannedFinishDate.Value < startDate.Value)
             errors.Add("计划完成时间不能早于开始时间");
         if (startDate.HasValue && closedDate.HasValue && closedDate.Value < startDate.Value)

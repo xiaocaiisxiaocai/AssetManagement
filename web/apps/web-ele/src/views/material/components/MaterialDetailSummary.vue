@@ -22,7 +22,7 @@ defineProps<{
     <ElDescriptionsItem label="所属项目">
       {{ detail.material.projectName ?? '-' }}
     </ElDescriptionsItem>
-    <ElDescriptionsItem label="厂商/来源">
+    <ElDescriptionsItem label="寄件厂商">
       {{ detail.material.vendorName ?? '-' }}
     </ElDescriptionsItem>
     <ElDescriptionsItem label="型号">
