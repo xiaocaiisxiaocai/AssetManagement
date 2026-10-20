@@ -161,7 +161,7 @@ const materialEmptyText = computed(() => {
     >
       <ElTable
         :data="materials"
-        height="220"
+        height="180"
         :row-class-name="rowClassName"
         border
         :empty-text="materialEmptyText"

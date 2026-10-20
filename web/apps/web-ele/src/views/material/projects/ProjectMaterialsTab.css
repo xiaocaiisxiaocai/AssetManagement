@@ -77,28 +77,33 @@
 
 .drawer-table-panel.material-table-panel :deep(.el-table),
 .drawer-table-panel.material-table-panel :deep(.el-table__inner-wrapper) {
-  height: 220px !important;
-  max-height: 220px !important;
+  height: 180px !important;
+  max-height: 180px !important;
 }
 
 .drawer-table-panel.material-table-panel :deep(.el-table__body-wrapper),
 .drawer-table-panel.material-table-panel :deep(.el-table__empty-block) {
-  height: 182px !important;
-  max-height: 182px !important;
+  height: 142px !important;
+  max-height: 142px !important;
 }
 
 .material-table-panel :deep(.el-empty) {
   box-sizing: border-box;
   height: 100%;
-  padding: 8px 0;
+  padding: 4px 0;
 }
 
 .material-table-panel :deep(.el-empty__image) {
-  width: 72px;
+  width: 56px;
 }
 
 .material-table-panel :deep(.el-empty__description) {
-  margin-top: 6px;
+  margin-top: 2px;
+}
+
+.material-table-panel :deep(.el-empty__description p) {
+  margin: 0;
+  line-height: 20px;
 }
 
 .material-row-actions {
