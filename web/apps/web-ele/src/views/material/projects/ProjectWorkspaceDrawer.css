@@ -18,11 +18,24 @@
 }
 
 :global(.project-workspace-drawer .el-drawer__close-btn) {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 32px;
   height: 32px;
+  padding: 0;
   color: var(--asset-page-panel-header-text);
+  line-height: 1;
   border-radius: 6px;
   transition: background-color 0.16s ease;
+}
+
+:global(.project-workspace-drawer .el-drawer__close-btn .el-icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
 }
 
 :global(.project-workspace-drawer .el-drawer__close-btn:hover) {
