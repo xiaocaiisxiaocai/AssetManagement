@@ -150,24 +150,6 @@ function dateRange(stage: ProjectStageDto) {
         </div>
         <div class="testing-summary-actions">
           <ElTag v-if="!canManage" size="small" type="info">只读</ElTag>
-          <ProjectReportDocuments
-            v-if="
-              canManage ||
-              workspace.documents.some((document) => !document.stageId)
-            "
-            :can-manage="canManage"
-            :deleting-document-id="deletingDocumentId"
-            :documents="workspace.documents"
-            :downloading-key="downloadingKey"
-            :stage-id="null"
-            :uploading="uploadingDocument && uploadingStageId === null"
-            :write-busy="writeBusy"
-            compact
-            scope-name="项目总报告"
-            @download="downloadDocument"
-            @remove="removeDocument"
-            @upload="uploadDocument"
-          />
           <ElButton
             v-if="canExport"
             :disabled="
@@ -203,7 +185,9 @@ function dateRange(stage: ProjectStageDto) {
         <header class="testing-section-header">
           <div>
             <h3>测试阶段台账</h3>
-            <p>记录阶段目标、测试过程、测试结果与报告归档情况。</p>
+            <p>
+              记录阶段目标、测试过程和测试结果；结案阶段报告作为项目总报告。
+            </p>
           </div>
         </header>
         <div class="stage-table-wrap" v-loading="loading">

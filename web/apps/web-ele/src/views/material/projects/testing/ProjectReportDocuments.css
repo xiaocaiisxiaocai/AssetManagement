@@ -22,10 +22,6 @@
   justify-content: center;
 }
 
-.stage-report-cell.is-compact {
-  display: inline-flex;
-}
-
 .stage-report-file {
   display: block;
   width: 100%;

@@ -237,17 +237,14 @@ export function useProjectTestingWorkspace(
 
   async function uploadDocument(
     file: File,
-    stageId: null | number,
+    stageId: number,
     description: string,
     onSuccess?: () => void,
   ) {
     if (!canManage.value || writeBusy.value) return;
     const projectId = props.projectId;
     const generation = operationGeneration;
-    if (
-      stageId !== null &&
-      !workspace.value?.stages.some((stage) => stage.id === stageId)
-    ) {
+    if (!workspace.value?.stages.some((stage) => stage.id === stageId)) {
       ElMessage.warning('所选阶段已变更，请重新选择报告归属');
       return;
     }

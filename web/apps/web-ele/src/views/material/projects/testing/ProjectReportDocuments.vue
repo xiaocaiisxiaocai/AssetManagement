@@ -11,12 +11,11 @@ import { validateProjectDocument } from './project-testing-rules';
 
 const props = defineProps<{
   canManage: boolean;
-  compact?: boolean;
   deletingDocumentId: null | number;
   documents: ProjectDocumentDto[];
   downloadingKey: string;
   scopeName: string;
-  stageId: null | number;
+  stageId: number;
   uploading: boolean;
   writeBusy: boolean;
 }>();
@@ -24,7 +23,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   download: [document: ProjectDocumentDto];
   remove: [document: ProjectDocumentDto];
-  upload: [file: File, stageId: null | number, description: string];
+  upload: [file: File, stageId: number, description: string];
 }>();
 
 const fileInput = ref<HTMLInputElement>();
@@ -32,7 +31,7 @@ const fileError = ref('');
 let selectedScope: null | number | undefined;
 const documents = computed(() =>
   props.documents
-    .filter((document) => (document.stageId ?? null) === props.stageId)
+    .filter((document) => document.stageId === props.stageId)
     .sort((left, right) => right.uploadedAt.localeCompare(left.uploadedAt)),
 );
 
@@ -61,8 +60,8 @@ function onFileChange(event: Event) {
 </script>
 
 <template>
-  <div :class="{ 'is-compact': compact }" class="stage-report-cell">
-    <div v-if="!compact && documents.length > 0" class="stage-report-links">
+  <div class="stage-report-cell">
+    <div v-if="documents.length > 0" class="stage-report-links">
       <ElButton
         v-for="document in documents.slice(0, 2)"
         :key="document.id"
@@ -81,7 +80,7 @@ function onFileChange(event: Event) {
     <div class="stage-report-actions">
       <ElButton
         v-if="canManage"
-        :aria-label="compact ? '上传项目总报告' : `上传${scopeName}报告`"
+        :aria-label="'上传' + scopeName + '报告'"
         :disabled="writeBusy"
         :loading="uploading"
         link
@@ -89,7 +88,7 @@ function onFileChange(event: Event) {
         type="primary"
         @click="chooseFile"
       >
-        {{ compact ? '上传总报告' : '上传报告' }}
+        上传报告
       </ElButton>
       <ElPopover
         v-if="documents.length > 0"
@@ -100,7 +99,7 @@ function onFileChange(event: Event) {
       >
         <template #reference>
           <ElButton link size="small" type="primary">
-            {{ compact ? '项目总报告' : '附件' }}（{{ documents.length }}）
+            附件（{{ documents.length }}）
           </ElButton>
         </template>
         <div class="stage-report-popover">
@@ -147,7 +146,7 @@ function onFileChange(event: Event) {
     </div>
     <input
       ref="fileInput"
-      :aria-label="compact ? '选择项目总报告文件' : `选择${scopeName}报告文件`"
+      :aria-label="'选择' + scopeName + '报告文件'"
       accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg"
       class="report-native-file"
       type="file"

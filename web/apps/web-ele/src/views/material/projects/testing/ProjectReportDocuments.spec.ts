@@ -9,7 +9,7 @@ const wrappers: ReturnType<typeof mount>[] = [];
 
 function document(
   id: number,
-  stageId: null | number,
+  stageId: number,
   fileName: string,
 ): ProjectDocumentDto {
   return {
@@ -24,7 +24,7 @@ function document(
   };
 }
 
-function setup(canManage = true, stageId: null | number = 3) {
+function setup(canManage = true, stageId = 3) {
   const wrapper = mount(ProjectReportDocuments, {
     props: {
       canManage,
@@ -32,7 +32,6 @@ function setup(canManage = true, stageId: null | number = 3) {
       documents: [
         document(1, 3, '第一阶段报告.pdf'),
         document(2, 4, '第二阶段报告.pdf'),
-        document(3, null, '项目总结.pdf'),
       ],
       downloadingKey: '',
       scopeName: '性能测试',
@@ -106,16 +105,5 @@ describe('阶段行报告附件', () => {
       wrapper.findAll('button').some((button) => button.text() === '删除'),
     ).toBe(false);
     expect(wrapper.text()).toContain('第一阶段报告.pdf');
-  });
-
-  it('项目总报告入口仅显示项目级文档', async () => {
-    const wrapper = setup(true, null);
-    await wrapper.setProps({ compact: true, scopeName: '项目总报告' });
-    expect(wrapper.text()).toContain('项目总结.pdf');
-    expect(wrapper.text()).not.toContain('第一阶段报告.pdf');
-    await wrapper.get('[aria-label="上传项目总报告"]').trigger('click');
-    const file = new File(['pdf'], '最终报告.pdf');
-    await selectFile(wrapper, file);
-    expect(wrapper.emitted('upload')).toEqual([[file, null, '']]);
   });
 });
