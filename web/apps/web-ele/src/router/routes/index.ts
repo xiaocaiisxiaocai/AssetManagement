@@ -27,6 +27,16 @@ const externalRoutes: RouteRecordRaw[] = [];
 // 这两个隐藏路由由前端守卫校验与页面 API 一致的料件权限码。
 const hiddenAuthenticatedRoutes: RouteRecordRaw[] = [
   {
+    meta: {
+      hideInMenu: true,
+      hideInTab: true,
+      title: '首页',
+    },
+    name: 'LegacyWorkspaceRedirect',
+    path: '/workspace',
+    redirect: '/home',
+  },
+  {
     component: BasicLayout,
     meta: { hideInMenu: true, title: '料件流程' },
     name: 'MaterialFlowGlobal',
