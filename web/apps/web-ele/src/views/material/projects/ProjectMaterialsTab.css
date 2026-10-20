@@ -23,6 +23,12 @@
   margin-bottom: 10px;
 }
 
+.material-read-only-hint {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--el-text-color-secondary);
+}
+
 .workspace-materials {
   flex: none;
   padding: 12px;
@@ -71,6 +77,32 @@
   flex: none;
   height: auto;
   min-height: 0;
+}
+
+.drawer-table-panel.material-table-panel :deep(.el-table),
+.drawer-table-panel.material-table-panel :deep(.el-table__inner-wrapper) {
+  height: 220px !important;
+  max-height: 220px !important;
+}
+
+.drawer-table-panel.material-table-panel :deep(.el-table__body-wrapper),
+.drawer-table-panel.material-table-panel :deep(.el-table__empty-block) {
+  height: 182px !important;
+  max-height: 182px !important;
+}
+
+.material-table-panel :deep(.el-empty) {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 8px 0;
+}
+
+.material-table-panel :deep(.el-empty__image) {
+  width: 72px;
+}
+
+.material-table-panel :deep(.el-empty__description) {
+  margin-top: 6px;
 }
 
 .material-row-actions {

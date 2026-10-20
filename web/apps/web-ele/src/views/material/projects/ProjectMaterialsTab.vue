@@ -44,6 +44,7 @@ const props = defineProps<{
   materials: MaterialItem[];
   pageSizeOptions: number[];
   projectOwnerId?: null | number;
+  readOnlyHint?: string;
   total: number;
 }>();
 
@@ -117,10 +118,7 @@ function rowClassName({ row }: { row: MaterialItem }) {
 
 const hasMaterialFilters = computed(() => {
   return Boolean(
-    query.value.materialNo.trim() ||
-      query.value.name.trim() ||
-      query.value.statuses.length > 0 ||
-      query.value.deleteStatus !== 'all',
+    query.value.statuses.length > 0 || query.value.deleteStatus !== 'all',
   );
 });
 
@@ -143,16 +141,14 @@ const materialEmptyText = computed(() => {
       <span class="material-section-hint">项目测试使用的样品与物料</span>
     </div>
     <ProjectMaterialFilterBar
-      v-model:query="query"
       :can-create="canCreate"
+      :read-only-hint="readOnlyHint"
       @create="emit('create')"
-      @reset="emit('reset')"
-      @search="emit('search')"
     />
     <div class="drawer-table-panel material-table-panel">
       <ElTable
         :data="materials"
-        :max-height="260"
+        height="220"
         :row-class-name="rowClassName"
         border
         :empty-text="materialEmptyText"
