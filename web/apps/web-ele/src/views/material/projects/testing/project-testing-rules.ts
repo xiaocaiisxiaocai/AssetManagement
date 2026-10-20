@@ -60,6 +60,13 @@ export function dateOnly(value?: null | string): string {
   return value?.slice(0, 10) ?? '';
 }
 
+export function isProjectClosed(
+  progressCode?: null | string,
+  closedDate?: null | string,
+) {
+  return Boolean(closedDate) || progressCode?.toLowerCase() === 'closed';
+}
+
 export function validateProjectStageForm(
   form: ProjectStageFormState,
   today = businessDateText(),

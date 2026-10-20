@@ -17,7 +17,7 @@ import {
   ElTag,
 } from 'element-plus';
 
-import { dateOnly } from './project-testing-rules';
+import { dateOnly, isProjectClosed } from './project-testing-rules';
 import ProjectReportDocuments from './ProjectReportDocuments.vue';
 import ProjectStageDialog from './ProjectStageDialog.vue';
 import { useProjectTestingWorkspace } from './use-project-testing-workspace';
@@ -74,15 +74,18 @@ const completedCount = computed(
   () =>
     orderedStages.value.filter((stage) => stage.status === 'completed').length,
 );
+const projectClosed = computed(() =>
+  isProjectClosed(props.projectProgressCode, props.projectClosedDate),
+);
 const testingLocked = computed(
   () =>
-    Boolean(props.projectClosedDate) ||
+    projectClosed.value ||
     !['planning', 'testing'].includes(
       (props.projectProgressCode ?? '').toLowerCase(),
     ),
 );
 const finalStageId = computed(() => {
-  if (!testingLocked.value || orderedStages.value.length === 0) return null;
+  if (!projectClosed.value || orderedStages.value.length === 0) return null;
   return orderedStages.value[orderedStages.value.length - 1]?.id ?? null;
 });
 
@@ -202,7 +205,7 @@ function dateRange(stage: ProjectStageDto) {
           <div>
             <h3>测试阶段台账</h3>
             <p>
-              记录阶段目标、测试过程和测试结果；结案阶段报告作为项目总报告。
+              记录阶段目标、测试过程和测试结果；最后测试阶段报告作为项目总报告。
             </p>
           </div>
         </header>
