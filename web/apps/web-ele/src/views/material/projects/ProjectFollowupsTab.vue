@@ -116,32 +116,34 @@ const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
           <ElTimelineItem
             v-for="item in followups"
             :key="item.id"
-            :timestamp="formatDate(item.dueDate)"
             placement="top"
           >
             <article class="followup-record">
               <div class="followup-record-meta">
                 <span>{{ item.filledByName || '-' }}</span>
+                <span>{{ formatDate(item.dueDate) }}</span>
                 <span>{{ formatDateTime(item.filledAt) }}</span>
               </div>
-              <div class="followup-content">{{ item.content }}</div>
-              <div v-if="canWrite" class="record-actions">
-                <ElButton
-                  link
-                  size="small"
-                  type="primary"
-                  @click="emit('edit', item)"
-                >
-                  编辑
-                </ElButton>
-                <ElButton
-                  link
-                  size="small"
-                  type="danger"
-                  @click="emit('remove', item)"
-                >
-                  删除
-                </ElButton>
+              <div class="followup-content-row">
+                <div class="followup-content">{{ item.content }}</div>
+                <div v-if="canWrite" class="record-actions">
+                  <ElButton
+                    link
+                    size="small"
+                    type="primary"
+                    @click="emit('edit', item)"
+                  >
+                    编辑
+                  </ElButton>
+                  <ElButton
+                    link
+                    size="small"
+                    type="danger"
+                    @click="emit('remove', item)"
+                  >
+                    删除
+                  </ElButton>
+                </div>
               </div>
             </article>
           </ElTimelineItem>

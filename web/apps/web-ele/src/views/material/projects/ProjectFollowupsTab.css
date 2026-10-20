@@ -86,11 +86,12 @@
 .record-actions {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
+  align-items: flex-start;
 }
 
 .followup-actions {
   flex-shrink: 0;
+  justify-content: flex-end;
   margin-top: 12px;
 }
 
@@ -170,15 +171,23 @@
   color: var(--el-text-color-secondary);
 }
 
+.followup-content-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
 .followup-content {
   font-size: 13px;
   line-height: 1.6;
+  flex: 1;
+  min-width: 0;
   color: var(--el-text-color-primary);
   white-space: pre-wrap;
 }
 
 .record-actions {
-  margin-top: 8px;
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
