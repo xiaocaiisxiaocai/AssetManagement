@@ -40,6 +40,29 @@ describe('远程用户选项回填', () => {
     ]);
   });
 
+  it('回填已有用户时保留已加载的工号与附加信息', () => {
+    expect(
+      mergeSelectedUserOption(
+        [
+          {
+            departmentId: 6,
+            employeeNo: '0000',
+            id: 1,
+            name: '系统管理员',
+          },
+        ],
+        { id: 1, name: '系统管理员' },
+      ),
+    ).toEqual([
+      {
+        departmentId: 6,
+        employeeNo: '0000',
+        id: 1,
+        name: '系统管理员',
+      },
+    ]);
+  });
+
   it('远程搜索只保留本次结果和当前已选项', () => {
     expect(
       replaceUserOptions(

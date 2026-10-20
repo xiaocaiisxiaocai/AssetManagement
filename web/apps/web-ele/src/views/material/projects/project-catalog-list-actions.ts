@@ -94,8 +94,11 @@ export function bindProjectCatalogListActions(page: Record<string, any>) {
   }
 
   async function loadUsers() {
-    if (users.value.length > 0) return;
-    await searchUsers('');
+    const missingEmployeeNoIds = users.value
+      .filter((user: UserOptionDto) => !user.employeeNo)
+      .map((user: UserOptionDto) => user.id);
+    if (users.value.length > 0 && missingEmployeeNoIds.length === 0) return;
+    await searchUsers('', missingEmployeeNoIds);
   }
 
   async function searchUsers(

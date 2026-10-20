@@ -40,9 +40,11 @@ export function mergeSelectedUserOption(
   },
 ) {
   if (!selected.id || !selected.name) return current;
+  const existing = current.find((user) => user.id === selected.id);
   return mergeUserOptions(current, [
     {
-      employeeNo: selected.employeeNo ?? '',
+      ...existing,
+      employeeNo: selected.employeeNo ?? existing?.employeeNo ?? '',
       id: selected.id,
       name: selected.name,
     },
