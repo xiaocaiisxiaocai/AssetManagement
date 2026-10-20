@@ -180,10 +180,7 @@ function dateRange(stage: ProjectStageDto) {
           <small>已完成 / 全部</small>
         </div>
         <div class="testing-summary-actions">
-          <ElTag v-if="testingLocked" size="small" type="info">
-            测试台账已锁定
-          </ElTag>
-          <ElTag v-else-if="!canManage" size="small" type="info">只读</ElTag>
+          <ElTag v-if="!canManage" size="small" type="info">只读</ElTag>
           <ElButton
             v-if="canExport"
             :disabled="
@@ -209,9 +206,6 @@ function dateRange(stage: ProjectStageDto) {
         <header class="testing-section-header">
           <div>
             <h3>测试阶段台账</h3>
-            <p>
-              记录阶段目标、测试过程和测试结果；最后测试阶段报告作为项目总报告。
-            </p>
           </div>
         </header>
         <div class="stage-table-wrap" v-loading="loading">
