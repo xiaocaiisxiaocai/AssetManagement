@@ -47,6 +47,47 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Landing_transition_requires_final_stage_report_and_locks_new_testing_writes()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        var landingRequest = new
+        {
+            ProgressCode = "landing",
+            ClosedDate = (DateTime?)null,
+            TestStatus = "待进入落地跟进"
+        };
+        var blocked = await client.PutAsJsonAsync(
+            $"/api/test-projects/{projectId}/progress",
+            landingRequest);
+        blocked.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var stage = await CreateAsync(client, projectId, new SaveProjectTestStageRequest
+        {
+            Name = "结案阶段",
+            Sequence = 1,
+            StartDate = BusinessClock.Today.AddDays(-1),
+            EndDate = BusinessClock.Today,
+            Status = "completed",
+            TestContent = "完成最终验证",
+            TestResult = "验证通过"
+        });
+        using var report = PdfForm(stage.Id, "结案阶段报告.pdf");
+        (await client.PostAsync($"{Root(projectId)}/documents", report)).EnsureSuccessStatusCode();
+
+        (await client.PutAsJsonAsync($"/api/test-projects/{projectId}/progress", landingRequest))
+            .EnsureSuccessStatusCode();
+        var workspace = await WorkspaceAsync(client, projectId);
+        workspace.CanManage.Should().BeFalse();
+        workspace.CanExport.Should().BeTrue();
+
+        (await client.PostAsJsonAsync($"{Root(projectId)}/stages", Draft("不应新增", 2)))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict);
+        using var secondReport = PdfForm(stage.Id, "不应上传.pdf");
+        (await client.PostAsync($"{Root(projectId)}/documents", secondReport))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task Stage_updates_reject_stale_versions_without_overwriting_saved_results()
     {
         var (client, projectId, _) = await SetupAsync();
@@ -126,12 +167,12 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     {
         var (client, projectId, _) = await SetupAsync();
         var first = await CreateAsync(client, projectId, Draft("样机性能验证", 1));
-        await CreateAsync(client, projectId, Draft("整机联调验证", 2));
+        var second = await CreateAsync(client, projectId, Draft("整机联调验证", 2));
         using var stageForm = PdfForm(first.Id, "性能验证报告.pdf");
         var uploaded = await client.PostAsync($"{Root(projectId)}/documents", stageForm);
         uploaded.EnsureSuccessStatusCode();
         var document = (await uploaded.Content.ReadFromJsonAsync<ApiResult<ProjectReportDocumentDto>>())!.Data!;
-        using var finalForm = PdfForm(null, "项目最终报告.pdf");
+        using var finalForm = PdfForm(second.Id, "项目最终报告.pdf");
         (await client.PostAsync($"{Root(projectId)}/documents", finalForm)).EnsureSuccessStatusCode();
 
         var download = await client.GetAsync($"{Root(projectId)}/documents/{document.Id}/download");
@@ -190,13 +231,16 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     public async Task Spoofed_report_extensions_and_empty_uploads_are_rejected()
     {
         var (client, projectId, _) = await SetupAsync();
+        var stage = await CreateAsync(client, projectId, Draft("文件校验阶段", 1));
         using var spoofed = new MultipartFormDataContent();
         spoofed.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("<script>bad()</script>")), "file", "假报告.pdf");
+        spoofed.Add(new StringContent(stage.Id.ToString()), "stageId");
         (await client.PostAsync($"{Root(projectId)}/documents", spoofed)).StatusCode.Should().Be(HttpStatusCode.UnsupportedMediaType);
-        using var executable = PdfForm(null, "report.exe");
+        using var executable = PdfForm(stage.Id, "report.exe");
         (await client.PostAsync($"{Root(projectId)}/documents", executable)).StatusCode.Should().Be(HttpStatusCode.UnsupportedMediaType);
         using var empty = new MultipartFormDataContent();
         empty.Add(new ByteArrayContent(Array.Empty<byte>()), "file", "empty.pdf");
+        empty.Add(new StringContent(stage.Id.ToString()), "stageId");
         (await client.PostAsync($"{Root(projectId)}/documents", empty)).StatusCode.Should().Be(HttpStatusCode.UnsupportedMediaType);
     }
 

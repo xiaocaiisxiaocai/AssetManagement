@@ -56,6 +56,26 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Landing_project_rejects_new_material_creation()
+    {
+        await Login();
+        var project = await Post<ApiResult<TestProjectDto>>(
+            "/api/test-projects",
+            NewProjectRequest("落地后不可新增料件", progressCode: "landing"));
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/test-materials",
+            new SaveTestMaterialRequest
+            {
+                Name = "不应新增的料件",
+                ProjectId = project.Data!.Id,
+                Quantity = 1
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task Project_page_applies_server_filters_and_total_before_paging()
     {
         await Login();
