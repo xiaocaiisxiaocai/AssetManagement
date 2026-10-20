@@ -247,6 +247,7 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
+        await EnsureMaterialProjectOpenAsync(m.ProjectId);
         EnsureInUse(m, "已退回厂商的料件不能删除");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能删除");
@@ -275,12 +276,7 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
         if (!m.IsDeleted) throw new BizException(4099, "料件未删除,无需恢复");
-        var project = await _db.TestProjects
-            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {m.ProjectId} FOR UPDATE")
-            .AsNoTracking()
-            .SingleOrDefaultAsync();
-        if (project is null || project.IsDeleted)
-            throw new BizException(4094, "料件所属项目已删除，请先恢复项目");
+        await EnsureMaterialProjectOpenAsync(m.ProjectId);
         m.IsDeleted = false;
         m.DeletedAt = null;
         m.RowVersion++;
@@ -308,6 +304,7 @@ public class TestMaterialService : ITestMaterialService
             .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
+        await EnsureMaterialProjectOpenAsync(m.ProjectId);
         if (!m.IsDeleted) throw new BizException(4097, "请先删除料件后再彻底删除");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id))
             throw new BizException(4094, "料件存在流转历史，不能彻底删除");
@@ -339,6 +336,7 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
+        await EnsureMaterialProjectOpenAsync(m.ProjectId);
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能退回厂商");
         if (m.Status == MaterialStatus.ReturnedToVendor)
@@ -490,9 +488,9 @@ public class TestMaterialService : ITestMaterialService
 
     private void EnsureCanWriteMaterial(TestProject project, string permission)
     {
-        if (project.ClosedDate.HasValue ||
-            (!string.Equals(project.ProgressCode, "planning", StringComparison.OrdinalIgnoreCase) &&
-             !string.Equals(project.ProgressCode, "testing", StringComparison.OrdinalIgnoreCase)))
+        if (!TestProjectLifecycleRules.IsMaterialMaintainable(
+                project.ProgressCode,
+                project.ClosedDate))
             throw new BizException(4092, "项目已进入落地跟进或已结案，不能新增或编辑测试料件");
 
         // 料件维护既允许拥有菜单权限的角色操作，也允许项目负责人维护自己负责项目下的料件。
@@ -502,6 +500,20 @@ public class TestMaterialService : ITestMaterialService
         if (user?.IsInRole("admin") == true || permissions.Contains(permission) || project.OwnerId == currentUserId)
             return;
         throw new BizException(4047, "无权维护该项目料件");
+    }
+
+    private async Task EnsureMaterialProjectOpenAsync(int projectId)
+    {
+        var project = await _db.TestProjects.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == projectId);
+        if (project is null)
+            throw new BizException(4046, "测试项目不存在");
+        if (project.IsDeleted)
+            throw new BizException(4094, "料件所属项目已删除，请先恢复项目");
+        if (!TestProjectLifecycleRules.IsMaterialMaintainable(
+                project.ProgressCode,
+                project.ClosedDate))
+            throw new BizException(4092, "项目已进入落地跟进或已结案，料件已锁定");
     }
 
     private int? CurrentUserId()

@@ -14,8 +14,8 @@ public class TestProjectService : ITestProjectService
 {
     public const string OptionKindProjectType = "project_type";
     public const string OptionKindProgress = "project_progress";
-    public const string ProgressLanding = "landing";
-    public const string ProgressClosed = "closed";
+    public const string ProgressLanding = TestProjectLifecycleRules.Landing;
+    public const string ProgressClosed = TestProjectLifecycleRules.Closed;
     private static readonly HashSet<string> ReservedProgressCodes =
         new(StringComparer.OrdinalIgnoreCase) { ProgressLanding, ProgressClosed };
 
@@ -294,6 +294,7 @@ public class TestProjectService : ITestProjectService
         ValidateProjectTextLengths(name, code, request);
         ValidateProjectRequiredFields(request);
         ValidateProjectTimeline(request);
+        ValidateInitialProjectProgress(request.ProgressCode);
         await EnsureProjectUnique(code, name);
         await ValidateProjectReferences(request);
         var project = new TestProject
@@ -864,6 +865,12 @@ public class TestProjectService : ITestProjectService
         if (!IsTerminalTestingProgress(progressCode))
             return;
 
+        if (await _db.MaterialFlows.AnyAsync(flow =>
+                flow.Status == "pending" &&
+                _db.TestMaterials.Any(material =>
+                    material.Id == flow.MaterialId && material.ProjectId == projectId)))
+            throw new BizException(4092, "项目存在进行中的料件流转，请先处理完再进入落地跟进或结案");
+
         var finalStage = await _db.ProjectTestStages.AsNoTracking()
             .Where(x => x.ProjectId == projectId && !x.IsDeleted)
             .OrderByDescending(x => x.Sequence)
@@ -883,8 +890,13 @@ public class TestProjectService : ITestProjectService
     }
 
     private static bool IsTerminalTestingProgress(string? progressCode) =>
-        string.Equals(progressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(progressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase);
+        TestProjectLifecycleRules.IsTerminal(progressCode);
+
+    private static void ValidateInitialProjectProgress(string? progressCode)
+    {
+        if (!TestProjectLifecycleRules.IsInitialProjectProgressAllowed(progressCode))
+            throw new BizException(4094, "新建或导入项目只能处于计划中或测试中，请按流程推进项目");
+    }
 
     private static IQueryable<TestProject> ApplyProjectQuery(
         IQueryable<TestProject> projectsQuery,
@@ -1182,6 +1194,8 @@ public class TestProjectService : ITestProjectService
         if (progress is not null)
         {
             var isClosed = string.Equals(progress.Code, ProgressClosed, StringComparison.OrdinalIgnoreCase);
+            if (TestProjectLifecycleRules.IsTerminal(progress.Code))
+                errors.Add("新建或导入项目只能处于计划中或测试中，请按流程推进项目");
             if (isClosed && !closedDate.HasValue) errors.Add("已结案项目必须填写结案时间");
             if (!isClosed && closedDate.HasValue) errors.Add("只有已结案项目才能填写结案时间");
         }

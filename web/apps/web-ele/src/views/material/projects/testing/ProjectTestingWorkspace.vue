@@ -360,11 +360,11 @@ function dateRange(stage: ProjectStageDto) {
             :description="
               testingLocked
                 ? '测试阶段已锁定，仅保留历史记录'
-                : canCreateStage
-                  ? '暂无测试阶段，可新增第一阶段'
-                  : canManage && !isProjectTesting(props.projectProgressCode)
-                    ? '项目进入测试中后可新增测试阶段'
+                : isProjectTesting(props.projectProgressCode)
+                  ? canCreateStage
+                    ? '暂无测试阶段，可新增第一阶段'
                     : '暂无测试阶段'
+                  : '进入测试中后可维护测试阶段'
             "
           />
         </div>

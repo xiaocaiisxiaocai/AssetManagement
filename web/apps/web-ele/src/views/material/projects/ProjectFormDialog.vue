@@ -4,6 +4,8 @@ import type { ProjectFormState } from './project-workspace-types';
 import type { TestProjectOption } from '#/api/test-project';
 import type { UserDto, UserOptionDto } from '#/api/user';
 
+import { computed } from 'vue';
+
 import {
   ElButton,
   ElDatePicker,
@@ -32,6 +34,13 @@ const props = defineProps<{
 const emit = defineEmits<{ save: [] }>();
 const form = defineModel<ProjectFormState>('form', { required: true });
 const visible = defineModel<boolean>('visible', { default: false });
+const selectableProgressOptions = computed(() =>
+  props.editing
+    ? props.progressOptions
+    : props.progressOptions.filter((item) =>
+        ['planning', 'testing'].includes(item.code.toLowerCase()),
+      ),
+);
 
 function searchOwners(keyword: string) {
   return props.searchUsers?.(keyword, [form.value.ownerId]);
@@ -88,7 +97,7 @@ function onProgressChange(value: string) {
             @change="onProgressChange"
           >
             <ElOption
-              v-for="item in progressOptions"
+              v-for="item in selectableProgressOptions"
               :key="item.id"
               :label="item.label"
               :value="item.code"

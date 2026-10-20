@@ -33,10 +33,12 @@ export function useProjectPage() {
     () => state.currentProject.value?.isDeleted === true,
   );
   const currentMaterialActionAccess = computed(() => {
-    if (!isCurrentProjectReadOnly.value) return materialActionAccess.value;
-    return Object.fromEntries(
-      Object.keys(materialActionAccess.value).map((key) => [key, false]),
-    ) as typeof materialActionAccess.value;
+    if (!isTestingProjectOpen.value || isCurrentProjectReadOnly.value) {
+      return Object.fromEntries(
+        Object.keys(materialActionAccess.value).map((key) => [key, false]),
+      ) as typeof materialActionAccess.value;
+    }
+    return materialActionAccess.value;
   });
   const isCurrentProjectOwner = computed(
     () =>
@@ -121,6 +123,7 @@ export function useProjectPage() {
 
   const catalog = bindProjectCatalogActions({
     ...state,
+    currentUserId,
     generateOptionCode,
     hasAccessByCodes,
     normalizeText,

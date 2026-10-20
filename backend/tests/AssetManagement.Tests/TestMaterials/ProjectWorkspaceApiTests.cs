@@ -38,6 +38,29 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Planning_project_cannot_modify_existing_testing_stage_or_report()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        var stage = await CreateAsync(client, projectId, Draft("测试阶段", 1));
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var project = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == projectId);
+            project.ProgressCode = "planning";
+            await db.SaveChangesAsync();
+        }
+
+        var update = await client.PutAsJsonAsync(
+            $"{Root(projectId)}/stages/{stage.Id}",
+            Draft("计划中不应编辑", 1));
+        using var report = PdfForm(stage.Id, "计划中不应上传.pdf");
+        var upload = await client.PostAsync($"{Root(projectId)}/documents", report);
+
+        update.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        upload.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task Owner_can_plan_update_and_read_persisted_stages_with_complete_test_results()
     {
         var (client, projectId, _) = await SetupAsync();

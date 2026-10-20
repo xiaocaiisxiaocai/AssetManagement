@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AssetManagement.Application.Auth;
@@ -53,6 +54,34 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
 
         var got = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
         got!.Data!.CustodianId.Should().Be(transferee.Id);
+    }
+
+    [Fact]
+    public async Task Landing_project_rejects_new_material_transfer()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var project = await CreateProject("落地后禁止流转项目");
+        var transferee = await CreateUser("landing-transfer", "落地后接收人");
+        var material = await CreateMaterial(project.Id, "落地后禁止流转料件");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var entity = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == project.Id);
+            entity.ProgressCode = "landing";
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "落地后不应流转"
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        body!.Code.Should().Be(4092);
     }
 
     [Fact]

@@ -124,6 +124,7 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         var permissions = _db.Permissions.OrderBy(x => x.Code).ToList();
         var admin = roles.Single(x => x.Code == "admin");
         var supervisor = roles.Single(x => x.Code == "supervisor");
+        var employee = roles.Single(x => x.Code == "employee");
         var legacyUser = _db.Users
             .Include(x => x.UserRoles)
             .Single(x => x.EmployeeNo == "9104");
@@ -153,6 +154,9 @@ public class DbSeederIncrementalTests : MySqlFixtureBase
         supervisor.RolePermissions.Select(x => x.Permission.Code)
             .Should().NotContain(new[] { "category:purge", "user:assign-role" },
                 "彻底删除分类与分配角色仍只允许系统管理员");
+        employee.RolePermissions.Select(x => x.Permission.Code)
+            .Should().Contain("project:create")
+            .And.NotContain(new[] { "project:delete", "project:purge", "project:restore" });
         roles.Single(x => x.Code == "employee").RoleMenus.Select(x => x.Menu.Name)
             .Should().Contain(new[] { "Material", "MaterialHome", "MaterialProjects" },
                 "普通员工已有菜单时仍应增量补齐新产品模块入口");

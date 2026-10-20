@@ -11,6 +11,7 @@ using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -59,20 +60,84 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     public async Task Landing_project_rejects_new_material_creation()
     {
         await Login();
-        var project = await Post<ApiResult<TestProjectDto>>(
-            "/api/test-projects",
-            NewProjectRequest("落地后不可新增料件", progressCode: "landing"));
+        var project = await CreateProjectWithProgress("落地后不可新增料件", "landing");
 
         var response = await _client.PostAsJsonAsync(
             "/api/test-materials",
             new SaveTestMaterialRequest
             {
                 Name = "不应新增的料件",
-                ProjectId = project.Data!.Id,
+                ProjectId = project.Id,
                 Quantity = 1
             });
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task New_project_cannot_start_in_landing_or_closed()
+    {
+        await Login();
+        var landing = await _client.PostAsJsonAsync(
+            "/api/test-projects",
+            NewProjectRequest("禁止直接落地项目", progressCode: "landing"));
+        var landingBody = await landing.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+
+        var closedRequest = NewProjectRequest("禁止直接结案项目", progressCode: "closed");
+        closedRequest.ClosedDate = BusinessClock.Today;
+        var closed = await _client.PostAsJsonAsync("/api/test-projects", closedRequest);
+        var closedBody = await closed.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+
+        landing.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        landingBody!.Code.Should().Be(4094);
+        closed.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        closedBody!.Code.Should().Be(4094);
+    }
+
+    [Fact]
+    public async Task Employee_can_create_project_but_cannot_delete_project()
+    {
+        await Login();
+        var employee = await CreateUserInDb($"pc{Guid.NewGuid():N}"[..12], "可创建项目员工");
+
+        await Login(employee.EmployeeNo, "123456");
+        var created = await Post<ApiResult<TestProjectDto>>(
+            "/api/test-projects",
+            NewProjectRequest("员工创建项目", employee.Id));
+        var deleted = await _client.DeleteAsync($"/api/test-projects/{created.Data!.Id}");
+
+        created.Data.OwnerId.Should().Be(employee.Id);
+        deleted.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Landing_project_locks_material_delete_return_and_restore()
+    {
+        await Login();
+        var project = await CreateProject("落地后锁定料件操作项目");
+        var active = (await Post<ApiResult<TestMaterialDto>>(
+            "/api/test-materials",
+            new SaveTestMaterialRequest { Name = "落地后不可修改的料件", ProjectId = project.Id })).Data!;
+        var deleted = (await Post<ApiResult<TestMaterialDto>>(
+            "/api/test-materials",
+            new SaveTestMaterialRequest { Name = "落地后不可恢复的料件", ProjectId = project.Id })).Data!;
+        (await _client.DeleteAsync($"/api/test-materials/{deleted.Id}")).EnsureSuccessStatusCode();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var entity = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == project.Id);
+            entity.ProgressCode = "landing";
+            await db.SaveChangesAsync();
+        }
+
+        var deleteResponse = await _client.DeleteAsync($"/api/test-materials/{active.Id}");
+        var returnResponse = await _client.PostAsJsonAsync($"/api/test-materials/{active.Id}/return", new { });
+        var restoreResponse = await _client.PostAsync($"/api/test-materials/{deleted.Id}/restore", null);
+
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        returnResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        restoreResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
     [Fact]
@@ -884,21 +949,11 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         await Login();
         var manager = await CreateManagerInDb($"u{Guid.NewGuid():N}"[..12], "部门管理员");
         var outsider = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "无关员工");
-        var project = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
-        {
-            Code = NewProjectCode(),
-            Name = "权限跟进项目",
-            ProjectTypeCode = "prototype",
-            ProgressCode = "landing",
-            OwnerId = manager.Id,
-            StartDate = DateTime.UtcNow.Date,
-            PlannedFinishDate = DateTime.UtcNow.Date.AddDays(30),
-            FollowUpIntervalDays = 14
-        });
+        var project = await CreateProjectWithProgress("权限跟进项目", "landing", manager.Id);
 
         // 非项目负责人也不是管理员，应被业务权限拒绝
         await Login(outsider.EmployeeNo, "123456");
-        var denied = await _client.PostAsJsonAsync($"/api/test-projects/{project.Data!.Id}/followups",
+        var denied = await _client.PostAsJsonAsync($"/api/test-projects/{project.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "我不应该能填" });
         var deniedBody = await denied.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
         deniedBody!.Code.Should().Be(4031);
@@ -906,14 +961,14 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         // 有 project:manage 权限的部门管理员可以写跟进
         await Login(manager.EmployeeNo, "123456");
         var managerFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{project.Data.Id}/followups",
+            $"/api/test-projects/{project.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "管理员填写本期落地情况" });
         managerFollowup.Data!.FilledByName.Should().Be("部门管理员");
 
         // 系统管理员也可以写跟进
         await Login();
         var adminFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{project.Data.Id}/followups",
+            $"/api/test-projects/{project.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "管理员补充跟进" });
         adminFollowup.Data!.FilledByName.Should().Be("系统管理员");
     }
@@ -945,24 +1000,15 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         deniedBody!.Code.Should().Be(4031);
 
         await Login();
-        var landing = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
-        {
-            Code = NewProjectCode(),
-            Name = "落地项目",
-            ProjectTypeCode = "prototype",
-            ProgressCode = "landing",
-            OwnerId = owner.Id,
-            StartDate = new DateTime(2026, 6, 29),
-            PlannedFinishDate = new DateTime(2026, 7, 29),
-            FollowUpIntervalDays = 7
-        });
+        var landing = await CreateProjectWithProgress(
+            "落地项目", "landing", owner.Id, followUpIntervalDays: 7);
 
-        landing.Data!.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 6));
-        landing.Data.CanWriteFollowUp.Should().BeFalse();
+        landing.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 6));
+        landing.CanWriteFollowUp.Should().BeTrue("当前登录管理员具备项目跟进权限");
 
         await Login(owner.EmployeeNo, "123456");
         var saved = await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Data.Id}/followups",
+            $"/api/test-projects/{landing.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "落地后填写" });
         saved.Data!.Content.Should().Be("落地后填写");
     }
@@ -972,37 +1018,28 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "跟进维护负责人");
-        var landing = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
-        {
-            Code = NewProjectCode(),
-            Name = "跟进维护项目",
-            ProjectTypeCode = "prototype",
-            ProgressCode = "landing",
-            OwnerId = owner.Id,
-            StartDate = DateTime.UtcNow.Date.AddDays(-1),
-            PlannedFinishDate = DateTime.UtcNow.Date.AddDays(30),
-            FollowUpIntervalDays = 7
-        });
+        var landing = await CreateProjectWithProgress(
+            "跟进维护项目", "landing", owner.Id, followUpIntervalDays: 7);
 
         await Login(owner.EmployeeNo, "123456");
         var created = await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Data!.Id}/followups",
+            $"/api/test-projects/{landing.Id}/followups",
             new SaveTestProjectFollowupRequest
             {
                 Content = "第一轮落地情况",
                 DueDate = new DateTime(2026, 7, 10)
             });
         var updated = await Put<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Data.Id}/followups/{created.Data!.Id}",
+            $"/api/test-projects/{landing.Id}/followups/{created.Data!.Id}",
             new SaveTestProjectFollowupRequest
             {
                 Content = "第二轮落地情况",
                 DueDate = new DateTime(2026, 7, 17)
             });
         var list = await _client.GetFromJsonAsync<ApiResult<List<TestProjectFollowupDto>>>(
-            $"/api/test-projects/{landing.Data.Id}/followups");
+            $"/api/test-projects/{landing.Id}/followups");
         var projects = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>("/api/test-projects");
-        var projectSummary = projects!.Data!.Single(x => x.Id == landing.Data.Id);
+        var projectSummary = projects!.Data!.Single(x => x.Id == landing.Id);
 
         updated.Data!.Content.Should().Be("第二轮落地情况");
         updated.Data.DueDate.Should().Be(new DateTime(2026, 7, 17));
@@ -1010,9 +1047,9 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         projectSummary.LatestFollowUpContent.Should().Be("第二轮落地情况");
         projectSummary.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 24));
 
-        var deleted = await _client.DeleteAsync($"/api/test-projects/{landing.Data.Id}/followups/{created.Data.Id}");
+        var deleted = await _client.DeleteAsync($"/api/test-projects/{landing.Id}/followups/{created.Data.Id}");
         var afterDelete = await _client.GetFromJsonAsync<ApiResult<List<TestProjectFollowupDto>>>(
-            $"/api/test-projects/{landing.Data.Id}/followups");
+            $"/api/test-projects/{landing.Id}/followups");
 
         deleted.StatusCode.Should().Be(HttpStatusCode.OK);
         afterDelete!.Data!.Should().NotContain(x => x.Id == created.Data.Id);
@@ -1023,13 +1060,11 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     {
         await Login();
         var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "未来日期负责人");
-        var landing = await Post<ApiResult<TestProjectDto>>(
-            "/api/test-projects",
-            NewProjectRequest("未来日期跟进项目", owner.Id, progressCode: "landing"));
+        var landing = await CreateProjectWithProgress("未来日期跟进项目", "landing", owner.Id);
 
         await Login(owner.EmployeeNo, "123456");
         var valid = await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Data!.Id}/followups",
+            $"/api/test-projects/{landing.Id}/followups",
             new SaveTestProjectFollowupRequest
             {
                 Content = "今日已发生的进展",
@@ -1037,7 +1072,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             });
 
         var futureCreate = await _client.PostAsJsonAsync(
-            $"/api/test-projects/{landing.Data.Id}/followups",
+            $"/api/test-projects/{landing.Id}/followups",
             new SaveTestProjectFollowupRequest
             {
                 Content = "不应预写的进展",
@@ -1048,7 +1083,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         futureCreateBody!.Message.Should().Contain("不能晚于今天");
 
         var futureUpdate = await _client.PutAsJsonAsync(
-            $"/api/test-projects/{landing.Data.Id}/followups/{valid.Data!.Id}",
+            $"/api/test-projects/{landing.Id}/followups/{valid.Data!.Id}",
             new SaveTestProjectFollowupRequest
             {
                 Content = "不应改成未来日期",
@@ -1209,36 +1244,65 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_import_rejects_terminal_progress_without_testing_evidence()
+    {
+        await Login();
+        var owner = await CreateUserInDb($"pt{Guid.NewGuid():N}"[..12], "终态导入负责人");
+        var code = $"PT-{Guid.NewGuid():N}"[..18];
+        var file = XlsxTable.Write(new[]
+        {
+            new[]
+            {
+                "项目编号", "项目名称", "项目类型", "负责人工号", "开始时间",
+                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "项目摘要"
+            },
+            new[]
+            {
+                code, "不应直接落地的项目", "样机测试", owner.EmployeeNo, "2026-07-01",
+                "2026-07-31", "落地跟进", "", "14", ""
+            }
+        });
+
+        var preview = await PostFile<ApiResult<TestProjectImportResultDto>>(
+            "/api/test-projects/import/validate", file);
+        preview.Data!.SuccessCount.Should().Be(0);
+        preview.Data.FailedCount.Should().Be(1);
+        preview.Data.Rows.Single().Error.Should().Contain("只能处于计划中或测试中");
+
+        var confirmed = await PostFile<ApiResult<TestProjectImportResultDto>>(
+            "/api/test-projects/import/confirm", file);
+        confirmed.Data!.SuccessCount.Should().Be(0);
+        confirmed.Data.FailedCount.Should().Be(1);
+        var imported = await _client.GetFromJsonAsync<ApiResult<PagedResult<TestProjectDto>>>(
+            $"/api/test-projects/page?code={code}&page=1&pageSize=20");
+        imported!.Data!.Items.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Editing_old_followup_preserves_author_and_does_not_change_latest_cycle()
     {
         await Login();
         var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "历史跟进负责人");
-        var landing = await Post<ApiResult<TestProjectDto>>("/api/test-projects", new SaveTestProjectRequest
-        {
-            Code = NewProjectCode(),
-            Name = $"历史跟进-{Guid.NewGuid():N}"[..20],
-            ProjectTypeCode = "prototype",
-            ProgressCode = "landing",
-            OwnerId = owner.Id,
-            StartDate = new DateTime(2026, 7, 1),
-            PlannedFinishDate = new DateTime(2026, 8, 1),
-            FollowUpIntervalDays = 7
-        });
+        var landing = await CreateProjectWithProgress(
+            $"历史跟进-{Guid.NewGuid():N}"[..20],
+            "landing",
+            owner.Id,
+            followUpIntervalDays: 7);
 
         await Login(owner.EmployeeNo, "123456");
         var oldFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Data!.Id}/followups",
+            $"/api/test-projects/{landing.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "较早周期", DueDate = new DateTime(2026, 7, 10) });
         await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Data.Id}/followups",
+            $"/api/test-projects/{landing.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "最新周期", DueDate = new DateTime(2026, 7, 20) });
 
         await Login();
         var edited = await Put<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Data.Id}/followups/{oldFollowup.Data!.Id}",
+            $"/api/test-projects/{landing.Id}/followups/{oldFollowup.Data!.Id}",
             new SaveTestProjectFollowupRequest { Content = "修正较早周期", DueDate = new DateTime(2026, 7, 10) });
         var projects = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>("/api/test-projects");
-        var summary = projects!.Data!.Single(x => x.Id == landing.Data.Id);
+        var summary = projects!.Data!.Single(x => x.Id == landing.Id);
 
         edited.Data!.FilledById.Should().Be(owner.Id);
         edited.Data.FilledByName.Should().Be("历史跟进负责人");
@@ -1253,16 +1317,12 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var baseline = await _client.GetFromJsonAsync<ApiResult<TestProjectStatsDto>>("/api/test-projects/stats");
         var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "统计项目负责人");
         await Post<ApiResult<TestProjectDto>>("/api/test-projects", NewProjectRequest("统计测试中项目", owner.Id));
-        var landing = await Post<ApiResult<TestProjectDto>>(
-            "/api/test-projects",
-            NewProjectRequest("统计落地跟进项目", owner.Id, progressCode: "landing"));
-        var closedRequest = NewProjectRequest("统计结案项目", owner.Id, progressCode: "closed");
-        closedRequest.ClosedDate = DateTime.UtcNow.Date;
-        await Post<ApiResult<TestProjectDto>>("/api/test-projects", closedRequest);
+        var landing = await CreateProjectWithProgress("统计落地跟进项目", "landing", owner.Id);
+        await CreateProjectWithProgress("统计结案项目", "closed", owner.Id, DateTime.UtcNow.Date);
 
         await Login(owner.EmployeeNo, "123456");
         await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Data!.Id}/followups",
+            $"/api/test-projects/{landing.Id}/followups",
             new SaveTestProjectFollowupRequest { Content = "统计本月跟进", DueDate = DateTime.UtcNow.Date });
         var after = await _client.GetFromJsonAsync<ApiResult<TestProjectStatsDto>>("/api/test-projects/stats");
         var month = DateTime.UtcNow.Month;
@@ -1289,6 +1349,29 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
 
     private async Task<TestProjectDto> CreateProject(string name)
         => (await Post<ApiResult<TestProjectDto>>("/api/test-projects", NewProjectRequest(name))).Data!;
+
+    private async Task<TestProjectDto> CreateProjectWithProgress(
+        string name,
+        string progressCode,
+        int? ownerId = 1,
+        DateTime? closedDate = null,
+        int followUpIntervalDays = 14)
+    {
+        var project = await CreateProject(name);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var entity = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == project.Id);
+            entity.ProgressCode = progressCode;
+            entity.OwnerId = ownerId;
+            entity.ClosedDate = closedDate;
+            entity.FollowUpIntervalDays = followUpIntervalDays;
+            await db.SaveChangesAsync();
+        }
+        var refreshed = await _client.GetFromJsonAsync<ApiResult<PagedResult<TestProjectDto>>>(
+            $"/api/test-projects/page?code={project.Code}&page=1&pageSize=20");
+        return refreshed!.Data!.Items.Single();
+    }
 
     private static SaveTestProjectRequest NewProjectRequest(
         string name,

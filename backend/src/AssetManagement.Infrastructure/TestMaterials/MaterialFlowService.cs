@@ -35,6 +35,14 @@ public class MaterialFlowService : IMaterialFlowService
         if (material.IsDeleted) throw new BizException(4048, "测试料件不存在");
         if (material.Status != MaterialStatus.InUse)
             throw new BizException(4098, "已退回厂商的料件不能转移");
+        var project = await _db.TestProjects.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == material.ProjectId);
+        if (project is null || project.IsDeleted)
+            throw new BizException(4046, "测试项目不存在");
+        if (!TestProjectLifecycleRules.IsMaterialMaintainable(
+                project.ProgressCode,
+                project.ClosedDate))
+            throw new BizException(4092, "项目已进入落地跟进或已结案，料件已锁定");
 
         var applicant = await _db.Users
             .Include(x => x.UserRoles)
@@ -725,6 +733,14 @@ public class MaterialFlowService : IMaterialFlowService
     {
         var material = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == flow.MaterialId)
             ?? throw new BizException(4048, "料件已不存在,无法完成转移");
+        var project = await _db.TestProjects.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == material.ProjectId);
+        if (project is null || project.IsDeleted)
+            throw new BizException(4046, "测试项目不存在");
+        if (!TestProjectLifecycleRules.IsMaterialMaintainable(
+                project.ProgressCode,
+                project.ClosedDate))
+            throw new BizException(4092, "项目已进入落地跟进或已结案，料件已锁定");
         if (material.IsDeleted) throw new BizException(4048, "料件已删除,无法完成转移");
         if (material.Status != MaterialStatus.InUse)
             throw new BizException(4098, "已退回厂商的料件不能转移");

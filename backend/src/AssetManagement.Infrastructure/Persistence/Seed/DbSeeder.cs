@@ -13,6 +13,7 @@ public static class DbSeeder
 {
     private const string CoreRoleDefaultsInitializedKey = "rbac_core_role_defaults_initialized_v1";
     private const string EmployeeFileUploadInitializedKey = "rbac_employee_file_upload_initialized_v1";
+    private const string EmployeeProjectCreateInitializedKey = "rbac_employee_project_create_initialized_v1";
 
     public static void Seed(AppDbContext db, string? configuredAdminPassword = null)
     {
@@ -31,6 +32,7 @@ public static class DbSeeder
                 SeedTestMaterialModule(db);
                 SeedAssetOverviewMenu(db);
                 EnsureEmployeeFileUploadPermission(db);
+                EnsureEmployeeProjectCreatePermission(db);
                 if (!string.IsNullOrWhiteSpace(initialDataPath)
                     && DeploymentInitialDataSeeder.FileExists(initialDataPath))
                 {
@@ -844,9 +846,35 @@ public static class DbSeeder
         {
             "asset:view", "category:view", "file:upload", "file:view",
             "approval:create", "approval:view",
-            "project:view", "material:view", "material-flow:view", "material-flow:transfer"
+            "project:view", "project:create", "material:view", "material-flow:view", "material-flow:transfer"
         }
     };
+
+    private static void EnsureEmployeeProjectCreatePermission(AppDbContext db)
+    {
+        if (db.SystemSettings.Any(x => x.Key == EmployeeProjectCreateInitializedKey)) return;
+
+        var employeeRole = db.Roles.SingleOrDefault(x => x.Code == "employee");
+        var projectCreatePermission = db.Permissions.SingleOrDefault(x => x.Code == "project:create");
+        if (employeeRole is not null && projectCreatePermission is not null
+            && !db.RolePermissions.Any(x =>
+                x.RoleId == employeeRole.Id && x.PermissionId == projectCreatePermission.Id))
+        {
+            db.RolePermissions.Add(new RolePermission
+            {
+                RoleId = employeeRole.Id,
+                PermissionId = projectCreatePermission.Id
+            });
+        }
+
+        db.SystemSettings.Add(new SystemSetting
+        {
+            Key = EmployeeProjectCreateInitializedKey,
+            Value = "true",
+            Description = "普通员工测试项目创建权限已初始化"
+        });
+        db.SaveChanges();
+    }
 
     private static void EnsureEmployeeFileUploadPermission(AppDbContext db)
     {

@@ -312,15 +312,15 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     {
         if (project.IsDeleted) throw new BizException(4092, "已删除项目为只读，不能修改测试阶段或报告");
         if (!IsTestingMaintainable(project))
-            throw new BizException(4092, "项目已进入落地跟进或已结案，测试阶段与报告已锁定");
+            throw new BizException(4092, "项目只有进入测试中后才能维护测试阶段与报告，落地跟进和已结案项目已锁定");
         if (!await CanManageAsync(project, userId))
             throw new BizException(4031, "只有项目负责人、项目管理人员或管理员可以维护测试阶段和报告");
     }
 
     private static bool IsTestingMaintainable(TestProject project) =>
-        !project.ClosedDate.HasValue &&
-        (string.Equals(project.ProgressCode, "planning", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(project.ProgressCode, "testing", StringComparison.OrdinalIgnoreCase));
+        TestProjectLifecycleRules.IsTestingStageMaintainable(
+            project.ProgressCode,
+            project.ClosedDate);
 
     private async Task CheckStageAsync(int projectId, int? stageId)
     {
