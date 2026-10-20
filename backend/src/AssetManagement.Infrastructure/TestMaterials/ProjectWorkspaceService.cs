@@ -50,7 +50,10 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     {
         ValidateStage(request);
         await using var transaction = await _db.Database.BeginTransactionAsync();
-        await LockWritableProjectAsync(projectId, userId);
+        var project = await LockWritableProjectAsync(projectId, userId);
+        if (!stageId.HasValue &&
+            !string.Equals(project.ProgressCode, "testing", StringComparison.OrdinalIgnoreCase))
+            throw new BizException(4092, "项目进入测试中后才能新增测试阶段");
         ProjectTestStage stage;
         if (stageId.HasValue)
         {

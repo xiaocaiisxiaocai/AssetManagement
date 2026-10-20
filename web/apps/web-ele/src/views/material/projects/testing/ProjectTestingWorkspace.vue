@@ -17,7 +17,11 @@ import {
   ElTag,
 } from 'element-plus';
 
-import { dateOnly, isProjectClosed } from './project-testing-rules';
+import {
+  dateOnly,
+  isProjectClosed,
+  isProjectTesting,
+} from './project-testing-rules';
 import ProjectReportDocuments from './ProjectReportDocuments.vue';
 import ProjectStageDialog from './ProjectStageDialog.vue';
 import { useProjectTestingWorkspace } from './use-project-testing-workspace';
@@ -32,6 +36,7 @@ const props = defineProps<{
 }>();
 
 const {
+  canCreateStage,
   canExport,
   canManage,
   deletingDocumentId,
@@ -190,7 +195,7 @@ function dateRange(stage: ProjectStageDto) {
             导出完整资料包
           </ElButton>
           <ElButton
-            v-if="canManage"
+            v-if="canCreateStage"
             :disabled="writeBusy"
             type="primary"
             @click="openCreateStage"
@@ -361,9 +366,11 @@ function dateRange(stage: ProjectStageDto) {
             :description="
               testingLocked
                 ? '测试阶段已锁定，仅保留历史记录'
-                : canManage
+                : canCreateStage
                   ? '暂无测试阶段，可新增第一阶段'
-                  : '暂无测试阶段'
+                  : canManage && !isProjectTesting(props.projectProgressCode)
+                    ? '项目进入测试中后可新增测试阶段'
+                    : '暂无测试阶段'
             "
           />
         </div>

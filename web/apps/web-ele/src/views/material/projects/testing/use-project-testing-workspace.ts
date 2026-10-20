@@ -26,6 +26,7 @@ import { downloadBlob } from '#/utils/download';
 
 import {
   createEmptyStageForm,
+  isProjectTesting,
   stageToForm,
   validateProjectStageForm,
 } from './project-testing-rules';
@@ -72,6 +73,9 @@ export function useProjectTestingWorkspace(
   const stageForm = reactive(createEmptyStageForm());
 
   const canManage = computed(() => workspace.value?.canManage === true);
+  const canCreateStage = computed(
+    () => canManage.value && isProjectTesting(props.projectProgressCode),
+  );
   const canExport = computed(
     () =>
       workspace.value?.canExport === true ||
@@ -132,7 +136,7 @@ export function useProjectTestingWorkspace(
   }
 
   function openCreateStage() {
-    if (!canManage.value || writeBusy.value) return;
+    if (!canCreateStage.value || writeBusy.value) return;
     const nextSequence = Math.min(
       999,
       Math.max(
@@ -167,7 +171,11 @@ export function useProjectTestingWorkspace(
   }
 
   async function saveStage() {
-    if (!canManage.value || writeBusy.value) return;
+    if (
+      (!editingStage.value ? !canCreateStage.value : !canManage.value) ||
+      writeBusy.value
+    )
+      return;
     const validationError = validateProjectStageForm(stageForm);
     if (validationError) {
       ElMessage.warning(validationError);
@@ -399,6 +407,7 @@ export function useProjectTestingWorkspace(
   });
 
   return {
+    canCreateStage,
     canExport,
     canManage,
     deletingDocumentId,

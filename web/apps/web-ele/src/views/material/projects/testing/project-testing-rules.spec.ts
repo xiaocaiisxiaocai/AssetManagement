@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createEmptyStageForm,
   isProjectClosed,
+  isProjectTesting,
   stageToForm,
   validateProjectDocument,
   validateProjectStageForm,
@@ -27,6 +28,12 @@ describe('测试阶段表单规则', () => {
     expect(isProjectClosed('landing', null)).toBe(false);
     expect(isProjectClosed('closed', null)).toBe(true);
     expect(isProjectClosed('landing', '2026-10-20')).toBe(true);
+  });
+
+  it('只有项目进入测试中后才允许新增测试阶段', () => {
+    expect(isProjectTesting('planning')).toBe(false);
+    expect(isProjectTesting('testing')).toBe(true);
+    expect(isProjectTesting('landing')).toBe(false);
   });
 
   it('阶段序号必须为 1-999 的整数且名称必填', () => {

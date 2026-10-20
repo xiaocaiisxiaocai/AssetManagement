@@ -20,6 +20,24 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     public ProjectWorkspaceApiTests(TestWebAppFactory factory) => _factory = factory;
 
     [Fact]
+    public async Task Planning_project_cannot_create_testing_stage_until_testing_starts()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var project = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == projectId);
+            project.ProgressCode = "planning";
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.PostAsJsonAsync(
+            $"{Root(projectId)}/stages", Draft("计划中不应新增", 1));
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await WorkspaceAsync(client, projectId)).Stages.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Owner_can_plan_update_and_read_persisted_stages_with_complete_test_results()
     {
         var (client, projectId, _) = await SetupAsync();

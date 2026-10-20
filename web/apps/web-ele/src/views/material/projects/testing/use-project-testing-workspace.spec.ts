@@ -57,8 +57,12 @@ function workspace(projectId: number): ProjectWorkspaceDto {
     stages: [],
   };
 }
-function setup() {
-  const props = reactive({ enabled: true, projectId: 1 });
+function setup(progressCode = 'testing') {
+  const props = reactive({
+    enabled: true,
+    projectId: 1,
+    projectProgressCode: progressCode,
+  });
   let state!: ReturnType<typeof useProjectTestingWorkspace>;
   const wrapper = mount(
     defineComponent({
@@ -80,6 +84,20 @@ beforeEach(() => {
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 
 describe('项目测试工作台交互', () => {
+  it('计划中的项目不能打开新增阶段弹窗，测试中才可以', async () => {
+    const { state } = setup('planning');
+    await flushPromises();
+    state.openCreateStage();
+    expect(state.canCreateStage.value).toBe(false);
+    expect(state.stageDialogVisible.value).toBe(false);
+
+    const testing = setup('testing');
+    await flushPromises();
+    testing.state.openCreateStage();
+    expect(testing.state.canCreateStage.value).toBe(true);
+    expect(testing.state.stageDialogVisible.value).toBe(true);
+  });
+
   it('保存失败保留完整阶段草稿与编辑窗口', async () => {
     const { state } = setup();
     await flushPromises();

@@ -67,6 +67,10 @@ export function isProjectClosed(
   return Boolean(closedDate) || progressCode?.toLowerCase() === 'closed';
 }
 
+export function isProjectTesting(progressCode?: null | string) {
+  return progressCode?.toLowerCase() === 'testing';
+}
+
 export function validateProjectStageForm(
   form: ProjectStageFormState,
   today = businessDateText(),
