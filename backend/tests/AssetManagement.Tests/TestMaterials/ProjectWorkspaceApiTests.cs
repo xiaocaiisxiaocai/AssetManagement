@@ -205,6 +205,15 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_level_report_upload_is_rejected_without_stage_assignment()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        using var form = PdfForm(null, "不应作为项目总报告.pdf");
+        (await client.PostAsync($"{Root(projectId)}/documents", form))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Attachment_cannot_be_attached_to_or_downloaded_through_another_project()
     {
         var (client, projectId, ownerId) = await SetupAsync();
