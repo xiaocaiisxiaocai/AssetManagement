@@ -148,8 +148,45 @@
   background-color: var(--el-fill-color-light) !important;
 }
 
-:deep(.material-row-returned td.el-table__cell) {
+:deep(.material-row-in-use > td.el-table__cell) {
+  background-color: color-mix(
+    in srgb,
+    var(--el-color-success) 6%,
+    var(--el-bg-color)
+  ) !important;
+}
+
+:deep(.material-row-in-use > td:first-child.el-table__cell) {
+  box-shadow: inset 3px 0 0 var(--el-color-success);
+}
+
+:deep(.material-row-in-use:hover > td.el-table__cell) {
+  background-color: color-mix(
+    in srgb,
+    var(--el-color-success) 11%,
+    var(--el-bg-color)
+  ) !important;
+}
+
+:deep(.material-row-returned > td.el-table__cell) {
   color: var(--el-text-color-secondary);
+  background-color: color-mix(
+    in srgb,
+    var(--el-color-info) 8%,
+    var(--el-bg-color)
+  ) !important;
+}
+
+:deep(.material-row-returned > td:first-child.el-table__cell) {
+  box-shadow: inset 3px 0 0 var(--el-color-info);
+}
+
+:deep(.material-row-returned:hover > td.el-table__cell) {
+  background-color: color-mix(
+    in srgb,
+    var(--el-color-info) 14%,
+    var(--el-bg-color)
+  ) !important;
 }
 
 @media (max-width: 768px) {

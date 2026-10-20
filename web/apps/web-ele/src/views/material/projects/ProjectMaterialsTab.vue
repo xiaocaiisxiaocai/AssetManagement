@@ -113,7 +113,7 @@ function statusMeta(status: MaterialStatus) {
 
 function rowClassName({ row }: { row: MaterialItem }) {
   if (row.isDeleted) return 'material-row-deleted';
-  return row.status === 1 ? 'material-row-returned' : '';
+  return row.status === 1 ? 'material-row-returned' : 'material-row-in-use';
 }
 
 const hasMaterialFilters = computed(() => {
