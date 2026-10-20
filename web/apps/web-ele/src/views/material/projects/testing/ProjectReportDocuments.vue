@@ -3,7 +3,7 @@ import type { ProjectDocumentDto } from '#/api/project-workspace';
 
 import { computed, ref } from 'vue';
 
-import { ElButton, ElInput, ElPopover } from 'element-plus';
+import { ElButton, ElPopover } from 'element-plus';
 
 import { formatDateTime } from '#/utils/date-format';
 
@@ -29,7 +29,6 @@ const emit = defineEmits<{
 
 const fileInput = ref<HTMLInputElement>();
 const fileError = ref('');
-const uploadDescription = ref('');
 let selectedScope: null | number | undefined;
 const documents = computed(() =>
   props.documents
@@ -57,8 +56,7 @@ function onFileChange(event: Event) {
     return;
   fileError.value = validateProjectDocument(file) ?? '';
   if (fileError.value) return;
-  emit('upload', file, props.stageId, uploadDescription.value.trim());
-  uploadDescription.value = '';
+  emit('upload', file, props.stageId, '');
 }
 </script>
 
@@ -81,24 +79,6 @@ function onFileChange(event: Event) {
       </ElButton>
     </div>
     <div class="stage-report-actions">
-      <ElPopover
-        v-if="canManage"
-        :width="300"
-        placement="bottom"
-        trigger="click"
-      >
-        <div class="stage-report-upload-popover">
-          <ElInput
-            v-model="uploadDescription"
-            :maxlength="500"
-            placeholder="可选：填写报告说明"
-            show-word-limit
-          />
-        </div>
-        <template #reference>
-          <ElButton link size="small" type="primary"> 添加说明 </ElButton>
-        </template>
-      </ElPopover>
       <ElButton
         v-if="canManage"
         :aria-label="compact ? '上传项目总报告' : `上传${scopeName}报告`"
