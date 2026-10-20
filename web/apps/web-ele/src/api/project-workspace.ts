@@ -15,7 +15,6 @@ export type ProjectStageStatus =
   | 'planned';
 
 export interface ProjectStageDto {
-  conclusion?: null | string;
   endDate?: null | string;
   id: number;
   name: string;
@@ -50,7 +49,6 @@ export interface ProjectWorkspaceDto {
 }
 
 export interface SaveProjectStagePayload {
-  conclusion?: null | string;
   endDate?: null | string;
   name: string;
   objective?: null | string;

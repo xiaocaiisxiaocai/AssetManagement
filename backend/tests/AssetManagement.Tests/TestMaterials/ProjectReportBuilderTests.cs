@@ -65,7 +65,8 @@ public class ProjectReportBuilderTests
             .And.Contain("documents/31/阶段报告.pdf")
             .And.Contain("落地跟进")
             .And.Contain("料件流转摘要")
-            .And.Contain("2026-10-19 09:30:00");
+            .And.Contain("2026-10-19 09:30:00")
+            .And.NotContain("阶段结论");
         text.IndexOf("阶段一", StringComparison.Ordinal).Should()
             .BeLessThan(text.IndexOf("阶段二", StringComparison.Ordinal), "阶段必须按 Sequence 排序");
 
@@ -105,6 +106,7 @@ public class ProjectReportBuilderTests
             .And.Contain($"href=\"documents/31/{Uri.EscapeDataString(data.Documents[0].FileName)}\"")
             .And.Contain("进行中")
             .And.Contain("受阻")
+            .And.NotContain("阶段结论")
             .And.NotContain("<script>")
             .And.NotContain("<link ")
             .And.NotContain("http://")
@@ -184,7 +186,6 @@ public class ProjectReportBuilderTests
                 Objective = "完成环境适应性验证",
                 TestContent = "高低温循环",
                 TestResult = "等待补充样本",
-                Conclusion = "暂时受阻",
                 StartDate = new DateTime(2026, 10, 1),
                 UpdatedAt = new DateTime(2026, 10, 18, 16, 0, 0)
             },
@@ -198,7 +199,6 @@ public class ProjectReportBuilderTests
                 Objective = "验证基础性能",
                 TestContent = "第一项测试\n第二项测试",
                 TestResult = "数据稳定",
-                Conclusion = "继续推进",
                 StartDate = new DateTime(2026, 9, 1),
                 EndDate = new DateTime(2026, 9, 30),
                 UpdatedAt = new DateTime(2026, 10, 1, 10, 0, 0)

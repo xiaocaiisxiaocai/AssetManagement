@@ -10,7 +10,6 @@ import {
 } from './project-testing-rules';
 
 const completedForm: ProjectStageFormState = {
-  conclusion: '满足进入下一阶段条件',
   endDate: '2026-10-17',
   name: '样机环境验证',
   objective: '验证样机在目标环境下的稳定性',
@@ -51,7 +50,7 @@ describe('测试阶段表单规则', () => {
     }
   });
 
-  it('完成阶段要求完整测试内容、结论和有效日期', () => {
+  it('完成阶段要求完整测试内容和有效日期', () => {
     expect(
       validateProjectStageForm(
         { ...completedForm, endDate: '2026-10-09' },
@@ -70,12 +69,6 @@ describe('测试阶段表单规则', () => {
         '2026-10-18',
       ),
     ).toBe('已完成阶段必须填写测试结果');
-    expect(
-      validateProjectStageForm(
-        { ...completedForm, conclusion: '' },
-        '2026-10-18',
-      ),
-    ).toBe('已完成阶段必须填写阶段结论');
     expect(
       validateProjectStageForm(
         { ...completedForm, endDate: '2026-10-19' },
@@ -102,7 +95,6 @@ describe('测试阶段表单规则', () => {
 
   it('将后端 DateTime 序列化值转为日期表单值', () => {
     const form = stageToForm({
-      conclusion: null,
       endDate: '2026-10-18T00:00:00',
       id: 1,
       name: '环境测试',

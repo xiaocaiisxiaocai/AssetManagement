@@ -139,8 +139,7 @@
   white-space: nowrap;
 }
 
-.multiline-preview,
-.result-conclusion-cell span {
+.multiline-preview {
   display: -webkit-box;
   overflow: hidden;
   line-height: 1.45;
@@ -149,17 +148,6 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   -webkit-box-orient: vertical;
-}
-
-.result-conclusion-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.result-conclusion-cell b {
-  font-weight: 600;
-  color: var(--asset-page-muted);
 }
 
 .centered-actions {

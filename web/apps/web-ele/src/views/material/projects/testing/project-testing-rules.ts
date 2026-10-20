@@ -6,7 +6,6 @@ import type {
 import { businessDateText, isValidCalendarDate } from '#/utils/business-date';
 
 export interface ProjectStageFormState {
-  conclusion: string;
   endDate: string;
   name: string;
   objective: string;
@@ -31,7 +30,6 @@ const ALLOWED_REPORT_EXTENSIONS = new Set([
 
 export function createEmptyStageForm(sequence = 1): ProjectStageFormState {
   return {
-    conclusion: '',
     endDate: '',
     name: '',
     objective: '',
@@ -46,7 +44,6 @@ export function createEmptyStageForm(sequence = 1): ProjectStageFormState {
 
 export function stageToForm(stage: ProjectStageDto): ProjectStageFormState {
   return {
-    conclusion: stage.conclusion ?? '',
     endDate: dateOnly(stage.endDate),
     name: stage.name,
     objective: stage.objective ?? '',
@@ -76,7 +73,6 @@ export function validateProjectStageForm(
   if (form.objective.length > 2000) return '阶段目标不能超过 2000 个字符';
   if (form.testContent.length > 8000) return '测试内容不能超过 8000 个字符';
   if (form.testResult.length > 8000) return '测试结果不能超过 8000 个字符';
-  if (form.conclusion.length > 2000) return '阶段结论不能超过 2000 个字符';
   if (
     (form.startDate && !isValidCalendarDate(form.startDate)) ||
     (form.endDate && !isValidCalendarDate(form.endDate))
@@ -96,7 +92,6 @@ export function validateProjectStageForm(
       return '已完成阶段必须填写开始和结束日期';
     if (!form.testContent.trim()) return '已完成阶段必须填写测试内容';
     if (!form.testResult.trim()) return '已完成阶段必须填写测试结果';
-    if (!form.conclusion.trim()) return '已完成阶段必须填写阶段结论';
     if (form.endDate > today) return '已完成阶段的结束日期不能晚于今天';
   }
   return null;

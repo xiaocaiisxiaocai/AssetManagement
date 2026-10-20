@@ -150,7 +150,6 @@ export function useProjectTestingWorkspace(
 
   function buildStagePayload(): SaveProjectStagePayload {
     return {
-      conclusion: optionalText(stageForm.conclusion),
       endDate: stageForm.endDate || null,
       name: stageForm.name.trim(),
       objective: optionalText(stageForm.objective),

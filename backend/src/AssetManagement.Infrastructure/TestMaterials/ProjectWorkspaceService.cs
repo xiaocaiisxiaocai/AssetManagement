@@ -72,7 +72,6 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         stage.Objective = Optional(request.Objective);
         stage.TestContent = Optional(request.TestContent);
         stage.TestResult = Optional(request.TestResult);
-        stage.Conclusion = Optional(request.Conclusion);
         stage.StartDate = request.StartDate?.Date;
         stage.EndDate = request.EndDate?.Date;
         stage.Status = request.Status;
@@ -317,9 +316,9 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
             throw new BizException(4001, "请填写阶段名称，最多 100 个字符");
         if (request.Status is not ("planned" or "in_progress" or "completed" or "blocked"))
             throw new BizException(4001, "阶段状态无效");
-        if (request.Objective?.Length > 2000 || request.Conclusion?.Length > 2000 ||
+        if (request.Objective?.Length > 2000 ||
             request.TestContent?.Length > 8000 || request.TestResult?.Length > 8000)
-            throw new BizException(4001, "目标/结论最多 2000 字，测试内容/结果最多 8000 字");
+            throw new BizException(4001, "阶段目标最多 2000 字，测试内容/结果最多 8000 字");
         if (request.StartDate.HasValue && request.EndDate.HasValue && request.EndDate.Value.Date < request.StartDate.Value.Date)
             throw new BizException(4001, "结束日期不能早于开始日期");
         if (IsCurrent(request.Status) && !request.StartDate.HasValue)
@@ -327,9 +326,9 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         if (request.Status == "completed")
         {
             if (!request.StartDate.HasValue || !request.EndDate.HasValue ||
-                string.IsNullOrWhiteSpace(request.TestContent) || string.IsNullOrWhiteSpace(request.TestResult) ||
-                string.IsNullOrWhiteSpace(request.Conclusion))
-                throw new BizException(4001, "完成阶段前请填写起止日期、测试内容、测试结果和结论");
+                string.IsNullOrWhiteSpace(request.TestContent) ||
+                string.IsNullOrWhiteSpace(request.TestResult))
+                throw new BizException(4001, "完成阶段前请填写起止日期、测试内容和测试结果");
             if (request.EndDate.Value.Date > BusinessClock.Today)
                 throw new BizException(4001, "已完成阶段的结束日期不能晚于今天");
         }
@@ -350,7 +349,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     {
         Id = x.Id, ProjectId = x.ProjectId, Sequence = x.Sequence, Name = x.Name,
         Objective = x.Objective, TestContent = x.TestContent, TestResult = x.TestResult,
-        Conclusion = x.Conclusion, StartDate = x.StartDate, EndDate = x.EndDate,
+        StartDate = x.StartDate, EndDate = x.EndDate,
         Status = x.Status, RowVersion = x.RowVersion, UpdatedAt = DateTime.SpecifyKind(x.UpdatedAt, DateTimeKind.Utc)
     };
 

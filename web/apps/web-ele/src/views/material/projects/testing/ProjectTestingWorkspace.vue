@@ -203,7 +203,7 @@ function dateRange(stage: ProjectStageDto) {
         <header class="testing-section-header">
           <div>
             <h3>测试阶段台账</h3>
-            <p>记录阶段目标、测试过程、结果结论与报告归档情况。</p>
+            <p>记录阶段目标、测试过程、测试结果与报告归档情况。</p>
           </div>
         </header>
         <div class="stage-table-wrap" v-loading="loading">
@@ -241,12 +241,11 @@ function dateRange(stage: ProjectStageDto) {
                 </span>
               </template>
             </ElTableColumn>
-            <ElTableColumn align="center" label="结果 / 结论" min-width="240">
+            <ElTableColumn align="center" label="测试结果" min-width="240">
               <template #default="{ row }">
-                <div class="result-conclusion-cell">
-                  <span> <b>结果：</b>{{ displayText(row.testResult) }} </span>
-                  <span> <b>结论：</b>{{ displayText(row.conclusion) }} </span>
-                </div>
+                <span class="multiline-preview">
+                  {{ displayText(row.testResult) }}
+                </span>
               </template>
             </ElTableColumn>
             <ElTableColumn align="center" label="起止日期" width="190">

@@ -137,7 +137,6 @@ internal static class ProjectReportBuilder
                 AppendHtmlLongText(html, "阶段目标", stage.Objective);
                 AppendHtmlLongText(html, "测试内容", stage.TestContent);
                 AppendHtmlLongText(html, "测试结果", stage.TestResult);
-                AppendHtmlLongText(html, "阶段结论", stage.Conclusion);
                 html.Append("</section>");
             }
         }
@@ -270,7 +269,6 @@ internal static class ProjectReportBuilder
                 body.Add(LongTextBlock("阶段目标", stage.Objective));
                 body.Add(LongTextBlock("测试内容", stage.TestContent));
                 body.Add(LongTextBlock("测试结果", stage.TestResult));
-                body.Add(LongTextBlock("阶段结论", stage.Conclusion));
             }
         }
 

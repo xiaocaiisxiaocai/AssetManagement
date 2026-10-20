@@ -136,17 +136,6 @@ function disableFutureEnd(date: Date) {
           type="textarea"
         />
       </ElFormItem>
-      <ElFormItem :required="form.status === 'completed'" label="阶段结论">
-        <ElInput
-          v-model="form.conclusion"
-          :maxlength="2000"
-          :rows="3"
-          placeholder="填写阶段结论和后续建议"
-          resize="vertical"
-          show-word-limit
-          type="textarea"
-        />
-      </ElFormItem>
     </ElForm>
     <template #footer>
       <ElButton :disabled="saving" @click="visible = false">取消</ElButton>

@@ -30,7 +30,6 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
         complete.EndDate = BusinessClock.Today;
         complete.TestContent = "连续负载运行 48 小时\n记录温升与重复定位误差";
         complete.TestResult = "温升 15℃，重复定位误差 0.02mm";
-        complete.Conclusion = "通过，可进入下一阶段";
         complete.RowVersion = created.RowVersion;
         var response = await client.PutAsJsonAsync($"{Root(projectId)}/stages/{created.Id}", complete);
         response.EnsureSuccessStatusCode();
@@ -40,7 +39,6 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
         var workspace = await WorkspaceAsync(client, projectId);
         workspace.CanManage.Should().BeTrue();
         workspace.Stages.Should().ContainSingle().Which.TestResult.Should().Be(complete.TestResult);
-        workspace.Stages.Single().Conclusion.Should().Be(complete.Conclusion);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var audit = await db.AuditLogs.Where(x => x.TargetType == "ProjectWorkspace" &&
@@ -106,7 +104,6 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
         request.EndDate = BusinessClock.Today.AddDays(1);
         request.TestContent = "测试内容";
         request.TestResult = "测试结果";
-        request.Conclusion = "结论";
         request.Status = "completed";
         (await client.PostAsJsonAsync($"{Root(projectId)}/stages", request)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

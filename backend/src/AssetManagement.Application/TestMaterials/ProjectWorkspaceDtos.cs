@@ -19,7 +19,6 @@ public class ProjectTestStageDto
     public string? Objective { get; set; }
     public string? TestContent { get; set; }
     public string? TestResult { get; set; }
-    public string? Conclusion { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
     public string Status { get; set; } = "planned";
@@ -39,8 +38,6 @@ public class SaveProjectTestStageRequest
     public string? TestContent { get; set; }
     [StringLength(8000)]
     public string? TestResult { get; set; }
-    [StringLength(2000)]
-    public string? Conclusion { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
     [Required, StringLength(20)]
