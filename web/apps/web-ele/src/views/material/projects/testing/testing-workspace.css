@@ -133,6 +133,14 @@
   white-space: nowrap;
 }
 
+.stage-name-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+
 .multiline-preview {
   display: -webkit-box;
   overflow: hidden;

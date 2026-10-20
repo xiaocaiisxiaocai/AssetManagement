@@ -491,6 +491,38 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var project = await Post<ApiResult<TestProjectDto>>(
             "/api/test-projects",
             NewProjectRequest("负责人更新进展项目", owner.Id));
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var stage = new ProjectTestStage
+            {
+                ProjectId = project.Data!.Id,
+                Sequence = 1,
+                Name = "结案阶段",
+                TestContent = "完成测试内容",
+                TestResult = "测试通过",
+                StartDate = new DateTime(2026, 7, 1),
+                EndDate = new DateTime(2026, 7, 19),
+                Status = "completed",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            db.ProjectTestStages.Add(stage);
+            await db.SaveChangesAsync();
+            db.ProjectReportDocuments.Add(new ProjectReportDocument
+            {
+                ProjectId = project.Data.Id,
+                StageId = stage.Id,
+                FileName = "结案报告.pdf",
+                StoredName = "test/结案报告.pdf",
+                ContentType = "application/pdf",
+                Size = 1,
+                UploadedById = owner.Id,
+                UploadedBy = owner.Name,
+                UploadedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
         var closedDate = new DateTime(2026, 7, 20);
 
         await Login(owner.EmployeeNo, "123456");

@@ -338,6 +338,9 @@ public class TestProjectService : ITestProjectService
         ValidateProjectTimeline(request);
         await EnsureProjectUnique(code, name, id);
         await ValidateProjectReferences(request);
+        ValidateProgressTransition(project.ProgressCode, request.ProgressCode);
+        if (ShouldRequireTestingCompletion(project.ProgressCode, request.ProgressCode))
+            await EnsureTestingCompletionAsync(id, request.ProgressCode);
         project.Name = name;
         project.Code = code;
         project.ProjectTypeCode = NormalizeOptional(request.ProjectTypeCode);
@@ -385,6 +388,9 @@ public class TestProjectService : ITestProjectService
                 x.Kind == OptionKindProgress && x.Code == progressCode && x.IsActive))
             throw new BizException(4002, "项目进度不存在或已停用");
 
+        ValidateProgressTransition(project.ProgressCode, progressCode);
+        if (ShouldRequireTestingCompletion(project.ProgressCode, progressCode))
+            await EnsureTestingCompletionAsync(id, progressCode);
         var closedDate = request.ClosedDate?.Date;
         ValidateProjectProgressTimeline(project.StartDate, progressCode, closedDate);
         var testStatus = request.TestStatus?.Trim();
@@ -837,6 +843,48 @@ public class TestProjectService : ITestProjectService
         if (!isClosed && closedDate.HasValue)
             throw new BizException(4001, "只有已结案项目才能填写结案时间");
     }
+
+    private static void ValidateProgressTransition(string? currentProgressCode, string? nextProgressCode)
+    {
+        if (string.Equals(currentProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(nextProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(nextProgressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase))
+            throw new BizException(4094, "项目已进入落地跟进，不能退回测试阶段");
+    }
+
+    private static bool ShouldRequireTestingCompletion(
+        string? currentProgressCode,
+        string? nextProgressCode) =>
+        IsTerminalTestingProgress(nextProgressCode) &&
+        (!IsTerminalTestingProgress(currentProgressCode) ||
+         string.Equals(nextProgressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase));
+
+    private async Task EnsureTestingCompletionAsync(int projectId, string? progressCode)
+    {
+        if (!IsTerminalTestingProgress(progressCode))
+            return;
+
+        var finalStage = await _db.ProjectTestStages.AsNoTracking()
+            .Where(x => x.ProjectId == projectId && !x.IsDeleted)
+            .OrderByDescending(x => x.Sequence)
+            .ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync();
+        if (finalStage is null ||
+            !string.Equals(finalStage.Status, "completed", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(finalStage.TestContent) ||
+            string.IsNullOrWhiteSpace(finalStage.TestResult))
+            throw new BizException(4094, "进入落地跟进或结案前，必须完成最后测试阶段并填写测试结果");
+
+        if (!await _db.ProjectReportDocuments.AnyAsync(x =>
+                x.ProjectId == projectId &&
+                x.StageId == finalStage.Id &&
+                !x.IsDeleted))
+            throw new BizException(4094, "进入落地跟进或结案前，必须上传最后测试阶段报告");
+    }
+
+    private static bool IsTerminalTestingProgress(string? progressCode) =>
+        string.Equals(progressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(progressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase);
 
     private static IQueryable<TestProject> ApplyProjectQuery(
         IQueryable<TestProject> projectsQuery,

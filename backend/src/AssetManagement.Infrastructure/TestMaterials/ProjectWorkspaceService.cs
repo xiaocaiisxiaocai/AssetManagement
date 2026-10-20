@@ -109,6 +109,8 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     {
         var project = await LoadProjectAsync(projectId);
         await EnsureWritableAsync(project, userId);
+        if (!stageId.HasValue)
+            throw new BizException(4001, "报告必须关联测试阶段，结案阶段报告作为项目总报告");
         if (description?.Length > 500) throw new BizException(4001, "报告说明不能超过 500 个字符");
         await CheckStageAsync(projectId, stageId);
         var file = await _storage.SaveAsync(fileName, length, content);

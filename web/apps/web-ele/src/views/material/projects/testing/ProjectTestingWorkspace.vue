@@ -81,6 +81,10 @@ const testingLocked = computed(
       (props.projectProgressCode ?? '').toLowerCase(),
     ),
 );
+const finalStageId = computed(() => {
+  if (!testingLocked.value || orderedStages.value.length === 0) return null;
+  return orderedStages.value[orderedStages.value.length - 1]?.id ?? null;
+});
 
 const statusMap: Record<
   ProjectStageStatus,
@@ -218,9 +222,18 @@ function dateRange(stage: ProjectStageDto) {
             </ElTableColumn>
             <ElTableColumn align="center" label="阶段名称" min-width="150">
               <template #default="{ row }">
-                <span :title="row.name" class="stage-name-cell">{{
-                  row.name
-                }}</span>
+                <div class="stage-name-content">
+                  <span :title="row.name" class="stage-name-cell">{{
+                    row.name
+                  }}</span>
+                  <ElTag
+                    v-if="row.id === finalStageId"
+                    size="small"
+                    type="success"
+                  >
+                    结案阶段
+                  </ElTag>
+                </div>
               </template>
             </ElTableColumn>
             <ElTableColumn align="center" label="目标" min-width="180">

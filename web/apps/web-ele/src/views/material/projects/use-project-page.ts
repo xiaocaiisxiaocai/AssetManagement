@@ -48,14 +48,22 @@ export function useProjectPage() {
   const isCurrentUserSupervisor = computed(() =>
     userStore.userRoles.includes('supervisor'),
   );
-  const canWriteCurrentProjectMaterial = computed(
+  const isTestingProjectOpen = computed(
     () =>
       !isCurrentProjectReadOnly.value &&
+      !state.currentProject.value?.closedDate &&
+      ['planning', 'testing'].includes(
+        (state.currentProject.value?.progressCode ?? '').toLowerCase(),
+      ),
+  );
+  const canWriteCurrentProjectMaterial = computed(
+    () =>
+      isTestingProjectOpen.value &&
       (materialActionAccess.value.canCreate || isCurrentProjectOwner.value),
   );
   const canEditCurrentProjectMaterial = computed(
     () =>
-      !isCurrentProjectReadOnly.value &&
+      isTestingProjectOpen.value &&
       (materialActionAccess.value.canEdit || isCurrentProjectOwner.value),
   );
   const canUpdateCurrentProjectProgress = computed(

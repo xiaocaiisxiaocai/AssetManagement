@@ -490,6 +490,11 @@ public class TestMaterialService : ITestMaterialService
 
     private void EnsureCanWriteMaterial(TestProject project, string permission)
     {
+        if (project.ClosedDate.HasValue ||
+            (!string.Equals(project.ProgressCode, "planning", StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(project.ProgressCode, "testing", StringComparison.OrdinalIgnoreCase)))
+            throw new BizException(4092, "项目已进入落地跟进或已结案，不能新增或编辑测试料件");
+
         // 料件维护既允许拥有菜单权限的角色操作，也允许项目负责人维护自己负责项目下的料件。
         var user = _http.HttpContext?.User;
         var currentUserId = CurrentUserId();
