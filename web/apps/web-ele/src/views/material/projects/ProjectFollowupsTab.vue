@@ -15,7 +15,7 @@ import {
   ElTimelineItem,
 } from 'element-plus';
 
-import { formatDate } from '#/utils/date-format';
+import { formatDate, formatDateTime } from '#/utils/date-format';
 
 const props = defineProps<{
   editingId: null | number;
@@ -105,7 +105,11 @@ const canWrite = computed(
             <div class="followup-record-heading">
               <div class="followup-record-meta">
                 <span>{{ item.filledByName || '-' }}</span>
-                <span>{{ formatDate(item.dueDate) }}</span>
+                <span>跟进日期 {{ formatDate(item.dueDate) }}</span>
+                <span>
+                  记录时间
+                  {{ formatDateTime(item.filledAt, { seconds: true }) }}
+                </span>
               </div>
               <div v-if="canWrite" class="record-actions">
                 <ElButton
