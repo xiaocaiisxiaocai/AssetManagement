@@ -91,11 +91,13 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     public async Task Landing_transition_requires_final_stage_report_and_locks_new_testing_writes()
     {
         var (client, projectId, _) = await SetupAsync();
+        var rowVersion = await ProjectVersionAsync(projectId);
         var landingRequest = new
         {
             ProgressCode = "landing",
             ClosedDate = (DateTime?)null,
-            TestStatus = "待进入落地跟进"
+            TestStatus = "待进入落地跟进",
+            RowVersion = rowVersion
         };
         var blocked = await client.PutAsJsonAsync(
             $"/api/test-projects/{projectId}/progress",
@@ -126,6 +128,36 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
         using var secondReport = PdfForm(stage.Id, "不应上传.pdf");
         (await client.PostAsync($"{Root(projectId)}/documents", secondReport))
             .StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task Landing_transition_rejects_incomplete_earlier_stage()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        var rowVersion = await ProjectVersionAsync(projectId);
+        await CreateAsync(client, projectId, Draft("前置阶段", 1));
+        var finalStage = await CreateAsync(client, projectId, new SaveProjectTestStageRequest
+        {
+            Name = "最终阶段",
+            Sequence = 2,
+            StartDate = BusinessClock.Today.AddDays(-1),
+            EndDate = BusinessClock.Today,
+            Status = "completed",
+            TestContent = "完成最终验证",
+            TestResult = "验证通过"
+        });
+        using var report = PdfForm(finalStage.Id, "最终阶段报告.pdf");
+        (await client.PostAsync($"{Root(projectId)}/documents", report)).EnsureSuccessStatusCode();
+
+        var response = await client.PutAsJsonAsync($"/api/test-projects/{projectId}/progress", new
+        {
+            ProgressCode = "landing",
+            ClosedDate = (DateTime?)null,
+            TestStatus = "前置阶段仍未完成",
+            RowVersion = rowVersion
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
     [Fact]
@@ -363,6 +395,13 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     {
         var response = await client.GetFromJsonAsync<ApiResult<ProjectWorkspaceDto>>(Root(projectId));
         return response!.Data!;
+    }
+
+    private async Task<uint> ProjectVersionAsync(int projectId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.TestProjects.Where(x => x.Id == projectId).Select(x => x.RowVersion).SingleAsync();
     }
 
     private async Task<(HttpClient Client, int ProjectId, int OwnerId)> SetupAsync()

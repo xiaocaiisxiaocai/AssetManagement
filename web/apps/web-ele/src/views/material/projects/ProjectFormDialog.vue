@@ -54,6 +54,9 @@ function onProgressChange(value: string) {
 <template>
   <ElDialog
     v-model="visible"
+    :close-on-click-modal="!saving"
+    :close-on-press-escape="!saving"
+    :show-close="!saving"
     :title="editing ? '编辑测试项目' : '新增测试项目'"
     width="720px"
   >
@@ -174,7 +177,7 @@ function onProgressChange(value: string) {
       </ElFormItem>
     </ElForm>
     <template #footer>
-      <ElButton @click="visible = false">取消</ElButton>
+      <ElButton :disabled="saving" @click="visible = false">取消</ElButton>
       <ElButton :loading="saving" type="primary" @click="emit('save')">
         保存
       </ElButton>

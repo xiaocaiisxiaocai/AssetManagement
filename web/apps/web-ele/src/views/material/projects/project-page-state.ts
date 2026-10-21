@@ -66,6 +66,7 @@ export function createProjectPageState() {
     projectTypeCode: '',
     startDate: '',
     testStatus: '',
+    rowVersion: 0,
   });
   const progressDialogVisible = ref(false);
   const progressEditingProject = ref<null | TestProjectItem>(null);
@@ -74,6 +75,7 @@ export function createProjectPageState() {
     closedDate: '',
     progressCode: '',
     testStatus: '',
+    rowVersion: 0,
   });
   const optionDialogVisible = ref(false);
   const optionSaving = ref(false);
@@ -129,6 +131,7 @@ export function createProjectPageState() {
   const pendingFlows = ref<MaterialFlowItem[]>([]);
   const handledFlows = ref<MaterialFlowItem[]>([]);
   const myFlows = ref<MaterialFlowItem[]>([]);
+  const processingFlowIds = ref<number[]>([]);
   const pendingFlowTotal = ref(0);
   const handledFlowTotal = ref(0);
   const myFlowTotal = ref(0);
@@ -215,6 +218,7 @@ export function createProjectPageState() {
     pendingFlows,
     handledFlows,
     myFlows,
+    processingFlowIds,
     pendingFlowTotal,
     handledFlowTotal,
     myFlowTotal,

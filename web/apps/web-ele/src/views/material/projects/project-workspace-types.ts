@@ -19,10 +19,12 @@ export type ProjectFormState = {
   projectTypeCode: string;
   startDate: string;
   testStatus: string;
+  rowVersion: number;
 };
 
 export type ProjectProgressFormState = {
   closedDate: string;
   progressCode: string;
   testStatus: string;
+  rowVersion: number;
 };

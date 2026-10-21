@@ -244,7 +244,8 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
                 FollowUpIntervalDays = project.FollowUpIntervalDays,
                 NextFollowUpDueDate = nextFollowup,
                 FollowUpStatus = nextFollowup < BusinessClock.Today ? "已逾期" : nextFollowup == BusinessClock.Today ? "今日到期" : "未到期",
-                MaterialCount = materials.Count(x => !x.IsDeleted), CreatedAt = project.CreatedAt
+                MaterialCount = materials.Count(x => !x.IsDeleted), CreatedAt = project.CreatedAt,
+                RowVersion = project.RowVersion
             },
             Materials = materials.Select(x => new TestMaterialDto
             {

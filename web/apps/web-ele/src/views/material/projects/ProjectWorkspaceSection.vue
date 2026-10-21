@@ -59,6 +59,7 @@ const {
   pendingFlowQueryModel,
   pendingFlows,
   pendingFlowTotal,
+  processingFlowIds,
   rejectFlow,
   resetMaterialQuery,
   saveFollowup,
@@ -102,6 +103,7 @@ const {
     :pending-count="pendingFlowTotal"
     :pending-flows="pendingFlows"
     :pending-loading="pendingFlowLoading"
+    :processing-flow-ids="processingFlowIds"
     :read-only="isCurrentProjectReadOnly"
     @approve="approveFlow"
     @command="onMaterialRowCommand"

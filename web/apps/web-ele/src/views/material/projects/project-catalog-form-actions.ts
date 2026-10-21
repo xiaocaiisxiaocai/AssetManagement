@@ -50,6 +50,7 @@ export function bindProjectCatalogFormActions(
       projectTypeCode: '',
       startDate: '',
       testStatus: '',
+      rowVersion: 0,
     });
   }
 
@@ -83,6 +84,7 @@ export function bindProjectCatalogFormActions(
       projectTypeCode: row.projectTypeCode ?? '',
       startDate: row.startDate ? row.startDate.slice(0, 10) : '',
       testStatus: row.testStatus ?? '',
+      rowVersion: row.rowVersion ?? 0,
     });
     dialogVisible.value = true;
     runHandled(Promise.all([loadUsers(), loadBaseOptions()]));
@@ -98,6 +100,7 @@ export function bindProjectCatalogFormActions(
       closedDate: row.closedDate ? row.closedDate.slice(0, 10) : '',
       progressCode: row.progressCode ?? '',
       testStatus: row.testStatus ?? '',
+      rowVersion: row.rowVersion ?? 0,
     });
     progressDialogVisible.value = true;
   }
@@ -114,6 +117,7 @@ export function bindProjectCatalogFormActions(
       projectTypeCode: form.projectTypeCode || null,
       startDate: form.startDate || null,
       testStatus: normalizeText(form.testStatus),
+      rowVersion: form.rowVersion,
     };
   }
 
@@ -170,6 +174,7 @@ export function bindProjectCatalogFormActions(
       await updateTestProjectProgressApi(project.id, {
         closedDate: progressForm.closedDate || null,
         progressCode: progressForm.progressCode,
+        rowVersion: progressForm.rowVersion,
         testStatus: normalizeText(progressForm.testStatus),
       });
       ElMessage.success('项目进展已更新');

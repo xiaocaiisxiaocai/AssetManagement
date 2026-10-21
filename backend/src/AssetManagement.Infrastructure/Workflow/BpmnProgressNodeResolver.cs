@@ -28,10 +28,11 @@ internal static class BpmnProgressNodeResolver
     }
 
     public static bool HasHistoricalActivity(BpmnToken token)
-        => !string.IsNullOrWhiteSpace(token.Approver)
+        => token.Status is BpmnTokenStatus.Completed or BpmnTokenStatus.Skipped &&
+           (!string.IsNullOrWhiteSpace(token.Approver)
            || !string.IsNullOrWhiteSpace(token.Opinion)
            || token.History.Count > 0
-           || token.SignStates is { Count: > 0 };
+           || token.SignStates is { Count: > 0 });
 
     private static bool LooksLikeHistoricalUserTask(BpmnToken token)
         => token.NodeId.StartsWith("Task", StringComparison.OrdinalIgnoreCase)

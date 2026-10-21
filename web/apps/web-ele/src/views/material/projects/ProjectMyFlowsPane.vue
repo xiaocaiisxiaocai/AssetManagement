@@ -20,6 +20,7 @@ defineProps<{
   myFlows: MaterialFlowItem[];
   myLoading: boolean;
   pageSizeOptions: number[];
+  processingFlowIds: number[];
   readOnly: boolean;
 }>();
 
@@ -104,6 +105,7 @@ function flowMetaOf(status: string) {
         <template #default="{ row }">
           <ElButton
             v-if="!readOnly && canWithdrawMaterialFlow(row)"
+            :disabled="processingFlowIds.includes(row.id)"
             link
             size="small"
             type="danger"

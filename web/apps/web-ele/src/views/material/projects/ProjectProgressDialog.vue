@@ -29,7 +29,14 @@ function onProgressChange(value: string) {
 </script>
 
 <template>
-  <ElDialog v-model="visible" title="更新项目进展" width="560px">
+  <ElDialog
+    v-model="visible"
+    :close-on-click-modal="!saving"
+    :close-on-press-escape="!saving"
+    :show-close="!saving"
+    title="更新项目进展"
+    width="560px"
+  >
     <ElForm label-width="96px">
       <ElFormItem label="进度" required>
         <ElSelect
@@ -67,7 +74,7 @@ function onProgressChange(value: string) {
       </ElFormItem>
     </ElForm>
     <template #footer>
-      <ElButton @click="visible = false">取消</ElButton>
+      <ElButton :disabled="saving" @click="visible = false">取消</ElButton>
       <ElButton :loading="saving" type="primary" @click="emit('save')">
         保存
       </ElButton>

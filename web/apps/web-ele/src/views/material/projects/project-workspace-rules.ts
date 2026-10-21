@@ -22,7 +22,7 @@ export function canUpdateProjectProgress(
     !project.isDeleted &&
     !project.closedDate &&
     currentUserId > 0 &&
-    Number(project.ownerId) === currentUserId || canManage
+    (Number(project.ownerId) === currentUserId || canManage)
   );
 }
 

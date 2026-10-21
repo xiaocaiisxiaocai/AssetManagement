@@ -34,6 +34,7 @@ const visible = defineModel<boolean>('visible', { default: false });
 
 const userStore = useUserStore();
 const saving = ref(false);
+let submitSequence = 0;
 const transfereeOptions = computed(() =>
   selectableTransferees(props.users, [
     Number(userStore.userInfo?.userId || 0),
@@ -52,12 +53,14 @@ function searchTransferees(keyword: string) {
 
 watch(visible, (opened) => {
   if (opened) {
+    submitSequence++;
     form.transfereeId = undefined;
     form.reason = '';
   }
 });
 
 async function submit() {
+  if (saving.value) return;
   if (!props.material) {
     return;
   }
@@ -72,6 +75,8 @@ async function submit() {
     ElMessage.warning('受让人不能是当前保管人');
     return;
   }
+  const materialId = props.material.id;
+  const requestSequence = ++submitSequence;
   saving.value = true;
   try {
     const flow = await initiateTransferApi({
@@ -82,8 +87,13 @@ async function submit() {
     ElMessage.success(
       flow.directTransfer ? '已直接转移给受让人' : '已提交审批,等待审批',
     );
-    visible.value = false;
-    emit('done');
+    if (
+      requestSequence === submitSequence &&
+      props.material?.id === materialId
+    ) {
+      visible.value = false;
+      emit('done');
+    }
   } catch {
     // 错误已由 request.ts 拦截器统一弹出
   } finally {
@@ -93,7 +103,14 @@ async function submit() {
 </script>
 
 <template>
-  <ElDialog v-model="visible" title="测试料件流转" width="520px">
+  <ElDialog
+    v-model="visible"
+    :close-on-click-modal="!saving"
+    :close-on-press-escape="!saving"
+    :show-close="!saving"
+    title="测试料件流转"
+    width="520px"
+  >
     <ElForm v-if="material" label-width="88px">
       <ElFormItem label="料件编号">
         <ElInput :model-value="material.materialNo" disabled />
@@ -134,7 +151,7 @@ async function submit() {
       </ElFormItem>
     </ElForm>
     <template #footer>
-      <ElButton @click="visible = false">取消</ElButton>
+      <ElButton :disabled="saving" @click="visible = false">取消</ElButton>
       <ElButton :loading="saving" type="primary" @click="submit">提交</ElButton>
     </template>
   </ElDialog>

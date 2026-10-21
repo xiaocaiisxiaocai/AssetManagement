@@ -326,7 +326,11 @@ public class TestProjectService : ITestProjectService
     public async Task<TestProjectDto> UpdateAsync(int id, SaveTestProjectRequest request)
     {
         NormalizeProjectCodes(request);
-        var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
         EnsureProjectCanChange(project);
@@ -337,11 +341,12 @@ public class TestProjectService : ITestProjectService
         ValidateProjectTextLengths(name, code, request);
         ValidateProjectRequiredFields(request);
         ValidateProjectTimeline(request);
+        EnsureProjectVersion(project, request.RowVersion);
         await EnsureProjectUnique(code, name, id);
         await ValidateProjectReferences(request);
         ValidateProgressTransition(project.ProgressCode, request.ProgressCode);
         if (ShouldRequireTestingCompletion(project.ProgressCode, request.ProgressCode))
-            await EnsureTestingCompletionAsync(id, request.ProgressCode);
+            await EnsureTestingCompletionAsync(id, request.ProgressCode, request.ClosedDate);
         project.Name = name;
         project.Code = code;
         project.ProjectTypeCode = NormalizeOptional(request.ProjectTypeCode);
@@ -365,6 +370,7 @@ public class TestProjectService : ITestProjectService
         {
             throw new BizException(4094, "项目编号或项目名称已存在");
         }
+        await transaction.CommitAsync();
         var count = await _db.TestMaterials.CountAsync(x => !x.IsDeleted && x.ProjectId == id);
         return (await ToDtos(new[] { project }, new Dictionary<int, int> { [id] = count }, null)).Single();
     }
@@ -374,13 +380,18 @@ public class TestProjectService : ITestProjectService
         UpdateTestProjectProgressRequest request,
         int currentUserId)
     {
-        var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
         if (project.OwnerId != currentUserId && !await IsAdmin(currentUserId) &&
             !HasPermission("project:manage"))
             throw new BizException(4031, "只有项目负责人、项目管理人员或管理员可以更新项目进展");
         EnsureProjectCanChange(project);
+        EnsureProjectVersion(project, request.RowVersion);
 
         var progressCode = request.ProgressCode?.Trim();
         if (string.IsNullOrWhiteSpace(progressCode))
@@ -389,10 +400,10 @@ public class TestProjectService : ITestProjectService
                 x.Kind == OptionKindProgress && x.Code == progressCode && x.IsActive))
             throw new BizException(4002, "项目进度不存在或已停用");
 
+        var closedDate = request.ClosedDate?.Date;
         ValidateProgressTransition(project.ProgressCode, progressCode);
         if (ShouldRequireTestingCompletion(project.ProgressCode, progressCode))
-            await EnsureTestingCompletionAsync(id, progressCode);
-        var closedDate = request.ClosedDate?.Date;
+            await EnsureTestingCompletionAsync(id, progressCode, closedDate);
         ValidateProjectProgressTimeline(project.StartDate, progressCode, closedDate);
         var testStatus = request.TestStatus?.Trim();
         if (testStatus?.Length > 1000)
@@ -410,6 +421,8 @@ public class TestProjectService : ITestProjectService
         {
             throw new BizException(4090, "操作冲突，该项目已被他人修改，请刷新后重试");
         }
+
+        await transaction.CommitAsync();
 
         var count = await _db.TestMaterials.CountAsync(x => !x.IsDeleted && x.ProjectId == id);
         return (await ToDtos(
@@ -598,8 +611,13 @@ public class TestProjectService : ITestProjectService
         var content = (request.Content ?? "").Trim();
         if (string.IsNullOrWhiteSpace(content)) throw new BizException(4001, "请填写落地情况");
         EnsureMaxLength(content, 2000, "落地情况");
-        var dueDate = request.DueDate?.Date ?? BusinessClock.Today;
-        EnsureFollowupDate(dueDate);
+        var dueDate = BusinessClock.Today;
+        if (request.DueDate.HasValue)
+        {
+            EnsureFollowupDate(request.DueDate.Value.Date);
+            if (request.DueDate.Value.Date != dueDate)
+                throw new BizException(4001, "跟进日期由系统自动记录，不能手动指定");
+        }
         var latestDueDate = await _db.TestProjectFollowups
             .Where(x => x.ProjectId == projectId)
             .Select(x => (DateTime?)x.DueDate)
@@ -782,7 +800,8 @@ public class TestProjectService : ITestProjectService
                 CreatedAt = x.CreatedAt,
                 IsDeleted = x.IsDeleted,
                 DeletedAt = x.DeletedAt,
-                MaterialCount = counts.GetValueOrDefault(x.Id)
+                MaterialCount = counts.GetValueOrDefault(x.Id),
+                RowVersion = x.RowVersion
             };
         }).ToList();
     }
@@ -840,6 +859,8 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4001, "计划完成时间不能早于开始时间");
         if (closedDate.HasValue && closedDate.Value < startDate)
             throw new BizException(4001, "结案时间不能早于开始时间");
+        if (closedDate.HasValue && closedDate.Value.Date > BusinessClock.Today)
+            throw new BizException(4001, "结案时间不能晚于今天");
         if (isClosed && !closedDate.HasValue)
             throw new BizException(4001, "已结案项目必须填写结案时间");
         if (!isClosed && closedDate.HasValue)
@@ -854,6 +875,8 @@ public class TestProjectService : ITestProjectService
         var isClosed = string.Equals(progressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase);
         if (startDate.HasValue && closedDate.HasValue && closedDate.Value < startDate.Value.Date)
             throw new BizException(4001, "结案时间不能早于开始时间");
+        if (closedDate.HasValue && closedDate.Value.Date > BusinessClock.Today)
+            throw new BizException(4001, "结案时间不能晚于今天");
         if (isClosed && !closedDate.HasValue)
             throw new BizException(4001, "已结案项目必须填写结案时间");
         if (!isClosed && closedDate.HasValue)
@@ -875,7 +898,10 @@ public class TestProjectService : ITestProjectService
         (!IsTerminalTestingProgress(currentProgressCode) ||
          string.Equals(nextProgressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase));
 
-    private async Task EnsureTestingCompletionAsync(int projectId, string? progressCode)
+    private async Task EnsureTestingCompletionAsync(
+        int projectId,
+        string? progressCode,
+        DateTime? requestedClosedDate)
     {
         if (!IsTerminalTestingProgress(progressCode))
             return;
@@ -886,16 +912,26 @@ public class TestProjectService : ITestProjectService
                     material.Id == flow.MaterialId && material.ProjectId == projectId)))
             throw new BizException(4092, "项目存在进行中的料件流转，请先处理完再进入落地跟进或结案");
 
-        var finalStage = await _db.ProjectTestStages.AsNoTracking()
+        var stages = await _db.ProjectTestStages.AsNoTracking()
             .Where(x => x.ProjectId == projectId && !x.IsDeleted)
             .OrderByDescending(x => x.Sequence)
             .ThenByDescending(x => x.Id)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
+        var finalStage = stages.FirstOrDefault();
         if (finalStage is null ||
+            stages.Any(x => !string.Equals(x.Status, "completed", StringComparison.OrdinalIgnoreCase)) ||
             !string.Equals(finalStage.Status, "completed", StringComparison.OrdinalIgnoreCase) ||
             string.IsNullOrWhiteSpace(finalStage.TestContent) ||
             string.IsNullOrWhiteSpace(finalStage.TestResult))
-            throw new BizException(4094, "进入落地跟进或结案前，必须完成最后测试阶段并填写测试结果");
+            throw new BizException(4094, "进入落地跟进或结案前，必须完成所有测试阶段并填写测试结果");
+
+        if (requestedClosedDate.HasValue)
+        {
+            if (requestedClosedDate.Value.Date > BusinessClock.Today)
+                throw new BizException(4001, "结案时间不能晚于今天");
+            if (finalStage.EndDate.HasValue && requestedClosedDate.Value.Date < finalStage.EndDate.Value.Date)
+                throw new BizException(4001, "结案时间不能早于最后测试阶段结束日期");
+        }
 
         if (!await _db.ProjectReportDocuments.AnyAsync(x =>
                 x.ProjectId == projectId &&
@@ -972,6 +1008,12 @@ public class TestProjectService : ITestProjectService
     {
         if (project.ClosedDate.HasValue)
             throw new BizException(4094, "项目已结案，不能再修改");
+    }
+
+    private static void EnsureProjectVersion(TestProject project, uint? requestedVersion)
+    {
+        if (!requestedVersion.HasValue || requestedVersion.Value != project.RowVersion)
+            throw new BizException(4090, "该项目已被其他人更新，请刷新后重试");
     }
 
     private static void EnsureFollowupDate(DateTime dueDate)

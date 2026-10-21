@@ -55,6 +55,7 @@ const props = defineProps<{
   pendingCount: number;
   pendingFlows: MaterialFlowItem[];
   pendingLoading: boolean;
+  processingFlowIds: number[];
   readOnly: boolean;
 }>();
 
@@ -241,6 +242,7 @@ function statusMeta(project: TestProjectItem) {
           :pending-count="pendingCount"
           :pending-flows="pendingFlows"
           :pending-loading="pendingLoading"
+          :processing-flow-ids="processingFlowIds"
           :read-only="readOnly"
           @approve="emit('approve', $event)"
           @handled-page-size-change="emit('handledPageSizeChange')"

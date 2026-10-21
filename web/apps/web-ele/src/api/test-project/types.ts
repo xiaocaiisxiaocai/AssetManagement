@@ -43,6 +43,7 @@ export interface TestProjectItem {
   isDeleted: boolean;
   deletedAt?: null | string;
   materialCount: number;
+  rowVersion?: number;
 }
 
 export interface SaveTestProjectPayload {
@@ -56,6 +57,7 @@ export interface SaveTestProjectPayload {
   ownerId?: null | number;
   testStatus?: null | string;
   followUpIntervalDays: number;
+  rowVersion?: number;
 }
 
 export interface TestProjectImportRow {
@@ -87,6 +89,7 @@ export interface TestProjectImportResult {
 export interface UpdateTestProjectProgressPayload {
   closedDate?: null | string;
   progressCode: string;
+  rowVersion?: number;
   testStatus?: null | string;
 }
 

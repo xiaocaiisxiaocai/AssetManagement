@@ -43,6 +43,19 @@ export function bindProjectFlowActions(
     myFlowQuery,
     handledFlowQuery,
   } = page;
+  const processingFlowIds = page.processingFlowIds as { value: number[] };
+
+  function beginFlowProcessing(flowId: number) {
+    if (processingFlowIds.value.includes(flowId)) return false;
+    processingFlowIds.value = [...processingFlowIds.value, flowId];
+    return true;
+  }
+
+  function endFlowProcessing(flowId: number) {
+    processingFlowIds.value = processingFlowIds.value.filter(
+      (id) => id !== flowId,
+    );
+  }
 
   async function loadProjectFlows(projectId = currentProject.value?.id) {
     if (!projectId) return;
@@ -101,32 +114,32 @@ export function bindProjectFlowActions(
 
   async function approveFlow(row: MaterialFlowItem) {
     if (isCurrentProjectReadOnly.value) return;
-    const node = await workflowNodeSelector.value?.selectNode(row, '通过');
-    if (!node) return;
+    if (!beginFlowProcessing(row.id)) return;
     try {
+      const node = await workflowNodeSelector.value?.selectNode(row, '通过');
+      if (!node) return;
       await ElMessageBox.confirm(
         `确认通过料件「${row.materialName}」的流转申请？处理节点：${formatWorkflowNode(node)}`,
         '审批通过',
         { type: 'warning' },
       );
-    } catch {
-      return;
-    }
-    try {
       await approveFlowApi(row.id, '同意', node.id);
       ElMessage.success('已通过');
       await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
     } catch {
       // 错误已由 request.ts 拦截器统一弹出
+    } finally {
+      endFlowProcessing(row.id);
     }
   }
 
   async function rejectFlow(row: MaterialFlowItem) {
     if (isCurrentProjectReadOnly.value) return;
-    const node = await workflowNodeSelector.value?.selectNode(row, '驳回');
-    if (!node) return;
-    let reason = '不同意';
+    if (!beginFlowProcessing(row.id)) return;
     try {
+      const node = await workflowNodeSelector.value?.selectNode(row, '驳回');
+      if (!node) return;
+      let reason = '不同意';
       const result = await ElMessageBox.prompt(
         `请输入驳回原因。处理节点：${formatWorkflowNode(node)}`,
         '驳回',
@@ -137,35 +150,32 @@ export function bindProjectFlowActions(
         },
       );
       reason = result.value || reason;
-    } catch {
-      return;
-    }
-    try {
       await rejectFlowApi(row.id, reason, node.id);
       ElMessage.success('已驳回');
       await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
     } catch {
       // 错误已由 request.ts 拦截器统一弹出
+    } finally {
+      endFlowProcessing(row.id);
     }
   }
 
   async function withdrawFlow(row: MaterialFlowItem) {
     if (isCurrentProjectReadOnly.value || row.canWithdraw !== true) return;
+    if (!beginFlowProcessing(row.id)) return;
     try {
       await ElMessageBox.confirm(
         `确认撤回料件「${row.materialName}」的流转申请？`,
         '撤回确认',
         { type: 'warning' },
       );
-    } catch {
-      return;
-    }
-    try {
       await withdrawMaterialFlowApi(row.id);
       ElMessage.success('已撤回');
       await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
     } catch {
       // 错误已由 request.ts 拦截器统一弹出
+    } finally {
+      endFlowProcessing(row.id);
     }
   }
 

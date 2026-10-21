@@ -379,6 +379,65 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
             step.CompletedBy == adminName);
     }
 
+    [Fact]
+    public async Task Active_sign_state_token_is_not_rendered_as_historical_completion()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        int adminId;
+        int workflowId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            adminId = await db.Users.AsNoTracking()
+                .Where(user => user.EmployeeNo == "1001")
+                .Select(user => user.Id)
+                .SingleAsync();
+            workflowId = await db.Workflows
+                .Where(workflow => workflow.BizType == "borrow" && workflow.IsActive)
+                .Select(workflow => workflow.Id)
+                .SingleAsync();
+
+            var flow = new ApprovalFlow
+            {
+                FlowNo = Unique("SIGNING"),
+                BizType = "borrow",
+                WorkflowId = workflowId,
+                AssetId = asset.Id,
+                AssetNo = asset.AssetNo,
+                AssetName = asset.Name,
+                ApplicantId = adminId,
+                Applicant = "系统管理员",
+                Status = FlowStatus.Pending,
+                ActiveScopeKey = $"asset:{asset.Id}:signing",
+                CurrentNodeIds = new List<string> { "Task_activeCounterSign" },
+                BpmnTokens = new Dictionary<string, BpmnToken>
+                {
+                    ["Task_activeCounterSign"] = new()
+                    {
+                        NodeId = "Task_activeCounterSign",
+                        NodeName = "当前会签审批",
+                        Status = BpmnTokenStatus.Active,
+                        SignStates = new Dictionary<string, bool> { [adminId.ToString()] = false },
+                        StartedAt = DateTime.UtcNow
+                    }
+                },
+                ApplyTime = DateTime.UtcNow,
+                Deadline = DateTime.UtcNow.AddDays(1)
+            };
+            db.ApprovalFlows.Add(flow);
+            await db.SaveChangesAsync();
+            workflowId = flow.Id;
+        }
+
+        var page = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/mine-page?page=1&pageSize=20&flowId={workflowId}");
+        var resultFlow = page!.Data!.Items.Should().ContainSingle().Which;
+
+        resultFlow.ProgressSteps.Should().ContainSingle(step =>
+            step.NodeId == "Task_activeCounterSign" && step.State == "current");
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

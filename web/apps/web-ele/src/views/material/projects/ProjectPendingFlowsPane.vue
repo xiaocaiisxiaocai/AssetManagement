@@ -17,6 +17,7 @@ defineProps<{
   pendingCount: number;
   pendingFlows: MaterialFlowItem[];
   pendingLoading: boolean;
+  processingFlowIds: number[];
 }>();
 
 const emit = defineEmits<{
@@ -85,7 +86,10 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
       >
         <template #default="{ row }">
           <ElButton
-            :disabled="row.actionableNodeIds.length === 0"
+            :disabled="
+              row.actionableNodeIds.length === 0 ||
+              processingFlowIds.includes(row.id)
+            "
             link
             size="small"
             type="success"
@@ -94,7 +98,10 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
             通过
           </ElButton>
           <ElButton
-            :disabled="row.actionableNodeIds.length === 0"
+            :disabled="
+              row.actionableNodeIds.length === 0 ||
+              processingFlowIds.includes(row.id)
+            "
             link
             size="small"
             type="danger"

@@ -19,6 +19,7 @@ defineProps<{
   pendingCount: number;
   pendingFlows: MaterialFlowItem[];
   pendingLoading: boolean;
+  processingFlowIds: number[];
   readOnly: boolean;
 }>();
 
@@ -65,6 +66,7 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
           :pending-count="pendingCount"
           :pending-flows="pendingFlows"
           :pending-loading="pendingLoading"
+          :processing-flow-ids="processingFlowIds"
           @approve="emit('approve', $event)"
           @page-change="emit('pageChange')"
           @pending-page-size-change="emit('pendingPageSizeChange')"
@@ -92,6 +94,7 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
           :my-loading="myLoading"
           :page-size-options="pageSizeOptions"
           :read-only="readOnly"
+          :processing-flow-ids="processingFlowIds"
           @my-page-size-change="emit('myPageSizeChange')"
           @page-change="emit('pageChange')"
           @withdraw="emit('withdraw', $event)"

@@ -25,6 +25,13 @@ describe('测试项目工作台规则', () => {
     ).toBe(false);
     expect(
       canUpdateProjectProgress(
+        { closedDate: '2026-07-22', isDeleted: false, ownerId: 25 },
+        26,
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      canUpdateProjectProgress(
         { closedDate: null, isDeleted: true, ownerId: 25 },
         25,
       ),

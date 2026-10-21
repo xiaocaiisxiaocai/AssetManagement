@@ -31,6 +31,7 @@ public class TestProjectDto
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
     public int MaterialCount { get; set; }
+    public uint RowVersion { get; set; }
 }
 
 public class SaveTestProjectRequest
@@ -50,6 +51,7 @@ public class SaveTestProjectRequest
     [StringLength(1000)]
     public string? TestStatus { get; set; }
     public int FollowUpIntervalDays { get; set; } = 14;
+    public uint? RowVersion { get; set; }
 }
 
 public class TestProjectImportRowDto
@@ -87,6 +89,7 @@ public class UpdateTestProjectProgressRequest
     public DateTime? ClosedDate { get; set; }
     [StringLength(1000)]
     public string? TestStatus { get; set; }
+    public uint? RowVersion { get; set; }
 }
 
 public class TestProjectOptionDto

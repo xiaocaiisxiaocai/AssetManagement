@@ -617,7 +617,8 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             {
                 ProgressCode = "closed",
                 ClosedDate = closedDate,
-                TestStatus = "负责人确认测试完成"
+                TestStatus = "负责人确认测试完成",
+                RowVersion = project.Data.RowVersion
             });
         updatedResponse.EnsureSuccessStatusCode();
         var updated = await updatedResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
@@ -692,14 +693,18 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             "/api/test-projects",
             NewProjectRequest(name, code: $"{code}-NEW"),
             HttpStatusCode.Conflict);
+        var duplicateCodeOnUpdateRequest = NewProjectRequest($"{name}-更新编号", code: code);
+        duplicateCodeOnUpdateRequest.RowVersion = another.Data!.RowVersion;
         var duplicateCodeOnUpdateResponse = await _client.PutAsJsonAsync(
             $"/api/test-projects/{another.Data!.Id}",
-            NewProjectRequest($"{name}-更新编号", code: code));
+            duplicateCodeOnUpdateRequest);
         duplicateCodeOnUpdateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var duplicateCodeOnUpdate = await duplicateCodeOnUpdateResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+        var duplicateNameOnUpdateRequest = NewProjectRequest(name, code: $"{code}-UPDATE");
+        duplicateNameOnUpdateRequest.RowVersion = another.Data!.RowVersion;
         var duplicateNameOnUpdateResponse = await _client.PutAsJsonAsync(
             $"/api/test-projects/{another.Data.Id}",
-            NewProjectRequest(name, code: $"{code}-UPDATE"));
+            duplicateNameOnUpdateRequest);
         duplicateNameOnUpdateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var duplicateNameOnUpdate = await duplicateNameOnUpdateResponse.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
 
@@ -775,6 +780,12 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             "/api/test-projects",
             testingWithClosedDateRequest,
             HttpStatusCode.BadRequest);
+        var futureClosedDateRequest = NewProjectRequest("未来结案日期项目", progressCode: "closed");
+        futureClosedDateRequest.ClosedDate = BusinessClock.Today.AddDays(1);
+        var futureClosedDate = await PostError<TestProjectDto>(
+            "/api/test-projects",
+            futureClosedDateRequest,
+            HttpStatusCode.BadRequest);
 
         reversed.Code.Should().Be(4001);
         reversed.Message.Should().Contain("计划完成时间不能早于开始时间");
@@ -782,6 +793,27 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         closedWithoutDate.Message.Should().Contain("必须填写结案时间");
         testingWithClosedDate.Code.Should().Be(4001);
         testingWithClosedDate.Message.Should().Contain("只有已结案项目");
+        futureClosedDate.Code.Should().Be(4001);
+        futureClosedDate.Message.Should().Contain("不能晚于今天");
+    }
+
+    [Fact]
+    public async Task Project_update_rejects_stale_row_version()
+    {
+        await Login();
+        var created = await CreateProject("项目版本校验");
+        var firstUpdate = NewProjectRequest("项目版本校验-第一次", ownerId: created.OwnerId, code: created.Code);
+        firstUpdate.RowVersion = created.RowVersion;
+        var first = await Put<ApiResult<TestProjectDto>>($"/api/test-projects/{created.Id}", firstUpdate);
+
+        var staleUpdate = NewProjectRequest("项目版本校验-过期", ownerId: created.OwnerId, code: created.Code);
+        staleUpdate.RowVersion = created.RowVersion;
+        var response = await _client.PutAsJsonAsync($"/api/test-projects/{created.Id}", staleUpdate);
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        body!.Code.Should().Be(4090);
+        first.Data!.Name.Should().Be("项目版本校验-第一次");
     }
 
     [Fact]
@@ -1026,8 +1058,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             $"/api/test-projects/{landing.Id}/followups",
             new SaveTestProjectFollowupRequest
             {
-                Content = "第一轮落地情况",
-                DueDate = new DateTime(2026, 7, 10)
+                Content = "第一轮落地情况"
             });
         var updated = await Put<ApiResult<TestProjectFollowupDto>>(
             $"/api/test-projects/{landing.Id}/followups/{created.Data!.Id}",
@@ -1041,10 +1072,10 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var projectSummary = projects!.Data!.Single(x => x.Id == landing.Id);
 
         updated.Data!.Content.Should().Be("第二轮落地情况");
-        updated.Data.DueDate.Should().Be(new DateTime(2026, 7, 10));
+        updated.Data.DueDate.Should().Be(BusinessClock.Today);
         list!.Data!.Should().ContainSingle(x => x.Id == created.Data.Id && x.Content == "第二轮落地情况");
         projectSummary.LatestFollowUpContent.Should().Be("第二轮落地情况");
-        projectSummary.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 17));
+        projectSummary.NextFollowUpDueDate.Should().Be(BusinessClock.Today.AddDays(7));
 
         var deleted = await _client.DeleteAsync($"/api/test-projects/{landing.Id}/followups/{created.Data.Id}");
         var afterDelete = await _client.GetFromJsonAsync<ApiResult<List<TestProjectFollowupDto>>>(
@@ -1119,7 +1150,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             });
         var earlierBody = await earlier.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
         earlier.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        earlierBody!.Message.Should().Contain("不能早于上一条跟进记录");
+        earlierBody!.Message.Should().Contain("自动记录");
 
         var sameDay = await Post<ApiResult<TestProjectFollowupDto>>(
             $"/api/test-projects/{landing.Id}/followups",
@@ -1326,18 +1357,33 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             owner.Id,
             followUpIntervalDays: 7);
 
-        await Login(owner.EmployeeNo, "123456");
-        var oldFollowup = await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Id}/followups",
-            new SaveTestProjectFollowupRequest { Content = "较早周期", DueDate = new DateTime(2026, 7, 10) });
-        await Post<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Id}/followups",
-            new SaveTestProjectFollowupRequest { Content = "最新周期", DueDate = new DateTime(2026, 7, 20) });
+        int oldFollowupId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var now = DateTime.UtcNow;
+            var history = new[]
+            {
+                new TestProjectFollowup
+                {
+                    ProjectId = landing.Id, DueDate = new DateTime(2026, 7, 10),
+                    Content = "较早周期", FilledById = owner.Id, FilledAt = now.AddDays(-2), CreatedAt = now.AddDays(-2)
+                },
+                new TestProjectFollowup
+                {
+                    ProjectId = landing.Id, DueDate = new DateTime(2026, 7, 20),
+                    Content = "最新周期", FilledById = owner.Id, FilledAt = now.AddDays(-1), CreatedAt = now.AddDays(-1)
+                }
+            };
+            db.TestProjectFollowups.AddRange(history);
+            await db.SaveChangesAsync();
+            oldFollowupId = history[0].Id;
+        }
 
         await Login();
         var edited = await Put<ApiResult<TestProjectFollowupDto>>(
-            $"/api/test-projects/{landing.Id}/followups/{oldFollowup.Data!.Id}",
-            new SaveTestProjectFollowupRequest { Content = "修正较早周期", DueDate = new DateTime(2026, 7, 10) });
+            $"/api/test-projects/{landing.Id}/followups/{oldFollowupId}",
+            new SaveTestProjectFollowupRequest { Content = "修正较早周期" });
         var projects = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>("/api/test-projects");
         var summary = projects!.Data!.Single(x => x.Id == landing.Id);
 
