@@ -16,7 +16,7 @@ import {
   ElTimelineItem,
 } from 'element-plus';
 
-import { formatDateTime } from '#/utils/date-format';
+import { formatDate, formatDateTime } from '#/utils/date-format';
 
 import { isFutureFollowupDate } from './followup-date-rules';
 
@@ -39,7 +39,27 @@ const form = defineModel<{ content: string; dueDate: string }>('form', {
 const canWrite = computed(
   () => props.project.canWriteFollowUp && !props.project.isDeleted,
 );
-const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
+const latestFollowupDate = computed(() => {
+  const dates = props.followups
+    .map((item) => item.dueDate?.slice(0, 10))
+    .filter((date): date is string => Boolean(date));
+  return dates.reduce<string | null>(
+    (latest, current) => (!latest || current > latest ? current : latest),
+    null,
+  );
+});
+const disabledFollowupDate = (date: Date) => {
+  if (isFutureFollowupDate(date)) return true;
+  if (props.editingId || !latestFollowupDate.value) return false;
+
+  const candidate = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  );
+  const earliest = new Date(`${latestFollowupDate.value}T00:00:00`);
+  return candidate.getTime() < earliest.getTime();
+};
 </script>
 
 <template>
@@ -68,6 +88,13 @@ const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
                 type="date"
                 value-format="YYYY-MM-DD"
               />
+              <p v-if="editingId" class="followup-date-hint">
+                历史跟进日期不可修改
+              </p>
+              <p v-else-if="latestFollowupDate" class="followup-date-hint">
+                已有跟进至
+                {{ formatDate(latestFollowupDate) }}，同日或之后可新增
+              </p>
             </ElFormItem>
             <ElFormItem label="落地情况">
               <ElInput

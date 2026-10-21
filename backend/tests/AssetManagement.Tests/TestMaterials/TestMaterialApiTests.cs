@@ -1095,6 +1095,43 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Followup_create_requires_non_decreasing_dates_but_allows_same_day()
+    {
+        await Login();
+        var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "连续跟进负责人");
+        var landing = await CreateProjectWithProgress("连续跟进项目", "landing", owner.Id);
+
+        await Login(owner.EmployeeNo, "123456");
+        var first = await Post<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{landing.Id}/followups",
+            new SaveTestProjectFollowupRequest
+            {
+                Content = "第一次跟进",
+                DueDate = BusinessClock.Today
+            });
+
+        var earlier = await _client.PostAsJsonAsync(
+            $"/api/test-projects/{landing.Id}/followups",
+            new SaveTestProjectFollowupRequest
+            {
+                Content = "不应早于上一条",
+                DueDate = BusinessClock.Today.AddDays(-1)
+            });
+        var earlierBody = await earlier.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
+        earlier.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        earlierBody!.Message.Should().Contain("不能早于上一条跟进记录");
+
+        var sameDay = await Post<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{landing.Id}/followups",
+            new SaveTestProjectFollowupRequest
+            {
+                Content = "同日补充跟进",
+                DueDate = first.Data!.DueDate
+            });
+        sameDay.Data!.DueDate.Should().Be(first.Data.DueDate);
+    }
+
+    [Fact]
     public async Task Project_export_contains_filtered_projects_and_corresponding_materials_with_remark()
     {
         await Login();

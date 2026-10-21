@@ -600,6 +600,17 @@ public class TestProjectService : ITestProjectService
         EnsureMaxLength(content, 2000, "落地情况");
         var dueDate = request.DueDate?.Date ?? BusinessClock.Today;
         EnsureFollowupDate(dueDate);
+        var latestDueDate = await _db.TestProjectFollowups
+            .Where(x => x.ProjectId == projectId)
+            .Select(x => (DateTime?)x.DueDate)
+            .MaxAsync();
+        if (latestDueDate.HasValue && dueDate < latestDueDate.Value.Date)
+        {
+            throw new BizException(
+                4001,
+                $"跟进日期不能早于上一条跟进记录（{latestDueDate.Value:yyyy-MM-dd}），同一天可以新增");
+        }
+
         var followup = new TestProjectFollowup
         {
             ProjectId = projectId,
