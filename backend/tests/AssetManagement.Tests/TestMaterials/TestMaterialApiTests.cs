@@ -1033,8 +1033,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             $"/api/test-projects/{landing.Id}/followups/{created.Data!.Id}",
             new SaveTestProjectFollowupRequest
             {
-                Content = "第二轮落地情况",
-                DueDate = new DateTime(2026, 7, 17)
+                Content = "第二轮落地情况"
             });
         var list = await _client.GetFromJsonAsync<ApiResult<List<TestProjectFollowupDto>>>(
             $"/api/test-projects/{landing.Id}/followups");
@@ -1042,10 +1041,10 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var projectSummary = projects!.Data!.Single(x => x.Id == landing.Id);
 
         updated.Data!.Content.Should().Be("第二轮落地情况");
-        updated.Data.DueDate.Should().Be(new DateTime(2026, 7, 17));
+        updated.Data.DueDate.Should().Be(new DateTime(2026, 7, 10));
         list!.Data!.Should().ContainSingle(x => x.Id == created.Data.Id && x.Content == "第二轮落地情况");
         projectSummary.LatestFollowUpContent.Should().Be("第二轮落地情况");
-        projectSummary.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 24));
+        projectSummary.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 17));
 
         var deleted = await _client.DeleteAsync($"/api/test-projects/{landing.Id}/followups/{created.Data.Id}");
         var afterDelete = await _client.GetFromJsonAsync<ApiResult<List<TestProjectFollowupDto>>>(
@@ -1090,8 +1089,9 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
                 DueDate = BusinessClock.Today.AddDays(1)
             });
         var futureUpdateBody = await futureUpdate.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
-        futureUpdate.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        futureUpdateBody!.Message.Should().Contain("不能晚于今天");
+        futureUpdate.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        futureUpdateBody!.Code.Should().Be(4094);
+        futureUpdateBody.Message.Should().Contain("历史跟进日期不可修改");
     }
 
     [Fact]

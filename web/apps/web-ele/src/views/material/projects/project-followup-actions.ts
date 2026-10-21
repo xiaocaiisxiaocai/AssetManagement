@@ -1,4 +1,8 @@
-import type { TestProjectFollowup, TestProjectItem } from '#/api/test-project';
+import type {
+  SaveTestProjectFollowupPayload,
+  TestProjectFollowup,
+  TestProjectItem,
+} from '#/api/test-project';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
@@ -133,10 +137,12 @@ export function bindProjectFollowupActions(
     }
     followupSaving.value = true;
     try {
-      const payload = {
+      const payload: SaveTestProjectFollowupPayload = {
         content: followupForm.content.trim(),
-        dueDate: followupForm.dueDate || null,
       };
+      if (!editingFollowupId.value) {
+        payload.dueDate = followupForm.dueDate || null;
+      }
       await (editingFollowupId.value
         ? updateTestProjectFollowupApi(
             project.id,

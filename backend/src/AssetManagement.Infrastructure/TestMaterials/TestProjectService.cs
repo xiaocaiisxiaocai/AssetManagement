@@ -627,9 +627,13 @@ public class TestProjectService : ITestProjectService
         var content = (request.Content ?? "").Trim();
         if (string.IsNullOrWhiteSpace(content)) throw new BizException(4001, "请填写落地情况");
         EnsureMaxLength(content, 2000, "落地情况");
-        var dueDate = request.DueDate?.Date ?? followup.DueDate;
-        EnsureFollowupDate(dueDate);
-        followup.DueDate = dueDate;
+        if (request.DueDate.HasValue && request.DueDate.Value.Date != followup.DueDate.Date)
+        {
+            throw new BizException(4094, "历史跟进日期不可修改，请只修改跟进内容");
+        }
+
+        // 跟进日期是历史记录的业务归属，只能在新增时确定，编辑时保持不变。
+        EnsureFollowupDate(followup.DueDate);
         followup.Content = content;
         await _db.SaveChangesAsync();
         var result = (await ToFollowupDtos(new[] { followup })).Single();

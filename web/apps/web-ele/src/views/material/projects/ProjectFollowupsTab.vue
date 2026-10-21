@@ -62,6 +62,7 @@ const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
               <ElDatePicker
                 v-model="form.dueDate"
                 :disabled-date="disabledFollowupDate"
+                :disabled="Boolean(editingId)"
                 placeholder="选择对应周期日期"
                 style="width: 100%"
                 type="date"
