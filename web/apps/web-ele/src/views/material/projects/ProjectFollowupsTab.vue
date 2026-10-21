@@ -16,7 +16,7 @@ import {
   ElTimelineItem,
 } from 'element-plus';
 
-import { formatDate, formatDateTime } from '#/utils/date-format';
+import { formatDateTime } from '#/utils/date-format';
 
 import { isFutureFollowupDate } from './followup-date-rules';
 
@@ -118,33 +118,32 @@ const disabledFollowupDate = (date: Date) => isFutureFollowupDate(date);
             :key="item.id"
             placement="top"
           >
-            <article class="followup-record">
+            <div class="followup-record-heading">
               <div class="followup-record-meta">
                 <span>{{ item.filledByName || '-' }}</span>
-                <span>{{ formatDate(item.dueDate) }}</span>
                 <span>{{ formatDateTime(item.filledAt) }}</span>
               </div>
-              <div class="followup-content-row">
-                <div class="followup-content">{{ item.content }}</div>
-                <div v-if="canWrite" class="record-actions">
-                  <ElButton
-                    link
-                    size="small"
-                    type="primary"
-                    @click="emit('edit', item)"
-                  >
-                    编辑
-                  </ElButton>
-                  <ElButton
-                    link
-                    size="small"
-                    type="danger"
-                    @click="emit('remove', item)"
-                  >
-                    删除
-                  </ElButton>
-                </div>
+              <div v-if="canWrite" class="record-actions">
+                <ElButton
+                  link
+                  size="small"
+                  type="primary"
+                  @click="emit('edit', item)"
+                >
+                  编辑
+                </ElButton>
+                <ElButton
+                  link
+                  size="small"
+                  type="danger"
+                  @click="emit('remove', item)"
+                >
+                  删除
+                </ElButton>
               </div>
+            </div>
+            <article class="followup-record">
+              <div class="followup-content">{{ item.content }}</div>
             </article>
           </ElTimelineItem>
         </ElTimeline>
