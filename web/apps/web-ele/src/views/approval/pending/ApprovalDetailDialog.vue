@@ -13,6 +13,7 @@ import {
 } from 'element-plus';
 
 import WorkflowProgressDetail from '#/components/workflow/WorkflowProgressDetail.vue';
+import { getWorkflowProgressEmptyText } from '#/components/workflow/workflow-progress-empty-text';
 import { formatDate, formatDateTime } from '#/utils/date-format';
 
 defineProps<{
@@ -61,6 +62,13 @@ function getBizTypeLabel(type: string) {
     material_transfer: '测试料件流转',
   };
   return map[type] || type;
+}
+
+function progressEmptyText(flow: ApprovalFlow | null) {
+  return getWorkflowProgressEmptyText({
+    source: flow?.bizType === 'material_transfer' ? 'material' : 'asset',
+    status: flow?.status,
+  });
 }
 </script>
 
@@ -124,7 +132,10 @@ function getBizTypeLabel(type: string) {
         </span>
       </ElDescriptionsItem>
       <ElDescriptionsItem :span="2" label="完整流转">
-        <WorkflowProgressDetail :steps="selected.progressSteps || []" />
+        <WorkflowProgressDetail
+          :empty-text="progressEmptyText(selected)"
+          :steps="selected.progressSteps || []"
+        />
       </ElDescriptionsItem>
       <ElDescriptionsItem
         v-if="activeNodeOptions.length > 1"

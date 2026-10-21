@@ -5,7 +5,13 @@ import { ElTag, ElTimeline, ElTimelineItem } from 'element-plus';
 
 import { formatDateTime } from '#/utils/date-format';
 
-defineProps<{ steps: WorkflowProgressStep[] }>();
+withDefaults(
+  defineProps<{
+    emptyText?: string;
+    steps: WorkflowProgressStep[];
+  }>(),
+  { emptyText: '暂无流转记录' },
+);
 
 function isRejected(step: WorkflowProgressStep) {
   return step.assignees.some((person) => person.status === 'rejected');
@@ -82,13 +88,19 @@ function opinionText(step: WorkflowProgressStep) {
           </ElTag>
         </div>
       </div>
+      <div
+        v-else-if="step.state === 'completed' && step.completedBy"
+        class="workflow-step-people"
+      >
+        处理人：{{ step.completedBy }}
+      </div>
       <div v-else class="workflow-step-people">待系统确定处理人</div>
       <div v-if="step.opinion" class="workflow-step-opinion">
         {{ isRejected(step) ? '驳回原因' : '意见' }}：{{ opinionText(step) }}
       </div>
     </ElTimelineItem>
   </ElTimeline>
-  <div v-else class="workflow-progress-empty">暂无流转记录</div>
+  <div v-else class="workflow-progress-empty">{{ emptyText }}</div>
 </template>
 
 <style scoped src="./WorkflowProgressDetail.css"></style>

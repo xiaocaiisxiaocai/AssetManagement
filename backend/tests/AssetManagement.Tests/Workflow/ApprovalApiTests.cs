@@ -315,6 +315,70 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         record.ProgressSteps.Should().Contain(step => step.NodeId == nodeId && step.State == "completed");
     }
 
+    [Fact]
+    public async Task Historical_user_task_token_remains_visible_after_workflow_definition_changes()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        int adminId;
+        string adminName;
+        int workflowId;
+        int flowId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var admin = await db.Users.AsNoTracking().SingleAsync(user => user.EmployeeNo == "1001");
+            adminId = admin.Id;
+            adminName = admin.Name;
+            workflowId = await db.Workflows
+                .Where(workflow => workflow.BizType == "borrow" && workflow.IsActive)
+                .Select(workflow => workflow.Id)
+                .SingleAsync();
+
+            var legacyFlow = new ApprovalFlow
+            {
+                FlowNo = Unique("LEGACY"),
+                BizType = "borrow",
+                WorkflowId = workflowId,
+                AssetId = asset.Id,
+                AssetNo = asset.AssetNo,
+                AssetName = asset.Name,
+                ApplicantId = adminId,
+                Applicant = adminName,
+                Reason = "历史节点兼容回归",
+                Status = FlowStatus.Approved,
+                ApplyTime = DateTime.UtcNow.AddMinutes(-2),
+                Deadline = DateTime.UtcNow,
+                BpmnTokens = new Dictionary<string, BpmnToken>
+                {
+                    ["Task_legacySupervisor"] = new()
+                    {
+                        NodeId = "Task_legacySupervisor",
+                        NodeName = "历史直属主管审批",
+                        Status = BpmnTokenStatus.Skipped,
+                        Approver = adminName,
+                        Opinion = "[撤回] 申请人主动撤回",
+                        StartedAt = DateTime.UtcNow.AddMinutes(-2),
+                        CompletedAt = DateTime.UtcNow.AddMinutes(-1)
+                    }
+                }
+            };
+            db.ApprovalFlows.Add(legacyFlow);
+            await db.SaveChangesAsync();
+            flowId = legacyFlow.Id;
+        }
+
+        var page = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/mine-page?page=1&pageSize=20&flowId={flowId}");
+        var resultFlow = page!.Data!.Items.Should().ContainSingle().Which;
+
+        resultFlow.ProgressSteps.Should().ContainSingle(step =>
+            step.NodeId == "Task_legacySupervisor" &&
+            step.NodeName == "历史直属主管审批" &&
+            step.State == "completed" &&
+            step.CompletedBy == adminName);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

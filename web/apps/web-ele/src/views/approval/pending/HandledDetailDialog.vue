@@ -10,13 +10,27 @@ import {
 } from 'element-plus';
 
 import WorkflowProgressDetail from '#/components/workflow/WorkflowProgressDetail.vue';
+import { getWorkflowProgressEmptyText } from '#/components/workflow/workflow-progress-empty-text';
 import { formatDateTime } from '#/utils/date-format';
 
-defineProps<{
+const props = defineProps<{
   handledSelected: ApprovalWorkItem | null;
 }>();
 
 const visible = defineModel<boolean>('visible', { default: false });
+
+function progressEmptyText() {
+  const selected = props.handledSelected;
+  const directTransfer =
+    selected?.source === 'material' &&
+    'directTransfer' in selected.raw &&
+    selected.raw.directTransfer;
+  return getWorkflowProgressEmptyText({
+    directTransfer,
+    source: selected?.source,
+    status: selected?.status,
+  });
+}
 
 function approvalActionLabel(action: null | string | undefined) {
   return action === 'reject' ? '已驳回' : '已通过';
@@ -82,6 +96,7 @@ function flowStatusLabel(status: string) {
       </ElDescriptionsItem>
       <ElDescriptionsItem :span="2" label="完整审批记录">
         <WorkflowProgressDetail
+          :empty-text="progressEmptyText()"
           :steps="handledSelected.raw.progressSteps || []"
         />
       </ElDescriptionsItem>

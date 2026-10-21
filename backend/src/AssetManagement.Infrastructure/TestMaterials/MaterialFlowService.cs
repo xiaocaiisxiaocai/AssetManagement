@@ -1109,16 +1109,19 @@ public class MaterialFlowService : IMaterialFlowService
                 !context.Processes.TryGetValue(flow.WorkflowId.Value, out var process)) continue;
             foreach (var token in flow.BpmnTokens.Values)
             {
-                var node = process.FindNode(token.NodeId);
+                var node = BpmnProgressNodeResolver.Resolve(process, token);
                 if (node?.Type != BpmnNodeType.UserTask) continue;
                 foreach (var execution in token.History)
                     userIds.UnionWith(GetCompletedStepUserIds(ToHistoricalToken(token, execution)));
-                if (token.Status == BpmnTokenStatus.Completed)
+                if (token.Status == BpmnTokenStatus.Completed ||
+                    BpmnProgressNodeResolver.HasHistoricalActivity(token))
                     userIds.UnionWith(GetCompletedStepUserIds(token));
             }
 
             var pendingNodes = flow.CurrentNodeIds
-                .Select(process.FindNode)
+                .Select(nodeId => flow.BpmnTokens.TryGetValue(nodeId, out var token)
+                    ? BpmnProgressNodeResolver.Resolve(process, token)
+                    : process.FindNode(nodeId))
                 .Where(node => node?.Type == BpmnNodeType.UserTask)
                 .Cast<BpmnNode>()
                 .Concat(flow.Status == FlowStatus.Pending
@@ -1201,20 +1204,23 @@ public class MaterialFlowService : IMaterialFlowService
         var completed = new List<WorkflowProgressStepDto>();
         foreach (var token in flow.BpmnTokens.Values.OrderBy(x => x.CompletedAt ?? x.StartedAt))
         {
-            var node = process.FindNode(token.NodeId);
+            var node = BpmnProgressNodeResolver.Resolve(process, token);
             if (node?.Type != BpmnNodeType.UserTask) continue;
             foreach (var execution in token.History.OrderBy(x => x.CompletedAt))
                 completed.Add(await BuildProgressStepAsync(node, flow, ToHistoricalToken(token, execution), "completed", false, renderContext));
-            if (token.Status == BpmnTokenStatus.Completed)
+            if (token.Status == BpmnTokenStatus.Completed ||
+                BpmnProgressNodeResolver.HasHistoricalActivity(token))
                 completed.Add(await BuildProgressStepAsync(node, flow, token, "completed", false, renderContext));
         }
 
         var current = new List<WorkflowProgressStepDto>();
         foreach (var nodeId in flow.CurrentNodeIds)
         {
-            var node = process.FindNode(nodeId);
-            if (node?.Type != BpmnNodeType.UserTask) continue;
             flow.BpmnTokens.TryGetValue(nodeId, out var token);
+            var node = token is null
+                ? process.FindNode(nodeId)
+                : BpmnProgressNodeResolver.Resolve(process, token);
+            if (node?.Type != BpmnNodeType.UserTask) continue;
             current.Add(await BuildProgressStepAsync(node, flow, token, "current", false, renderContext));
         }
 

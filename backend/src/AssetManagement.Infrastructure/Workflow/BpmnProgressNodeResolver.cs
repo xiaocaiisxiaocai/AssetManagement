@@ -1,0 +1,39 @@
+using AssetManagement.Domain.Workflow;
+
+namespace AssetManagement.Infrastructure.Workflow;
+
+/// <summary>
+/// Resolves a workflow token to a renderable approval node.
+///
+/// Workflow definitions are editable and older flow instances keep the node
+/// ids from the definition that was active when they were created.  When that
+/// definition has since been replaced, a historical user-task token no longer
+/// exists in the current process.  Keep the persisted token visible instead of
+/// silently dropping it from the progress timeline.
+/// </summary>
+internal static class BpmnProgressNodeResolver
+{
+    public static BpmnNode? Resolve(BpmnProcess process, BpmnToken token)
+    {
+        var currentNode = process.FindNode(token.NodeId);
+        if (currentNode is not null) return currentNode;
+        if (!LooksLikeHistoricalUserTask(token)) return null;
+
+        return new BpmnNode
+        {
+            Id = token.NodeId,
+            Name = string.IsNullOrWhiteSpace(token.NodeName) ? token.NodeId : token.NodeName,
+            Type = BpmnNodeType.UserTask
+        };
+    }
+
+    public static bool HasHistoricalActivity(BpmnToken token)
+        => !string.IsNullOrWhiteSpace(token.Approver)
+           || !string.IsNullOrWhiteSpace(token.Opinion)
+           || token.History.Count > 0
+           || token.SignStates is { Count: > 0 };
+
+    private static bool LooksLikeHistoricalUserTask(BpmnToken token)
+        => token.NodeId.StartsWith("Task", StringComparison.OrdinalIgnoreCase)
+           || HasHistoricalActivity(token);
+}
