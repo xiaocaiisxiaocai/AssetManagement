@@ -85,10 +85,9 @@ const emit = defineEmits<{
 const visible = defineModel<boolean>('visible', { required: true });
 const activeTab = defineModel<string>('activeTab', { required: true });
 const flowActiveTab = defineModel<string>('flowActiveTab', { required: true });
-const followupForm = defineModel<{ content: string; dueDate: string }>(
-  'followupForm',
-  { required: true },
-);
+const followupForm = defineModel<{ content: string }>('followupForm', {
+  required: true,
+});
 const handledQuery = defineModel<{ page: number; pageSize: number }>(
   'handledQuery',
   { required: true },

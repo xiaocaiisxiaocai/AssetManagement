@@ -5,7 +5,6 @@ import { computed } from 'vue';
 
 import {
   ElButton,
-  ElDatePicker,
   ElEmpty,
   ElForm,
   ElFormItem,
@@ -16,9 +15,7 @@ import {
   ElTimelineItem,
 } from 'element-plus';
 
-import { formatDate, formatDateTime } from '#/utils/date-format';
-
-import { isFutureFollowupDate } from './followup-date-rules';
+import { formatDate } from '#/utils/date-format';
 
 const props = defineProps<{
   editingId: null | number;
@@ -33,33 +30,10 @@ const emit = defineEmits<{
   remove: [followup: TestProjectFollowup];
   save: [];
 }>();
-const form = defineModel<{ content: string; dueDate: string }>('form', {
-  required: true,
-});
+const form = defineModel<{ content: string }>('form', { required: true });
 const canWrite = computed(
   () => props.project.canWriteFollowUp && !props.project.isDeleted,
 );
-const latestFollowupDate = computed(() => {
-  const dates = props.followups
-    .map((item) => item.dueDate?.slice(0, 10))
-    .filter((date): date is string => Boolean(date));
-  return dates.reduce<string | null>(
-    (latest, current) => (!latest || current > latest ? current : latest),
-    null,
-  );
-});
-const disabledFollowupDate = (date: Date) => {
-  if (isFutureFollowupDate(date)) return true;
-  if (props.editingId || !latestFollowupDate.value) return false;
-
-  const candidate = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-  );
-  const earliest = new Date(`${latestFollowupDate.value}T00:00:00`);
-  return candidate.getTime() < earliest.getTime();
-};
 </script>
 
 <template>
@@ -72,30 +46,12 @@ const disabledFollowupDate = (date: Date) => {
         <div class="panel-heading">
           <div>
             <h3>{{ editingId ? '编辑跟进记录' : '新增跟进记录' }}</h3>
-            <p>记录本周期进展、问题和下一步动作。</p>
+            <p>提交时自动记录当天，历史日期不可修改。</p>
           </div>
           <ElTag v-if="!canWrite" type="info">只读</ElTag>
         </div>
         <template v-if="canWrite">
           <ElForm label-position="top">
-            <ElFormItem label="跟进日期">
-              <ElDatePicker
-                v-model="form.dueDate"
-                :disabled-date="disabledFollowupDate"
-                :disabled="Boolean(editingId)"
-                placeholder="选择对应周期日期"
-                style="width: 100%"
-                type="date"
-                value-format="YYYY-MM-DD"
-              />
-              <p v-if="editingId" class="followup-date-hint">
-                历史跟进日期不可修改
-              </p>
-              <p v-else-if="latestFollowupDate" class="followup-date-hint">
-                已有跟进至
-                {{ formatDate(latestFollowupDate) }}，同日或之后可新增
-              </p>
-            </ElFormItem>
             <ElFormItem label="落地情况">
               <ElInput
                 v-model="form.content"
@@ -149,7 +105,7 @@ const disabledFollowupDate = (date: Date) => {
             <div class="followup-record-heading">
               <div class="followup-record-meta">
                 <span>{{ item.filledByName || '-' }}</span>
-                <span>{{ formatDateTime(item.filledAt) }}</span>
+                <span>{{ formatDate(item.dueDate) }}</span>
               </div>
               <div v-if="canWrite" class="record-actions">
                 <ElButton

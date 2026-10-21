@@ -92,10 +92,7 @@ export function createProjectPageState() {
   const followupLoading = ref(false);
   const followupSaving = ref(false);
   const editingFollowupId = ref<null | number>(null);
-  const followupForm = reactive({
-    content: '',
-    dueDate: '',
-  });
+  const followupForm = reactive({ content: '' });
   const materialLoading = ref(false);
   const materials = ref<MaterialItem[]>([]);
   const materialTotal = ref(0);

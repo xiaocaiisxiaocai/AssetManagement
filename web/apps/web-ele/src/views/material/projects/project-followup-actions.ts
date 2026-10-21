@@ -13,8 +13,6 @@ import {
   updateTestProjectFollowupApi,
 } from '#/api/test-project';
 
-import { isFutureFollowupDate, localTodayText } from './followup-date-rules';
-
 export function bindProjectFollowupActions(
   page: Record<string, any>,
   deps: {
@@ -71,10 +69,7 @@ export function bindProjectFollowupActions(
     activeProjectTab.value = 'stages';
     followups.value = [];
     editingFollowupId.value = null;
-    Object.assign(followupForm, {
-      content: '',
-      dueDate: localTodayText(),
-    });
+    Object.assign(followupForm, { content: '' });
     followupDrawerVisible.value = true;
     await Promise.allSettled([
       loadFollowups(row.id),
@@ -103,18 +98,12 @@ export function bindProjectFollowupActions(
 
   function editFollowup(row: TestProjectFollowup) {
     editingFollowupId.value = row.id;
-    Object.assign(followupForm, {
-      content: row.content,
-      dueDate: row.dueDate ? row.dueDate.slice(0, 10) : '',
-    });
+    Object.assign(followupForm, { content: row.content });
   }
 
   function cancelFollowupEdit() {
     editingFollowupId.value = null;
-    Object.assign(followupForm, {
-      content: '',
-      dueDate: localTodayText(),
-    });
+    Object.assign(followupForm, { content: '' });
   }
 
   async function saveFollowup() {
@@ -128,21 +117,11 @@ export function bindProjectFollowupActions(
       ElMessage.warning('请填写落地情况');
       return;
     }
-    if (
-      followupForm.dueDate &&
-      isFutureFollowupDate(new Date(`${followupForm.dueDate}T00:00:00`))
-    ) {
-      ElMessage.warning('跟进日期不能晚于今天');
-      return;
-    }
     followupSaving.value = true;
     try {
       const payload: SaveTestProjectFollowupPayload = {
         content: followupForm.content.trim(),
       };
-      if (!editingFollowupId.value) {
-        payload.dueDate = followupForm.dueDate || null;
-      }
       await (editingFollowupId.value
         ? updateTestProjectFollowupApi(
             project.id,
