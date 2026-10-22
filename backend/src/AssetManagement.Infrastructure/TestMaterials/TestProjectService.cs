@@ -547,7 +547,11 @@ public class TestProjectService : ITestProjectService
         if (await _db.TestMaterials.AnyAsync(x => x.ProjectId == id))
             throw new BizException(4092, "该项目下仍有测试料件(含已删除),不能彻底删除");
         if (await _db.TestProjectFollowups.AnyAsync(x => x.ProjectId == id))
-            throw new BizException(4092, "该项目仍有跟进历史,不能彻底删除");
+        {
+            if (!_accessScope.IsAdmin)
+                throw new BizException(4092, "该项目仍有跟进历史,不能彻底删除");
+            await _db.TestProjectFollowups.Where(x => x.ProjectId == id).ExecuteDeleteAsync();
+        }
         if (await _db.ProjectTestStages.AnyAsync(x => x.ProjectId == id) ||
             await _db.ProjectReportDocuments.AnyAsync(x => x.ProjectId == id))
             throw new BizException(4092, "该项目仍有测试阶段或报告归档，不能彻底删除");

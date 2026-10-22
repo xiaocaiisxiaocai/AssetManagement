@@ -152,7 +152,20 @@ public class ReportServiceTests : MySqlFixtureBase
             new Asset { AssetNo = "PC-SCOPE-3", Name = "其他部门", CategoryId = category.Id, DepartmentId = other.Id, Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow });
         await _db.SaveChangesAsync();
 
-        var service = CreateServiceFor(new Claim(ClaimTypes.Role, "supervisor"), new Claim("departmentId", root.Id.ToString()));
+        var supervisor = new User
+        {
+            EmployeeNo = $"RPT-{Guid.NewGuid():N}"[..20],
+            Name = "报表主管",
+            PasswordHash = "x",
+            IsActive = true,
+            DepartmentId = root.Id
+        };
+        _db.Users.Add(supervisor);
+        await _db.SaveChangesAsync();
+        var service = CreateServiceFor(
+            supervisor.Id,
+            new Claim(ClaimTypes.Role, "supervisor"),
+            new Claim("departmentId", other.Id.ToString()));
         var summary = await service.GetSummaryAsync();
 
         summary.Total.Should().Be(2);
@@ -168,7 +181,7 @@ public class ReportServiceTests : MySqlFixtureBase
         _db.Assets.Add(new Asset { AssetNo = "PC-CLOSED-1", Name = "不可见资产", CategoryId = category.Id, Status = AssetStatus.Available, CreatedAt = DateTime.UtcNow });
         await _db.SaveChangesAsync();
 
-        var summary = await CreateServiceFor(new Claim(ClaimTypes.Role, "supervisor")).GetSummaryAsync();
+        var summary = await CreateServiceFor(999, new Claim(ClaimTypes.Role, "supervisor")).GetSummaryAsync();
 
         summary.Total.Should().Be(0);
     }
@@ -323,9 +336,9 @@ public class ReportServiceTests : MySqlFixtureBase
         (await _db.Notifications.CountAsync()).Should().Be(0);
     }
 
-    private ReportService CreateServiceFor(params Claim[] claims)
+    private ReportService CreateServiceFor(int userId, params Claim[] claims)
     {
-        var identityClaims = new[] { new Claim(ClaimTypes.NameIdentifier, "999") }.Concat(claims);
+        var identityClaims = new[] { new Claim(ClaimTypes.NameIdentifier, userId.ToString()) }.Concat(claims);
         var accessor = new HttpContextAccessor
         {
             HttpContext = new DefaultHttpContext

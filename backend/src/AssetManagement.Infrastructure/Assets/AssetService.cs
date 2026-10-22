@@ -160,7 +160,7 @@ public class AssetService : IAssetService
     public async Task<AssetDto> CreateAsync(CreateAssetRequest request)
     {
         EnsureAssetName(request.Name);
-        EnsureCanAssignDepartment(request.DepartmentId);
+        await EnsureCanAssignDepartmentAsync(request.DepartmentId);
         await EnsureActiveDepartment(request.DepartmentId);
         var locationName = NormalizeLocationName(request.LocationName);
         await EnsureActiveCustodianAsync(request.CustodianId, request.DepartmentId);
@@ -240,7 +240,7 @@ public class AssetService : IAssetService
         var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
         if (asset.IsDeleted) throw new BizException(4048, "资产不存在");
-        EnsureCanManage(asset);
+        await EnsureCanManageAsync(asset);
         if (request.Status != asset.Status || request.CustodianId != asset.CustodianId || request.DepartmentId != asset.DepartmentId)
             throw new BizException(4095, "资产状态、保管人和归属部门只能通过审批流转变更");
         var category = await _db.AssetCategories.AsNoTracking()
@@ -302,7 +302,7 @@ public class AssetService : IAssetService
         {
             throw new BizException(4048, "资产不存在");
         }
-        EnsureCanManage(asset);
+        await EnsureCanManageAsync(asset);
         if (asset.Status == AssetStatus.Borrowed)
         {
             throw new BizException(4092, "借出中资产不能删除");
@@ -334,7 +334,7 @@ public class AssetService : IAssetService
             .AsTracking()
             .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "资产不存在");
-        EnsureCanManage(asset);
+        await EnsureCanManageAsync(asset);
         if (!asset.IsDeleted)
         {
             throw new BizException(4097, "请先删除资产后再彻底删除");
@@ -365,7 +365,7 @@ public class AssetService : IAssetService
     {
         var asset = await _db.Assets.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "资产不存在");
-        EnsureCanManage(asset);
+        await EnsureCanManageAsync(asset);
         if (!asset.IsDeleted)
         {
             throw new BizException(4099, "资产未删除，无需恢复");
@@ -494,8 +494,8 @@ public class AssetService : IAssetService
                 .ToListAsync())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var conditionOptions = await LoadConditionOptionsAsync();
-        var currentUserDepartmentId = CurrentUserDepartmentId();
-        var allowedDepartmentIds = AllowedDepartmentIds();
+        var currentUserDepartmentId = await CurrentDepartmentIdAsync();
+        var allowedDepartmentIds = await AllowedDepartmentIdsAsync();
         return rows.Select((cells, index) => ValidateRow(
             index + 2,
             cells,
@@ -706,7 +706,8 @@ public class AssetService : IAssetService
     }
 
     // 返回当前用户允许管理的部门 ID 集合；null 表示不受部门范围限制。
-    private int[]? AllowedDepartmentIds()
+    // 部门以用户当前资料为准，不使用登录时写入 JWT 的部门。
+    private async Task<int[]?> AllowedDepartmentIdsAsync()
     {
         var user = _httpContextAccessor.HttpContext?.User;
         if (user is null)
@@ -714,26 +715,20 @@ public class AssetService : IAssetService
             return null;
         }
         var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
-        if (roles.Contains("admin"))
+        if (roles.Contains("admin") || !roles.Contains("supervisor"))
         {
             return null;
         }
-        if (roles.Contains("supervisor"))
-        {
-            var deptIdClaim = user.FindFirst("departmentId")?.Value;
-            if (int.TryParse(deptIdClaim, out var userDeptId))
-            {
-                return DescendantDepartmentIds(userDeptId);
-            }
-            return Array.Empty<int>();
-        }
-        return null;
+        var departmentId = await CurrentDepartmentIdAsync();
+        return departmentId.HasValue
+            ? DescendantDepartmentIds(departmentId.Value)
+            : Array.Empty<int>();
     }
 
     // 查看权限由 asset:view 控制；编辑、删除、恢复等管理动作仍受部门范围隔离。
-    private void EnsureCanManage(Asset asset)
+    private async Task EnsureCanManageAsync(Asset asset)
     {
-        var allowed = AllowedDepartmentIds();
+        var allowed = await AllowedDepartmentIdsAsync();
         if (allowed != null && (!asset.DepartmentId.HasValue || !allowed.Contains(asset.DepartmentId.Value)))
         {
             throw new BizException(4047, "无权访问该资产");
@@ -741,9 +736,9 @@ public class AssetService : IAssetService
     }
 
     // 校验当前用户是否有权将资产归属到目标部门(防止部门主管把资产划入/划出无权部门)
-    private void EnsureCanAssignDepartment(int? departmentId)
+    private async Task EnsureCanAssignDepartmentAsync(int? departmentId)
     {
-        var allowed = AllowedDepartmentIds();
+        var allowed = await AllowedDepartmentIdsAsync();
         if (allowed != null && (!departmentId.HasValue || !allowed.Contains(departmentId.Value)))
         {
             throw new BizException(4047, "无权将资产归属到该部门");
@@ -778,11 +773,15 @@ public class AssetService : IAssetService
         }
     }
 
-    // 当前用户所属部门(用于导入资产的部门归属)
-    private int? CurrentUserDepartmentId()
+    // 当前用户所属部门以数据库为准，避免调部门后仍沿用登录令牌里的旧部门。
+    private async Task<int?> CurrentDepartmentIdAsync()
     {
-        var claim = _httpContextAccessor.HttpContext?.User.FindFirst("departmentId")?.Value;
-        return int.TryParse(claim, out var id) ? id : null;
+        var value = _httpContextAccessor.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(value, out var userId)) return null;
+        return await _db.Users.AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => user.DepartmentId)
+            .SingleOrDefaultAsync();
     }
 
     private async Task<string> NextAssetNo(AssetCategory category)
@@ -864,7 +863,7 @@ public class AssetService : IAssetService
         var returnDates = activeBorrowFlows
             .GroupBy(x => x.AssetId)
             .ToDictionary(group => group.Key, group => group.First().ReturnDate);
-        var manageableDepartmentIds = AllowedDepartmentIds();
+        var manageableDepartmentIds = await AllowedDepartmentIdsAsync();
 
         return list.Select(x =>
         {

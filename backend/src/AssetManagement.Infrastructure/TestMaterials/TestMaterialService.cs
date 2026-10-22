@@ -370,7 +370,7 @@ public class TestMaterialService : ITestMaterialService
         return await GetAsync(id);
     }
 
-    // ===== 部门隔离(逻辑比照 AssetService.ApplyQuery) =====
+    // 非管理员可见：所在部门范围内项目的料件，以及本人保管或参与流转的料件。
     private async Task<IQueryable<TestMaterial>> ApplyQueryAsync(IQueryable<TestMaterial> q, TestMaterialQuery query)
     {
         var deleteStatus = query.DeleteStatus?.Trim().ToLowerInvariant();
@@ -383,22 +383,23 @@ public class TestMaterialService : ITestMaterialService
 
         var user = _http.HttpContext?.User;
         var roles = user?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray() ?? [];
-        var allowed = await AllowedDepartmentIdsAsync();
-        if (roles.Contains("supervisor") && allowed != null)
-            q = q.Where(x => x.DepartmentId.HasValue && allowed.Contains(x.DepartmentId.Value));
-        else if (!roles.Contains("admin"))
+        if (!roles.Contains("admin"))
         {
             var currentUserId = CurrentUserId();
             if (!currentUserId.HasValue)
                 q = q.Where(_ => false);
             else
-                q = q.Where(x => x.CustodianId == currentUserId.Value ||
-                    _db.TestProjects.Any(project =>
-                        project.Id == x.ProjectId && project.OwnerId == currentUserId.Value) ||
+            {
+                var userId = currentUserId.Value;
+                var visibleProjects = await _projectAccess.ApplyVisibilityAsync(
+                    _db.TestProjects.AsQueryable(), userId);
+                q = q.Where(material =>
+                    visibleProjects.Any(project => project.Id == material.ProjectId) ||
+                    material.CustodianId == userId ||
                     _db.MaterialFlows.Any(flow =>
-                        flow.MaterialId == x.Id &&
-                        (flow.ApplicantId == currentUserId.Value ||
-                         flow.TransfereeId == currentUserId.Value)));
+                        flow.MaterialId == material.Id &&
+                        (flow.ApplicantId == userId || flow.TransfereeId == userId)));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(query.MaterialNo))
@@ -453,10 +454,15 @@ public class TestMaterialService : ITestMaterialService
         if (roles.Contains("admin")) return null;
         if (roles.Contains("supervisor"))
         {
-            var deptIdClaim = user.FindFirst("departmentId")?.Value;
-            if (int.TryParse(deptIdClaim, out var deptId))
-                return await DescendantDepartmentIdsAsync(deptId);
-            return Array.Empty<int>();
+            var supervisorId = CurrentUserId();
+            if (!supervisorId.HasValue) return Array.Empty<int>();
+            var supervisorDepartmentId = await _db.Users.AsNoTracking()
+                .Where(x => x.Id == supervisorId.Value)
+                .Select(x => x.DepartmentId)
+                .SingleOrDefaultAsync();
+            return supervisorDepartmentId.HasValue
+                ? await DescendantDepartmentIdsAsync(supervisorDepartmentId.Value)
+                : Array.Empty<int>();
         }
         var currentUserId = CurrentUserId();
         if (!currentUserId.HasValue) return Array.Empty<int>();
@@ -491,24 +497,21 @@ public class TestMaterialService : ITestMaterialService
         var user = _http.HttpContext?.User;
         var roles = user?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray() ?? [];
         if (roles.Contains("admin")) return;
-        var allowed = await AllowedDepartmentIdsAsync();
-        if (roles.Contains("supervisor"))
-        {
-            if (allowed != null && (!m.DepartmentId.HasValue || !allowed.Contains(m.DepartmentId.Value)))
-                throw new BizException(4047, "无权访问该测试料件");
-            return;
-        }
-
         var currentUserId = CurrentUserId();
-        if (!currentUserId.HasValue ||
-            (m.CustodianId != currentUserId.Value &&
-             !await _db.TestProjects.AnyAsync(x =>
-                 x.Id == m.ProjectId && x.OwnerId == currentUserId.Value) &&
-             !await _db.MaterialFlows.AnyAsync(x =>
-                 x.MaterialId == m.Id &&
-                 (x.ApplicantId == currentUserId.Value ||
-                  x.TransfereeId == currentUserId.Value))))
+        if (!currentUserId.HasValue)
             throw new BizException(4047, "无权访问该测试料件");
+        if (m.CustodianId == currentUserId.Value ||
+            await _db.MaterialFlows.AnyAsync(x =>
+                x.MaterialId == m.Id &&
+                (x.ApplicantId == currentUserId.Value ||
+                 x.TransfereeId == currentUserId.Value)))
+            return;
+
+        var project = await _db.TestProjects.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == m.ProjectId);
+        if (project is not null && await _projectAccess.CanViewAsync(project, currentUserId.Value))
+            return;
+        throw new BizException(4047, "无权访问该测试料件");
     }
 
     private async Task EnsureCanAssignDepartmentAsync(int? departmentId)

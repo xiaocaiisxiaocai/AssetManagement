@@ -35,7 +35,8 @@ public class ReportService : IReportService
 
     public async Task<AssetSummaryDto> GetSummaryAsync()
     {
-        var assets = ApplyAssetScope(_db.Assets.Where(x => !x.IsDeleted));
+        var allowedDepartmentIds = await AllowedDepartmentIdsAsync();
+        var assets = ApplyAssetScope(_db.Assets.Where(x => !x.IsDeleted), allowedDepartmentIds);
 
         // 优化：使用数据库聚合而非全部加载到内存
         var total = await assets.CountAsync();
@@ -131,7 +132,8 @@ public class ReportService : IReportService
     public async Task<PagedResult<BorrowReportRow>> QueryBorrowedAsync(BorrowReportQuery query)
     {
         var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
-        var flows = ApplyBorrowQuery(_db.ApprovalFlows.AsNoTracking(), query);
+        var allowedDepartmentIds = await AllowedDepartmentIdsAsync();
+        var flows = ApplyBorrowQuery(_db.ApprovalFlows.AsNoTracking(), query, allowedDepartmentIds);
         var total = await flows.CountAsync();
         var offset = Pagination.GetOffset(page, pageSize, total);
         var pageFlows = offset.HasValue
@@ -143,7 +145,7 @@ public class ReportService : IReportService
 
         return new PagedResult<BorrowReportRow>
         {
-            Items = await ToBorrowRows(pageFlows),
+            Items = await ToBorrowRows(pageFlows, allowedDepartmentIds),
             Total = total,
             Page = page,
             PageSize = pageSize
@@ -156,13 +158,14 @@ public class ReportService : IReportService
         {
             new[] { "流程号", "资产编号", "资产名称", "分类", "借用人", "部门", "申请时间", "预计归还", "状态" }
         };
-        var exportQuery = ApplyBorrowQuery(_db.ApprovalFlows.AsNoTracking(), query);
+        var allowedDepartmentIds = await AllowedDepartmentIdsAsync();
+        var exportQuery = ApplyBorrowQuery(_db.ApprovalFlows.AsNoTracking(), query, allowedDepartmentIds);
         if (await exportQuery.CountAsync() > AppConstants.MaxExportRows)
             throw new BizException(4130, $"单次最多导出 {AppConstants.MaxExportRows} 条数据，请缩小筛选范围");
         var flows = await exportQuery
             .OrderByDescending(x => x.ApplyTime)
             .ToListAsync();
-        rows.AddRange((await ToBorrowRows(flows)).Select(x => new[]
+        rows.AddRange((await ToBorrowRows(flows, allowedDepartmentIds)).Select(x => new[]
         {
             x.FlowNo,
             x.AssetNo,
@@ -180,7 +183,8 @@ public class ReportService : IReportService
     public async Task<List<OverdueReportRow>> QueryOverdueAsync()
     {
         var today = BusinessClock.TodayDateOnly;
-        var flows = ApplyOverdueQuery(today)
+        var allowedDepartmentIds = await AllowedDepartmentIdsAsync();
+        var flows = ApplyOverdueQuery(today, allowedDepartmentIds)
             .OrderByDescending(x => x.ApplyTime)
             .Take(AppConstants.MaxExportRows + 1);
         var overdueFlows = await flows.ToListAsync();
@@ -194,14 +198,15 @@ public class ReportService : IReportService
             return (Flow: flow, Due: due, Days: today.DayNumber - due.DayNumber);
         }).ToList();
 
-        return await ToOverdueRows(overdue);
+        return await ToOverdueRows(overdue, allowedDepartmentIds);
     }
 
     public async Task<OverdueReportPage> QueryOverduePageAsync(OverdueReportQuery query)
     {
         var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
         var today = BusinessClock.TodayDateOnly;
-        var flows = ApplyOverdueQuery(today);
+        var allowedDepartmentIds = await AllowedDepartmentIdsAsync();
+        var flows = ApplyOverdueQuery(today, allowedDepartmentIds);
         var total = await flows.CountAsync();
         var seriousCutoff = today.AddDays(-10);
         var seriousTotal = await flows.CountAsync(x => x.ReturnDate < seriousCutoff);
@@ -223,7 +228,7 @@ public class ReportService : IReportService
 
         return new OverdueReportPage
         {
-            Items = await ToOverdueRows(overdue),
+            Items = await ToOverdueRows(overdue, allowedDepartmentIds),
             Total = total,
             SeriousTotal = seriousTotal,
             Page = page,
@@ -240,7 +245,8 @@ public class ReportService : IReportService
         }
 
         var today = BusinessClock.TodayDateOnly;
-        var flows = await ApplyOverdueQuery(today)
+        var allowedDepartmentIds = await AllowedDepartmentIdsAsync();
+        var flows = await ApplyOverdueQuery(today, allowedDepartmentIds)
             .Where(x => ids.Contains(x.AssetId))
             .ToListAsync();
         var overdue = flows.Select(flow =>
@@ -248,11 +254,11 @@ public class ReportService : IReportService
             var due = flow.ReturnDate!.Value;
             return (Flow: flow, Due: due, Days: today.DayNumber - due.DayNumber);
         }).ToList();
-        return await ToOverdueRows(overdue);
+        return await ToOverdueRows(overdue, allowedDepartmentIds);
     }
 
-    private IQueryable<ApprovalFlow> ApplyOverdueQuery(DateOnly today)
-        => ApplyFlowScope(_db.ApprovalFlows.AsNoTracking())
+    private IQueryable<ApprovalFlow> ApplyOverdueQuery(DateOnly today, int[]? allowedDepartmentIds)
+        => ApplyFlowScope(_db.ApprovalFlows.AsNoTracking(), allowedDepartmentIds)
             .Where(x => x.BizType == "borrow" && x.Status == "approved"
                         && x.ConfirmedAt == null && x.ReturnDate != null
                         && x.ReturnDate < today
@@ -351,9 +357,12 @@ public class ReportService : IReportService
         return (auditLog, notification);
     }
 
-    private IQueryable<ApprovalFlow> ApplyBorrowQuery(IQueryable<ApprovalFlow> queryable, BorrowReportQuery query)
+    private IQueryable<ApprovalFlow> ApplyBorrowQuery(
+        IQueryable<ApprovalFlow> queryable,
+        BorrowReportQuery query,
+        int[]? allowedDepartmentIds)
     {
-        queryable = ApplyFlowScope(queryable).Where(x =>
+        queryable = ApplyFlowScope(queryable, allowedDepartmentIds).Where(x =>
             x.BizType == "borrow"
             && x.Status == "approved"
             && _db.Assets.Any(a => a.Id == x.AssetId && !a.IsDeleted));
@@ -414,11 +423,13 @@ public class ReportService : IReportService
         return queryable;
     }
 
-    private async Task<List<BorrowReportRow>> ToBorrowRows(IEnumerable<ApprovalFlow> flows)
+    private async Task<List<BorrowReportRow>> ToBorrowRows(
+        IEnumerable<ApprovalFlow> flows,
+        int[]? allowedDepartmentIds)
     {
         var list = flows.ToList();
         var assetIds = list.Select(x => x.AssetId).Distinct().ToArray();
-        var assets = await ApplyAssetScope(_db.Assets.AsNoTracking())
+        var assets = await ApplyAssetScope(_db.Assets.AsNoTracking(), allowedDepartmentIds)
             .Where(x => assetIds.Contains(x.Id) && !x.IsDeleted)
             .ToDictionaryAsync(x => x.Id);
         var categoryIds = assets.Values.Select(x => x.CategoryId).Distinct().ToArray();
@@ -451,10 +462,12 @@ public class ReportService : IReportService
         }).ToList();
     }
 
-    private async Task<List<OverdueReportRow>> ToOverdueRows(List<(ApprovalFlow Flow, DateOnly Due, int Days)> overdue)
+    private async Task<List<OverdueReportRow>> ToOverdueRows(
+        List<(ApprovalFlow Flow, DateOnly Due, int Days)> overdue,
+        int[]? allowedDepartmentIds)
     {
         var assetIds = overdue.Select(x => x.Flow.AssetId).Distinct().ToArray();
-        var assets = await ApplyAssetScope(_db.Assets.AsNoTracking())
+        var assets = await ApplyAssetScope(_db.Assets.AsNoTracking(), allowedDepartmentIds)
             .Where(x => assetIds.Contains(x.Id) && !x.IsDeleted)
             .ToDictionaryAsync(x => x.Id);
         var categoryIds = assets.Values.Select(x => x.CategoryId).Distinct().ToArray();
@@ -571,27 +584,22 @@ public class ReportService : IReportService
     private static decimal Percent(int count, int total)
         => total == 0 ? 0 : decimal.Round(count * 100m / total, 2);
 
-    private IQueryable<Asset> ApplyAssetScope(IQueryable<Asset> queryable)
-    {
-        var allowedDepartmentIds = AllowedDepartmentIds();
-        return allowedDepartmentIds is null
+    private static IQueryable<Asset> ApplyAssetScope(IQueryable<Asset> queryable, int[]? allowedDepartmentIds)
+        => allowedDepartmentIds is null
             ? queryable
             : queryable.Where(x => x.DepartmentId.HasValue && allowedDepartmentIds.Contains(x.DepartmentId.Value));
-    }
 
-    private IQueryable<ApprovalFlow> ApplyFlowScope(IQueryable<ApprovalFlow> queryable)
-    {
-        var allowedDepartmentIds = AllowedDepartmentIds();
-        return allowedDepartmentIds is null
+    private IQueryable<ApprovalFlow> ApplyFlowScope(IQueryable<ApprovalFlow> queryable, int[]? allowedDepartmentIds)
+        => allowedDepartmentIds is null
             ? queryable
             : queryable.Where(x => _db.Assets.Any(a => a.Id == x.AssetId
                 && !a.IsDeleted
                 && a.DepartmentId.HasValue
                 && allowedDepartmentIds.Contains(a.DepartmentId.Value)));
-    }
 
-    // null 表示共享资产池不受限；空数组表示部门主管配置不完整，必须 fail-closed。
-    private int[]? AllowedDepartmentIds()
+    // null 表示共享资产池不受限；空数组表示部门主管没有可用部门，必须 fail-closed。
+    // 部门取用户当前资料，不使用登录令牌中的 departmentId。
+    private async Task<int[]?> AllowedDepartmentIdsAsync()
     {
         var principal = _httpContextAccessor.HttpContext?.User;
         if (principal?.Identity?.IsAuthenticated != true)
@@ -605,11 +613,21 @@ public class ReportService : IReportService
             return null;
         }
 
-        if (!int.TryParse(principal.FindFirst("departmentId")?.Value, out var rootDepartmentId))
+        if (!int.TryParse(principal.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
         {
             return Array.Empty<int>();
         }
 
+        var rootDepartmentId = await _db.Users.AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => user.DepartmentId)
+            .SingleOrDefaultAsync();
+        if (!rootDepartmentId.HasValue)
+        {
+            return Array.Empty<int>();
+        }
+
+        var rootId = rootDepartmentId.Value;
         // 历史部门停用后，主管仍须能够处理其后代部门的归还和报表数据。
         var departments = _cache.GetOrCreate(DepartmentTreeCacheKey, entry =>
         {
@@ -618,14 +636,14 @@ public class ReportService : IReportService
                 .Select(x => new { x.Id, x.ParentId })
                 .ToList();
         })!;
-        if (!departments.Any(x => x.Id == rootDepartmentId))
+        if (!departments.Any(x => x.Id == rootId))
         {
             return Array.Empty<int>();
         }
 
-        var result = new HashSet<int> { rootDepartmentId };
+        var result = new HashSet<int> { rootId };
         var queue = new Queue<int>();
-        queue.Enqueue(rootDepartmentId);
+        queue.Enqueue(rootId);
         while (queue.TryDequeue(out var parentId))
         {
             foreach (var childId in departments.Where(x => x.ParentId == parentId).Select(x => x.Id))

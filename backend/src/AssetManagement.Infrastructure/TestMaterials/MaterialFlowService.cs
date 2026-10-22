@@ -749,6 +749,7 @@ public class MaterialFlowService : IMaterialFlowService
     private async Task EnsureMaterialInScopeAsync(TestMaterial material, User user)
     {
         if (IsAdmin(user) || !IsSupervisor(user)) return;
+        if (await ProjectIsVisibleAsync(material.ProjectId, user)) return;
         if (!user.DepartmentId.HasValue)
             throw new BizException(4048, "测试料件不存在");
         var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
@@ -756,14 +757,32 @@ public class MaterialFlowService : IMaterialFlowService
             throw new BizException(4048, "测试料件不存在");
     }
 
+    private async Task<bool> ProjectIsVisibleAsync(int projectId, User user)
+    {
+        var ownerId = await _db.TestProjects.AsNoTracking()
+            .Where(project => project.Id == projectId)
+            .Select(project => project.OwnerId)
+            .SingleOrDefaultAsync();
+        if (ownerId == user.Id) return true;
+        if (!ownerId.HasValue || !user.DepartmentId.HasValue) return false;
+        var ownerDepartmentId = await _db.Users.AsNoTracking()
+            .Where(owner => owner.Id == ownerId.Value)
+            .Select(owner => owner.DepartmentId)
+            .SingleOrDefaultAsync();
+        if (!ownerDepartmentId.HasValue) return false;
+        var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
+        return allowed.Contains(ownerDepartmentId.Value);
+    }
+
     private async Task EnsureCanViewFlowAsync(MaterialFlow flow, User user)
     {
         if (IsAdmin(user) || flow.ApplicantId == user.Id || flow.TransfereeId == user.Id)
             return;
         if (await CanApprove(flow, user)) return;
+        var material = await _db.TestMaterials.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.MaterialId);
+        if (material is not null && await ProjectIsVisibleAsync(material.ProjectId, user)) return;
         if (IsSupervisor(user) && user.DepartmentId.HasValue)
         {
-            var material = await _db.TestMaterials.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.MaterialId);
             var allowed = await DescendantDepartmentIdsAsync(user.DepartmentId.Value);
             if (material?.DepartmentId is int departmentId && allowed.Contains(departmentId)) return;
         }

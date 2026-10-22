@@ -59,9 +59,14 @@ internal sealed class TestProjectAccessScope
 
     public async Task EnsureCanViewAsync(TestProject project, int userId)
     {
-        if (IsAdmin) return;
-        if (userId > 0 && await IsInDepartmentScopeAsync(project.OwnerId, userId)) return;
+        if (await CanViewAsync(project, userId)) return;
         throw new BizException(4031, "无权查看其他部门的测试项目");
+    }
+
+    public async Task<bool> CanViewAsync(TestProject project, int userId)
+    {
+        if (IsAdmin) return true;
+        return userId > 0 && await IsInDepartmentScopeAsync(project.OwnerId, userId);
     }
 
     public async Task<IQueryable<TestProject>> ApplyVisibilityAsync(IQueryable<TestProject> query, int userId)

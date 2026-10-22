@@ -75,6 +75,136 @@ public class TestMaterialAccessScopeApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Same_department_viewer_sees_materials_of_a_visible_project()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var employeeRole = await db.Roles.SingleAsync(x => x.Code == "employee");
+        var department = new Department { Code = $"VA-{suffix}", Name = $"同部门-{suffix}", IsActive = true };
+        var otherDepartment = new Department { Code = $"VB-{suffix}", Name = $"料件外部门-{suffix}", IsActive = true };
+        db.Departments.AddRange(department, otherDepartment);
+        await db.SaveChangesAsync();
+        var viewer = NewUser($"VV-{suffix}", "同部门查看人", department.Id);
+        var owner = NewUser($"VO-{suffix}", "同部门负责人", department.Id);
+        var outsider = NewUser($"VX-{suffix}", "外部门负责人", otherDepartment.Id);
+        db.Users.AddRange(viewer, owner, outsider);
+        await db.SaveChangesAsync();
+        db.UserRoles.AddRange(
+            new UserRole { UserId = viewer.Id, RoleId = employeeRole.Id },
+            new UserRole { UserId = owner.Id, RoleId = employeeRole.Id },
+            new UserRole { UserId = outsider.Id, RoleId = employeeRole.Id });
+        var visibleProject = NewProject($"同部门项目-{suffix}", owner.Id);
+        var hiddenProject = NewProject($"外部门项目-{suffix}", outsider.Id);
+        db.TestProjects.AddRange(visibleProject, hiddenProject);
+        await db.SaveChangesAsync();
+        var visibleMaterial = NewMaterial($"VIS-{suffix}", "同部门项目料件", visibleProject.Id, otherDepartment.Id, owner.Id);
+        var hiddenMaterial = NewMaterial($"HID-{suffix}", "外部门项目料件", hiddenProject.Id, department.Id, outsider.Id);
+        db.TestMaterials.AddRange(visibleMaterial, hiddenMaterial);
+        await db.SaveChangesAsync();
+
+        await Login(viewer.EmployeeNo);
+        var projects = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>(
+            "/api/test-projects?deleteStatus=all");
+        var materials = await _client.GetFromJsonAsync<ApiResult<PagedResult<TestMaterialDto>>>(
+            $"/api/test-materials?projectId={visibleProject.Id}&deleteStatus=active&page=1&pageSize=20");
+
+        projects!.Data!.Should().Contain(x => x.Id == visibleProject.Id && x.MaterialCount == 1);
+        projects.Data.Should().NotContain(x => x.Id == hiddenProject.Id);
+        materials!.Data!.Items.Select(x => x.Id).Should().Contain(visibleMaterial.Id);
+        (await _client.GetAsync($"/api/test-materials/{visibleMaterial.Id}/detail"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.GetAsync($"/api/test-materials/{hiddenMaterial.Id}/detail"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Supervisor_sees_materials_by_project_scope_not_material_department()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var supervisorRole = await db.Roles.SingleAsync(x => x.Code == "supervisor");
+        var employeeRole = await db.Roles.SingleAsync(x => x.Code == "employee");
+        var ownDepartment = new Department { Code = $"MA-{suffix}", Name = $"主管项目部门-{suffix}", IsActive = true };
+        var otherDepartment = new Department { Code = $"MB-{suffix}", Name = $"主管料件部门-{suffix}", IsActive = true };
+        db.Departments.AddRange(ownDepartment, otherDepartment);
+        await db.SaveChangesAsync();
+        var supervisor = NewUser($"MS-{suffix}", "料件范围主管", ownDepartment.Id);
+        var ownOwner = NewUser($"MO-{suffix}", "范围内负责人", ownDepartment.Id);
+        var otherOwner = NewUser($"MX-{suffix}", "范围外负责人", otherDepartment.Id);
+        db.Users.AddRange(supervisor, ownOwner, otherOwner);
+        await db.SaveChangesAsync();
+        db.UserRoles.AddRange(
+            new UserRole { UserId = supervisor.Id, RoleId = supervisorRole.Id },
+            new UserRole { UserId = ownOwner.Id, RoleId = employeeRole.Id },
+            new UserRole { UserId = otherOwner.Id, RoleId = employeeRole.Id });
+        var ownProject = NewProject($"主管可见项目-{suffix}", ownOwner.Id);
+        var otherProject = NewProject($"主管不可见项目-{suffix}", otherOwner.Id);
+        db.TestProjects.AddRange(ownProject, otherProject);
+        await db.SaveChangesAsync();
+        var outsideDepartmentMaterial = new TestMaterial
+        {
+            MaterialNo = $"OUT-{suffix}",
+            Name = "归属外部门的可见料件",
+            ProjectId = ownProject.Id,
+            DepartmentId = null,
+            CustodianId = ownOwner.Id,
+            Quantity = 1,
+            Status = MaterialStatus.InUse,
+            CreatedAt = DateTime.UtcNow
+        };
+        var storedInOwnDepartment = NewMaterial(
+            $"IN-{suffix}", "放在主管部门的隐藏料件", otherProject.Id, ownDepartment.Id, otherOwner.Id);
+        db.TestMaterials.AddRange(outsideDepartmentMaterial, storedInOwnDepartment);
+        await db.SaveChangesAsync();
+
+        await Login(supervisor.EmployeeNo);
+        var materials = await _client.GetFromJsonAsync<ApiResult<PagedResult<TestMaterialDto>>>(
+            "/api/test-materials?deleteStatus=all&page=1&pageSize=100");
+
+        materials!.Data!.Items.Select(x => x.Id).Should().Contain(outsideDepartmentMaterial.Id)
+            .And.NotContain(storedInOwnDepartment.Id);
+    }
+
+    [Fact]
+    public async Task Admin_purge_removes_followups_with_the_project()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        int projectId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var admin = await db.Users.SingleAsync(x => x.EmployeeNo == "1001");
+            var project = NewProject($"可清跟进-{suffix}", admin.Id);
+            project.IsDeleted = true;
+            project.DeletedAt = DateTime.UtcNow;
+            db.TestProjects.Add(project);
+            await db.SaveChangesAsync();
+            db.TestProjectFollowups.Add(new TestProjectFollowup
+            {
+                ProjectId = project.Id,
+                DueDate = BusinessClock.Today,
+                Content = "随项目一并清除",
+                FilledById = admin.Id,
+                FilledAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+            projectId = project.Id;
+        }
+
+        await Login("1001");
+        var purged = await _client.DeleteAsync($"/api/test-projects/{projectId}/purge");
+        purged.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var check = _factory.Services.CreateScope();
+        var after = check.ServiceProvider.GetRequiredService<AppDbContext>();
+        (await after.TestProjects.AnyAsync(x => x.Id == projectId)).Should().BeFalse();
+        (await after.TestProjectFollowups.AnyAsync(x => x.ProjectId == projectId)).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Supervisor_can_manage_own_department_project_but_not_another_department_project()
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
