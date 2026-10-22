@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { ApprovalFlow } from '#/api/workflow';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -11,6 +12,8 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import { formatDateTime } from '#/utils/date-format';
 
 defineProps<{
@@ -41,20 +44,55 @@ function bizText(type: string) {
     ] ?? type
   );
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'flowNo', label: '流程编号' },
+  { key: 'assetNo', label: '资产编号' },
+  { key: 'assetName', label: '资产名称' },
+  { key: 'bizType', label: '业务类型' },
+  { key: 'applicant', label: '借用人' },
+  { key: 'department', label: '借用部门' },
+  { key: 'returnDate', label: '应归还日期' },
+  { key: 'applyTime', label: '申请时间' },
+  { key: 'reason', label: '借用事由' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('approval-confirm-return', tableColumns);
 </script>
 
 <template>
   <div class="table-panel-with-toolbar page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='approval-confirm-return']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable :data="flows" border height="100%" v-loading="loading">
-      <ElTableColumn label="流程编号" min-width="160" prop="flowNo" />
       <ElTableColumn
+        v-if="visibleColumn('flowNo')"
+        label="流程编号"
+        min-width="160"
+        prop="flowNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('assetNo')"
         class-name="hide-on-mobile"
         label="资产编号"
         min-width="140"
         prop="assetNo"
       />
-      <ElTableColumn label="资产名称" min-width="200" prop="assetName" />
       <ElTableColumn
+        v-if="visibleColumn('assetName')"
+        label="资产名称"
+        min-width="200"
+        prop="assetName"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('bizType')"
         align="center"
         class-name="hide-on-mobile"
         label="业务类型"
@@ -66,20 +104,28 @@ function bizText(type: string) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="借用人" min-width="130" prop="applicant" />
       <ElTableColumn
+        v-if="visibleColumn('applicant')"
+        label="借用人"
+        min-width="130"
+        prop="applicant"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('department')"
         class-name="hide-on-mobile"
         label="借用部门"
         min-width="150"
         prop="applicantDept"
       />
       <ElTableColumn
+        v-if="visibleColumn('returnDate')"
         class-name="hide-on-mobile"
         label="应归还日期"
         min-width="140"
         prop="returnDate"
       />
       <ElTableColumn
+        v-if="visibleColumn('applyTime')"
         class-name="hide-on-mobile"
         label="申请时间"
         min-width="180"
@@ -89,6 +135,7 @@ function bizText(type: string) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('reason')"
         class-name="hide-on-mobile"
         label="借用事由"
         min-width="200"
@@ -96,6 +143,7 @@ function bizText(type: string) {
         show-overflow-tooltip
       />
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"

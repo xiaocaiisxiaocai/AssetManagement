@@ -50,6 +50,7 @@ const emit = defineEmits<{
       </div>
     </div>
     <div class="asset-head-actions">
+      <span class="column-tools-host" data-column-tools="asset-list"></span>
       <ElButton v-if="access.canImport" @click="emit('import')">
         批量导入
       </ElButton>

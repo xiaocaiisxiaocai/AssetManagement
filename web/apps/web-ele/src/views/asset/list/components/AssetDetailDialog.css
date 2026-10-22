@@ -70,8 +70,23 @@
   margin-bottom: 16px;
 }
 
+.ad-tabs-shell {
+  position: relative;
+}
+
+.ad-log-tools {
+  position: absolute;
+  top: 8px;
+  right: 0;
+  z-index: 2;
+}
+
 .ad-tabs :deep(.el-tabs__header) {
   margin-bottom: 0;
+}
+
+.ad-tabs-shell.is-logs :deep(.el-tabs__nav-wrap) {
+  margin-right: 88px;
 }
 
 .ad-tabs :deep(.el-tabs__item) {

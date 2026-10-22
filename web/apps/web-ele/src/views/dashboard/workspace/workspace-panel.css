@@ -28,6 +28,12 @@
   overflow: visible;
 }
 
+.workspace-card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .workspace-card-header {
   display: flex;
   align-items: center;

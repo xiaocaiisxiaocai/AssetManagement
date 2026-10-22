@@ -170,37 +170,44 @@ function summaryText(summary: null | string | undefined) {
       <template v-if="detail">
         <AssetDetailHeader :detail="detail" :status-meta="statusMeta" />
 
-        <ElTabs v-model="activeTab" class="ad-tabs">
-          <ElTabPane label="基本信息" name="basic">
-            <AssetDetailBasicPane
-              :detail="detail"
-              :image-load-error="imageLoadError"
-              :image-urls="imageUrls"
-              :images-loading="imagesLoading"
-            />
-          </ElTabPane>
-          <ElTabPane
-            :label="`流转记录 ${custodyTimelineCount(detail.flows.length)}`"
-            name="flows"
-          >
-            <AssetDetailFlowsPane
-              :detail="detail"
-              :flow-status-meta="flowStatusMeta"
-              :flow-title="flowTitle"
-            />
-          </ElTabPane>
-          <ElTabPane
-            :label="`操作日志 ${detail.recentLogs.length}`"
-            name="logs"
-          >
-            <AssetDetailLogsPane
-              :action-tag="actionTag"
-              :action-text="actionText"
-              :detail="detail"
-              :summary-text="summaryText"
-            />
-          </ElTabPane>
-        </ElTabs>
+        <div :class="{ 'is-logs': activeTab === 'logs' }" class="ad-tabs-shell">
+          <span
+            v-show="activeTab === 'logs'"
+            class="column-tools-host ad-log-tools"
+            data-column-tools="asset-detail-logs"
+          ></span>
+          <ElTabs v-model="activeTab" class="ad-tabs">
+            <ElTabPane label="基本信息" name="basic">
+              <AssetDetailBasicPane
+                :detail="detail"
+                :image-load-error="imageLoadError"
+                :image-urls="imageUrls"
+                :images-loading="imagesLoading"
+              />
+            </ElTabPane>
+            <ElTabPane
+              :label="`流转记录 ${custodyTimelineCount(detail.flows.length)}`"
+              name="flows"
+            >
+              <AssetDetailFlowsPane
+                :detail="detail"
+                :flow-status-meta="flowStatusMeta"
+                :flow-title="flowTitle"
+              />
+            </ElTabPane>
+            <ElTabPane
+              :label="`操作日志 ${detail.recentLogs.length}`"
+              name="logs"
+            >
+              <AssetDetailLogsPane
+                :action-tag="actionTag"
+                :action-text="actionText"
+                :detail="detail"
+                :summary-text="summaryText"
+              />
+            </ElTabPane>
+          </ElTabs>
+        </div>
       </template>
       <ElEmpty v-else-if="!loading" description="暂无数据" />
     </div>

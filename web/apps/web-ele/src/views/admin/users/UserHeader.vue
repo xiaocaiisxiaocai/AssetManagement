@@ -19,6 +19,7 @@ const emit = defineEmits<{
       <h2 class="user-title">用户管理</h2>
     </div>
     <div class="user-header-actions">
+      <span class="column-tools-host" data-column-tools="admin-users"></span>
       <ElButton v-if="access.canImport" @click="emit('import')">
         批量导入
       </ElButton>

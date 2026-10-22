@@ -3,6 +3,7 @@ import type { UserListQuery } from './user-form';
 
 import type { RoleDto } from '#/api/role';
 import type { UserDto } from '#/api/user';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 import type { DepartmentOption } from '#/utils/department-options';
 
 import { computed } from 'vue';
@@ -17,7 +18,9 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
 import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import { buildUserActionAccess } from '#/views/permissions/action-access';
 
 const props = defineProps<{
@@ -49,14 +52,45 @@ const departmentFilterOptions = computed(() =>
 const roleFilterOptions = computed(() =>
   props.roles.map((role) => ({ label: role.name, value: role.id })),
 );
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'employeeNo', label: '工号' },
+  { key: 'name', label: '姓名' },
+  { key: 'department', label: '部门' },
+  { key: 'email', label: '邮箱' },
+  { key: 'roles', label: '角色' },
+  { key: 'status', label: '状态' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('admin-users', tableColumns);
 </script>
 
 <template>
   <div class="user-table-panel page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='admin-users']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable :data="users" border height="100%" v-loading="loading">
-      <ElTableColumn label="工号" min-width="120" prop="employeeNo" />
-      <ElTableColumn label="姓名" min-width="140" prop="name" />
       <ElTableColumn
+        v-if="visibleColumn('employeeNo')"
+        label="工号"
+        min-width="120"
+        prop="employeeNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('name')"
+        label="姓名"
+        min-width="140"
+        prop="name"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('department')"
         class-name="hide-on-mobile"
         label="部门"
         min-width="150"
@@ -77,12 +111,18 @@ const roleFilterOptions = computed(() =>
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('email')"
         class-name="hide-on-mobile"
         label="邮箱"
         min-width="180"
         prop="email"
       />
-      <ElTableColumn class-name="hide-on-mobile" label="角色" min-width="180">
+      <ElTableColumn
+        v-if="visibleColumn('roles')"
+        class-name="hide-on-mobile"
+        label="角色"
+        min-width="180"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="query.roleIds"
@@ -106,7 +146,12 @@ const roleFilterOptions = computed(() =>
           <span v-else class="user-empty-text">--</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="状态" width="100">
+      <ElTableColumn
+        v-if="visibleColumn('status')"
+        align="center"
+        label="状态"
+        width="100"
+      >
         <template #default="{ row }">
           <ElTag :type="row.isActive ? 'success' : 'danger'" size="small">
             {{ row.isActive ? '启用' : '禁用' }}
@@ -114,6 +159,7 @@ const roleFilterOptions = computed(() =>
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="admin-action-cell table-action-cell"
         fixed="right"

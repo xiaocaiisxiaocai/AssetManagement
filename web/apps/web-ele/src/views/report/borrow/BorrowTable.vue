@@ -2,6 +2,7 @@
 import type { CategoryNode } from '#/api/base-data';
 import type { BorrowReportRow } from '#/api/report';
 import type { UserOptionDto } from '#/api/user';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import { computed } from 'vue';
 
@@ -14,7 +15,9 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
 import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import { formatDateTime } from '#/utils/date-format';
 
 type BorrowQueryState = {
@@ -69,24 +72,51 @@ function statusText(status: string) {
 function statusType(status: string) {
   return status === 'returned' ? 'success' : 'warning';
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'flowNo', label: '流程编号' },
+  { key: 'asset', label: '资产' },
+  { key: 'category', label: '分类' },
+  { key: 'borrower', label: '借用人' },
+  { key: 'department', label: '部门' },
+  { key: 'applyTime', label: '申请时间' },
+  { key: 'returnDate', label: '预计归还' },
+  { key: 'status', label: '状态' },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('report-borrow', tableColumns);
 </script>
 
 <template>
   <div class="table-panel-with-toolbar page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='report-borrow']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable :data="rows" border height="100%" v-loading="loading">
       <ElTableColumn
+        v-if="visibleColumn('flowNo')"
         class-name="hide-on-mobile"
         label="流程编号"
         min-width="180"
         prop="flowNo"
       />
-      <ElTableColumn label="资产" min-width="220">
+      <ElTableColumn v-if="visibleColumn('asset')" label="资产" min-width="220">
         <template #default="{ row }">
           <div>{{ row.assetName }}</div>
           <ElTag size="small">{{ row.assetNo }}</ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn class-name="hide-on-mobile" label="分类" min-width="170">
+      <ElTableColumn
+        v-if="visibleColumn('category')"
+        class-name="hide-on-mobile"
+        label="分类"
+        min-width="170"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="query.categoryIds"
@@ -108,7 +138,12 @@ function statusType(status: string) {
           <span v-else class="empty-text">-</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="借用人" min-width="140" prop="borrower">
+      <ElTableColumn
+        v-if="visibleColumn('borrower')"
+        label="借用人"
+        min-width="140"
+        prop="borrower"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="query.borrowerIds"
@@ -123,12 +158,14 @@ function statusType(status: string) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('department')"
         class-name="hide-on-mobile"
         label="部门"
         min-width="120"
         prop="borrowerDept"
       />
       <ElTableColumn
+        v-if="visibleColumn('applyTime')"
         class-name="hide-on-mobile"
         label="申请时间"
         min-width="160"
@@ -138,12 +175,18 @@ function statusType(status: string) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('returnDate')"
         class-name="hide-on-mobile"
         label="预计归还"
         min-width="120"
         prop="returnDate"
       />
-      <ElTableColumn align="center" label="状态" width="110">
+      <ElTableColumn
+        v-if="visibleColumn('status')"
+        align="center"
+        label="状态"
+        width="110"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="query.statuses"

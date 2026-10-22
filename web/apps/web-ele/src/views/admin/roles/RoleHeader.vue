@@ -17,9 +17,12 @@ const emit = defineEmits<{
     <div>
       <h2 class="role-title">角色管理</h2>
     </div>
-    <ElButton v-if="access.canCreate" type="primary" @click="emit('create')">
-      新增角色
-    </ElButton>
+    <div class="page-actions">
+      <span class="column-tools-host" data-column-tools="admin-roles"></span>
+      <ElButton v-if="access.canCreate" type="primary" @click="emit('create')">
+        新增角色
+      </ElButton>
+    </div>
   </div>
 </template>
 

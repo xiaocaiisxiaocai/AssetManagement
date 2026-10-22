@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { OverdueReportRow } from '#/api/report';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -10,6 +11,9 @@ import {
   ElTableColumn,
   ElTag,
 } from 'element-plus';
+
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 
 type OverdueQueryState = {
   page: number;
@@ -33,10 +37,30 @@ const emit = defineEmits<{
   selectionChange: [selection: OverdueReportRow[]];
 }>();
 const query = defineModel<OverdueQueryState>('query', { required: true });
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'asset', label: '资产' },
+  { key: 'category', label: '分类' },
+  { key: 'borrower', label: '借用人' },
+  { key: 'department', label: '部门' },
+  { key: 'returnDate', label: '预计归还' },
+  { key: 'overdueDays', label: '逾期天数' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('report-overdue', tableColumns);
 </script>
 
 <template>
   <div class="table-panel page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='report-overdue']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable
       :data="rows"
       border
@@ -45,14 +69,24 @@ const query = defineModel<OverdueQueryState>('query', { required: true });
       v-loading="loading"
       @selection-change="emit('selectionChange', $event)"
     >
-      <ElTableColumn v-if="canRemind" type="selection" width="48" />
-      <ElTableColumn label="资产" min-width="220">
+      <ElTableColumn
+        v-if="canRemind"
+        align="center"
+        type="selection"
+        width="48"
+      />
+      <ElTableColumn v-if="visibleColumn('asset')" label="资产" min-width="220">
         <template #default="{ row }">
           <div>{{ row.assetName }}</div>
           <ElTag size="small">{{ row.assetNo }}</ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn class-name="hide-on-mobile" label="分类" min-width="170">
+      <ElTableColumn
+        v-if="visibleColumn('category')"
+        class-name="hide-on-mobile"
+        label="分类"
+        min-width="170"
+      >
         <template #default="{ row }">
           <button
             v-if="row.categoryCode"
@@ -66,24 +100,32 @@ const query = defineModel<OverdueQueryState>('query', { required: true });
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('borrower')"
         class-name="hide-on-mobile"
         label="借用人"
         min-width="120"
         prop="borrower"
       />
       <ElTableColumn
+        v-if="visibleColumn('department')"
         class-name="hide-on-mobile"
         label="部门"
         min-width="120"
         prop="borrowerDept"
       />
       <ElTableColumn
+        v-if="visibleColumn('returnDate')"
         class-name="hide-on-mobile"
         label="预计归还"
         min-width="120"
         prop="returnDate"
       />
-      <ElTableColumn align="center" label="逾期天数" width="120">
+      <ElTableColumn
+        v-if="visibleColumn('overdueDays')"
+        align="center"
+        label="逾期天数"
+        width="120"
+      >
         <template #default="{ row }">
           <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">
             {{ row.overdueDays }} 天
@@ -91,7 +133,7 @@ const query = defineModel<OverdueQueryState>('query', { required: true });
         </template>
       </ElTableColumn>
       <ElTableColumn
-        v-if="canRemind"
+        v-if="canRemind && visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"

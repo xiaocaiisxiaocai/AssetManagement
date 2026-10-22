@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { MaterialFlowItem } from '#/api/material';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -11,6 +12,8 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 
 import {
@@ -49,6 +52,19 @@ const flowStatusMeta: Record<
 function flowMetaOf(status: string) {
   return flowStatusMeta[status] ?? { label: status, tag: 'info' as const };
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'flowNo', label: '流转单号' },
+  { key: 'materialNo', label: '料件编号' },
+  { key: 'materialName', label: '料件名称' },
+  { key: 'transferee', label: '受让人' },
+  { key: 'reason', label: '原因' },
+  { key: 'status', label: '状态' },
+  { key: 'progress', label: '审批进度' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('project-flows-mine', tableColumns);
 </script>
 
 <template>
@@ -61,35 +77,57 @@ function flowMetaOf(status: string) {
       stripe
       v-loading="myLoading"
     >
-      <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
-      <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
       <ElTableColumn
+        v-if="visibleColumn('flowNo')"
+        label="流转单号"
+        min-width="170"
+        prop="flowNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('materialNo')"
+        label="料件编号"
+        min-width="150"
+        prop="materialNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('materialName')"
         label="料件名称"
         min-width="140"
         prop="materialName"
         show-overflow-tooltip
       />
       <ElTableColumn
+        v-if="visibleColumn('transferee')"
         class-name="hide-on-mobile"
         label="受让人"
         min-width="90"
         prop="transferee"
       />
       <ElTableColumn
+        v-if="visibleColumn('reason')"
         class-name="hide-on-mobile"
         label="原因"
         min-width="150"
         prop="reason"
         show-overflow-tooltip
       />
-      <ElTableColumn align="center" label="状态" width="110">
+      <ElTableColumn
+        v-if="visibleColumn('status')"
+        align="center"
+        label="状态"
+        width="110"
+      >
         <template #default="{ row }">
           <ElTag :type="flowMetaOf(row.status).tag" size="small">
             {{ flowMetaOf(row.status).label }}
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="审批进度" min-width="320">
+      <ElTableColumn
+        v-if="visibleColumn('progress')"
+        label="审批进度"
+        min-width="320"
+      >
         <template #default="{ row }">
           <WorkflowProgressSummary
             :current-steps="row.currentSteps"
@@ -99,6 +137,7 @@ function flowMetaOf(status: string) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"
@@ -131,6 +170,12 @@ function flowMetaOf(status: string) {
     </ElTable>
     <div class="table-bottom-pager">
       <div class="table-bottom-pager-left">
+        <TableColumnPicker
+          :columns="tableColumns"
+          :hidden-keys="hiddenKeys"
+          @reset="resetColumns"
+          @toggle="setColumnVisible"
+        />
         <span>共 {{ myCount }} 条记录</span>
         <span class="table-bottom-pager-divider">|</span>
         <span>每页</span>

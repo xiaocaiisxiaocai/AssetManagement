@@ -172,7 +172,9 @@
   --el-table-bg-color: var(--asset-page-surface);
   --el-table-tr-bg-color: var(--asset-page-surface);
   --el-table-row-hover-bg-color: var(--asset-page-surface-hover);
-  --el-table-header-bg-color: var(--asset-page-panel-header-solid);
+
+  /* 固定列单独读这个变量，且与普通表头规则优先级相同，必须跟可见表头同色。 */
+  --el-table-header-bg-color: var(--asset-page-blue-soft);
   --el-table-header-text-color: var(--asset-page-panel-header-text);
   --el-table-text-color: var(--asset-page-text);
 

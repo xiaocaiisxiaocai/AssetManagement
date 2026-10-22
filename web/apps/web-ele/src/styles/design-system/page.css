@@ -21,7 +21,6 @@
 
 /* 仪表盘与未进入一屏工作台的页壳按内容增高，由 main 整页滚动。 */
 .page-container:not(.page-fit),
-.material-home-page,
 .workspace-container,
 .asset-list-page:not(.page-fit),
 .backup-page:not(.page-fit),
@@ -186,4 +185,5 @@
 .page-actions {
   display: flex;
   gap: 12px;
+  align-items: center;
 }

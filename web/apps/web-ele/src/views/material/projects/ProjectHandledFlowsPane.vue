@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { MaterialFlowItem } from '#/api/material';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElOption,
@@ -10,6 +11,8 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 import { formatDateTime } from '#/utils/date-format';
 
@@ -32,6 +35,20 @@ const handledQuery = defineModel<{ page: number; pageSize: number }>(
 function approvalActionLabel(action?: null | string) {
   return action === 'reject' ? '已驳回' : '已通过';
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'flowNo', label: '流转单号' },
+  { key: 'materialNo', label: '料件编号' },
+  { key: 'materialName', label: '料件名称' },
+  { key: 'applicant', label: '发起人' },
+  { key: 'transferee', label: '受让人' },
+  { key: 'reason', label: '原因' },
+  { key: 'progress', label: '审批进度' },
+  { key: 'myAction', label: '我的处理' },
+  { key: 'myTime', label: '处理时间' },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('project-flows-handled', tableColumns);
 </script>
 
 <template>
@@ -44,34 +61,52 @@ function approvalActionLabel(action?: null | string) {
       stripe
       v-loading="handledLoading"
     >
-      <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
-      <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
       <ElTableColumn
+        v-if="visibleColumn('flowNo')"
+        label="流转单号"
+        min-width="170"
+        prop="flowNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('materialNo')"
+        label="料件编号"
+        min-width="150"
+        prop="materialNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('materialName')"
         label="料件名称"
         min-width="140"
         prop="materialName"
         show-overflow-tooltip
       />
       <ElTableColumn
+        v-if="visibleColumn('applicant')"
         class-name="hide-on-mobile"
         label="发起人"
         min-width="90"
         prop="applicant"
       />
       <ElTableColumn
+        v-if="visibleColumn('transferee')"
         class-name="hide-on-mobile"
         label="受让人"
         min-width="90"
         prop="transferee"
       />
       <ElTableColumn
+        v-if="visibleColumn('reason')"
         class-name="hide-on-mobile"
         label="原因"
         min-width="150"
         prop="reason"
         show-overflow-tooltip
       />
-      <ElTableColumn label="审批进度" min-width="320">
+      <ElTableColumn
+        v-if="visibleColumn('progress')"
+        label="审批进度"
+        min-width="320"
+      >
         <template #default="{ row }">
           <WorkflowProgressSummary
             :current-steps="row.currentSteps"
@@ -80,7 +115,12 @@ function approvalActionLabel(action?: null | string) {
           />
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="我的处理" width="110">
+      <ElTableColumn
+        v-if="visibleColumn('myAction')"
+        align="center"
+        label="我的处理"
+        width="110"
+      >
         <template #default="{ row }">
           <ElTag
             :type="row.myApprovalAction === 'reject' ? 'danger' : 'success'"
@@ -91,6 +131,7 @@ function approvalActionLabel(action?: null | string) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('myTime')"
         align="center"
         class-name="hide-on-mobile"
         label="处理时间"
@@ -103,6 +144,12 @@ function approvalActionLabel(action?: null | string) {
     </ElTable>
     <div class="table-bottom-pager">
       <div class="table-bottom-pager-left">
+        <TableColumnPicker
+          :columns="tableColumns"
+          :hidden-keys="hiddenKeys"
+          @reset="resetColumns"
+          @toggle="setColumnVisible"
+        />
         <span>共 {{ handledCount }} 条记录</span>
         <span class="table-bottom-pager-divider">|</span>
         <span>每页</span>

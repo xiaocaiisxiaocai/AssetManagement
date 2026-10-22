@@ -1,6 +1,8 @@
 <script lang="ts" setup>
-import type { ApprovalSource } from '../notification-flow-attempt';
 import type { ApprovalWorkItem } from '../approval-work-items';
+import type { ApprovalSource } from '../notification-flow-attempt';
+
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -12,7 +14,9 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
 import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 
 import { canWithdrawApproval } from '../approval-work-items';
@@ -65,13 +69,41 @@ function statusText(status: string) {
     }[status] ?? status
   );
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'flowNo', label: '流程编号' },
+  { key: 'source', label: '来源' },
+  { key: 'bizType', label: '类型' },
+  { key: 'objectName', label: '对象' },
+  { key: 'participant', label: '借用人/接收人' },
+  { key: 'progress', label: '审批进度' },
+  { key: 'status', label: '状态' },
+  { key: 'reason', label: '申请事由' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('approval-mine', tableColumns);
 </script>
 
 <template>
   <div class="mine-table-panel page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='approval-mine']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable :data="flows" border height="100%" v-loading="loading">
-      <ElTableColumn label="流程编号" min-width="180" prop="flowNo" />
       <ElTableColumn
+        v-if="visibleColumn('flowNo')"
+        label="流程编号"
+        min-width="180"
+        prop="flowNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('source')"
         align="center"
         class-name="hide-on-mobile"
         label="来源"
@@ -87,6 +119,7 @@ function statusText(status: string) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('bizType')"
         align="center"
         class-name="hide-on-mobile"
         label="类型"
@@ -121,14 +154,24 @@ function statusText(status: string) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="对象" min-width="180" prop="objectName" />
       <ElTableColumn
+        v-if="visibleColumn('objectName')"
+        label="对象"
+        min-width="180"
+        prop="objectName"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('participant')"
         class-name="hide-on-mobile"
         label="借用人/接收人"
         min-width="140"
         prop="participant"
       />
-      <ElTableColumn label="审批进度" min-width="310">
+      <ElTableColumn
+        v-if="visibleColumn('progress')"
+        label="审批进度"
+        min-width="310"
+      >
         <template #default="{ row }">
           <WorkflowProgressSummary
             :current-steps="row.raw.currentSteps"
@@ -137,7 +180,12 @@ function statusText(status: string) {
           />
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="状态" width="120">
+      <ElTableColumn
+        v-if="visibleColumn('status')"
+        align="center"
+        label="状态"
+        width="120"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="filters.statuses"
@@ -164,12 +212,14 @@ function statusText(status: string) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('reason')"
         class-name="hide-on-mobile"
         label="申请事由"
         min-width="220"
         prop="reason"
       />
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"

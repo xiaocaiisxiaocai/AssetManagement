@@ -3,6 +3,7 @@ import type {
   ProjectStageDto,
   ProjectStageStatus,
 } from '#/api/project-workspace';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import { computed } from 'vue';
 
@@ -16,6 +17,9 @@ import {
   ElTableColumn,
   ElTag,
 } from 'element-plus';
+
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 
 import {
   dateOnly,
@@ -116,6 +120,20 @@ function dateRange(stage: ProjectStageDto) {
   if (!stage.startDate && !stage.endDate) return '—';
   return `${dateOnly(stage.startDate) || '—'} 至 ${dateOnly(stage.endDate) || '—'}`;
 }
+
+const stageColumns: TableColumnOption[] = [
+  { key: 'seq', label: '阶段序号' },
+  { key: 'name', label: '阶段名称' },
+  { key: 'goal', label: '目标' },
+  { key: 'content', label: '测试内容' },
+  { key: 'result', label: '测试结果' },
+  { key: 'dates', label: '起止日期' },
+  { key: 'status', label: '状态' },
+  { key: 'report', label: '报告附件' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('project-stages', stageColumns);
 </script>
 
 <template>
@@ -154,7 +172,7 @@ function dateRange(stage: ProjectStageDto) {
               testingLocked
                 ? '测试阶段已锁定'
                 : currentStage
-                  ? currentStage.sequence + '. ' + currentStage.name
+                  ? `${currentStage.sequence}. ${currentStage.name}`
                   : '暂无进行中阶段'
             }}
           </strong>
@@ -207,6 +225,12 @@ function dateRange(stage: ProjectStageDto) {
           <div>
             <h3>测试阶段台账</h3>
           </div>
+          <TableColumnPicker
+            :columns="stageColumns"
+            :hidden-keys="hiddenKeys"
+            @reset="resetColumns"
+            @toggle="setColumnVisible"
+          />
         </header>
         <div class="stage-table-wrap" v-loading="loading">
           <ElTable
@@ -219,10 +243,20 @@ function dateRange(stage: ProjectStageDto) {
             row-key="id"
             table-layout="fixed"
           >
-            <ElTableColumn align="center" label="阶段序号" width="88">
+            <ElTableColumn
+              v-if="visibleColumn('seq')"
+              align="center"
+              label="阶段序号"
+              width="88"
+            >
               <template #default="{ row }">{{ row.sequence }}</template>
             </ElTableColumn>
-            <ElTableColumn align="center" label="阶段名称" min-width="150">
+            <ElTableColumn
+              v-if="visibleColumn('name')"
+              align="center"
+              label="阶段名称"
+              min-width="150"
+            >
               <template #default="{ row }">
                 <div class="stage-name-content">
                   <span :title="row.name" class="stage-name-cell">{{
@@ -238,31 +272,56 @@ function dateRange(stage: ProjectStageDto) {
                 </div>
               </template>
             </ElTableColumn>
-            <ElTableColumn align="center" label="目标" min-width="180">
+            <ElTableColumn
+              v-if="visibleColumn('goal')"
+              align="center"
+              label="目标"
+              min-width="180"
+            >
               <template #default="{ row }">
                 <span :title="row.objective || ''" class="multiline-preview">
                   {{ displayText(row.objective) }}
                 </span>
               </template>
             </ElTableColumn>
-            <ElTableColumn align="center" label="测试内容" min-width="220">
+            <ElTableColumn
+              v-if="visibleColumn('content')"
+              align="center"
+              label="测试内容"
+              min-width="220"
+            >
               <template #default="{ row }">
                 <span :title="row.testContent || ''" class="multiline-preview">
                   {{ displayText(row.testContent) }}
                 </span>
               </template>
             </ElTableColumn>
-            <ElTableColumn align="center" label="测试结果" min-width="240">
+            <ElTableColumn
+              v-if="visibleColumn('result')"
+              align="center"
+              label="测试结果"
+              min-width="240"
+            >
               <template #default="{ row }">
                 <span :title="row.testResult || ''" class="multiline-preview">
                   {{ displayText(row.testResult) }}
                 </span>
               </template>
             </ElTableColumn>
-            <ElTableColumn align="center" label="起止日期" width="190">
+            <ElTableColumn
+              v-if="visibleColumn('dates')"
+              align="center"
+              label="起止日期"
+              width="190"
+            >
               <template #default="{ row }">{{ dateRange(row) }}</template>
             </ElTableColumn>
-            <ElTableColumn align="center" label="状态" width="96">
+            <ElTableColumn
+              v-if="visibleColumn('status')"
+              align="center"
+              label="状态"
+              width="96"
+            >
               <template #default="{ row }">
                 <ElTag :type="statusMeta(row.status).type" size="small">
                   {{ statusMeta(row.status).label }}
@@ -270,6 +329,7 @@ function dateRange(stage: ProjectStageDto) {
               </template>
             </ElTableColumn>
             <ElTableColumn
+              v-if="visibleColumn('report')"
               align="center"
               fixed="right"
               label="报告附件"
@@ -294,7 +354,7 @@ function dateRange(stage: ProjectStageDto) {
               </template>
             </ElTableColumn>
             <ElTableColumn
-              v-if="canManage || canExport"
+              v-if="(canManage || canExport) && visibleColumn('actions')"
               :width="canManage ? 220 : 150"
               align="center"
               class-name="table-action-cell"

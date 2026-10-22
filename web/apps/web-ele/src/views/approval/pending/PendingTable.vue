@@ -1,6 +1,8 @@
 <script lang="ts" setup>
-import type { ApprovalSource } from '../notification-flow-attempt';
 import type { ApprovalWorkItem } from '../approval-work-items';
+import type { ApprovalSource } from '../notification-flow-attempt';
+
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -12,7 +14,9 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
 import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 import { formatDateTime } from '#/utils/date-format';
 
@@ -54,13 +58,43 @@ const bizTypeOptions = [
 function approvalActionLabel(action: null | string | undefined) {
   return action === 'reject' ? '已驳回' : '已通过';
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'flowNo', label: '流程单号' },
+  { key: 'source', label: '来源' },
+  { key: 'bizType', label: '业务类型' },
+  { key: 'objectName', label: '对象名称' },
+  { key: 'applicant', label: '申请人' },
+  { key: 'participant', label: '借用人/接收人' },
+  { key: 'applyTime', label: '申请时间' },
+  { key: 'progress', label: '审批进度' },
+  { key: 'myAction', label: '我的处理' },
+  { key: 'myTime', label: '处理时间' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('approval-pending', tableColumns);
 </script>
 
 <template>
   <div class="pending-table-panel page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='approval-pending']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable :data="flows" border height="100%" v-loading="loading">
-      <ElTableColumn label="流程单号" prop="flowNo" width="180" />
       <ElTableColumn
+        v-if="visibleColumn('flowNo')"
+        label="流程单号"
+        prop="flowNo"
+        width="180"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('source')"
         align="center"
         class-name="hide-on-mobile"
         label="来源"
@@ -76,6 +110,7 @@ function approvalActionLabel(action: null | string | undefined) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('bizType')"
         align="center"
         class-name="hide-on-mobile"
         label="业务类型"
@@ -115,25 +150,41 @@ function approvalActionLabel(action: null | string | undefined) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="对象名称" min-width="160" prop="objectName" />
       <ElTableColumn
+        v-if="visibleColumn('objectName')"
+        label="对象名称"
+        min-width="160"
+        prop="objectName"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('applicant')"
         class-name="hide-on-mobile"
         label="申请人"
         prop="applicant"
         width="120"
       />
       <ElTableColumn
+        v-if="visibleColumn('participant')"
         class-name="hide-on-mobile"
         label="借用人/接收人"
         prop="participant"
         width="140"
       />
-      <ElTableColumn class-name="hide-on-mobile" label="申请时间" width="170">
+      <ElTableColumn
+        v-if="visibleColumn('applyTime')"
+        class-name="hide-on-mobile"
+        label="申请时间"
+        width="170"
+      >
         <template #default="{ row }">
           {{ formatDateTime(row.applyTime) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="审批进度" min-width="320">
+      <ElTableColumn
+        v-if="visibleColumn('progress')"
+        label="审批进度"
+        min-width="320"
+      >
         <template #default="{ row }">
           <WorkflowProgressSummary
             :current-steps="row.raw.currentSteps"
@@ -143,7 +194,7 @@ function approvalActionLabel(action: null | string | undefined) {
         </template>
       </ElTableColumn>
       <ElTableColumn
-        v-if="viewMode === 'handled'"
+        v-if="viewMode === 'handled' && visibleColumn('myAction')"
         align="center"
         label="我的处理"
         width="110"
@@ -159,7 +210,7 @@ function approvalActionLabel(action: null | string | undefined) {
         </template>
       </ElTableColumn>
       <ElTableColumn
-        v-if="viewMode === 'handled'"
+        v-if="viewMode === 'handled' && visibleColumn('myTime')"
         class-name="hide-on-mobile"
         label="处理时间"
         width="170"
@@ -169,6 +220,7 @@ function approvalActionLabel(action: null | string | undefined) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"

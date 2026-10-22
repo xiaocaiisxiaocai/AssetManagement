@@ -3,6 +3,7 @@ import type { AssetListQueryState } from '../asset-list-state';
 
 import type { AssetItem, AssetStatus } from '#/api/asset';
 import type { UserOptionDto } from '#/api/user';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
 
 import { computed } from 'vue';
@@ -16,11 +17,13 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
 import {
   deleteFlagsFromStatus,
   deleteStatusFromFlags,
 } from '#/components/table/header-multi-filter';
 import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import { formatDate } from '#/utils/date-format';
 
 const props = defineProps<{
@@ -98,6 +101,24 @@ const statusOptions: Array<{
   { label: '借出', tag: 'warning', value: 1 },
 ];
 
+const tableColumns: TableColumnOption[] = [
+  { key: 'assetNo', label: '资产编号' },
+  { key: 'name', label: '资产名称' },
+  { key: 'department', label: '归属部门' },
+  { key: 'location', label: '存放位置' },
+  { key: 'custodian', label: '保管人' },
+  { key: 'quantity', label: '数量' },
+  { key: 'purchaseDate', label: '购入日期' },
+  { key: 'registrationTime', label: '资产登记日期' },
+  { key: 'condition', label: '目前状况' },
+  { key: 'remark', label: '备注' },
+  { key: 'photos', label: '照片' },
+  { key: 'status', label: '状态' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('asset-list', tableColumns);
+
 function statusMeta(status: AssetStatus) {
   return (
     statusOptions.find((item) => item.value === status) ?? {
@@ -115,6 +136,14 @@ function tableRowClassName({ row }: { row: AssetItem }) {
 
 <template>
   <div class="asset-table-panel table-scroll">
+    <Teleport defer to="[data-column-tools='asset-list']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable
       :data="assets"
       :row-class-name="tableRowClassName"
@@ -124,14 +153,21 @@ function tableRowClassName({ row }: { row: AssetItem }) {
       stripe
       v-loading="loading"
     >
-      <ElTableColumn label="资产编号" min-width="160" prop="assetNo" />
       <ElTableColumn
+        v-if="visibleColumn('assetNo')"
+        label="资产编号"
+        min-width="160"
+        prop="assetNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('name')"
         label="资产名称"
         min-width="180"
         prop="name"
         show-overflow-tooltip
       />
       <ElTableColumn
+        v-if="visibleColumn('department')"
         class-name="hide-on-mobile"
         label="归属部门"
         prop="departmentName"
@@ -149,6 +185,7 @@ function tableRowClassName({ row }: { row: AssetItem }) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('location')"
         class-name="hide-on-mobile"
         label="存放位置"
         prop="locationName"
@@ -156,6 +193,7 @@ function tableRowClassName({ row }: { row: AssetItem }) {
         width="140"
       />
       <ElTableColumn
+        v-if="visibleColumn('custodian')"
         class-name="hide-on-mobile"
         label="保管人"
         prop="custodianName"
@@ -175,8 +213,15 @@ function tableRowClassName({ row }: { row: AssetItem }) {
           />
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="数量" prop="quantity" width="80" />
       <ElTableColumn
+        v-if="visibleColumn('quantity')"
+        align="center"
+        label="数量"
+        prop="quantity"
+        width="80"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('purchaseDate')"
         align="center"
         class-name="hide-on-mobile"
         label="购入日期"
@@ -187,6 +232,7 @@ function tableRowClassName({ row }: { row: AssetItem }) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('registrationTime')"
         align="center"
         class-name="hide-on-mobile"
         label="资产登记日期"
@@ -197,6 +243,7 @@ function tableRowClassName({ row }: { row: AssetItem }) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('condition')"
         class-name="hide-on-mobile"
         label="目前状况"
         min-width="160"
@@ -204,6 +251,7 @@ function tableRowClassName({ row }: { row: AssetItem }) {
         show-overflow-tooltip
       />
       <ElTableColumn
+        v-if="visibleColumn('remark')"
         class-name="hide-on-mobile"
         label="备注"
         min-width="180"
@@ -211,6 +259,7 @@ function tableRowClassName({ row }: { row: AssetItem }) {
         show-overflow-tooltip
       />
       <ElTableColumn
+        v-if="visibleColumn('photos')"
         align="center"
         class-name="hide-on-mobile"
         label="照片"
@@ -227,7 +276,12 @@ function tableRowClassName({ row }: { row: AssetItem }) {
           <span v-else class="text-gray-400">-</span>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="状态" width="120">
+      <ElTableColumn
+        v-if="visibleColumn('status')"
+        align="center"
+        label="状态"
+        width="120"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="statusHeader"
@@ -248,6 +302,7 @@ function tableRowClassName({ row }: { row: AssetItem }) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"

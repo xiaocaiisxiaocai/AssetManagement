@@ -29,7 +29,7 @@
     align-items: stretch;
   }
 
-  .role-header > .el-button {
+  .role-header > .page-actions {
     align-self: flex-start;
     margin-left: 0;
   }

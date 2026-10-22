@@ -27,6 +27,7 @@
   flex-shrink: 0;
   flex-wrap: wrap;
   gap: 12px;
+  align-items: center;
 }
 
 @media (max-width: 768px) {

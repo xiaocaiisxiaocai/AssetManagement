@@ -63,6 +63,7 @@ const query = defineModel<{ bizTypes: string[]; keyword: string }>('query', {
       <ElFormItem>
         <ElButton type="primary" @click="emit('search')">查询</ElButton>
         <ElButton @click="emit('reset')">重置</ElButton>
+        <span class="column-tools-host" data-column-tools="approval-pending"></span>
       </ElFormItem>
     </ElForm>
   </div>

@@ -36,7 +36,8 @@ const {
         <div>
           <h2 class="page-title">资产分类编码树</h2>
         </div>
-        <div class="flex gap-2">
+        <div class="page-actions">
+          <span class="column-tools-host" data-column-tools="admin-categories"></span>
           <ElButton
             v-if="categoryActionAccess.canCreate"
             type="primary"

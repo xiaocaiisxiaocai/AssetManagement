@@ -1,13 +1,56 @@
+.home-charts {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.home-chart-row {
+  display: grid;
+  flex: 1 1 0%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  min-height: 0;
+}
+
+.home-chart-monthly {
+  display: flex;
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
 .chart-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
   min-height: 0;
   padding: 12px;
+  overflow: hidden;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 8px;
   box-shadow: var(--asset-page-shadow);
 }
 
+.chart-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chart-plot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .chart-data-details {
+  flex-shrink: 0;
   margin-top: 8px;
   font-size: 14px;
   color: var(--asset-page-text-secondary);
@@ -44,8 +87,24 @@
   border: 1px solid var(--asset-page-border);
 }
 
-@media (max-width: 1024px) {
-  .grid-cols-2 {
+@media (max-width: 1024px), (max-height: 647px) {
+  .home-charts,
+  .home-chart-row,
+  .home-chart-monthly {
+    flex: none;
+    height: auto;
+  }
+
+  .home-chart-row {
     grid-template-columns: 1fr;
+  }
+
+  .chart-card {
+    height: auto;
+  }
+
+  .chart-canvas {
+    flex: none;
+    height: 240px;
   }
 }

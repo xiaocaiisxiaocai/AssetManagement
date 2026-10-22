@@ -44,6 +44,7 @@ const query = defineModel<BorrowQueryState>('query', { required: true });
         <ElButton v-if="canExport" :loading="exporting" @click="emit('export')">
           导出
         </ElButton>
+        <span class="column-tools-host" data-column-tools="report-borrow"></span>
       </ElFormItem>
     </ElForm>
   </div>

@@ -54,6 +54,7 @@ const filter = defineModel<ProjectFilter>('filter', { required: true });
       <ElButton @click="emit('reset')">重置</ElButton>
     </div>
     <div class="project-toolbar-right">
+      <slot name="tools"></slot>
       <ElButton v-if="access.canOption" @click="emit('options')">配置</ElButton>
       <ElButton v-if="access.canImport" @click="emit('import')">
         批量导入

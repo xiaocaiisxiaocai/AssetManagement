@@ -8,6 +8,7 @@ import {
   type EchartsUIType,
   useEcharts,
 } from '@vben/plugins/echarts';
+
 import { ElEmpty } from 'element-plus';
 
 import { getChartTheme } from './home-chart-theme';
@@ -72,14 +73,21 @@ useHomeChartCard(() => props.stats, renderChart);
 
 <template>
   <div class="chart-card" v-loading="loading">
-    <EchartsUI
-      v-if="hasData"
-      ref="typeChartRef"
-      aria-label="测评类型分布图"
-      role="img"
-      style="height: 260px"
-    />
-    <ElEmpty v-else-if="!loading" :image-size="64" description="暂无项目数据" />
+    <div class="chart-canvas">
+      <EchartsUI
+        v-if="hasData"
+        ref="typeChartRef"
+        aria-label="测评类型分布图"
+        class="chart-plot"
+        height="100%"
+        role="img"
+      />
+      <ElEmpty
+        v-else-if="!loading"
+        :image-size="64"
+        description="暂无项目数据"
+      />
+    </div>
     <details class="chart-data-details">
       <summary>查看测评类型分布数据表</summary>
       <div class="chart-data-table-wrap">

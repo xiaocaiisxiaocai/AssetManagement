@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { MaterialFlowItem } from '#/api/material';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -10,6 +11,8 @@ import {
   ElTableColumn,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 
 defineProps<{
@@ -31,6 +34,19 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
   'pendingQuery',
   { required: true },
 );
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'flowNo', label: '流转单号' },
+  { key: 'materialNo', label: '料件编号' },
+  { key: 'materialName', label: '料件名称' },
+  { key: 'applicant', label: '发起人' },
+  { key: 'transferee', label: '受让人' },
+  { key: 'reason', label: '原因' },
+  { key: 'progress', label: '审批进度' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('project-flows-pending', tableColumns);
 </script>
 
 <template>
@@ -43,34 +59,52 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
       stripe
       v-loading="pendingLoading"
     >
-      <ElTableColumn label="流转单号" min-width="170" prop="flowNo" />
-      <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
       <ElTableColumn
+        v-if="visibleColumn('flowNo')"
+        label="流转单号"
+        min-width="170"
+        prop="flowNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('materialNo')"
+        label="料件编号"
+        min-width="150"
+        prop="materialNo"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('materialName')"
         label="料件名称"
         min-width="140"
         prop="materialName"
         show-overflow-tooltip
       />
       <ElTableColumn
+        v-if="visibleColumn('applicant')"
         class-name="hide-on-mobile"
         label="发起人"
         min-width="90"
         prop="applicant"
       />
       <ElTableColumn
+        v-if="visibleColumn('transferee')"
         class-name="hide-on-mobile"
         label="受让人"
         min-width="90"
         prop="transferee"
       />
       <ElTableColumn
+        v-if="visibleColumn('reason')"
         class-name="hide-on-mobile"
         label="原因"
         min-width="150"
         prop="reason"
         show-overflow-tooltip
       />
-      <ElTableColumn label="审批进度" min-width="320">
+      <ElTableColumn
+        v-if="visibleColumn('progress')"
+        label="审批进度"
+        min-width="320"
+      >
         <template #default="{ row }">
           <WorkflowProgressSummary
             :current-steps="row.currentSteps"
@@ -80,6 +114,7 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         label="操作"
@@ -127,6 +162,12 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
     </ElTable>
     <div class="table-bottom-pager">
       <div class="table-bottom-pager-left">
+        <TableColumnPicker
+          :columns="tableColumns"
+          :hidden-keys="hiddenKeys"
+          @reset="resetColumns"
+          @toggle="setColumnVisible"
+        />
         <span>共 {{ pendingCount }} 条记录</span>
         <span class="table-bottom-pager-divider">|</span>
         <span>每页</span>

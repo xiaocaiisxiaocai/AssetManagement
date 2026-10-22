@@ -3,6 +3,7 @@ import type { ProjectFilter } from './project-filter';
 import type { DeleteStatus } from './project-workspace-types';
 
 import type { TestProjectItem, TestProjectOption } from '#/api/test-project';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
 
 import { computed } from 'vue';
@@ -13,6 +14,8 @@ import {
   deleteFlagsFromStatus,
   deleteStatusFromFlags,
 } from '#/components/table/header-multi-filter';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
+import { useTableColumns } from '#/components/table/column-visibility';
 import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
 import { formatDate } from '#/utils/date-format';
 
@@ -134,6 +137,25 @@ const projectEmptyText = computed(() => {
     ? '没有符合条件的项目，请清空筛选后重试'
     : '暂无测试项目，可新增项目';
 });
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'code', label: '项目编号' },
+  { key: 'name', label: '项目名称' },
+  { key: 'projectType', label: '项目类型' },
+  { key: 'owner', label: '负责人' },
+  { key: 'startDate', label: '开始时间' },
+  { key: 'plannedFinish', label: '计划完成' },
+  { key: 'closedDate', label: '结案时间' },
+  { key: 'progress', label: '进度' },
+  { key: 'summary', label: '项目摘要' },
+  { key: 'nextFollowUp', label: '下次跟进' },
+  { key: 'interval', label: '间隔' },
+  { key: 'materialCount', label: '料件数' },
+  { key: 'status', label: '状态' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('project-list', tableColumns);
 </script>
 
 <template>
@@ -152,7 +174,16 @@ const projectEmptyText = computed(() => {
     @options="emit('options')"
     @reset="emit('reset')"
     @search="emit('search')"
-  />
+  >
+    <template #tools>
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </template>
+  </ProjectTableToolbar>
 
   <div class="project-table-panel page-fill table-scroll">
     <ElTable
@@ -173,13 +204,19 @@ const projectEmptyText = computed(() => {
         </ElEmpty>
       </template>
       <ElTableColumn
+        v-if="visibleColumn('code')"
         fixed
         label="项目编号"
         min-width="130"
         prop="code"
         show-overflow-tooltip
       />
-      <ElTableColumn label="项目名称" min-width="150" show-overflow-tooltip>
+      <ElTableColumn
+        v-if="visibleColumn('name')"
+        label="项目名称"
+        min-width="150"
+        show-overflow-tooltip
+      >
         <template #default="{ row }">
           <ElButton link type="primary" @click="emit('open', row)">
             {{ row.name }}
@@ -187,6 +224,7 @@ const projectEmptyText = computed(() => {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('projectType')"
         class-name="hide-on-mobile"
         label="项目类型"
         min-width="130"
@@ -204,7 +242,12 @@ const projectEmptyText = computed(() => {
           {{ row.projectTypeLabel || row.projectTypeCode || '-' }}
         </template>
       </ElTableColumn>
-      <ElTableColumn class-name="hide-on-mobile" label="负责人" min-width="130">
+      <ElTableColumn
+        v-if="visibleColumn('owner')"
+        class-name="hide-on-mobile"
+        label="负责人"
+        min-width="130"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="filter.ownerIds"
@@ -220,7 +263,7 @@ const projectEmptyText = computed(() => {
         <template #default="{ row }">{{ row.ownerName || '-' }}</template>
       </ElTableColumn>
       <ElTableColumn
-        v-if="hasProjectActions"
+        v-if="hasProjectActions && visibleColumn('startDate')"
         align="center"
         class-name="hide-on-mobile"
         label="开始时间"
@@ -231,6 +274,7 @@ const projectEmptyText = computed(() => {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('plannedFinish')"
         align="center"
         class-name="hide-on-mobile"
         label="计划完成"
@@ -241,6 +285,7 @@ const projectEmptyText = computed(() => {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('closedDate')"
         align="center"
         class-name="hide-on-mobile"
         label="结案时间"
@@ -250,7 +295,7 @@ const projectEmptyText = computed(() => {
           {{ formatDate(row.closedDate) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="进度" min-width="120">
+      <ElTableColumn v-if="visibleColumn('progress')" label="进度" min-width="120">
         <template #header>
           <HeaderMultiFilter
             v-model="filter.progressCodes"
@@ -267,6 +312,7 @@ const projectEmptyText = computed(() => {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('summary')"
         class-name="hide-on-mobile"
         label="项目摘要"
         min-width="120"
@@ -276,7 +322,12 @@ const projectEmptyText = computed(() => {
           {{ optionalText(row.testStatus) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="下次跟进" width="130">
+      <ElTableColumn
+        v-if="visibleColumn('nextFollowUp')"
+        align="center"
+        label="下次跟进"
+        width="130"
+      >
         <template #default="{ row }">
           <div v-if="!row.isDeleted">
             {{ formatDate(row.nextFollowUpDueDate) }}
@@ -287,6 +338,7 @@ const projectEmptyText = computed(() => {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('interval')"
         align="center"
         class-name="hide-on-mobile"
         label="间隔"
@@ -297,13 +349,19 @@ const projectEmptyText = computed(() => {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('materialCount')"
         align="center"
         class-name="hide-on-mobile"
         label="料件数"
         prop="materialCount"
         width="80"
       />
-      <ElTableColumn align="center" label="状态" width="110">
+      <ElTableColumn
+        v-if="visibleColumn('status')"
+        align="center"
+        label="状态"
+        width="110"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="deleteHeader"
@@ -320,6 +378,7 @@ const projectEmptyText = computed(() => {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"

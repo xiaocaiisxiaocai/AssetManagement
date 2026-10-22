@@ -15,17 +15,28 @@ const emit = defineEmits<{
     <div>
       <h2 class="mine-title">我的申请</h2>
     </div>
-    <div v-if="canCreate" class="mine-actions">
-      <ElButton type="success" @click="emit('start', 'borrow')">
+    <div class="mine-actions">
+      <span class="column-tools-host" data-column-tools="approval-mine"></span>
+      <ElButton v-if="canCreate" type="success" @click="emit('start', 'borrow')">
         发起借用
       </ElButton>
-      <ElButton type="warning" @click="emit('start', 'transfer')">
+      <ElButton
+        v-if="canCreate"
+        type="warning"
+        @click="emit('start', 'transfer')"
+      >
         发起转让
       </ElButton>
-      <ElButton type="primary" @click="emit('start', 'extension')">
+      <ElButton
+        v-if="canCreate"
+        type="primary"
+        @click="emit('start', 'extension')"
+      >
         申请延期
       </ElButton>
-      <ElButton @click="emit('start', 'return')">发起归还</ElButton>
+      <ElButton v-if="canCreate" @click="emit('start', 'return')">
+        发起归还
+      </ElButton>
     </div>
   </div>
 </template>

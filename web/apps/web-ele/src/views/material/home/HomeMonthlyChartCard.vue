@@ -96,22 +96,25 @@ useHomeChartCard(() => props.stats, renderChart);
 </script>
 
 <template>
-  <div class="chart-card page-fill" v-loading="loading">
-    <EchartsUI
-      ref="barChartRef"
-      aria-label="全年结案与跟进记录统计图"
-      role="img"
-      style="height: 280px"
-    />
+  <div class="chart-card" v-loading="loading">
+    <div class="chart-canvas">
+      <EchartsUI
+        ref="barChartRef"
+        aria-label="全年结案与跟进记录统计图"
+        class="chart-plot"
+        height="100%"
+        role="img"
+      />
+    </div>
     <details class="chart-data-details">
       <summary>
-        查看{{ stats?.year ? stats.year + '年' : '' }}结案与跟进数据表
+        查看{{ stats?.year ? `${stats.year}年` : '' }}结案与跟进数据表
       </summary>
       <div class="chart-data-table-wrap">
         <table class="chart-data-table">
           <caption>
             {{
-              stats?.year ? stats.year + '年' : ''
+              stats?.year ? `${stats.year}年` : ''
             }}结案与跟进记录统计
           </caption>
           <thead>

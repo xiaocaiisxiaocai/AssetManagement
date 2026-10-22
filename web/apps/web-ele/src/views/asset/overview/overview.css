@@ -1,13 +1,19 @@
 .asset-overview-page {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: var(--asset-page-gap);
   min-width: 0;
+  min-height: calc(
+    var(--vben-content-height, 100dvh - var(--vben-header-height, 0px)) -
+      var(--page-shell-offset)
+  );
   padding: var(--asset-page-padding);
 }
 
 .overview-heading {
   display: flex;
+  flex-shrink: 0;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
@@ -35,6 +41,7 @@
 
 .overview-metrics {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: var(--asset-page-gap);
 }
@@ -42,9 +49,11 @@
 .overview-metric {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
-  padding: 16px;
+  justify-content: center;
+  min-height: 168px;
+  padding: 32px 20px;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
   border-radius: 12px;
@@ -52,13 +61,14 @@
 }
 
 .overview-label {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--asset-page-muted);
 }
 
 .overview-metric strong {
-  font-size: 30px;
+  font-size: 48px;
   font-weight: 600;
+  line-height: 1;
   color: var(--el-color-primary);
 }
 
@@ -80,13 +90,18 @@
 
 .overview-charts {
   display: grid;
+  flex: 1 1 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--asset-page-gap);
-  align-items: start;
+  align-items: stretch;
+  min-height: 320px;
 }
 
 .overview-chart-card {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 100%;
   padding: 14px;
   background: var(--asset-page-surface);
   border: 1px solid var(--asset-page-border);
@@ -101,18 +116,33 @@
   color: var(--asset-page-text);
 }
 
+.overview-chart-canvas,
+.overview-bar-scroll {
+  flex: 1 1 auto;
+  min-height: 240px;
+}
+
 .overview-pie {
-  height: 280px;
+  height: 100%;
 }
 
 .overview-bar-scroll {
-  max-height: 380px;
   overflow-y: auto;
 }
 
 @media (max-width: 1100px) {
+  .asset-overview-page {
+    min-height: 0;
+  }
+
   .overview-charts {
+    flex: none;
     grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .overview-chart-card {
+    min-height: 360px;
   }
 
   .overview-metrics {
@@ -126,6 +156,11 @@
   }
 
   .overview-metric {
+    min-height: 0;
     padding: 12px;
+  }
+
+  .overview-metric strong {
+    font-size: 28px;
   }
 }

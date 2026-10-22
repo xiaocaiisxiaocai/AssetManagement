@@ -5,6 +5,7 @@ import type {
   SaveTestProjectOptionPayload,
   TestProjectOption,
 } from '#/api/test-project';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -20,6 +21,9 @@ import {
   ElTabs,
   ElTag,
 } from 'element-plus';
+
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 
 defineProps<{
   canManage: boolean;
@@ -51,6 +55,16 @@ function onKindChange(kind: number | string) {
     emit('reset', kind);
   }
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'kind', label: '类型' },
+  { key: 'label', label: '名称' },
+  { key: 'sort', label: '排序' },
+  { key: 'active', label: '启用' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('project-options', tableColumns);
 </script>
 
 <template>
@@ -78,25 +92,50 @@ function onKindChange(kind: number | string) {
             </ElFormItem>
           </div>
         </ElForm>
-        <div v-if="canManage" class="option-actions">
-          <ElButton v-if="editingId" @click="emit('reset', activeKind)">
+        <div class="option-actions">
+          <TableColumnPicker
+            :columns="tableColumns"
+            :hidden-keys="hiddenKeys"
+            @reset="resetColumns"
+            @toggle="setColumnVisible"
+          />
+          <ElButton
+            v-if="canManage && editingId"
+            @click="emit('reset', activeKind)"
+          >
             取消编辑
           </ElButton>
-          <ElButton :loading="saving" type="primary" @click="emit('save')">
+          <ElButton
+            v-if="canManage"
+            :loading="saving"
+            type="primary"
+            @click="emit('save')"
+          >
             {{ editingId ? '保存修改' : '新增' }}
           </ElButton>
         </div>
       </div>
     </div>
     <ElTable :data="displayedOptions" border>
-      <ElTableColumn label="类型" width="110">
+      <ElTableColumn v-if="visibleColumn('kind')" label="类型" width="110">
         <template #default="{ row }">
           {{ kindLabels[row.kind as OptionKind] }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="名称" prop="label" />
-      <ElTableColumn align="center" label="排序" prop="sort" width="80" />
-      <ElTableColumn align="center" label="启用" width="80">
+      <ElTableColumn v-if="visibleColumn('label')" label="名称" prop="label" />
+      <ElTableColumn
+        v-if="visibleColumn('sort')"
+        align="center"
+        label="排序"
+        prop="sort"
+        width="80"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('active')"
+        align="center"
+        label="启用"
+        width="80"
+      >
         <template #default="{ row }">
           <ElTag :type="row.isActive ? 'success' : 'info'" size="small">
             {{ row.isActive ? '启用' : '停用' }}
@@ -104,6 +143,7 @@ function onKindChange(kind: number | string) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         label="操作"

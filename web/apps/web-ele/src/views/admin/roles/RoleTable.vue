@@ -2,6 +2,7 @@
 import type { RoleListQuery } from './role-form';
 
 import type { RoleDto } from '#/api/role';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -13,6 +14,8 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import { buildRoleActionAccess } from '#/views/permissions/action-access';
 
 defineProps<{
@@ -32,19 +35,54 @@ const emit = defineEmits<{
   search: [];
 }>();
 const query = defineModel<RoleListQuery>('query', { required: true });
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'code', label: '角色编码' },
+  { key: 'name', label: '角色名称' },
+  { key: 'permissionCount', label: '权限数' },
+  { key: 'menuCount', label: '菜单数' },
+  { key: 'status', label: '状态' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('admin-roles', tableColumns);
 </script>
 
 <template>
   <div class="role-table-panel page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='admin-roles']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable :data="roles" border height="100%" v-loading="loading">
-      <ElTableColumn label="角色编码" min-width="130" prop="code" />
-      <ElTableColumn label="角色名称" min-width="160" prop="name" />
-      <ElTableColumn align="center" label="权限数" width="100">
+      <ElTableColumn
+        v-if="visibleColumn('code')"
+        label="角色编码"
+        min-width="130"
+        prop="code"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('name')"
+        label="角色名称"
+        min-width="160"
+        prop="name"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('permissionCount')"
+        align="center"
+        label="权限数"
+        width="100"
+      >
         <template #default="{ row }">
           {{ row.permissionIds?.length ?? 0 }}
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('menuCount')"
         align="center"
         class-name="hide-on-mobile"
         label="菜单数"
@@ -54,7 +92,12 @@ const query = defineModel<RoleListQuery>('query', { required: true });
           {{ row.menuIds?.length ?? 0 }}
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="状态" width="100">
+      <ElTableColumn
+        v-if="visibleColumn('status')"
+        align="center"
+        label="状态"
+        width="100"
+      >
         <template #default="{ row }">
           <ElTag :type="row.isActive ? 'success' : 'danger'" size="small">
             {{ row.isActive ? '启用' : '禁用' }}
@@ -62,6 +105,7 @@ const query = defineModel<RoleListQuery>('query', { required: true });
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="admin-action-cell table-action-cell"
         fixed="right"

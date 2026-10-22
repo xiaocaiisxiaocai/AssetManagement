@@ -2,6 +2,7 @@
 import type { AuditListQuery } from './audit-query';
 
 import type { AuditLogRow } from '#/api/report';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElDescriptions,
@@ -15,7 +16,9 @@ import {
   ElTooltip,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
 import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import { formatDateTime } from '#/utils/date-format';
 
 import {
@@ -48,10 +51,31 @@ const actionFilterOptions = [
   { label: '其他删除', value: 'DELETE' },
   { label: '催办', value: 'remind' },
 ];
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'time', label: '时间' },
+  { key: 'operator', label: '操作人' },
+  { key: 'action', label: '操作' },
+  { key: 'module', label: '模块' },
+  { key: 'targetId', label: '目标ID' },
+  { key: 'summary', label: '摘要' },
+  { key: 'ip', label: 'IP' },
+  { key: 'duration', label: '耗时' },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('admin-audit', tableColumns);
 </script>
 
 <template>
   <div class="table-panel-with-toolbar page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='admin-audit']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable :data="rows" border height="100%" v-loading="loading">
       <ElTableColumn type="expand">
         <template #default="{ row }">
@@ -117,17 +141,26 @@ const actionFilterOptions = [
           </div>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="时间" min-width="170">
+      <ElTableColumn v-if="visibleColumn('time')" label="时间" min-width="170">
         <template #default="{ row }">
           {{ formatDateTime(row.occurredAt, { seconds: true }) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="操作人" min-width="120">
+      <ElTableColumn
+        v-if="visibleColumn('operator')"
+        label="操作人"
+        min-width="120"
+      >
         <template #default="{ row }">
           {{ row.userName || row.userId || '-' }}
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="操作" width="120">
+      <ElTableColumn
+        v-if="visibleColumn('action')"
+        align="center"
+        label="操作"
+        width="120"
+      >
         <template #header>
           <HeaderMultiFilter
             v-model="query.actionTypes"
@@ -142,7 +175,12 @@ const actionFilterOptions = [
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn class-name="hide-on-mobile" label="模块" min-width="120">
+      <ElTableColumn
+        v-if="visibleColumn('module')"
+        class-name="hide-on-mobile"
+        label="模块"
+        min-width="120"
+      >
         <template #default="{ row }">
           <ElTooltip
             v-if="row.targetType"
@@ -155,24 +193,28 @@ const actionFilterOptions = [
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('targetId')"
         class-name="hide-on-mobile"
         label="目标ID"
         min-width="90"
         prop="targetId"
       />
       <ElTableColumn
+        v-if="visibleColumn('summary')"
         label="摘要"
         min-width="240"
         prop="summary"
         show-overflow-tooltip
       />
       <ElTableColumn
+        v-if="visibleColumn('ip')"
         class-name="hide-on-mobile"
         label="IP"
         min-width="130"
         prop="ip"
       />
       <ElTableColumn
+        v-if="visibleColumn('duration')"
         align="center"
         class-name="hide-on-mobile"
         label="耗时"

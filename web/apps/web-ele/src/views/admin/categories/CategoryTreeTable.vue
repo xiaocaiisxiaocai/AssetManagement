@@ -1,7 +1,11 @@
 <script lang="ts" setup>
 import type { CategoryNode } from '#/api/base-data';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import { ElButton, ElTable, ElTableColumn, ElTag } from 'element-plus';
+
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 
 type CategoryActionAccess = {
   canCreate: boolean;
@@ -29,10 +33,27 @@ const emit = defineEmits<{
 function tableRowClassName({ row }: { row: CategoryNode }) {
   return row.isDeleted ? 'category-row-deleted' : '';
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'codeSeg', label: '编码段' },
+  { key: 'code', label: '完整编码' },
+  { key: 'remark', label: '备注' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('admin-categories', tableColumns);
 </script>
 
 <template>
   <div class="table-panel page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='admin-categories']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable
       :data="categories"
       :row-class-name="tableRowClassName"
@@ -42,8 +63,17 @@ function tableRowClassName({ row }: { row: CategoryNode }) {
       row-key="id"
       v-loading="loading"
     >
-      <ElTableColumn label="编码段" min-width="140" prop="codeSeg" />
-      <ElTableColumn label="完整编码" min-width="200">
+      <ElTableColumn
+        v-if="visibleColumn('codeSeg')"
+        label="编码段"
+        min-width="140"
+        prop="codeSeg"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('code')"
+        label="完整编码"
+        min-width="200"
+      >
         <template #default="{ row }">
           <ElTag size="default">{{ row.code }}</ElTag>
           <ElTag v-if="row.isDeleted" class="ml-1" size="small" type="danger">
@@ -51,7 +81,12 @@ function tableRowClassName({ row }: { row: CategoryNode }) {
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn class-name="hide-on-mobile" label="备注" min-width="260">
+      <ElTableColumn
+        v-if="visibleColumn('remark')"
+        class-name="hide-on-mobile"
+        label="备注"
+        min-width="260"
+      >
         <template #default="{ row }">
           <div class="category-remark">
             {{ row.parentId ? row.remark || '-' : '-' }}
@@ -59,6 +94,7 @@ function tableRowClassName({ row }: { row: CategoryNode }) {
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"

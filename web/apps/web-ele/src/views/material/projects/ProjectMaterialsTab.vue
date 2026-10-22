@@ -2,6 +2,7 @@
 import type { DeleteStatus } from './project-workspace-types';
 
 import type { MaterialItem, MaterialStatus } from '#/api/material';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
 
 import { computed, ref } from 'vue';
@@ -21,6 +22,8 @@ import {
   deleteFlagsFromStatus,
   deleteStatusFromFlags,
 } from '#/components/table/header-multi-filter';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
+import { useTableColumns } from '#/components/table/column-visibility';
 import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
 
 import ProjectMaterialFilterBar from './ProjectMaterialFilterBar.vue';
@@ -122,6 +125,22 @@ const hasMaterialFilters = computed(() => {
   );
 });
 
+const tableColumns: TableColumnOption[] = [
+  { key: 'materialNo', label: '料件编号' },
+  { key: 'name', label: '名称' },
+  { key: 'vendor', label: '寄件厂商' },
+  { key: 'model', label: '型号品牌' },
+  { key: 'quantity', label: '数量' },
+  { key: 'dockingVendor', label: '对接厂商' },
+  { key: 'department', label: '部门' },
+  { key: 'custodian', label: '保管人' },
+  { key: 'remark', label: '备注' },
+  { key: 'status', label: '状态' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('project-materials', tableColumns);
+
 const materialEmptyText = computed(() => {
   const hasFilters = hasMaterialFilters.value;
   return hasFilters
@@ -139,6 +158,12 @@ const materialEmptyText = computed(() => {
         料件清单 <span class="tab-count">{{ total }}</span>
       </h3>
       <div class="material-section-actions">
+        <TableColumnPicker
+          :columns="tableColumns"
+          :hidden-keys="hiddenKeys"
+          @reset="resetColumns"
+          @toggle="setColumnVisible"
+        />
         <ProjectMaterialFilterBar
           :can-create="canCreate"
           @create="emit('create')"
@@ -176,14 +201,21 @@ const materialEmptyText = computed(() => {
             </ElButton>
           </ElEmpty>
         </template>
-        <ElTableColumn label="料件编号" min-width="150" prop="materialNo" />
         <ElTableColumn
+          v-if="visibleColumn('materialNo')"
+          label="料件编号"
+          min-width="150"
+          prop="materialNo"
+        />
+        <ElTableColumn
+          v-if="visibleColumn('name')"
           label="名称"
           min-width="140"
           prop="name"
           show-overflow-tooltip
         />
         <ElTableColumn
+          v-if="visibleColumn('vendor')"
           class-name="hide-on-mobile"
           label="寄件厂商"
           min-width="120"
@@ -191,6 +223,7 @@ const materialEmptyText = computed(() => {
           show-overflow-tooltip
         />
         <ElTableColumn
+          v-if="visibleColumn('model')"
           class-name="hide-on-mobile"
           label="型号品牌"
           min-width="140"
@@ -203,8 +236,15 @@ const materialEmptyText = computed(() => {
             <span v-else>-</span>
           </template>
         </ElTableColumn>
-        <ElTableColumn align="center" label="数量" prop="quantity" width="70" />
         <ElTableColumn
+          v-if="visibleColumn('quantity')"
+          align="center"
+          label="数量"
+          prop="quantity"
+          width="70"
+        />
+        <ElTableColumn
+          v-if="visibleColumn('dockingVendor')"
           class-name="hide-on-mobile"
           label="对接厂商"
           min-width="120"
@@ -212,6 +252,7 @@ const materialEmptyText = computed(() => {
           show-overflow-tooltip
         />
         <ElTableColumn
+          v-if="visibleColumn('department')"
           class-name="hide-on-mobile"
           label="部门"
           min-width="110"
@@ -219,6 +260,7 @@ const materialEmptyText = computed(() => {
           show-overflow-tooltip
         />
         <ElTableColumn
+          v-if="visibleColumn('custodian')"
           class-name="hide-on-mobile"
           label="保管人"
           min-width="100"
@@ -226,6 +268,7 @@ const materialEmptyText = computed(() => {
           show-overflow-tooltip
         />
         <ElTableColumn
+          v-if="visibleColumn('remark')"
           class-name="hide-on-mobile"
           label="备注"
           min-width="180"
@@ -233,7 +276,12 @@ const materialEmptyText = computed(() => {
         >
           <template #default="{ row }">{{ row.remark || '-' }}</template>
         </ElTableColumn>
-        <ElTableColumn align="center" label="状态" width="140">
+        <ElTableColumn
+          v-if="visibleColumn('status')"
+          align="center"
+          label="状态"
+          width="140"
+        >
           <template #header>
             <HeaderMultiFilter
               v-model="statusHeader"
@@ -252,6 +300,7 @@ const materialEmptyText = computed(() => {
           </template>
         </ElTableColumn>
         <ElTableColumn
+          v-if="visibleColumn('actions')"
           align="center"
           class-name="table-action-cell"
           fixed="right"

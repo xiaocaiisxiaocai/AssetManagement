@@ -170,13 +170,15 @@ onBeforeUnmount(() => {
   <section aria-label="二级分类资产图表" class="overview-charts">
     <div class="overview-chart-card">
       <h3>二级分类资产分布</h3>
-      <EchartsUI
-        v-show="stats.total > 0"
-        ref="distributionRef"
-        aria-label="二级分类资产数量占比，详细数据见下方分类汇总表"
-        class="overview-pie"
-        role="img"
-      />
+      <div v-show="stats.total > 0" class="overview-chart-canvas">
+        <EchartsUI
+          ref="distributionRef"
+          aria-label="二级分类资产数量占比，详细数据见下方分类汇总表"
+          class="overview-pie"
+          height="100%"
+          role="img"
+        />
+      </div>
       <ElEmpty
         v-if="stats.total === 0"
         :image-size="72"
@@ -189,9 +191,10 @@ onBeforeUnmount(() => {
         <EchartsUI
           ref="statusRef"
           :style="{
-            height: `${Math.max(280, stats.categories.length * 38 + 70)}px`,
+            minHeight: `${Math.max(240, stats.categories.length * 38 + 70)}px`,
           }"
           aria-label="各二级分类在库、借出、维修和报废数量"
+          height="100%"
           role="img"
         />
       </div>

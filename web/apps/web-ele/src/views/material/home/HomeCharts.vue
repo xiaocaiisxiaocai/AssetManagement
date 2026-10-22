@@ -12,12 +12,18 @@ defineProps<{
 </script>
 
 <template>
-  <div class="grid grid-cols-2 gap-4">
-    <HomeTypeChartCard :loading="loading" :stats="stats" />
-    <HomeStatusChartCard :loading="loading" :stats="stats" />
-  </div>
+  <div class="home-charts">
+    <div class="home-chart-row">
+      <HomeTypeChartCard :loading="loading" :stats="stats" />
+      <HomeStatusChartCard :loading="loading" :stats="stats" />
+    </div>
 
-  <HomeMonthlyChartCard :loading="loading" :stats="stats" />
+    <HomeMonthlyChartCard
+      :loading="loading"
+      :stats="stats"
+      class="home-chart-monthly"
+    />
+  </div>
 </template>
 
 <style scoped src="./HomeCharts.css"></style>

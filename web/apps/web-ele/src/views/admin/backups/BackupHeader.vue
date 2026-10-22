@@ -17,6 +17,7 @@ const emit = defineEmits<{
       <h2 class="backup-title">数据库备份</h2>
     </div>
     <div class="backup-actions">
+      <span class="column-tools-host" data-column-tools="admin-backups"></span>
       <ElButton
         v-if="canManage"
         :loading="backupLoading"

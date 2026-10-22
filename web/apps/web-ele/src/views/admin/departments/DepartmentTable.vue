@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { DepartmentNode } from '#/api/base-data';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -11,14 +12,16 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import { buildDepartmentActionAccess } from '#/views/permissions/action-access';
 
 defineProps<{
   access: ReturnType<typeof buildDepartmentActionAccess>;
   canCreateChild: (row: DepartmentNode) => boolean;
   loading: boolean;
-  pageSizeOptions: number[];
   pagedDepartments: DepartmentNode[];
+  pageSizeOptions: number[];
   total: number;
 }>();
 
@@ -30,10 +33,29 @@ const emit = defineEmits<{
 }>();
 const page = defineModel<number>('page', { required: true });
 const pageSize = defineModel<number>('pageSize', { required: true });
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'id', label: 'ID' },
+  { key: 'name', label: '组织架构名称' },
+  { key: 'level', label: '组织层级' },
+  { key: 'manager', label: '负责人' },
+  { key: 'status', label: '状态' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('admin-departments', tableColumns);
 </script>
 
 <template>
   <div class="table-panel page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='admin-departments']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable
       :data="pagedDepartments"
       border
@@ -42,9 +64,24 @@ const pageSize = defineModel<number>('pageSize', { required: true });
       row-key="id"
       v-loading="loading"
     >
-      <ElTableColumn align="center" label="ID" prop="id" width="90" />
-      <ElTableColumn label="组织架构名称" min-width="200" prop="name" />
-      <ElTableColumn label="组织层级" min-width="120">
+      <ElTableColumn
+        v-if="visibleColumn('id')"
+        align="center"
+        label="ID"
+        prop="id"
+        width="90"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('name')"
+        label="组织架构名称"
+        min-width="200"
+        prop="name"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('level')"
+        label="组织层级"
+        min-width="120"
+      >
         <template #default="{ row }">
           <ElTag size="small" type="info">
             {{ row.organizationLevelName || '未配置' }}
@@ -52,12 +89,18 @@ const pageSize = defineModel<number>('pageSize', { required: true });
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('manager')"
         class-name="hide-on-mobile"
         label="负责人"
         min-width="140"
         prop="managerName"
       />
-      <ElTableColumn align="center" label="状态" min-width="100">
+      <ElTableColumn
+        v-if="visibleColumn('status')"
+        align="center"
+        label="状态"
+        min-width="100"
+      >
         <template #default="{ row }">
           <ElTag :type="row.isActive ? 'success' : 'info'" size="small">
             {{ row.isActive ? '启用' : '停用' }}
@@ -65,6 +108,7 @@ const pageSize = defineModel<number>('pageSize', { required: true });
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('actions')"
         align="center"
         class-name="admin-action-cell table-action-cell"
         fixed="right"

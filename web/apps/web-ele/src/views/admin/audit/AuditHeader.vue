@@ -19,6 +19,7 @@ const emit = defineEmits<{
       <h2 class="page-title">审计日志</h2>
     </div>
     <div class="header-actions">
+      <span class="column-tools-host" data-column-tools="admin-audit"></span>
       <ElButton v-if="canExport" :loading="exporting" @click="emit('export')">
         导出
       </ElButton>

@@ -135,6 +135,7 @@ onMounted(async () => {
           <h2 class="page-title">逾期资产报表</h2>
         </div>
         <div class="page-actions">
+          <span class="column-tools-host" data-column-tools="report-overdue"></span>
           <ElButton
             v-if="reportActionAccess.canExport"
             :loading="exporting"

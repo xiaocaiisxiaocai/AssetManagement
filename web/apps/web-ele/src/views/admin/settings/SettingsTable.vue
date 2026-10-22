@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { SystemSetting } from '#/api/base-data';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -9,6 +10,9 @@ import {
   ElTable,
   ElTableColumn,
 } from 'element-plus';
+
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
+import { useTableColumns } from '#/components/table/column-visibility';
 
 defineProps<{
   canEdit: boolean;
@@ -41,25 +45,40 @@ function displaySettingValue(row: SystemSetting) {
     ? parseStringList(row.value).join('、')
     : row.value;
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'key', label: '参数键' },
+  { key: 'value', label: '参数值' },
+  { key: 'description', label: '说明' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('admin-settings', tableColumns);
 </script>
 
 <template>
   <div class="table-panel page-fill table-scroll">
     <ElTable :data="pagedSettings" border height="100%" v-loading="loading">
-      <ElTableColumn label="参数键" min-width="200" prop="key" />
-      <ElTableColumn label="参数值" min-width="180">
+      <ElTableColumn
+        v-if="visibleColumn('key')"
+        label="参数键"
+        min-width="200"
+        prop="key"
+      />
+      <ElTableColumn v-if="visibleColumn('value')" label="参数值" min-width="180">
         <template #default="{ row }">
           {{ displaySettingValue(row) }}
         </template>
       </ElTableColumn>
       <ElTableColumn
+        v-if="visibleColumn('description')"
         class-name="hide-on-mobile"
         label="说明"
         min-width="260"
         prop="description"
       />
       <ElTableColumn
-        v-if="canEdit"
+        v-if="canEdit && visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"
@@ -75,6 +94,12 @@ function displaySettingValue(row: SystemSetting) {
     </ElTable>
     <div class="table-bottom-pager">
       <div class="table-bottom-pager-left">
+        <TableColumnPicker
+          :columns="tableColumns"
+          :hidden-keys="hiddenKeys"
+          @reset="resetColumns"
+          @toggle="setColumnVisible"
+        />
         <span>共 {{ total }} 条</span>
         <span class="table-bottom-pager-divider">|</span>
         <span>每页</span>

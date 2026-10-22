@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { AssetSummary, CategoryStatRow } from '#/api/report';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -8,6 +9,9 @@ import {
   ElTable,
   ElTableColumn,
 } from 'element-plus';
+
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
+import { useTableColumns } from '#/components/table/column-visibility';
 
 defineProps<{
   categoryTopRows: CategoryStatRow[];
@@ -18,6 +22,15 @@ const emit = defineEmits<{
   categoryClick: [categoryCode: string];
   navigate: [path: null | string];
 }>();
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'category', label: '分类' },
+  { key: 'total', label: '总数' },
+  { key: 'available', label: '在库' },
+  { key: 'borrowed', label: '借出' },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('dashboard-asset-overview', tableColumns);
 </script>
 
 <template>
@@ -25,6 +38,13 @@ const emit = defineEmits<{
     <template #header>
       <div class="workspace-card-header">
         <span>资产概况</span>
+        <div class="workspace-card-actions">
+        <TableColumnPicker
+          :columns="tableColumns"
+          :hidden-keys="hiddenKeys"
+          @reset="resetColumns"
+          @toggle="setColumnVisible"
+        />
         <ElButton
           link
           type="primary"
@@ -32,6 +52,7 @@ const emit = defineEmits<{
         >
           查看汇总
         </ElButton>
+        </div>
       </div>
     </template>
     <ElTable
@@ -40,7 +61,11 @@ const emit = defineEmits<{
       border
       class="workspace-table"
     >
-      <ElTableColumn label="分类" min-width="180">
+      <ElTableColumn
+        v-if="visibleColumn('category')"
+        label="分类"
+        min-width="180"
+      >
         <template #default="{ row }">
           <button
             class="category-code-link"
@@ -51,9 +76,27 @@ const emit = defineEmits<{
           </button>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="总数" prop="total" width="90" />
-      <ElTableColumn align="center" label="在库" prop="available" width="90" />
-      <ElTableColumn align="center" label="借出" prop="borrowed" width="90" />
+      <ElTableColumn
+        v-if="visibleColumn('total')"
+        align="center"
+        label="总数"
+        prop="total"
+        width="90"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('available')"
+        align="center"
+        label="在库"
+        prop="available"
+        width="90"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('borrowed')"
+        align="center"
+        label="借出"
+        prop="borrowed"
+        width="90"
+      />
     </ElTable>
     <ElEmpty v-else description="资产概况暂不可用" />
   </ElCard>

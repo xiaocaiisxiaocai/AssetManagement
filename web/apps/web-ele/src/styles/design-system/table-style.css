@@ -155,6 +155,16 @@
   text-align: center !important;
 }
 
+/* 选择列的 .cell 是 inline-flex，text-align 居中不到复选框。 */
+.el-table th.el-table-column--selection.el-table__cell > .cell,
+.el-table td.el-table-column--selection.el-table__cell > .cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-inline: 0 !important;
+}
+
 .table-panel .el-table--striped .el-table__body tr.el-table__row--striped td,
 .table-panel-with-toolbar
   .el-table--striped

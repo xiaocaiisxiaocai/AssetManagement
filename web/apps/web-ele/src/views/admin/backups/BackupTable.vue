@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { DatabaseBackupFile } from '#/api/report';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -11,13 +12,15 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 import { formatDateTime } from '#/utils/date-format';
 
 defineProps<{
   canManage: boolean;
   loading: boolean;
-  pageSizeOptions: number[];
   pagedRows: DatabaseBackupFile[];
+  pageSizeOptions: number[];
   total: number;
 }>();
 
@@ -47,12 +50,34 @@ function fileTypeLabel(type: string) {
 function fileTypeTag(type: string) {
   return type === 'package' ? 'success' : 'info';
 }
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'fileName', label: '文件名' },
+  { key: 'fileType', label: '类型' },
+  { key: 'size', label: '大小' },
+  { key: 'createdAt', label: '创建时间' },
+  { key: 'actions', label: '操作', locked: true },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('admin-backups', tableColumns);
 </script>
 
 <template>
   <div class="backup-table-panel page-fill table-scroll">
+    <Teleport defer to="[data-column-tools='admin-backups']">
+      <TableColumnPicker
+        :columns="tableColumns"
+        :hidden-keys="hiddenKeys"
+        @reset="resetColumns"
+        @toggle="setColumnVisible"
+      />
+    </Teleport>
     <ElTable :data="pagedRows" border height="100%" v-loading="loading">
-      <ElTableColumn label="文件名" min-width="260">
+      <ElTableColumn
+        v-if="visibleColumn('fileName')"
+        label="文件名"
+        min-width="260"
+      >
         <template #default="{ row }">
           <div class="file-name-cell">
             <ElTag :type="fileTypeTag(row.fileType)" size="small">
@@ -62,23 +87,37 @@ function fileTypeTag(type: string) {
           </div>
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="类型" width="110">
+      <ElTableColumn
+        v-if="visibleColumn('fileType')"
+        align="center"
+        label="类型"
+        width="110"
+      >
         <template #default="{ row }">
           {{ fileTypeLabel(row.fileType) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn align="center" label="大小" width="120">
+      <ElTableColumn
+        v-if="visibleColumn('size')"
+        align="center"
+        label="大小"
+        width="120"
+      >
         <template #default="{ row }">
           {{ formatSize(row.sizeBytes) }}
         </template>
       </ElTableColumn>
-      <ElTableColumn label="创建时间" width="180">
+      <ElTableColumn
+        v-if="visibleColumn('createdAt')"
+        label="创建时间"
+        width="180"
+      >
         <template #default="{ row }">
           {{ formatDateTime(row.createdAt, { seconds: true }) }}
         </template>
       </ElTableColumn>
       <ElTableColumn
-        v-if="canManage"
+        v-if="canManage && visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
         fixed="right"

@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { OverdueReportRow } from '#/api/report';
+import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -10,6 +11,9 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
+
 defineProps<{
   overdueRows: null | OverdueReportRow[];
 }>();
@@ -17,6 +21,14 @@ defineProps<{
 const emit = defineEmits<{
   navigate: [path: null | string];
 }>();
+
+const tableColumns: TableColumnOption[] = [
+  { key: 'asset', label: '资产' },
+  { key: 'borrower', label: '借用人' },
+  { key: 'overdueDays', label: '逾期天数' },
+];
+const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
+  useTableColumns('dashboard-overdue', tableColumns);
 </script>
 
 <template>
@@ -24,13 +36,21 @@ const emit = defineEmits<{
     <template #header>
       <div class="workspace-card-header">
         <span>逾期资产</span>
-        <ElButton
-          link
-          type="primary"
-          @click="emit('navigate', '/report/overdue')"
-        >
-          查看全部
-        </ElButton>
+        <div class="workspace-card-actions">
+          <TableColumnPicker
+            :columns="tableColumns"
+            :hidden-keys="hiddenKeys"
+            @reset="resetColumns"
+            @toggle="setColumnVisible"
+          />
+          <ElButton
+            link
+            type="primary"
+            @click="emit('navigate', '/report/overdue')"
+          >
+            查看全部
+          </ElButton>
+        </div>
       </div>
     </template>
     <ElTable
@@ -39,7 +59,12 @@ const emit = defineEmits<{
       border
       class="workspace-table workspace-overdue-table"
     >
-      <ElTableColumn label="资产" min-width="180">
+      <ElTableColumn
+        v-if="visibleColumn('asset')"
+        align="center"
+        label="资产"
+        min-width="180"
+      >
         <template #default="{ row }">
           <div class="workspace-overdue-asset">
             <div class="workspace-overdue-name">{{ row.assetName }}</div>
@@ -49,8 +74,18 @@ const emit = defineEmits<{
           </div>
         </template>
       </ElTableColumn>
-      <ElTableColumn label="借用人" prop="borrower" width="96" />
-      <ElTableColumn align="center" label="逾期天数" width="104">
+      <ElTableColumn
+        v-if="visibleColumn('borrower')"
+        label="借用人"
+        prop="borrower"
+        width="96"
+      />
+      <ElTableColumn
+        v-if="visibleColumn('overdueDays')"
+        align="center"
+        label="逾期天数"
+        width="104"
+      >
         <template #default="{ row }">
           <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">
             {{ row.overdueDays }} 天
@@ -67,16 +102,17 @@ const emit = defineEmits<{
 <style scoped>
 .workspace-overdue-asset {
   display: flex;
-  min-width: 0;
   flex-direction: column;
-  align-items: flex-start;
   gap: 4px;
+  align-items: center;
+  min-width: 0;
+  text-align: center;
 }
 
 .workspace-overdue-name {
   width: 100%;
-  overflow-wrap: anywhere;
   line-height: 20px;
+  overflow-wrap: anywhere;
 }
 
 .workspace-overdue-no {
