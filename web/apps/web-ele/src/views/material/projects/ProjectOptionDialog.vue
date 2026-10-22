@@ -60,41 +60,32 @@ function onKindChange(kind: number | string) {
       <ElTabPane label="项目进度" name="project_progress" />
     </ElTabs>
     <div class="option-editor">
-      <ElForm label-width="70px">
-        <div class="option-form-grid">
-          <ElFormItem label="名称">
-            <ElInput v-model="form.label" placeholder="中文名称" />
-          </ElFormItem>
-          <ElFormItem label="排序">
-            <ElInputNumber
-              v-model="form.sort"
-              controls-position="right"
-              style="width: 100%"
-            />
-          </ElFormItem>
-          <ElFormItem label="启用">
-            <ElSwitch v-model="form.isActive" />
-          </ElFormItem>
+      <div class="option-form-row">
+        <ElForm class="option-form" label-width="52px">
+          <div class="option-form-grid">
+            <ElFormItem label="名称">
+              <ElInput v-model="form.label" placeholder="中文名称" />
+            </ElFormItem>
+            <ElFormItem label="排序">
+              <ElInputNumber
+                v-model="form.sort"
+                controls-position="right"
+                style="width: 100%"
+              />
+            </ElFormItem>
+            <ElFormItem label="启用">
+              <ElSwitch v-model="form.isActive" />
+            </ElFormItem>
+          </div>
+        </ElForm>
+        <div v-if="canManage" class="option-actions">
+          <ElButton v-if="editingId" @click="emit('reset', activeKind)">
+            取消编辑
+          </ElButton>
+          <ElButton :loading="saving" type="primary" @click="emit('save')">
+            {{ editingId ? '保存修改' : '新增' }}
+          </ElButton>
         </div>
-      </ElForm>
-      <div class="option-actions">
-        <ElButton
-          v-if="canManage && editingId"
-          @click="emit('reset', activeKind)"
-        >
-          取消编辑
-        </ElButton>
-        <ElButton
-          v-if="canManage && (activeKind !== 'project_progress' || editingId)"
-          :loading="saving"
-          type="primary"
-          @click="emit('save')"
-        >
-          {{ editingId ? '保存修改' : '新增' }}
-        </ElButton>
-        <span v-if="activeKind === 'project_progress'" class="option-hint">
-          项目进度由系统生命周期固定管理
-        </span>
       </div>
     </div>
     <ElTable :data="displayedOptions" border>
