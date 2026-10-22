@@ -8,6 +8,7 @@ import {
   listMyFlowsPageApi,
   listPendingFlowsPageApi,
   rejectFlowApi,
+  releaseMaterialFlowApi,
   withdrawMaterialFlowApi,
 } from '#/api/material';
 import { runHandled } from '#/utils/handled-promise';
@@ -160,7 +161,34 @@ export function bindProjectFlowActions(
     }
   }
 
+  async function releaseFlow(row: MaterialFlowItem) {
+    if (row.status !== 'pending' || row.canReleaseStuck !== true) return;
+    if (!beginFlowProcessing(row.id)) return;
+    try {
+      await ElMessageBox.confirm(
+        `确认终止料件「${row.materialName}」的流转申请？流程定义已变更，当前节点无法继续。终止后料件保管人保持不变，请重新发起。`,
+        '终止并重新发起',
+        {
+          cancelButtonText: '取消',
+          confirmButtonText: '确认终止',
+          type: 'warning',
+        },
+      );
+      await releaseMaterialFlowApi(row.id);
+      ElMessage.success('流转已终止，请重新发起');
+      await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
+    } catch {
+      // 错误已由 request.ts 拦截器统一弹出
+    } finally {
+      endFlowProcessing(row.id);
+    }
+  }
+
   async function withdrawFlow(row: MaterialFlowItem) {
+    if (row.canReleaseStuck === true) {
+      await releaseFlow(row);
+      return;
+    }
     if (isCurrentProjectReadOnly.value || row.canWithdraw !== true) return;
     if (!beginFlowProcessing(row.id)) return;
     try {
@@ -211,6 +239,7 @@ export function bindProjectFlowActions(
     loadProjectFlows,
     approveFlow,
     rejectFlow,
+    releaseFlow,
     withdrawFlow,
     onProjectTabChange,
     onFlowTabChange,

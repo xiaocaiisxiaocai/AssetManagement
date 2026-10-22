@@ -30,6 +30,7 @@ const emit = defineEmits<{
   pageChange: [];
   pendingPageSizeChange: [];
   reject: [flow: MaterialFlowItem];
+  release: [flow: MaterialFlowItem];
   tabChange: [];
   withdraw: [flow: MaterialFlowItem];
 }>();
@@ -71,6 +72,7 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
           @page-change="emit('pageChange')"
           @pending-page-size-change="emit('pendingPageSizeChange')"
           @reject="emit('reject', $event)"
+          @release="emit('release', $event)"
         />
       </ElTabPane>
       <ElTabPane v-if="canApprove" name="handled">

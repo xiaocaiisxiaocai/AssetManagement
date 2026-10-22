@@ -27,7 +27,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   cancelEdit: [];
   edit: [followup: TestProjectFollowup];
-  remove: [followup: TestProjectFollowup];
   save: [];
 }>();
 const form = defineModel<{ content: string }>('form', { required: true });
@@ -93,7 +92,7 @@ const canWrite = computed(
         <div class="panel-heading">
           <div>
             <h3>历史跟进</h3>
-            <p>按填写时间倒序展示。</p>
+            <p>按填写时间倒序展示，记录保留备查。</p>
           </div>
         </div>
         <ElEmpty
@@ -124,15 +123,6 @@ const canWrite = computed(
                   @click="emit('edit', item)"
                 >
                   编辑
-                </ElButton>
-                <ElButton
-                  :disabled="saving"
-                  link
-                  size="small"
-                  type="danger"
-                  @click="emit('remove', item)"
-                >
-                  删除
                 </ElButton>
               </div>
             </div>

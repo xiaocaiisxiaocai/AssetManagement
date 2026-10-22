@@ -37,6 +37,26 @@ internal static class BpmnProgressNodeResolver
     public static bool IsDefinitionMissing(BpmnNode? node) =>
         node?.Properties.GetValueOrDefault(DefinitionMissingKey) == "true";
 
+    /// <summary>
+    /// 进行中的当前节点在所绑定定义里无法继续审批。没有节点时不是这种残留。
+    /// </summary>
+    public static bool HasUnavailableCurrentNode(
+        BpmnProcess? process,
+        IEnumerable<string> currentNodeIds,
+        IReadOnlyDictionary<string, BpmnToken>? tokens)
+    {
+        foreach (var nodeId in currentNodeIds)
+        {
+            BpmnToken? token = null;
+            tokens?.TryGetValue(nodeId, out token);
+            if (process is null) return true;
+            var node = token is null ? process.FindNode(nodeId) : Resolve(process, token);
+            if (node is null || node.Type != BpmnNodeType.UserTask || IsDefinitionMissing(node))
+                return true;
+        }
+        return false;
+    }
+
     public static string CurrentStepState(BpmnNode node) =>
         IsDefinitionMissing(node) ? "unavailable" : "current";
 

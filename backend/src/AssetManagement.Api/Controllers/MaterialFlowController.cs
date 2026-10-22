@@ -63,6 +63,11 @@ public class MaterialFlowController : ControllerBase
     public async Task<ApiResult<MaterialFlowDto>> Withdraw(int id)
         => ApiResult<MaterialFlowDto>.Ok(await _service.WithdrawAsync(id, CurrentUserId()));
 
+    [HttpPost("{id:int}/release-stuck")]
+    [HasPermission("material-flow:view")]
+    public async Task<ApiResult<MaterialFlowDto>> ReleaseStuck(int id)
+        => ApiResult<MaterialFlowDto>.Ok(await _service.ReleaseStuckAsync(id, CurrentUserId()));
+
     private int CurrentUserId()
         => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "0");
 }

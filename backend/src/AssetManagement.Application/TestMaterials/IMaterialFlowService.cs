@@ -15,4 +15,5 @@ public interface IMaterialFlowService
     Task<MaterialFlowDto> ApproveAsync(int id, MaterialApprovalRequest request, int userId);
     Task<MaterialFlowDto> RejectAsync(int id, MaterialRejectRequest request, int userId);
     Task<MaterialFlowDto> WithdrawAsync(int id, int userId);
+    Task<MaterialFlowDto> ReleaseStuckAsync(int id, int userId);
 }

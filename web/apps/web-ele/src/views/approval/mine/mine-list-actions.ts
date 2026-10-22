@@ -2,9 +2,17 @@ import type { ApprovalWorkItem } from '../approval-work-items';
 
 import { ElMessage, ElMessageBox } from 'element-plus';
 
-import { listMyFlowsPageApi, withdrawMaterialFlowApi } from '#/api/material';
+import {
+  listMyFlowsPageApi,
+  releaseMaterialFlowApi,
+  withdrawMaterialFlowApi,
+} from '#/api/material';
 import { nonempty } from '#/api/repeat-params';
-import { getMineApprovalsPageApi, withdrawApprovalApi } from '#/api/workflow';
+import {
+  getMineApprovalsPageApi,
+  releaseApprovalApi,
+  withdrawApprovalApi,
+} from '#/api/workflow';
 import { runHandled } from '#/utils/handled-promise';
 
 import {
@@ -119,13 +127,16 @@ export function bindMineListActions(page: Record<string, any>) {
   }
 
   async function withdraw(row: ApprovalWorkItem) {
+    const release = row.canReleaseStuck && row.status === 'pending';
     try {
       await ElMessageBox.confirm(
-        `确认撤回申请「${row.flowNo}」？撤回后当前审批立即终止。`,
-        '撤回申请',
+        release
+          ? `确认终止申请「${row.flowNo}」？流程定义已变更，当前节点无法继续。终止后业务状态保持不变，请重新发起。`
+          : `确认撤回申请「${row.flowNo}」？撤回后当前审批立即终止。`,
+        release ? '终止并重新发起' : '撤回申请',
         {
           cancelButtonText: '取消',
-          confirmButtonText: '确认撤回',
+          confirmButtonText: release ? '确认终止' : '确认撤回',
           type: 'warning',
         },
       );
@@ -135,10 +146,17 @@ export function bindMineListActions(page: Record<string, any>) {
 
     withdrawingKeys.value.push(row.key);
     try {
-      await (row.source === 'asset'
-        ? withdrawApprovalApi(row.id)
-        : withdrawMaterialFlowApi(row.id));
-      ElMessage.success('申请已撤回');
+      if (release) {
+        await (row.source === 'asset'
+          ? releaseApprovalApi(row.id)
+          : releaseMaterialFlowApi(row.id));
+        ElMessage.success('流程已终止，请重新发起');
+      } else {
+        await (row.source === 'asset'
+          ? withdrawApprovalApi(row.id)
+          : withdrawMaterialFlowApi(row.id));
+        ElMessage.success('申请已撤回');
+      }
       await loadData();
     } catch {
       // 错误已由 request.ts 拦截器统一弹出

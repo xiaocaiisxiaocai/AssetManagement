@@ -22,6 +22,7 @@ defineProps<{
   loading: boolean;
   materialActionLoadingIds: Set<number>;
   pageSizeOptions: number[];
+  releasingKeys: string[];
   total: number;
   viewMode: 'handled' | 'pending';
 }>();
@@ -33,6 +34,7 @@ const emit = defineEmits<{
   pageChange: [];
   pageSizeChange: [];
   rejectMaterial: [item: ApprovalWorkItem];
+  release: [item: ApprovalWorkItem];
   search: [];
 }>();
 
@@ -171,7 +173,7 @@ function approvalActionLabel(action: null | string | undefined) {
         class-name="table-action-cell"
         fixed="right"
         label="操作"
-        width="150"
+        width="180"
       >
         <template #default="{ row }">
           <ElButton
@@ -182,6 +184,16 @@ function approvalActionLabel(action: null | string | undefined) {
             @click="emit('openHandledDetail', row)"
           >
             查看记录
+          </ElButton>
+          <ElButton
+            v-else-if="row.canReleaseStuck"
+            :loading="releasingKeys.includes(row.key)"
+            link
+            size="small"
+            type="danger"
+            @click="emit('release', row)"
+          >
+            终止并重新发起
           </ElButton>
           <ElButton
             v-else-if="row.source === 'asset'"

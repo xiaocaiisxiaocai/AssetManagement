@@ -1114,11 +1114,17 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         projectSummary.NextFollowUpDueDate.Should().Be(BusinessClock.Today.AddDays(7));
 
         var deleted = await _client.DeleteAsync($"/api/test-projects/{landing.Id}/followups/{created.Data.Id}");
+        var deletedBody = await deleted.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
         var afterDelete = await _client.GetFromJsonAsync<ApiResult<List<TestProjectFollowupDto>>>(
             $"/api/test-projects/{landing.Id}/followups");
+        var afterProjects = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>("/api/test-projects");
 
-        deleted.StatusCode.Should().Be(HttpStatusCode.OK);
-        afterDelete!.Data!.Should().NotContain(x => x.Id == created.Data.Id);
+        deleted.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        deletedBody!.Code.Should().Be(4094);
+        deletedBody.Message.Should().Contain("跟进记录不能删除");
+        afterDelete!.Data!.Should().Contain(x => x.Id == created.Data.Id);
+        afterProjects!.Data!.Single(x => x.Id == landing.Id).NextFollowUpDueDate
+            .Should().Be(BusinessClock.Today.AddDays(7));
     }
 
     [Fact]
@@ -1460,7 +1466,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var rejectedBody = await rejected.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
         rejected.StatusCode.Should().Be(HttpStatusCode.Conflict);
         rejectedBody!.Code.Should().Be(4094);
-        rejectedBody.Message.Should().Contain("只能修改或删除最近一条跟进记录");
+        rejectedBody.Message.Should().Contain("只能修改最近一条跟进记录");
 
         var latestId = historyLatestId;
         var edited = await Put<ApiResult<TestProjectFollowupDto>>(
@@ -1485,27 +1491,24 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     public async Task Project_stats_keep_progress_buckets_exclusive_and_count_followup_records()
     {
         await Login();
-        var baseline = await _client.GetFromJsonAsync<ApiResult<TestProjectStatsDto>>("/api/test-projects/stats");
         var owner = await CreateUserInDb($"u{Guid.NewGuid():N}"[..12], "统计项目负责人");
         await Post<ApiResult<TestProjectDto>>("/api/test-projects", NewProjectRequest("统计测试中项目", owner.Id));
         var landing = await CreateProjectWithProgress("统计落地跟进项目", "landing", owner.Id);
-        await CreateProjectWithProgress("统计结案项目", "closed", owner.Id, DateTime.UtcNow.Date);
+        await CreateProjectWithProgress("统计结案项目", "closed", owner.Id, BusinessClock.Today);
 
         await Login(owner.EmployeeNo, "123456");
         await Post<ApiResult<TestProjectFollowupDto>>(
             $"/api/test-projects/{landing.Id}/followups",
-            new SaveTestProjectFollowupRequest { Content = "统计本月跟进", DueDate = DateTime.UtcNow.Date });
+            new SaveTestProjectFollowupRequest { Content = "统计本月跟进", DueDate = BusinessClock.Today });
         var after = await _client.GetFromJsonAsync<ApiResult<TestProjectStatsDto>>("/api/test-projects/stats");
-        var month = DateTime.UtcNow.Month;
+        var month = BusinessClock.Today.Month;
 
-        after!.Data!.Total.Should().Be(baseline!.Data!.Total + 3);
-        after.Data.Closed.Should().Be(baseline.Data.Closed + 1);
-        after.Data.Landed.Should().Be(baseline.Data.Landed + 1);
-        after.Data.InProgress.Should().Be(baseline.Data.InProgress + 1);
-        after.Data.MonthlyStat.Single(x => x.Month == month).ClosedCount.Should()
-            .Be(baseline.Data.MonthlyStat.Single(x => x.Month == month).ClosedCount + 1);
-        after.Data.MonthlyStat.Single(x => x.Month == month).FollowUpCount.Should()
-            .Be(baseline.Data.MonthlyStat.Single(x => x.Month == month).FollowUpCount + 1);
+        after!.Data!.Total.Should().Be(3);
+        after.Data.Closed.Should().Be(1);
+        after.Data.Landed.Should().Be(1);
+        after.Data.InProgress.Should().Be(1);
+        after.Data.MonthlyStat.Single(x => x.Month == month).ClosedCount.Should().Be(1);
+        after.Data.MonthlyStat.Single(x => x.Month == month).FollowUpCount.Should().Be(1);
     }
 
       // ===== 辅助方法 =====

@@ -46,6 +46,7 @@ public class TestProjectService : ITestProjectService
             "deleted" => q.Where(x => x.IsDeleted),
             _ => q.Where(x => !x.IsDeleted)
         };
+        q = await _accessScope.ApplyVisibilityAsync(q, currentUserId);
         // 兼容旧客户端的无分页端点，但必须有硬上限；正式列表使用 ListPageAsync。
         var projects = await q.OrderByDescending(x => x.Id)
             .Take(AppConstants.MaxPageSize)
@@ -62,7 +63,8 @@ public class TestProjectService : ITestProjectService
     public async Task<PagedResult<TestProjectDto>> ListPageAsync(TestProjectPageQuery query, int currentUserId)
     {
         var (page, pageSize) = Pagination.Normalize(query.Page, query.PageSize);
-        var projectsQuery = ApplyProjectQuery(_db.TestProjects.AsNoTracking(), query);
+        var projectsQuery = await _accessScope.ApplyVisibilityAsync(
+            ApplyProjectQuery(_db.TestProjects.AsNoTracking(), query), currentUserId);
 
         var total = await projectsQuery.CountAsync();
         var offset = Pagination.GetOffset(page, pageSize, total);
@@ -89,7 +91,8 @@ public class TestProjectService : ITestProjectService
 
     public async Task<byte[]> ExportAsync(TestProjectPageQuery query, int currentUserId)
     {
-        var projectsQuery = ApplyProjectQuery(_db.TestProjects.AsNoTracking(), query);
+        var projectsQuery = await _accessScope.ApplyVisibilityAsync(
+            ApplyProjectQuery(_db.TestProjects.AsNoTracking(), query), currentUserId);
         if (await projectsQuery.CountAsync() > AppConstants.MaxExportRows)
             throw new BizException(4130, $"导出项目不能超过 {AppConstants.MaxExportRows} 条，请缩小筛选范围");
 
@@ -655,9 +658,12 @@ public class TestProjectService : ITestProjectService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<TestProjectFollowupDto>> ListFollowupsAsync(int projectId)
+    public async Task<List<TestProjectFollowupDto>> ListFollowupsAsync(int projectId, int currentUserId)
     {
-        await EnsureProjectExists(projectId, includeDeleted: true);
+        var project = await _db.TestProjects.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == projectId)
+            ?? throw new BizException(4046, "测试项目不存在");
+        await _accessScope.EnsureCanViewAsync(project, currentUserId);
         var followups = await _db.TestProjectFollowups
             .Where(x => x.ProjectId == projectId)
             .OrderByDescending(x => x.DueDate)
@@ -734,27 +740,17 @@ public class TestProjectService : ITestProjectService
         return result;
     }
 
-    public async Task DeleteFollowupAsync(int projectId, int followupId, int currentUserId)
+    public Task DeleteFollowupAsync(int projectId, int followupId, int currentUserId)
     {
-        await using var transaction = await _db.Database.BeginTransactionAsync();
-        var project = await LockActiveProjectAsync(projectId);
-        await EnsureCanWriteFollowup(project, currentUserId);
-        var followup = await _db.TestProjectFollowups.AsTracking()
-            .SingleOrDefaultAsync(x => x.Id == followupId && x.ProjectId == projectId)
-            ?? throw new BizException(4046, "跟进记录不存在");
-        await EnsureLatestFollowupAsync(projectId, followup.Id);
-        _db.TestProjectFollowups.Remove(followup);
-        await _db.SaveChangesAsync();
-        await transaction.CommitAsync();
+        throw new BizException(4094, "跟进记录不能删除");
     }
 
-    public async Task<TestProjectStatsDto> GetStatsAsync()
+    public async Task<TestProjectStatsDto> GetStatsAsync(int currentUserId)
     {
         var year = BusinessClock.Now.Year;
-        var projects = await _db.TestProjects
-            .AsNoTracking()
-            .Where(x => !x.IsDeleted)
-            .ToListAsync();
+        var visibleProjects = await _accessScope.ApplyVisibilityAsync(
+            _db.TestProjects.AsNoTracking().Where(x => !x.IsDeleted), currentUserId);
+        var projects = await visibleProjects.ToListAsync();
 
         var typeOptions = await _db.TestProjectOptions.AsNoTracking()
             .Where(x => x.Kind == OptionKindProjectType && x.IsActive)
@@ -946,7 +942,7 @@ public class TestProjectService : ITestProjectService
             .Select(x => x.Id)
             .FirstOrDefaultAsync();
         if (latestId != followupId)
-            throw new BizException(4094, "只能修改或删除最近一条跟进记录");
+            throw new BizException(4094, "只能修改最近一条跟进记录");
     }
 
     private async Task ValidateProjectReferences(SaveTestProjectRequest request)

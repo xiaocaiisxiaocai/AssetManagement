@@ -244,7 +244,9 @@ public class MaterialFlowService : IMaterialFlowService
             {
                 var actionableNodeIds = await GetActionableNodeIdsAsync(
                     flow, user, workflowMap, processCache, approverCache);
-                if (actionableNodeIds.Count == 0) continue;
+                if (actionableNodeIds.Count == 0 &&
+                    !IsAdminRepairCandidate(user, flow, workflowMap, processCache))
+                    continue;
                 if ((long)actionableTotal >= pageOffset && selected.Count < pageSize)
                     selected.Add((flow, actionableNodeIds));
                 actionableTotal++;
@@ -253,7 +255,8 @@ public class MaterialFlowService : IMaterialFlowService
         }
         var renderContext = await BuildProgressRenderContextAsync(selected.Select(item => item.Flow).ToList());
         var result = new List<MaterialFlowDto>(selected.Count);
-        foreach (var item in selected) result.Add(await ToDtoAsync(item.Flow, item.Nodes, userId, renderContext));
+        foreach (var item in selected)
+            result.Add(await ToDtoAsync(item.Flow, item.Nodes, userId, renderContext, IsAdmin(user)));
         return new PagedResult<MaterialFlowDto> { Items = result, Total = actionableTotal, Page = page, PageSize = pageSize };
     }
 
@@ -328,7 +331,8 @@ public class MaterialFlowService : IMaterialFlowService
         var flow = await LoadFlow(id);
         var user = await LoadUser(userId);
         await EnsureCanViewFlowAsync(flow, user);
-        return await ToDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user), userId);
+        return await ToDtoAsync(
+            flow, await GetActionableNodeIdsAsync(flow, user), userId, viewerIsAdmin: IsAdmin(user));
     }
 
     public async Task<MaterialFlowDto> ApproveAsync(int id, MaterialApprovalRequest request, int userId)
@@ -473,6 +477,43 @@ public class MaterialFlowService : IMaterialFlowService
         await tx.CommitAsync();
 
         return await ToDtoAsync(flow, currentUserId: userId);
+    }
+
+    public async Task<MaterialFlowDto> ReleaseStuckAsync(int id, int userId)
+    {
+        var flow = await LoadFlow(id);
+        EnsureActive(flow);
+        var user = await LoadUser(userId);
+        if (flow.ApplicantId != userId && !IsAdmin(user))
+            throw new BizException(4031, "只有申请人或系统管理员可以终止无法继续的流程");
+        var process = await LoadBoundProcessAsync(flow.WorkflowId);
+        if (!BpmnProgressNodeResolver.HasUnavailableCurrentNode(process, flow.CurrentNodeIds, flow.BpmnTokens))
+            throw new BizException(4094, "当前流程仍可继续审批，不能按定义变更终止");
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        ExecuteBpmn(() => BpmnEngine.Withdraw(flow, user.Name, BpmnEngine.DefinitionReleasedOpinion));
+        flow.ActiveScopeKey = null;
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该流转单已被他人处理，请刷新后重试");
+        }
+        await AddRecord(id, "release", user.Id, user.Name, "流程定义已变更，申请已终止，请重新发起");
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "material_released",
+            Title = $"料件流转已终止：{flow.MaterialName}",
+            Body = $"流转 {flow.FlowNo} 因流程定义已变更无法继续审批，已终止且未改变料件保管人。请重新发起。",
+            FlowId = id,
+            UserId = flow.ApplicantId,
+            IdempotencyKey = $"material_released_{id}"
+        });
+        await tx.CommitAsync();
+        return await ToDtoAsync(flow, currentUserId: userId, viewerIsAdmin: IsAdmin(user));
     }
 
     // ===== 私有辅助 =====
@@ -1181,7 +1222,8 @@ public class MaterialFlowService : IMaterialFlowService
         MaterialFlow flow,
         IEnumerable<string>? actionableNodeIds = null,
         int? currentUserId = null,
-        ProgressRenderContext? renderContext = null)
+        ProgressRenderContext? renderContext = null,
+        bool viewerIsAdmin = false)
     {
         var dto = ToDto(flow, actionableNodeIds);
         dto.CanWithdraw = currentUserId.HasValue &&
@@ -1190,16 +1232,23 @@ public class MaterialFlowService : IMaterialFlowService
         BpmnProcess? process;
         if (renderContext is null)
         {
-            var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
-            if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return dto;
-            process = BpmnParser.Parse(workflow.BpmnXml);
+            process = await LoadBoundProcessAsync(flow.WorkflowId);
+            if (process is null)
+            {
+                ApplyReleaseState(dto, flow, null, currentUserId, viewerIsAdmin);
+                return dto;
+            }
         }
         else
         {
             process = flow.WorkflowId.HasValue
                 ? renderContext.Processes.GetValueOrDefault(flow.WorkflowId.Value)
                 : null;
-            if (process is null) return dto;
+            if (process is null)
+            {
+                ApplyReleaseState(dto, flow, null, currentUserId, viewerIsAdmin);
+                return dto;
+            }
         }
 
         var completed = new List<WorkflowProgressStepDto>();
@@ -1239,7 +1288,49 @@ public class MaterialFlowService : IMaterialFlowService
         dto.ProgressSteps = completed.Concat(current).Concat(next).ToList();
         dto.CurrentSteps = current;
         dto.NextSteps = next;
+        ApplyReleaseState(dto, flow, process, currentUserId, viewerIsAdmin);
         return dto;
+    }
+
+    private async Task<BpmnProcess?> LoadBoundProcessAsync(int? workflowId)
+    {
+        if (!workflowId.HasValue) return null;
+        var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == workflowId.Value);
+        return string.IsNullOrWhiteSpace(workflow?.BpmnXml) ? null : BpmnParser.Parse(workflow.BpmnXml);
+    }
+
+    private static bool IsAdminRepairCandidate(
+        User user,
+        MaterialFlow flow,
+        Dictionary<int, WorkflowEntity> workflowMap,
+        Dictionary<int, BpmnProcess> processCache)
+    {
+        if (!IsAdmin(user)) return false;
+        BpmnProcess? process = null;
+        if (flow.WorkflowId.HasValue)
+        {
+            if (!processCache.TryGetValue(flow.WorkflowId.Value, out process) &&
+                workflowMap.TryGetValue(flow.WorkflowId.Value, out var workflow) &&
+                !string.IsNullOrWhiteSpace(workflow.BpmnXml))
+            {
+                process = BpmnParser.Parse(workflow.BpmnXml);
+                processCache[flow.WorkflowId.Value] = process;
+            }
+        }
+        return BpmnProgressNodeResolver.HasUnavailableCurrentNode(process, flow.CurrentNodeIds, flow.BpmnTokens);
+    }
+
+    private static void ApplyReleaseState(
+        MaterialFlowDto dto,
+        MaterialFlow flow,
+        BpmnProcess? process,
+        int? currentUserId,
+        bool viewerIsAdmin)
+    {
+        dto.DefinitionBroken = flow.Status == FlowStatus.Pending &&
+            BpmnProgressNodeResolver.HasUnavailableCurrentNode(process, flow.CurrentNodeIds, flow.BpmnTokens);
+        dto.CanReleaseStuck = dto.DefinitionBroken && currentUserId is > 0 &&
+            (viewerIsAdmin || flow.ApplicantId == currentUserId.Value);
     }
 
     private static BpmnToken ToHistoricalToken(BpmnToken current, BpmnTokenExecution execution) => new()

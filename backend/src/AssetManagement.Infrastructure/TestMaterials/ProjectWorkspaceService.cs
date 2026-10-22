@@ -30,6 +30,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     public async Task<ProjectWorkspaceDto> GetAsync(int projectId, int userId)
     {
         var project = await LoadProjectAsync(projectId);
+        await _accessScope.EnsureCanViewAsync(project, userId);
         return new ProjectWorkspaceDto
         {
             ProjectId = projectId,
@@ -149,6 +150,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     public async Task<ProjectWorkspaceFile> DownloadAsync(int projectId, int documentId, int userId)
     {
         var project = await LoadProjectAsync(projectId);
+        await _accessScope.EnsureCanViewAsync(project, userId);
         if (!await _accessScope.CanExecuteAsync(project, userId, "project:export", true))
             throw new BizException(4031, "只有项目负责人或拥有项目导出权限的用户可以导出报告");
         var document = await _db.ProjectReportDocuments.AsNoTracking()
@@ -174,6 +176,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     {
         await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
         var project = await LoadProjectAsync(projectId);
+        await _accessScope.EnsureCanViewAsync(project, userId);
         if (!await _accessScope.CanExecuteAsync(project, userId, "project:export", true))
             throw new BizException(4031, "只有项目负责人或拥有项目导出权限的用户可以导出报告");
         await CheckStageAsync(projectId, stageId);

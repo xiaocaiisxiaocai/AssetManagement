@@ -19,7 +19,6 @@ vi.mock('element-plus', () => ({
 
 vi.mock('#/api/test-project', () => ({
   createTestProjectFollowupApi: mocks.create,
-  deleteTestProjectFollowupApi: vi.fn(),
   listTestProjectFollowupsApi: mocks.list,
   updateTestProjectFollowupApi: vi.fn(),
 }));

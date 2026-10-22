@@ -17,7 +17,7 @@ public class TestProjectController : ControllerBase
     [HttpGet("stats")]
     [HasPermission("project:view")]
     public async Task<ApiResult<TestProjectStatsDto>> Stats()
-        => ApiResult<TestProjectStatsDto>.Ok(await _service.GetStatsAsync());
+        => ApiResult<TestProjectStatsDto>.Ok(await _service.GetStatsAsync(CurrentUserId()));
 
     [HttpGet]
     [HasPermission("project:view")]
@@ -87,7 +87,7 @@ public class TestProjectController : ControllerBase
     [HttpGet("{id:int}/followups")]
     [HasPermission("project:view")]
     public async Task<ApiResult<List<TestProjectFollowupDto>>> Followups(int id)
-        => ApiResult<List<TestProjectFollowupDto>>.Ok(await _service.ListFollowupsAsync(id));
+        => ApiResult<List<TestProjectFollowupDto>>.Ok(await _service.ListFollowupsAsync(id, CurrentUserId()));
 
     [HttpPost("{id:int}/followups")]
     // 落地跟进按项目进度和负责人关系授权，控制器只拦截未登录用户。

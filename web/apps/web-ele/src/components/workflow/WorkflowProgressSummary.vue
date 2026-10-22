@@ -35,7 +35,7 @@ const currentText = computed(() => {
     return props.currentSteps
       .map((step) => {
         if (step.state === 'unavailable') {
-          return `${step.nodeName} · 流程定义已变更，该节点无法继续审批`;
+          return `${step.nodeName} · 流程定义已变更，申请人或系统管理员可以终止并重新发起`;
         }
         const pending = assigneeNames(step, 'pending');
         return `${step.nodeName} · ${pending || '等待节点流转'}`;

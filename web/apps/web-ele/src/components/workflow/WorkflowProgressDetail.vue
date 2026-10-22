@@ -107,7 +107,7 @@ function opinionText(step: WorkflowProgressStep) {
         v-else-if="step.state === 'unavailable'"
         class="workflow-step-people"
       >
-        流程定义已变更，该节点无法继续审批
+        流程定义已变更，申请人或系统管理员可以终止并重新发起
       </div>
       <div v-else class="workflow-step-people">待系统确定处理人</div>
       <div v-if="step.opinion" class="workflow-step-opinion">

@@ -8,6 +8,7 @@ using AssetManagement.Application.Notifications;
 using AssetManagement.Application.Rbac;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Tests.Notifications;
 using FluentAssertions;
@@ -403,6 +404,91 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             Reason = "撤回后重新发起"
         });
         replacement.Code.Should().Be(0, "撤回后应释放料件的进行中流转锁");
+    }
+
+    [Fact]
+    public async Task Definition_missing_material_flow_can_be_released_without_changing_custodian()
+    {
+        await Login();
+        await SetApprovalSwitch(true);
+        var project = await CreateProject("缺失节点流转项目");
+        var transferee = await CreateUser($"mf{Guid.NewGuid():N}"[..8], "缺失节点接收人");
+        var healthyMaterial = await CreateMaterial(project.Id, "仍可审批样品");
+        var healthy = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = healthyMaterial.Id,
+            TransfereeId = transferee.Id,
+            Reason = "正常流转不能终止"
+        });
+        var rejected = await _client.PostAsJsonAsync(
+            $"/api/material-flows/{healthy.Data!.Id}/release-stuck", new { });
+        rejected.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var material = await CreateMaterial(project.Id, "缺失节点样品");
+        var before = await _client.GetFromJsonAsync<ApiResult<TestMaterialDetailDto>>(
+            $"/api/test-materials/{material.Id}/detail");
+        int flowId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var adminId = await db.Users.AsNoTracking()
+                .Where(user => user.EmployeeNo == "1001")
+                .Select(user => user.Id)
+                .SingleAsync();
+            var workflowId = await db.Workflows.AsNoTracking()
+                .Where(workflow => workflow.BizType == "material_transfer" && workflow.IsActive)
+                .Select(workflow => workflow.Id)
+                .SingleAsync();
+            var flow = new MaterialFlow
+            {
+                FlowNo = $"MF-{Guid.NewGuid():N}"[..20],
+                BizType = "material_transfer",
+                WorkflowId = workflowId,
+                MaterialId = material.Id,
+                MaterialNo = material.MaterialNo,
+                MaterialName = material.Name,
+                ApplicantId = adminId,
+                Applicant = "系统管理员",
+                TransfereeId = transferee.Id,
+                Transferee = transferee.Name,
+                Status = FlowStatus.Pending,
+                ActiveScopeKey = $"material:{material.Id}",
+                CurrentNodeIds = new List<string> { "Task_missingNode" },
+                BpmnTokens = new Dictionary<string, BpmnToken>
+                {
+                    ["Task_missingNode"] = new()
+                    {
+                        NodeId = "Task_missingNode",
+                        NodeName = "已删除节点",
+                        Status = BpmnTokenStatus.Active,
+                        StartedAt = DateTime.UtcNow
+                    }
+                },
+                ApplyTime = DateTime.UtcNow,
+                Deadline = DateTime.UtcNow.AddDays(1)
+            };
+            db.MaterialFlows.Add(flow);
+            await db.SaveChangesAsync();
+            flowId = flow.Id;
+        }
+
+        var released = await Post<ApiResult<MaterialFlowDto>>(
+            $"/api/material-flows/{flowId}/release-stuck", new { });
+        released.Data!.Status.Should().Be(FlowStatus.Withdrawn);
+        released.Data.CanReleaseStuck.Should().BeFalse();
+
+        var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDetailDto>>(
+            $"/api/test-materials/{material.Id}/detail");
+        after!.Data!.Material.CustodianId.Should().Be(before!.Data!.Material.CustodianId);
+        after.Data.Records.Should().Contain(x => x.Action == "release");
+
+        var replacement = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "终止后重新发起"
+        });
+        replacement.Code.Should().Be(0);
     }
 
     [Fact]

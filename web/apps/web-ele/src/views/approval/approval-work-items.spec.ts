@@ -203,6 +203,14 @@ describe('审批工作项适配', () => {
     expect(canWithdrawApproval({ ...applicant, status: 'approved' })).toBe(
       false,
     );
+    expect(
+      normalizeAssetApproval({ ...assetFlow, canReleaseStuck: true })
+        .canReleaseStuck,
+    ).toBe(true);
+    expect(
+      normalizeMaterialFlow({ ...materialFlow, canReleaseStuck: true })
+        .canReleaseStuck,
+    ).toBe(true);
   });
 
   it('按来源和编号共同定位审批项，避免跨业务同号误更新', () => {

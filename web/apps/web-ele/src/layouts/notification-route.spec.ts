@@ -15,6 +15,10 @@ describe('resolveNotificationRoute', () => {
       path: '/approval/mine',
       query: { flowId: '8', source: 'asset' },
     });
+    expect(resolveNotificationRoute('approval_released', 9)).toEqual({
+      path: '/approval/mine',
+      query: { flowId: '9', source: 'asset' },
+    });
   });
 
   it.each(['material_transferred', 'material_approved', 'material_rejected'])(

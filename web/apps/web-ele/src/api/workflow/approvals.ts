@@ -98,6 +98,14 @@ export const withdrawApprovalApi = (id: number) =>
     ),
   );
 
+export const releaseApprovalApi = (id: number) =>
+  unwrap(
+    requestClient.post<ApiResult<ApprovalFlow>>(
+      `/approvals/${id}/release-stuck`,
+      {},
+    ),
+  );
+
 export const addSignFlowApi = (id: number, data: AddSignPayload) =>
   unwrap(
     requestClient.post<ApiResult<ApprovalFlow>>(

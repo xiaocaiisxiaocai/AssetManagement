@@ -25,6 +25,7 @@ const emit = defineEmits<{
   pageChange: [];
   pendingPageSizeChange: [];
   reject: [flow: MaterialFlowItem];
+  release: [flow: MaterialFlowItem];
 }>();
 const pendingQuery = defineModel<{ page: number; pageSize: number }>(
   'pendingQuery',
@@ -82,33 +83,45 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
         align="center"
         class-name="table-action-cell"
         label="操作"
-        width="140"
+        width="168"
       >
         <template #default="{ row }">
           <ElButton
-            :disabled="
-              row.actionableNodeIds.length === 0 ||
-              processingFlowIds.includes(row.id)
-            "
-            link
-            size="small"
-            type="success"
-            @click="emit('approve', row)"
-          >
-            通过
-          </ElButton>
-          <ElButton
-            :disabled="
-              row.actionableNodeIds.length === 0 ||
-              processingFlowIds.includes(row.id)
-            "
+            v-if="row.canReleaseStuck"
+            :disabled="processingFlowIds.includes(row.id)"
             link
             size="small"
             type="danger"
-            @click="emit('reject', row)"
+            @click="emit('release', row)"
           >
-            驳回
+            终止并重新发起
           </ElButton>
+          <template v-else>
+            <ElButton
+              :disabled="
+                row.actionableNodeIds.length === 0 ||
+                processingFlowIds.includes(row.id)
+              "
+              link
+              size="small"
+              type="success"
+              @click="emit('approve', row)"
+            >
+              通过
+            </ElButton>
+            <ElButton
+              :disabled="
+                row.actionableNodeIds.length === 0 ||
+                processingFlowIds.includes(row.id)
+              "
+              link
+              size="small"
+              type="danger"
+              @click="emit('reject', row)"
+            >
+              驳回
+            </ElButton>
+          </template>
         </template>
       </ElTableColumn>
     </ElTable>

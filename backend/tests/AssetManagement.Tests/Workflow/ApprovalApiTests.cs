@@ -437,6 +437,108 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         resultFlow.ProgressSteps.Should().ContainSingle(step =>
             step.NodeId == "Task_activeCounterSign" && step.State == "unavailable");
         resultFlow.ProgressSteps.Should().NotContain(step => step.State == "completed");
+        resultFlow.DefinitionBroken.Should().BeTrue();
+        resultFlow.CanReleaseStuck.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Stuck_approval_can_be_released_without_changing_the_asset_and_then_restarted()
+    {
+        await Login();
+        var healthyAsset = await CreateAsset();
+        var healthy = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = healthyAsset.Id,
+            Reason = "正常流程不能按定义缺失终止",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
+        });
+        var rejected = await PostError<ApprovalFlowDto>(
+            $"/api/approvals/{healthy.Data!.Id}/release-stuck", new { }, HttpStatusCode.Conflict);
+        rejected.Code.Should().Be(4094);
+        rejected.Message.Should().Contain("仍可继续审批");
+
+        var asset = await CreateAsset();
+        int flowId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var adminId = await db.Users.AsNoTracking()
+                .Where(user => user.EmployeeNo == "1001")
+                .Select(user => user.Id)
+                .SingleAsync();
+            var workflowId = await db.Workflows
+                .Where(workflow => workflow.BizType == "borrow" && workflow.IsActive)
+                .Select(workflow => workflow.Id)
+                .SingleAsync();
+            var flow = new ApprovalFlow
+            {
+                FlowNo = Unique("STUCK"),
+                BizType = "borrow",
+                WorkflowId = workflowId,
+                AssetId = asset.Id,
+                AssetNo = asset.AssetNo,
+                AssetName = asset.Name,
+                ApplicantId = adminId,
+                Applicant = "系统管理员",
+                Status = FlowStatus.Pending,
+                ActiveScopeKey = $"asset:{asset.Id}",
+                CurrentNodeIds = new List<string> { "Task_missingNode" },
+                BpmnTokens = new Dictionary<string, BpmnToken>
+                {
+                    ["Task_missingNode"] = new()
+                    {
+                        NodeId = "Task_missingNode",
+                        NodeName = "已删除节点",
+                        Status = BpmnTokenStatus.Active,
+                        StartedAt = DateTime.UtcNow
+                    }
+                },
+                ApplyTime = DateTime.UtcNow,
+                Deadline = DateTime.UtcNow.AddDays(1)
+            };
+            db.ApprovalFlows.Add(flow);
+            await db.SaveChangesAsync();
+            flowId = flow.Id;
+        }
+
+        var blocked = await PostError<ApprovalFlowDto>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "应被缺失节点的在途单拦住",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
+        }, HttpStatusCode.Conflict);
+        blocked.Code.Should().Be(4056);
+
+        var pending = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/pending-page?page=1&pageSize=20&flowId={flowId}");
+        var stuck = pending!.Data!.Items.Should().ContainSingle().Which;
+        stuck.DefinitionBroken.Should().BeTrue();
+        stuck.CanReleaseStuck.Should().BeTrue();
+        stuck.ActionableNodeIds.Should().BeEmpty();
+
+        var released = await Post<ApiResult<ApprovalFlowDto>>($"/api/approvals/{flowId}/release-stuck", new { });
+        released.Data!.Status.Should().Be(FlowStatus.Withdrawn);
+
+        var replacement = await Post<ApiResult<ApprovalFlowDto>>("/api/approvals", new StartApprovalRequest
+        {
+            BizType = "borrow",
+            AssetId = asset.Id,
+            Reason = "终止后重新发起",
+            ReturnDate = DateTime.Today.AddDays(7).ToString("yyyy-MM-dd")
+        });
+        replacement.Code.Should().Be(0);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var saved = await db.ApprovalFlows.AsNoTracking().SingleAsync(x => x.Id == flowId);
+            saved.Status.Should().Be(FlowStatus.Withdrawn);
+            saved.ActiveScopeKey.Should().BeNull();
+            var assetState = await db.Assets.AsNoTracking().SingleAsync(x => x.Id == asset.Id);
+            assetState.Status.Should().Be(AssetStatus.Available);
+        }
     }
 
     [Theory]

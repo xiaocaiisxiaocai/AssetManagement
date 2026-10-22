@@ -9,6 +9,7 @@ export interface ApprovalWorkItem {
   applicantDept?: null | string;
   applyTime: string;
   bizType: string;
+  canReleaseStuck: boolean;
   canWithdraw: boolean;
   currentNodeLabel: string;
   flowNo: string;
@@ -44,6 +45,7 @@ export function normalizeAssetApproval(flow: ApprovalFlow): ApprovalWorkItem {
     applicantDept: flow.applicantDept,
     applyTime: flow.applyTime,
     bizType: flow.bizType,
+    canReleaseStuck: flow.canReleaseStuck === true,
     canWithdraw: flow.status === 'pending',
     currentNodeLabel: currentAssetNodeLabel(flow),
     flowNo: flow.flowNo,
@@ -75,6 +77,7 @@ export function normalizeMaterialFlow(
     applicantDept: flow.applicantDept,
     applyTime: flow.applyTime,
     bizType: 'material_transfer',
+    canReleaseStuck: flow.canReleaseStuck === true,
     canWithdraw: flow.canWithdraw === true,
     currentNodeLabel: currentMaterialNodeLabel(flow),
     flowNo: flow.flowNo,

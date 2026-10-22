@@ -12,17 +12,19 @@ import type { ApprovalFlow } from '#/api/workflow';
 
 import type { ComputedRef, Ref } from 'vue';
 
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 import { nonempty } from '#/api/repeat-params';
 import {
   listHandledFlowsPageApi,
   listPendingFlowsPageApi,
+  releaseMaterialFlowApi,
 } from '#/api/material';
 import { getApproverOptionsApi } from '#/api/user';
 import {
   getHandledApprovalsPageApi,
   getPendingApprovalsPageApi,
+  releaseApprovalApi,
 } from '#/api/workflow';
 import { runHandled } from '#/utils/handled-promise';
 
@@ -59,6 +61,7 @@ export interface PendingListActionContext {
   openedNotificationFlowKey: Ref<string>;
   opinion: Ref<string>;
   query: PendingListQuery;
+  releasingKeys: Ref<string[]>;
   route: RouteLocationNormalizedLoaded;
   router: Router;
   selected: Ref<ApprovalFlow | null>;
@@ -87,6 +90,7 @@ export function bindPendingListActions(state: PendingListActionContext) {
     openedNotificationFlowKey,
     opinion,
     query,
+    releasingKeys,
     route,
     router,
     selected,
@@ -216,6 +220,38 @@ export function bindPendingListActions(state: PendingListActionContext) {
     handledDetailVisible.value = true;
   }
 
+  async function releaseStuck(item: ApprovalWorkItem) {
+    if (!item.canReleaseStuck || item.status !== 'pending') return;
+    try {
+      await ElMessageBox.confirm(
+        `确认终止申请「${item.flowNo}」？流程定义已变更，当前节点无法继续。终止后业务状态保持不变，请重新发起。`,
+        '终止并重新发起',
+        {
+          cancelButtonText: '取消',
+          confirmButtonText: '确认终止',
+          type: 'warning',
+        },
+      );
+    } catch {
+      return;
+    }
+
+    releasingKeys.value = [...releasingKeys.value, item.key];
+    try {
+      await (item.source === 'asset'
+        ? releaseApprovalApi(item.id)
+        : releaseMaterialFlowApi(item.id));
+      ElMessage.success('流程已终止，请重新发起');
+      await loadData();
+    } catch {
+      // 错误已由 request.ts 拦截器统一弹出
+    } finally {
+      releasingKeys.value = releasingKeys.value.filter(
+        (key) => key !== item.key,
+      );
+    }
+  }
+
   function resolveNodeId() {
     if (!selected.value) return undefined;
     if (selected.value.actionableNodeIds.length <= 1) {
@@ -232,6 +268,7 @@ export function bindPendingListActions(state: PendingListActionContext) {
     loadData,
     openDetail,
     openHandledDetail,
+    releaseStuck,
     resolveNodeId,
   };
 }

@@ -107,6 +107,10 @@ export interface MaterialFlowItem {
   directTransfer: boolean;
   /** 是否允许当前登录用户撤回；以服务端申请人身份判断为准。 */
   canWithdraw?: boolean;
+  /** 当前节点已不在绑定的流程定义中，不能继续审批。 */
+  definitionBroken?: boolean;
+  /** 申请人或系统管理员可以终止该无法继续的流程。 */
+  canReleaseStuck?: boolean;
   myApprovalAction?: null | string;
   myApprovalNodeId?: null | string;
   myApprovalTime?: null | string;
@@ -234,6 +238,14 @@ export const withdrawMaterialFlowApi = (id: number) =>
   unwrap(
     requestClient.post<ApiResult<MaterialFlowItem>>(
       `/material-flows/${id}/withdraw`,
+      {},
+    ),
+  );
+
+export const releaseMaterialFlowApi = (id: number) =>
+  unwrap(
+    requestClient.post<ApiResult<MaterialFlowItem>>(
+      `/material-flows/${id}/release-stuck`,
       {},
     ),
   );

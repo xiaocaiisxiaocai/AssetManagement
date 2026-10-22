@@ -174,14 +174,23 @@ function statusText(status: string) {
         class-name="table-action-cell"
         fixed="right"
         label="操作"
-        width="130"
+        width="180"
       >
         <template #default="{ row }">
           <ElButton link type="primary" @click="emit('showProgress', row)">
             流程
           </ElButton>
           <ElButton
-            v-if="canWithdrawApproval(row)"
+            v-if="row.canReleaseStuck && row.status === 'pending'"
+            :loading="withdrawingKeys.includes(row.key)"
+            link
+            type="danger"
+            @click="emit('withdraw', row)"
+          >
+            终止并重新发起
+          </ElButton>
+          <ElButton
+            v-else-if="canWithdrawApproval(row)"
             :loading="withdrawingKeys.includes(row.key)"
             link
             type="danger"

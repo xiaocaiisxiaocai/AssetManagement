@@ -18,6 +18,7 @@ export function resolveNotificationRoute(type: string, flowId?: number) {
   if (
     type === 'approval_approved' ||
     type === 'approval_rejected' ||
+    type === 'approval_released' ||
     type === 'return_confirmed'
   ) {
     return { path: '/approval/mine', query };

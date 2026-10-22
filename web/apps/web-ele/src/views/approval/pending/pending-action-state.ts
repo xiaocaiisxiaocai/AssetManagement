@@ -24,6 +24,7 @@ export function createPendingActionState(currentUserId: ComputedRef<number>) {
   const handledDetailVisible = ref(false);
   const users = ref<UserOptionDto[]>([]);
   const materialActionLoadingIds = ref(new Set<number>());
+  const releasingKeys = ref<string[]>([]);
   const opinion = ref('同意');
   const addSignUser = ref('');
   const selectedNodeId = ref('');
@@ -113,6 +114,7 @@ export function createPendingActionState(currentUserId: ComputedRef<number>) {
     materialActionLoadingIds,
     openedNotificationFlowKey,
     opinion,
+    releasingKeys,
     selected,
     selectedNodeId,
     users,

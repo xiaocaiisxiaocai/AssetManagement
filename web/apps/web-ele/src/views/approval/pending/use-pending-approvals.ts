@@ -58,6 +58,7 @@ export function usePendingApprovals() {
     openedNotificationFlowKey: actionState.openedNotificationFlowKey,
     opinion: actionState.opinion,
     query: filterState.query,
+    releasingKeys: actionState.releasingKeys,
     route,
     router,
     selected: actionState.selected,

@@ -12,8 +12,16 @@ export function isSupportedProjectProgress(value: string) {
   return SUPPORTED_PROJECT_PROGRESS_CODES.has(value.trim().toLowerCase());
 }
 
+export function canReleaseMaterialFlow(flow: MaterialFlowItem) {
+  return flow.status === 'pending' && flow.canReleaseStuck === true;
+}
+
 export function canWithdrawMaterialFlow(flow: MaterialFlowItem) {
-  return flow.status === 'pending' && flow.canWithdraw === true;
+  return (
+    flow.status === 'pending' &&
+    flow.canWithdraw === true &&
+    flow.canReleaseStuck !== true
+  );
 }
 
 export async function refreshProjectAfterMaterialChange(

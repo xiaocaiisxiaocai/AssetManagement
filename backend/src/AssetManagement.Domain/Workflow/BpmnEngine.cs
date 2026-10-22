@@ -140,10 +140,12 @@ public static class BpmnEngine
         }
     }
 
+    public const string DefinitionReleasedOpinion = "[终止] 流程定义已变更，请重新发起";
+
     /// <summary>
-    /// 申请人撤回进行中的流程
+    /// 申请人撤回进行中的流程。传入 opinion 时用于定义缺失后的终止，不产生业务副作用。
     /// </summary>
-    public static void Withdraw(IBpmnFlowInstance flow, string applicant)
+    public static void Withdraw(IBpmnFlowInstance flow, string applicant, string? opinion = null)
     {
         flow.Status = FlowStatus.Withdrawn;
         flow.CurrentNodeIds.Clear();
@@ -154,7 +156,7 @@ public static class BpmnEngine
         {
             token.Status = BpmnTokenStatus.Skipped;
             token.Approver = applicant;
-            token.Opinion = "[撤回] 申请人主动撤回";
+            token.Opinion = string.IsNullOrWhiteSpace(opinion) ? "[撤回] 申请人主动撤回" : opinion;
             token.CompletedAt = completedAt;
         }
     }

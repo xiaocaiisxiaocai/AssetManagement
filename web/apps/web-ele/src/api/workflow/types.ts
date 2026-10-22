@@ -108,6 +108,10 @@ export interface ApprovalFlow {
   flowNo: string;
   id: number;
   nextSteps?: WorkflowProgressStep[];
+  /** 当前节点已不在绑定的流程定义中，不能继续审批。 */
+  definitionBroken?: boolean;
+  /** 申请人或系统管理员可以终止该无法继续的流程。 */
+  canReleaseStuck?: boolean;
   originalReturnDate?: null | string;
   progressSteps?: WorkflowProgressStep[];
   reason?: null | string;

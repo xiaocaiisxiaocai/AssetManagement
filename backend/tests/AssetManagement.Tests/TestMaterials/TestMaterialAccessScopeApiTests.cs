@@ -97,6 +97,7 @@ public class TestMaterialAccessScopeApiTests : IClassFixture<TestWebAppFactory>
             new UserRole { UserId = otherOwner.Id, RoleId = employeeRole.Id });
         var ownProject = NewProject($"本部门项目-{suffix}", ownOwner.Id);
         var otherProject = NewProject($"其他部门项目-{suffix}", otherOwner.Id);
+        otherProject.ProjectTypeCode = $"scope-{suffix}";
         db.TestProjects.AddRange(ownProject, otherProject);
         await db.SaveChangesAsync();
 
@@ -111,8 +112,11 @@ public class TestMaterialAccessScopeApiTests : IClassFixture<TestWebAppFactory>
         var crossProgress = await _client.PutAsJsonAsync(
             $"/api/test-projects/{otherProject.Id}/progress",
             new { ProgressCode = "testing", TestStatus = "跨部门进展", RowVersion = otherProject.RowVersion });
-        var workspace = await _client.GetFromJsonAsync<ApiResult<ProjectWorkspaceDto>>(
-            $"/api/test-projects/{otherProject.Id}/workspace");
+        var visible = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>(
+            "/api/test-projects?deleteStatus=all");
+        var stats = await _client.GetFromJsonAsync<ApiResult<TestProjectStatsDto>>("/api/test-projects/stats");
+        var workspace = await _client.GetAsync($"/api/test-projects/{otherProject.Id}/workspace");
+        var followups = await _client.GetAsync($"/api/test-projects/{otherProject.Id}/followups");
         var crossStage = await _client.PostAsJsonAsync(
             $"/api/test-projects/{otherProject.Id}/workspace/stages",
             new SaveProjectTestStageRequest { Name = "跨部门阶段", Sequence = 1 });
@@ -120,7 +124,11 @@ public class TestMaterialAccessScopeApiTests : IClassFixture<TestWebAppFactory>
 
         crossUpdate.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         crossProgress.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        workspace!.Data!.CanManage.Should().BeFalse();
+        visible!.Data!.Should().Contain(x => x.Id == ownProject.Id);
+        visible.Data.Should().NotContain(x => x.Id == otherProject.Id);
+        stats!.Data!.TypeDist.Should().NotContain(x => x.Label == $"scope-{suffix}");
+        workspace.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        followups.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         crossStage.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         crossDelete.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -189,18 +197,18 @@ public class TestMaterialAccessScopeApiTests : IClassFixture<TestWebAppFactory>
         var supervisorList = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>(
             "/api/test-projects?deleteStatus=all");
         var supervisorItems = supervisorList!.Data!;
+        supervisorItems.Should().Contain(x => x.Id == ownProject.Id);
+        supervisorItems.Should().NotContain(x => x.Id == otherProject.Id);
         supervisorItems.Single(x => x.Id == ownProject.Id).CanEdit.Should().BeTrue();
         supervisorItems.Single(x => x.Id == ownProject.Id).CanUpdateProgress.Should().BeTrue();
-        supervisorItems.Single(x => x.Id == otherProject.Id).CanEdit.Should().BeFalse();
-        supervisorItems.Single(x => x.Id == otherProject.Id).CanUpdateProgress.Should().BeFalse();
 
         await Login(employee.EmployeeNo);
         var employeeList = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>(
             "/api/test-projects?deleteStatus=all");
-        var owned = employeeList!.Data!.Single(x => x.Id == ownProject.Id);
+        employeeList!.Data!.Should().NotContain(x => x.Id == otherProject.Id);
+        var owned = employeeList.Data!.Single(x => x.Id == ownProject.Id);
         owned.CanEdit.Should().BeFalse();
         owned.CanUpdateProgress.Should().BeTrue();
-        employeeList!.Data!.Single(x => x.Id == otherProject.Id).CanUpdateProgress.Should().BeFalse();
     }
 
     [Fact]

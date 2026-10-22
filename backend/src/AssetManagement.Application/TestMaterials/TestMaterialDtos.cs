@@ -235,6 +235,10 @@ public class MaterialFlowDto
     public bool DirectTransfer { get; set; }
     /// <summary>当前调用人是否可撤回该流转申请。</summary>
     public bool CanWithdraw { get; set; }
+    /// <summary>进行中的当前节点已不在所绑定流程定义中。</summary>
+    public bool DefinitionBroken { get; set; }
+    /// <summary>申请人或系统管理员可以终止该流转，释放后重新发起。</summary>
+    public bool CanReleaseStuck { get; set; }
     /// <summary>当前调用人最近一次审批动作：approve / reject。</summary>
     public string? MyApprovalAction { get; set; }
     public string? MyApprovalNodeId { get; set; }

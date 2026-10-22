@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   allowedProgressCodes,
   canUpdateProjectProgress,
+  canReleaseMaterialFlow,
   canWithdrawMaterialFlow,
   isSupportedProjectProgress,
   projectFollowUpStatusMeta,
@@ -77,6 +78,27 @@ describe('测试项目工作台规则', () => {
         ...flow,
         canWithdraw: true,
         status: 'approved',
+      }),
+    ).toBe(false);
+    expect(
+      canWithdrawMaterialFlow({
+        ...flow,
+        canReleaseStuck: true,
+        canWithdraw: true,
+      }),
+    ).toBe(false);
+    expect(canReleaseMaterialFlow(flow)).toBe(false);
+    expect(
+      canReleaseMaterialFlow({
+        ...flow,
+        canReleaseStuck: true,
+      }),
+    ).toBe(true);
+    expect(
+      canReleaseMaterialFlow({
+        ...flow,
+        canReleaseStuck: true,
+        status: 'withdrawn',
       }),
     ).toBe(false);
   });

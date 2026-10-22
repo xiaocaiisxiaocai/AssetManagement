@@ -18,7 +18,6 @@ const {
   currentMaterialActionAccess,
   currentProject,
   currentUserId,
-  deleteFollowup,
   editingFollowupId,
   editFollowup,
   flowActiveTab,
@@ -61,6 +60,7 @@ const {
   pendingFlowTotal,
   processingFlowIds,
   rejectFlow,
+  releaseFlow,
   resetMaterialQuery,
   saveFollowup,
   searchMaterials,
@@ -114,7 +114,6 @@ const {
     @flow-tab-change="onFlowTabChange"
     @followup-cancel-edit="cancelFollowupEdit"
     @followup-edit="editFollowup"
-    @followup-remove="deleteFollowup"
     @followup-save="saveFollowup"
     @handled-page-size-change="onHandledFlowPageSizeChange"
     @material-page-change="() => loadProjectMaterials(currentProject?.id)"
@@ -123,6 +122,7 @@ const {
     @pending-page-size-change="onPendingFlowPageSizeChange"
     @progress="openProgress"
     @reject="rejectFlow"
+    @release="releaseFlow"
     @reset="resetMaterialQuery"
     @search="searchMaterials"
     @tab-change="onProjectTabChange"

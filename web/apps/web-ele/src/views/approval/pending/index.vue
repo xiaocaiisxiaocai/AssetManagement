@@ -24,6 +24,7 @@ const {
   activeSource,
   viewMode,
   materialActionLoadingIds,
+  releasingKeys,
   pageSizeOptions,
   opinion,
   addSignUser,
@@ -37,6 +38,7 @@ const {
   loadData,
   openDetail,
   openHandledDetail,
+  releaseStuck,
   currentNodeInfo,
   activeNodeOptions,
   currentSignStates,
@@ -78,6 +80,7 @@ const {
         :loading="loading"
         :material-action-loading-ids="materialActionLoadingIds"
         :page-size-options="pageSizeOptions"
+        :releasing-keys="releasingKeys"
         :total="currentTotal"
         :view-mode="viewMode"
         @approve-material="approveMaterial"
@@ -86,6 +89,7 @@ const {
         @page-change="loadData"
         @page-size-change="onPageSizeChange"
         @reject-material="rejectMaterial"
+        @release="releaseStuck"
         @search="search"
       />
 

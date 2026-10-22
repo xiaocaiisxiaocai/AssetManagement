@@ -4,11 +4,10 @@ import type {
   TestProjectItem,
 } from '#/api/test-project';
 
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus';
 
 import {
   createTestProjectFollowupApi,
-  deleteTestProjectFollowupApi,
   listTestProjectFollowupsApi,
   updateTestProjectFollowupApi,
 } from '#/api/test-project';
@@ -159,36 +158,11 @@ export function bindProjectFollowupActions(
     }
   }
 
-  async function deleteFollowup(row: TestProjectFollowup) {
-    const project = currentProject.value;
-    if (!project) return;
-    if (project.isDeleted || !project.canWriteFollowUp) {
-      ElMessage.warning('当前项目为只读状态');
-      return;
-    }
-    try {
-      await ElMessageBox.confirm('确认删除该跟进记录？', '删除确认', {
-        type: 'warning',
-      });
-    } catch {
-      return;
-    }
-    try {
-      await deleteTestProjectFollowupApi(project.id, row.id);
-      ElMessage.success('已删除');
-      await Promise.all([loadFollowups(project.id), loadData()]);
-      if (editingFollowupId.value === row.id) cancelFollowupEdit();
-    } catch {
-      // 错误已由 request.ts 拦截器统一弹出
-    }
-  }
-
   return {
     openFollowups,
     loadFollowups,
     editFollowup,
     cancelFollowupEdit,
     saveFollowup,
-    deleteFollowup,
   };
 }

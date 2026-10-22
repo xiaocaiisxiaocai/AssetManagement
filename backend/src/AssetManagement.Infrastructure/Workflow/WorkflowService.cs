@@ -361,7 +361,9 @@ public class WorkflowService : IWorkflowService
             {
                 var actionableNodeIds = await GetActionableNodeIdsAsync(
                     flow, user, workflowMap, processCache, approverCache);
-                if (actionableNodeIds.Count == 0) continue;
+                if (actionableNodeIds.Count == 0 &&
+                    !IsAdminRepairCandidate(user, flow, workflowMap, processCache))
+                    continue;
                 if ((long)actionableTotal >= pageOffset && selected.Count < pageSize)
                     selected.Add((flow, actionableNodeIds));
                 actionableTotal++;
@@ -372,7 +374,8 @@ public class WorkflowService : IWorkflowService
         await HydrateParticipantNamesAsync(pageFlows);
         var renderContext = await BuildProgressRenderContextAsync(pageFlows);
         var items = new List<ApprovalFlowDto>(pageFlows.Count);
-        foreach (var item in selected) items.Add(await ToFlowDtoAsync(item.Flow, item.Nodes, renderContext));
+        foreach (var item in selected)
+            items.Add(await ToFlowDtoAsync(item.Flow, item.Nodes, renderContext, user.Id, IsAdmin(user)));
         return new PagedResult<ApprovalFlowDto> { Items = items, Total = actionableTotal, Page = page, PageSize = pageSize };
     }
 
@@ -439,7 +442,8 @@ public class WorkflowService : IWorkflowService
 
         var renderContext = await BuildProgressRenderContextAsync(flows);
         var result = new List<ApprovalFlowDto>();
-        foreach (var flow in flows) result.Add(await ToFlowDtoAsync(flow, renderContext: renderContext));
+        foreach (var flow in flows)
+            result.Add(await ToFlowDtoAsync(flow, renderContext: renderContext, viewerUserId: userId));
         return new PagedResult<ApprovalFlowDto> { Items = result, Total = total, Page = page, PageSize = pageSize };
     }
 
@@ -503,7 +507,8 @@ public class WorkflowService : IWorkflowService
         var flow = await LoadFlow(id);
         var user = await LoadUser(userId);
         await EnsureCanViewFlowAsync(flow, user);
-        return await ToFlowDtoAsync(flow, await GetActionableNodeIdsAsync(flow, user));
+        return await ToFlowDtoAsync(
+            flow, await GetActionableNodeIdsAsync(flow, user), viewerUserId: user.Id, viewerIsAdmin: IsAdmin(user));
     }
 
     public async Task<ApprovalFlowDto> ApproveAsync(int id, ApprovalActionRequest request, int userId)
@@ -757,6 +762,43 @@ public class WorkflowService : IWorkflowService
         await tx.CommitAsync();
 
         return await ToFlowDtoAsync(flow);
+    }
+
+    public async Task<ApprovalFlowDto> ReleaseStuckAsync(int id, int userId)
+    {
+        var flow = await LoadFlow(id);
+        EnsureActive(flow);
+        var user = await LoadUser(userId);
+        if (flow.ApplicantId != userId && !IsAdmin(user))
+            throw new BizException(4031, "只有申请人或系统管理员可以终止无法继续的流程");
+        var process = await LoadBoundProcessAsync(flow.WorkflowId);
+        if (!BpmnProgressNodeResolver.HasUnavailableCurrentNode(process, flow.CurrentNodeIds, flow.BpmnTokens))
+            throw new BizException(4094, "当前流程仍可继续审批，不能按定义变更终止");
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        ExecuteBpmn(() => BpmnEngine.Withdraw(flow, user.Name, BpmnEngine.DefinitionReleasedOpinion));
+        flow.ActiveScopeKey = null;
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该审批单已被他人处理，请刷新后重试");
+        }
+        await AddRecord(id, "release", user.Id, user.Name, "流程定义已变更，申请已终止，请重新发起");
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "approval_released",
+            Title = $"流程已终止：{flow.AssetName}",
+            Body = $"申请 {flow.FlowNo} 因流程定义已变更无法继续审批，已终止且未改变资产业务状态。请重新发起。",
+            FlowId = id,
+            UserId = flow.ApplicantId,
+            IdempotencyKey = $"approval_released_{id}"
+        });
+        await tx.CommitAsync();
+        return await ToFlowDtoAsync(flow, viewerUserId: user.Id, viewerIsAdmin: IsAdmin(user));
     }
 
     public async Task<ApprovalFlowDto> AddSignAsync(int id, AddSignRequest request, int userId)
@@ -1731,20 +1773,23 @@ public class WorkflowService : IWorkflowService
     private async Task<ApprovalFlowDto> ToFlowDtoAsync(
         ApprovalFlow flow,
         IEnumerable<string>? actionableNodeIds = null,
-        ProgressRenderContext? renderContext = null)
+        ProgressRenderContext? renderContext = null,
+        int? viewerUserId = null,
+        bool viewerIsAdmin = false)
     {
         var dto = ToFlowDto(flow, actionableNodeIds);
         BpmnProcess? process;
         if (renderContext is null)
         {
-            var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == flow.WorkflowId);
-            if (string.IsNullOrWhiteSpace(workflow?.BpmnXml)) return dto;
-            process = BpmnParser.Parse(workflow.BpmnXml);
+            process = await LoadBoundProcessAsync(flow.WorkflowId);
+            if (process is null)
+                return WithReleaseState(dto, flow, null, viewerUserId, viewerIsAdmin);
         }
         else
         {
             process = renderContext.Processes.GetValueOrDefault(flow.WorkflowId);
-            if (process is null) return dto;
+            if (process is null)
+                return WithReleaseState(dto, flow, null, viewerUserId, viewerIsAdmin);
         }
         var completed = new List<WorkflowProgressStepDto>();
         foreach (var token in flow.BpmnTokens.Values.OrderBy(x => x.CompletedAt ?? x.StartedAt))
@@ -1784,11 +1829,51 @@ public class WorkflowService : IWorkflowService
             }
         }
 
-        return dto with
+        return WithReleaseState(dto with
         {
             ProgressSteps = completed.Concat(current).Concat(next).ToList(),
             CurrentSteps = current,
             NextSteps = next
+        }, flow, process, viewerUserId, viewerIsAdmin);
+    }
+
+    private async Task<BpmnProcess?> LoadBoundProcessAsync(int workflowId)
+    {
+        var workflow = await _db.Workflows.AsNoTracking().SingleOrDefaultAsync(x => x.Id == workflowId);
+        return string.IsNullOrWhiteSpace(workflow?.BpmnXml) ? null : BpmnParser.Parse(workflow.BpmnXml);
+    }
+
+    private bool IsAdminRepairCandidate(
+        User user,
+        ApprovalFlow flow,
+        Dictionary<int, WorkflowEntity> workflowMap,
+        Dictionary<int, BpmnProcess> processCache)
+    {
+        if (!IsAdmin(user)) return false;
+        workflowMap.TryGetValue(flow.WorkflowId, out var workflow);
+        if (!processCache.TryGetValue(flow.WorkflowId, out var process) &&
+            !string.IsNullOrWhiteSpace(workflow?.BpmnXml))
+        {
+            process = BpmnParser.Parse(workflow.BpmnXml);
+            processCache[flow.WorkflowId] = process;
+        }
+        return BpmnProgressNodeResolver.HasUnavailableCurrentNode(process, flow.CurrentNodeIds, flow.BpmnTokens);
+    }
+
+    private static ApprovalFlowDto WithReleaseState(
+        ApprovalFlowDto dto,
+        ApprovalFlow flow,
+        BpmnProcess? process,
+        int? viewerUserId,
+        bool viewerIsAdmin)
+    {
+        var broken = flow.Status == FlowStatus.Pending &&
+            BpmnProgressNodeResolver.HasUnavailableCurrentNode(process, flow.CurrentNodeIds, flow.BpmnTokens);
+        return dto with
+        {
+            DefinitionBroken = broken,
+            CanReleaseStuck = broken && viewerUserId is > 0 &&
+                (viewerIsAdmin || flow.ApplicantId == viewerUserId.Value)
         };
     }
 

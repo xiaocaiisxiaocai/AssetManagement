@@ -13,7 +13,10 @@ import {
 
 import WorkflowProgressSummary from '#/components/workflow/WorkflowProgressSummary.vue';
 
-import { canWithdrawMaterialFlow } from './project-workspace-rules';
+import {
+  canReleaseMaterialFlow,
+  canWithdrawMaterialFlow,
+} from './project-workspace-rules';
 
 defineProps<{
   myCount: number;
@@ -100,11 +103,21 @@ function flowMetaOf(status: string) {
         class-name="table-action-cell"
         fixed="right"
         label="操作"
-        width="90"
+        width="150"
       >
         <template #default="{ row }">
           <ElButton
-            v-if="!readOnly && canWithdrawMaterialFlow(row)"
+            v-if="!readOnly && canReleaseMaterialFlow(row)"
+            :disabled="processingFlowIds.includes(row.id)"
+            link
+            size="small"
+            type="danger"
+            @click="emit('withdraw', row)"
+          >
+            终止并重新发起
+          </ElButton>
+          <ElButton
+            v-else-if="!readOnly && canWithdrawMaterialFlow(row)"
             :disabled="processingFlowIds.includes(row.id)"
             link
             size="small"

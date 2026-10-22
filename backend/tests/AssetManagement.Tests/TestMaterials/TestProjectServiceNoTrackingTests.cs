@@ -94,7 +94,7 @@ public class TestProjectServiceNoTrackingTests : MySqlFixtureBase
         await _db.SaveChangesAsync();
 
         var service = CreateService();
-        (await service.ListFollowupsAsync(project.Id)).Should().ContainSingle();
+        (await service.ListFollowupsAsync(project.Id, owner.Id)).Should().ContainSingle();
         var dto = (await service.ListAsync("all", owner.Id)).Single(x => x.Id == project.Id);
         dto.CanWriteFollowUp.Should().BeFalse();
         var purge = () => service.PurgeAsync(project.Id);
@@ -133,7 +133,7 @@ public class TestProjectServiceNoTrackingTests : MySqlFixtureBase
         });
         await _db.SaveChangesAsync();
 
-        var stats = await CreateService().GetStatsAsync();
+        var stats = await CreateService().GetStatsAsync(owner.Id);
 
         stats.MonthlyStat.Single(x => x.Month == 1).FollowUpCount.Should().Be(1);
     }

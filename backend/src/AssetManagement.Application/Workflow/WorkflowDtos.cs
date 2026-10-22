@@ -86,6 +86,10 @@ public record ApprovalFlowDto
     public List<WorkflowProgressStepDto> ProgressSteps { get; init; } = new();
     public List<WorkflowProgressStepDto> CurrentSteps { get; init; } = new();
     public List<WorkflowProgressStepDto> NextSteps { get; init; } = new();
+    /// <summary>进行中的当前节点已不在所绑定流程定义中。</summary>
+    public bool DefinitionBroken { get; init; }
+    /// <summary>申请人或系统管理员可以终止该申请，释放后重新发起。</summary>
+    public bool CanReleaseStuck { get; init; }
 }
 
 public record WorkflowProgressStepDto

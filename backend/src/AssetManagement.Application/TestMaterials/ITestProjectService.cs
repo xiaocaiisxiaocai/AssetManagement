@@ -21,11 +21,11 @@ public interface ITestProjectService
     Task<TestProjectOptionDto> CreateOptionAsync(SaveTestProjectOptionRequest request);
     Task<TestProjectOptionDto> UpdateOptionAsync(int id, SaveTestProjectOptionRequest request);
     Task DeleteOptionAsync(int id);
-    Task<List<TestProjectFollowupDto>> ListFollowupsAsync(int projectId);
+    Task<List<TestProjectFollowupDto>> ListFollowupsAsync(int projectId, int currentUserId);
     Task<TestProjectFollowupDto> CreateFollowupAsync(int projectId, SaveTestProjectFollowupRequest request, int currentUserId);
     Task<TestProjectFollowupDto> UpdateFollowupAsync(int projectId, int followupId, SaveTestProjectFollowupRequest request, int currentUserId);
     Task DeleteFollowupAsync(int projectId, int followupId, int currentUserId);
-    Task<TestProjectStatsDto> GetStatsAsync();
+    Task<TestProjectStatsDto> GetStatsAsync(int currentUserId);
 }
 
 public class TestProjectStatsDto

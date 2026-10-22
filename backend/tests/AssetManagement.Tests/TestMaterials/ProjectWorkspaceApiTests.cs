@@ -274,7 +274,7 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     {
         var (_, projectId, _) = await SetupAsync();
         var viewer = await EmployeeClientAsync();
-        (await WorkspaceAsync(viewer, projectId)).CanManage.Should().BeFalse();
+        (await viewer.GetAsync(Root(projectId))).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await viewer.PostAsJsonAsync($"{Root(projectId)}/stages", Draft("不应保存", 1)))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);
         using var upload = PdfForm();

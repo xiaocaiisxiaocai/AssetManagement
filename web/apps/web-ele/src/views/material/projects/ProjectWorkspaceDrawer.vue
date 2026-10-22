@@ -69,7 +69,6 @@ const emit = defineEmits<{
   flowTabChange: [];
   followupCancelEdit: [];
   followupEdit: [followup: TestProjectFollowup];
-  followupRemove: [followup: TestProjectFollowup];
   followupSave: [];
   handledPageSizeChange: [];
   materialPageChange: [];
@@ -78,6 +77,7 @@ const emit = defineEmits<{
   pendingPageSizeChange: [];
   progress: [project: TestProjectItem];
   reject: [flow: MaterialFlowItem];
+  release: [flow: MaterialFlowItem];
   reset: [];
   search: [];
   tabChange: [name: number | string];
@@ -257,6 +257,7 @@ function statusMeta(project: TestProjectItem) {
           @page-change="emit('flowPageChange')"
           @pending-page-size-change="emit('pendingPageSizeChange')"
           @reject="emit('reject', $event)"
+          @release="emit('release', $event)"
           @tab-change="emit('flowTabChange')"
           @withdraw="emit('withdraw', $event)"
         />
@@ -270,7 +271,6 @@ function statusMeta(project: TestProjectItem) {
           :saving="followupSaving"
           @cancel-edit="emit('followupCancelEdit')"
           @edit="emit('followupEdit', $event)"
-          @remove="emit('followupRemove', $event)"
           @save="emit('followupSave')"
         />
       </ElTabs>

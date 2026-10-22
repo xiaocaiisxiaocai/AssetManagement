@@ -77,6 +77,11 @@ public class ApprovalController : ControllerBase
     public async Task<ApiResult<ApprovalFlowDto>> Withdraw(int id)
         => ApiResult<ApprovalFlowDto>.Ok(await _service.WithdrawAsync(id, CurrentUserId()));
 
+    [HttpPost("{id:int}/release-stuck")]
+    [HasPermission("approval:view")]
+    public async Task<ApiResult<ApprovalFlowDto>> ReleaseStuck(int id)
+        => ApiResult<ApprovalFlowDto>.Ok(await _service.ReleaseStuckAsync(id, CurrentUserId()));
+
     [HttpPost("{id:int}/add-sign")]
     [HasPermission("approval:add-sign")]
     public async Task<ApiResult<ApprovalFlowDto>> AddSign(int id, AddSignRequest request)

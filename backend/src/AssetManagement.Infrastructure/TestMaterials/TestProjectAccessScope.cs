@@ -57,6 +57,29 @@ internal sealed class TestProjectAccessScope
             throw new BizException(4031, "无权管理其他部门的测试项目");
     }
 
+    public async Task EnsureCanViewAsync(TestProject project, int userId)
+    {
+        if (IsAdmin) return;
+        if (userId > 0 && await IsInDepartmentScopeAsync(project.OwnerId, userId)) return;
+        throw new BizException(4031, "无权查看其他部门的测试项目");
+    }
+
+    public async Task<IQueryable<TestProject>> ApplyVisibilityAsync(IQueryable<TestProject> query, int userId)
+    {
+        if (IsAdmin) return query;
+        if (userId <= 0) return query.Where(_ => false);
+        var allowed = await AllowedDepartmentIdsAsync(userId);
+        if (allowed.Length == 0)
+            return query.Where(project => project.OwnerId == userId);
+        var ownerIds = await _db.Users.AsNoTracking()
+            .Where(user => user.DepartmentId.HasValue && allowed.Contains(user.DepartmentId.Value))
+            .Select(user => user.Id)
+            .ToArrayAsync();
+        return query.Where(project =>
+            project.OwnerId == userId ||
+            (project.OwnerId.HasValue && ownerIds.Contains(project.OwnerId.Value)));
+    }
+
     public async Task EnsureOwnerAssignableAsync(int ownerId, bool creating)
     {
         var error = await OwnerAssignmentErrorAsync(ownerId, creating);
