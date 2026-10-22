@@ -9,7 +9,9 @@ namespace AssetManagement.Infrastructure.Workflow;
 /// ids from the definition that was active when they were created.  When that
 /// definition has since been replaced, a historical user-task token no longer
 /// exists in the current process.  Keep the persisted token visible instead of
-/// silently dropping it from the progress timeline.
+/// silently dropping it.  Seeds use Task_ ids; bpmn-js uses Activity_.  An
+/// active token is still a current approval step even when its id matches
+/// neither prefix and it has no approval history yet.
 /// </summary>
 internal static class BpmnProgressNodeResolver
 {
@@ -68,6 +70,8 @@ internal static class BpmnProgressNodeResolver
            || token.SignStates is { Count: > 0 });
 
     private static bool LooksLikeHistoricalUserTask(BpmnToken token)
-        => token.NodeId.StartsWith("Task", StringComparison.OrdinalIgnoreCase)
+        => token.Status == BpmnTokenStatus.Active
+           || token.NodeId.StartsWith("Task", StringComparison.OrdinalIgnoreCase)
+           || token.NodeId.StartsWith("Activity", StringComparison.OrdinalIgnoreCase)
            || HasHistoricalActivity(token);
 }

@@ -380,6 +380,67 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Active_bpmn_js_activity_node_remains_visible_when_definition_drops_it()
+    {
+        await Login();
+        var asset = await CreateAsset();
+        int flowId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var adminId = await db.Users.AsNoTracking()
+                .Where(user => user.EmployeeNo == "1001")
+                .Select(user => user.Id)
+                .SingleAsync();
+            var workflowId = await db.Workflows
+                .Where(workflow => workflow.BizType == "borrow" && workflow.IsActive)
+                .Select(workflow => workflow.Id)
+                .SingleAsync();
+            var flow = new ApprovalFlow
+            {
+                FlowNo = Unique("ACTIVITY"),
+                BizType = "borrow",
+                WorkflowId = workflowId,
+                AssetId = asset.Id,
+                AssetNo = asset.AssetNo,
+                AssetName = asset.Name,
+                ApplicantId = adminId,
+                Applicant = "系统管理员",
+                Reason = "设计器默认节点被新定义替换",
+                Status = FlowStatus.Pending,
+                ActiveScopeKey = $"asset:{asset.Id}:activity",
+                CurrentNodeIds = new List<string> { "Activity_1" },
+                BpmnTokens = new Dictionary<string, BpmnToken>
+                {
+                    ["Activity_1"] = new()
+                    {
+                        NodeId = "Activity_1",
+                        NodeName = "部门经理审批",
+                        Status = BpmnTokenStatus.Active,
+                        StartedAt = DateTime.UtcNow
+                    }
+                },
+                ApplyTime = DateTime.UtcNow,
+                Deadline = DateTime.UtcNow.AddDays(1)
+            };
+            db.ApprovalFlows.Add(flow);
+            await db.SaveChangesAsync();
+            flowId = flow.Id;
+        }
+
+        var page = await _client.GetFromJsonAsync<ApiResult<PagedResult<ApprovalFlowDto>>>(
+            $"/api/approvals/mine-page?page=1&pageSize=20&flowId={flowId}");
+        var resultFlow = page!.Data!.Items.Should().ContainSingle().Which;
+
+        resultFlow.ProgressSteps.Should().ContainSingle(step =>
+            step.NodeId == "Activity_1" &&
+            step.NodeName == "部门经理审批" &&
+            step.State == "unavailable");
+        resultFlow.DefinitionBroken.Should().BeTrue();
+        resultFlow.CanReleaseStuck.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Active_sign_state_token_is_not_rendered_as_historical_completion()
     {
         await Login();
