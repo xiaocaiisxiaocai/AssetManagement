@@ -188,7 +188,9 @@ public class TestMaterialService : ITestMaterialService
         await using IAsyncDisposable? imageLease = request.Images is null
             ? null
             : await _files.AcquireReferenceLeaseAsync(normalizedImages);
+        var projectId = await ReadMaterialProjectIdAsync(id);
         await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await LockProjectAsync(projectId);
         var m = await _db.TestMaterials
             .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {id} FOR UPDATE")
             .AsTracking()
@@ -201,9 +203,8 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4095, "料件保管人和归属部门只能通过流转变更");
         if (request.ProjectId != m.ProjectId)
             throw new BizException(4095, "料件所属项目不能修改");
-        var originalProject = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == m.ProjectId && !x.IsDeleted)
-            ?? throw new BizException(4046, "测试项目不存在");
-        await EnsureCanWriteMaterial(originalProject, "material:edit");
+        EnsureMaterialProjectOpen(project);
+        await EnsureCanWriteMaterial(project, "material:edit");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能编辑");
         var name = request.Name.Trim();
@@ -241,7 +242,9 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task DeleteAsync(int id)
     {
+        var projectId = await ReadMaterialProjectIdAsync(id);
         await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await LockProjectAsync(projectId);
         var m = await _db.TestMaterials
             .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {id} FOR UPDATE")
             .AsTracking()
@@ -249,7 +252,7 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanDisposeMaterialAsync(m, "material:delete");
-        await EnsureMaterialProjectOpenAsync(m.ProjectId);
+        EnsureMaterialProjectOpen(project);
         EnsureInUse(m, "已退回厂商的料件不能删除");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能删除");
@@ -273,12 +276,17 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task RestoreAsync(int id)
     {
+        var projectId = await ReadMaterialProjectIdAsync(id);
         await using var transaction = await _db.Database.BeginTransactionAsync();
-        var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
+        var project = await LockProjectAsync(projectId);
+        var m = await _db.TestMaterials
+            .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "测试料件不存在");
         await EnsureCanDisposeMaterialAsync(m, "material:restore");
         if (!m.IsDeleted) throw new BizException(4099, "料件未删除,无需恢复");
-        await EnsureMaterialProjectOpenAsync(m.ProjectId);
+        EnsureMaterialProjectOpen(project);
         m.IsDeleted = false;
         m.DeletedAt = null;
         m.RowVersion++;
@@ -299,14 +307,16 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task PurgeAsync(int id)
     {
+        var projectId = await ReadMaterialProjectIdAsync(id);
         await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await LockProjectAsync(projectId);
         var m = await _db.TestMaterials
             .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {id} FOR UPDATE")
             .AsTracking()
             .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "测试料件不存在");
         await EnsureCanAccessAsync(m);
-        await EnsureMaterialProjectOpenAsync(m.ProjectId);
+        EnsureMaterialProjectOpen(project);
         if (!m.IsDeleted) throw new BizException(4097, "请先删除料件后再彻底删除");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id))
             throw new BizException(4094, "料件存在流转历史，不能彻底删除");
@@ -330,7 +340,9 @@ public class TestMaterialService : ITestMaterialService
 
     public async Task<TestMaterialDto> ReturnToVendorAsync(int id, int userId)
     {
+        var projectId = await ReadMaterialProjectIdAsync(id);
         await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await LockProjectAsync(projectId);
         var m = await _db.TestMaterials
             .FromSqlInterpolated($"SELECT * FROM test_materials WHERE Id = {id} FOR UPDATE")
             .AsTracking()
@@ -338,7 +350,7 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanDisposeMaterialAsync(m, "material:return");
-        await EnsureMaterialProjectOpenAsync(m.ProjectId);
+        EnsureMaterialProjectOpen(project);
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能退回厂商");
         if (m.Status == MaterialStatus.ReturnedToVendor)
@@ -573,12 +585,22 @@ public class TestMaterialService : ITestMaterialService
         throw new BizException(4047, "无权维护该项目料件");
     }
 
-    private async Task EnsureMaterialProjectOpenAsync(int projectId)
+    private async Task<int> ReadMaterialProjectIdAsync(int materialId)
+        => await _db.TestMaterials.AsNoTracking()
+            .Where(x => x.Id == materialId)
+            .Select(x => (int?)x.ProjectId)
+            .SingleOrDefaultAsync()
+           ?? throw new BizException(4048, "测试料件不存在");
+
+    private async Task<TestProject> LockProjectAsync(int projectId)
+        => await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {projectId} FOR UPDATE")
+            .AsNoTracking()
+            .SingleOrDefaultAsync()
+           ?? throw new BizException(4046, "测试项目不存在");
+
+    private static void EnsureMaterialProjectOpen(TestProject project)
     {
-        var project = await _db.TestProjects.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == projectId);
-        if (project is null)
-            throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted)
             throw new BizException(4094, "料件所属项目已删除，请先恢复项目");
         if (!TestProjectLifecycleRules.IsMaterialMaintainable(

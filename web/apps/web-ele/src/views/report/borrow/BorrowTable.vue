@@ -84,7 +84,23 @@ const tableColumns: TableColumnOption[] = [
   { key: 'status', label: '状态' },
 ];
 const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
-  useTableColumns('report-borrow', tableColumns);
+  useTableColumns('report-borrow', tableColumns, (key, visible) => {
+    if (visible) return;
+    let changed = false;
+    if (key === 'category' && query.value.categoryIds.length > 0) {
+      query.value.categoryIds = [];
+      changed = true;
+    }
+    if (key === 'borrower' && query.value.borrowerIds.length > 0) {
+      query.value.borrowerIds = [];
+      changed = true;
+    }
+    if (key === 'status' && query.value.statuses.length > 0) {
+      query.value.statuses = [];
+      changed = true;
+    }
+    if (changed) emit('search');
+  });
 </script>
 
 <template>

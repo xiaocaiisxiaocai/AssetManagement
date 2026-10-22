@@ -63,7 +63,12 @@ const tableColumns: TableColumnOption[] = [
   { key: 'duration', label: '耗时' },
 ];
 const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
-  useTableColumns('admin-audit', tableColumns);
+  useTableColumns('admin-audit', tableColumns, (key, visible) => {
+    if (!visible && key === 'action' && query.value.actionTypes.length > 0) {
+      query.value.actionTypes = [];
+      emit('search');
+    }
+  });
 </script>
 
 <template>

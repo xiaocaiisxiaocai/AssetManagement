@@ -117,7 +117,27 @@ const tableColumns: TableColumnOption[] = [
   { key: 'actions', label: '操作', locked: true },
 ];
 const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
-  useTableColumns('asset-list', tableColumns);
+  useTableColumns('asset-list', tableColumns, (key, visible) => {
+    if (visible) return;
+    let changed = false;
+    if (key === 'department' && query.value.departmentIds.length > 0) {
+      query.value.departmentIds = [];
+      changed = true;
+    }
+    if (key === 'custodian' && query.value.custodianIds.length > 0) {
+      query.value.custodianIds = [];
+      changed = true;
+    }
+    if (
+      key === 'status' &&
+      (query.value.statuses.length > 0 || query.value.deleteStatus !== 'active')
+    ) {
+      query.value.statuses = [];
+      query.value.deleteStatus = 'active';
+      changed = true;
+    }
+    if (changed) emit('search');
+  });
 
 function statusMeta(status: AssetStatus) {
   return (

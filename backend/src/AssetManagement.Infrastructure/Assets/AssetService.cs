@@ -243,6 +243,17 @@ public class AssetService : IAssetService
         await EnsureCanManageAsync(asset);
         if (request.Status != asset.Status || request.CustodianId != asset.CustodianId || request.DepartmentId != asset.DepartmentId)
             throw new BizException(4095, "资产状态、保管人和归属部门只能通过审批流转变更");
+        if (asset.Status == AssetStatus.Borrowed &&
+            (!string.Equals(request.Name.Trim(), asset.Name, StringComparison.Ordinal) ||
+             request.CategoryId != asset.CategoryId ||
+             !SameDate(request.PurchaseDate, asset.PurchaseDate) ||
+             !SameDate(request.RegistrationTime, asset.RegistrationTime) ||
+             !string.Equals(NormalizeLocationName(request.LocationName), asset.LocationName, StringComparison.Ordinal) ||
+             request.Quantity != asset.Quantity ||
+             !string.Equals(request.CurrentCondition?.Trim(), asset.CurrentCondition, StringComparison.Ordinal)))
+        {
+            throw new BizException(4095, "借出中的资产仅可修改备注和附件");
+        }
         var category = await _db.AssetCategories.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == request.CategoryId && !x.IsDeleted)
             ?? throw new BizException(4046, "资产分类不存在");
@@ -929,13 +940,19 @@ public class AssetService : IAssetService
     private static string? NormalizeLocationName(string? value)
     {
         var normalized = value?.Trim();
-        if (string.IsNullOrWhiteSpace(normalized)) return null;
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new BizException(4001, "存放位置不能为空");
+        }
         if (normalized.Length > 100)
         {
             throw new BizException(4001, "存放位置不能超过 100 个字符");
         }
         return normalized;
     }
+
+    private static bool SameDate(DateTime? left, DateTime? right)
+        => left?.Date == right?.Date;
 
     private static ImportPreviewRow ValidateRow(
         int rowNumber,
@@ -1028,8 +1045,12 @@ public class AssetService : IAssetService
             }
         }
 
-        var locationName = string.IsNullOrWhiteSpace(locationNameText) ? null : locationNameText;
-        if (locationName?.Length > 100)
+        var locationName = string.IsNullOrWhiteSpace(locationNameText) ? null : locationNameText.Trim();
+        if (string.IsNullOrWhiteSpace(locationName))
+        {
+            errors.Add("存放位置必填");
+        }
+        else if (locationName.Length > 100)
         {
             errors.Add("存放位置不能超过 100 个字符");
         }

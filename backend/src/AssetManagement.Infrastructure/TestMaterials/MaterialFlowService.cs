@@ -69,12 +69,12 @@ public class MaterialFlowService : IMaterialFlowService
             for (var attempt = 0; ; attempt++)
             {
                 await using var tx = await _db.Database.BeginTransactionAsync();
-                // 与用户停用流程保持一致的加锁顺序：先用户，后料件。
-                // 否则停用请求可能在料件转移事务中途读到旧的保管人状态。
+                var lockedProject = await LockProjectForMaterialAsync(request.MaterialId);
+                EnsureMaterialProjectOpen(lockedProject);
                 transferee = await LockActiveUserAsync(transferee.Id);
                 await EnsureTransfereeDepartmentAsync(transferee);
                 material = await LockTransferableMaterialAsync(request.MaterialId);
-                await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
+                await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id, lockedProject);
                 // 防重检查放事务内，避免并发请求同时通过检查
                 if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
                     throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
@@ -138,6 +138,8 @@ public class MaterialFlowService : IMaterialFlowService
         for (var attempt = 0; ; attempt++)
         {
             await using var bpmnTx = await _db.Database.BeginTransactionAsync();
+            var lockedProject = await LockProjectForMaterialAsync(request.MaterialId);
+            EnsureMaterialProjectOpen(lockedProject);
             var workflow = await _db.Workflows
                 .FromSqlInterpolated($"SELECT * FROM workflows WHERE BizType = {MaterialBizType} AND IsActive = 1 FOR UPDATE")
                 .AsTracking()
@@ -154,7 +156,7 @@ public class MaterialFlowService : IMaterialFlowService
             transferee = await LockActiveUserAsync(transferee.Id);
             await EnsureTransfereeDepartmentAsync(transferee);
             material = await LockTransferableMaterialAsync(request.MaterialId);
-            await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id);
+            await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id, lockedProject);
             // 防重检查放事务内，避免并发请求同时通过检查
             if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
                 throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
@@ -791,16 +793,12 @@ public class MaterialFlowService : IMaterialFlowService
 
     private async Task ApplyMaterialTransferAsync(MaterialFlow flow)
     {
+        var project = await LockProjectForMaterialAsync(flow.MaterialId);
+        EnsureMaterialProjectOpen(project);
         var material = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == flow.MaterialId)
             ?? throw new BizException(4048, "料件已不存在,无法完成转移");
-        var project = await _db.TestProjects.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == material.ProjectId);
-        if (project is null || project.IsDeleted)
-            throw new BizException(4046, "测试项目不存在");
-        if (!TestProjectLifecycleRules.IsMaterialMaintainable(
-                project.ProgressCode,
-                project.ClosedDate))
-            throw new BizException(4092, "项目已进入落地跟进或已结案，料件已锁定");
+        if (material.ProjectId != project.Id)
+            throw new BizException(4090, "料件所属项目已变化，请刷新后重试");
         if (material.IsDeleted) throw new BizException(4048, "料件已删除,无法完成转移");
         if (material.Status != MaterialStatus.InUse)
             throw new BizException(4098, "已退回厂商的料件不能转移");
@@ -830,8 +828,37 @@ public class MaterialFlowService : IMaterialFlowService
         return material;
     }
 
-    private async Task EnsureTransferStillAllowedAsync(TestMaterial material, User applicant, int transfereeId)
+    private async Task<TestProject> LockProjectForMaterialAsync(int materialId)
     {
+        var projectId = await _db.TestMaterials.AsNoTracking()
+            .Where(x => x.Id == materialId)
+            .Select(x => (int?)x.ProjectId)
+            .SingleOrDefaultAsync()
+            ?? throw new BizException(4048, "测试料件不存在");
+        return await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {projectId} FOR UPDATE")
+            .AsNoTracking()
+            .SingleOrDefaultAsync()
+            ?? throw new BizException(4046, "测试项目不存在");
+    }
+
+    private static void EnsureMaterialProjectOpen(TestProject project)
+    {
+        if (project.IsDeleted)
+            throw new BizException(4046, "测试项目不存在");
+        if (!TestProjectLifecycleRules.IsMaterialMaintainable(
+                project.ProgressCode,
+                project.ClosedDate))
+            throw new BizException(4092, "项目已进入落地跟进或已结案，料件已锁定");
+    }
+
+    private async Task EnsureTransferStillAllowedAsync(
+        TestMaterial material,
+        User applicant,
+        int transfereeId,
+        TestProject lockedProject)
+    {
+        EnsureMaterialProjectOpen(lockedProject);
         await EnsureMaterialInScopeAsync(material, applicant);
         var isSupervisor = applicant.UserRoles.Any(x => x.Role is { Code: "supervisor", IsActive: true });
         var isProjectOwner = await _db.TestProjects.AsNoTracking()

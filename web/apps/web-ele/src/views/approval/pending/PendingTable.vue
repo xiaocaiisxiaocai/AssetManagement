@@ -73,7 +73,12 @@ const tableColumns: TableColumnOption[] = [
   { key: 'actions', label: '操作', locked: true },
 ];
 const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
-  useTableColumns('approval-pending', tableColumns);
+  useTableColumns('approval-pending', tableColumns, (key, visible) => {
+    if (!visible && key === 'bizType' && filters.value.bizTypes.length > 0) {
+      filters.value.bizTypes = [];
+      emit('search');
+    }
+  });
 </script>
 
 <template>

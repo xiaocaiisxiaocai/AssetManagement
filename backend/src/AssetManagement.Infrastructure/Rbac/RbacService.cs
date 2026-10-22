@@ -309,6 +309,17 @@ public class RbacService : IRbacService
             .AsTracking()
             .SingleOrDefaultAsync()
             ?? throw new BizException(4041, "用户不存在");
+        if (IsDepartmentSupervisor())
+        {
+            var roleCodes = await _db.UserRoles
+                .Where(x => x.UserId == id)
+                .Join(_db.Roles, x => x.RoleId, x => x.Id, (_, role) => role.Code)
+                .ToArrayAsync();
+            if (!IsManagedEmployee(roleCodes))
+            {
+                throw new BizException(4032, "无权管理该用户");
+            }
+        }
         await ValidateUserRelationsAsync(request.DepartmentId, request.SupervisorId, id);
         await EnsureUserRoleChangeAllowed(
             id,

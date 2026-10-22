@@ -2190,6 +2190,8 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
 
     private async Task<T> Post<T>(string url, object body)
     {
+        if (body is CreateAssetRequest asset && string.IsNullOrWhiteSpace(asset.LocationName))
+            asset.LocationName = "测试位置";
         var res = await _client.PostAsJsonAsync(url, body);
         return (await res.Content.ReadFromJsonAsync<T>())!;
     }

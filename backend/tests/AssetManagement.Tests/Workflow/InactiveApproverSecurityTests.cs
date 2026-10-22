@@ -184,6 +184,8 @@ public class InactiveApproverSecurityTests : IClassFixture<TestWebAppFactory>
 
     private static async Task<T> Post<T>(HttpClient client, string url, object body)
     {
+        if (body is CreateAssetRequest asset && string.IsNullOrWhiteSpace(asset.LocationName))
+            asset.LocationName = "测试位置";
         var response = await client.PostAsJsonAsync(url, body);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<T>())!;

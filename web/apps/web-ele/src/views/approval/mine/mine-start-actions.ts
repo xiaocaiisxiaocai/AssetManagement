@@ -36,6 +36,7 @@ export function bindMineStartActions(page: Record<string, any>) {
     assetPage,
     loadData,
   } = page;
+  let startSession = 0;
 
   function disableReturnDate(time: Date) {
     return form.bizType === 'extension'
@@ -47,6 +48,7 @@ export function bindMineStartActions(page: Record<string, any>) {
   }
 
   async function openStart(type = 'borrow') {
+    startSession++;
     Object.assign(form, {
       assetId: undefined,
       bizType: type,
@@ -156,6 +158,8 @@ export function bindMineStartActions(page: Record<string, any>) {
       return;
     }
     saving.value = true;
+    const session = startSession;
+    const assetId = form.assetId;
     try {
       await startApprovalApi({
         assetId: form.assetId,
@@ -165,6 +169,7 @@ export function bindMineStartActions(page: Record<string, any>) {
         transfereeId:
           form.bizType === 'transfer' ? form.transfereeId : undefined,
       });
+      if (session !== startSession || !dialogVisible.value || form.assetId !== assetId) return;
       ElMessage.success('申请已提交');
       dialogVisible.value = false;
       activeSource.value = 'asset';

@@ -63,7 +63,19 @@ const tableColumns: TableColumnOption[] = [
   { key: 'actions', label: '操作', locked: true },
 ];
 const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
-  useTableColumns('admin-users', tableColumns);
+  useTableColumns('admin-users', tableColumns, (key, visible) => {
+    if (visible) return;
+    let changed = false;
+    if (key === 'department' && query.value.departmentIds.length > 0) {
+      query.value.departmentIds = [];
+      changed = true;
+    }
+    if (key === 'roles' && query.value.roleIds.length > 0) {
+      query.value.roleIds = [];
+      changed = true;
+    }
+    if (changed) emit('search');
+  });
 </script>
 
 <template>

@@ -49,12 +49,14 @@ function searchTransferees(keyword: string) {
 const visible = defineModel<boolean>('visible', { default: false });
 
 const saving = ref(false);
+let submitGeneration = 0;
 const form = reactive({
   reason: '',
   transfereeId: undefined as number | undefined,
 });
 
 watch(visible, (opened) => {
+  submitGeneration++;
   if (opened) {
     form.transfereeId = undefined;
     form.reason = '';
@@ -86,6 +88,8 @@ async function submit() {
     return;
   }
   saving.value = true;
+  const generation = submitGeneration;
+  const assetId = props.asset.id;
   try {
     await startApprovalApi({
       assetId: props.asset.id,
@@ -93,6 +97,7 @@ async function submit() {
       reason,
       transfereeId: form.transfereeId,
     });
+    if (generation !== submitGeneration || props.asset?.id !== assetId) return;
     ElMessage.success('转让申请已提交');
     visible.value = false;
     emit('submitted');
@@ -106,7 +111,14 @@ async function submit() {
 </script>
 
 <template>
-  <ElDialog v-model="visible" title="资产转让申请" width="560px">
+  <ElDialog
+    v-model="visible"
+    :close-on-click-modal="!saving"
+    :close-on-press-escape="!saving"
+    :show-close="!saving"
+    title="资产转让申请"
+    width="560px"
+  >
     <ElForm v-if="asset" label-width="88px">
       <ElFormItem label="资产编号">
         <ElInput :model-value="asset.assetNo" disabled />
@@ -145,8 +157,10 @@ async function submit() {
       </ElFormItem>
     </ElForm>
     <template #footer>
-      <ElButton @click="visible = false">取消</ElButton>
-      <ElButton :loading="saving" type="primary" @click="submit">提交</ElButton>
+      <ElButton :disabled="saving" @click="visible = false">取消</ElButton>
+      <ElButton :disabled="saving" :loading="saving" type="primary" @click="submit">
+        提交
+      </ElButton>
     </template>
   </ElDialog>
 </template>

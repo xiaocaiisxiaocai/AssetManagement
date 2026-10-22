@@ -82,7 +82,19 @@ const tableColumns: TableColumnOption[] = [
   { key: 'actions', label: '操作', locked: true },
 ];
 const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
-  useTableColumns('approval-mine', tableColumns);
+  useTableColumns('approval-mine', tableColumns, (key, visible) => {
+    if (visible) return;
+    let changed = false;
+    if (key === 'bizType' && filters.value.bizTypes.length > 0) {
+      filters.value.bizTypes = [];
+      changed = true;
+    }
+    if (key === 'status' && filters.value.statuses.length > 0) {
+      filters.value.statuses = [];
+      changed = true;
+    }
+    if (changed) emit('search');
+  });
 </script>
 
 <template>

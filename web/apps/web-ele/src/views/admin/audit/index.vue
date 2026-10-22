@@ -52,6 +52,7 @@ const total = ref(0);
 const pageSizeOptions = ref(createPageSizeOptions(20));
 const cleanupRetentionDays = ref(30);
 const cleanupPreview = ref<AuditCleanupPreview | null>(null);
+let cleanupPreviewRequest = 0;
 const query = reactive<AuditListQuery>({
   actionTypes: [],
   dateRange: [],
@@ -118,24 +119,40 @@ async function exportAuditLogs() {
 
 async function openCleanupDialog() {
   cleanupDialogVisible.value = true;
+  cleanupPreview.value = null;
   await loadCleanupPreview();
 }
 
 async function loadCleanupPreview() {
+  const requestId = ++cleanupPreviewRequest;
+  const retentionDays = cleanupRetentionDays.value;
   cleanupPreviewLoading.value = true;
   try {
-    cleanupPreview.value = await getAuditCleanupPreviewApi(
-      cleanupRetentionDays.value,
-    );
+    const preview = await getAuditCleanupPreviewApi(retentionDays);
+    if (
+      requestId === cleanupPreviewRequest &&
+      cleanupRetentionDays.value === retentionDays
+    ) {
+      cleanupPreview.value = preview;
+    }
   } finally {
-    cleanupPreviewLoading.value = false;
+    if (requestId === cleanupPreviewRequest) {
+      cleanupPreviewLoading.value = false;
+    }
   }
 }
 
 async function confirmCleanup() {
-  const preview =
-    cleanupPreview.value ??
-    (await getAuditCleanupPreviewApi(cleanupRetentionDays.value));
+  const retentionDays = cleanupRetentionDays.value;
+  let preview = cleanupPreview.value;
+  if (!preview || preview.retentionDays !== retentionDays) {
+    preview = await getAuditCleanupPreviewApi(retentionDays);
+    if (cleanupRetentionDays.value !== retentionDays) {
+      ElMessage.warning('保留周期已变化，请确认最新预览后再清理');
+      return;
+    }
+    cleanupPreview.value = preview;
+  }
   try {
     await ElMessageBox.confirm(
       `确认清理 ${formatDateTime(preview.cutoffTime, { seconds: true })} 之前的审计日志？预计删除 ${preview.deleteCount} 条。`,
@@ -152,7 +169,7 @@ async function confirmCleanup() {
 
   cleanupLoading.value = true;
   try {
-    const result = await cleanupAuditLogsApi(cleanupRetentionDays.value);
+    const result = await cleanupAuditLogsApi(retentionDays);
     ElMessage.success(`已清理 ${result.deletedCount} 条审计日志`);
     cleanupDialogVisible.value = false;
     await loadData();

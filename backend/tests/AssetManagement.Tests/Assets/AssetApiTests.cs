@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net;
 using System.Text;
 using System.Xml.Linq;
 using System.IO.Compression;
@@ -115,6 +116,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "数量为零",
             CategoryId = category.Id,
+            LocationName = "测试位置",
             Quantity = 0
         });
         var zeroBody = await zero.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
@@ -133,6 +135,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "数量边界",
             CategoryId = category.Id,
+            LocationName = "测试位置",
             Quantity = 1_000_000,
             Status = AssetStatus.Available
         });
@@ -151,6 +154,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "状况非法资产",
             CategoryId = category.Id,
+            LocationName = "测试位置",
             CurrentCondition = "随意填写的状况"
         });
         var body = await response.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
@@ -206,6 +210,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "不应归属停用部门",
             CategoryId = category.Id,
+            LocationName = "测试位置",
             DepartmentId = department.Data.Id
         });
         var body = await res.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
@@ -291,6 +296,86 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var body = await res.Content.ReadFromJsonAsync<ApiResult<object?>>();
 
         body!.Code.Should().Be(4092);
+    }
+
+    [Fact]
+    public async Task Borrowed_asset_rejects_core_edits_but_allows_remark_edit()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "借出资产编辑保护",
+            CategoryId = category.Id,
+            LocationName = "原位置",
+        });
+        int? borrowedDepartmentId;
+        int? borrowedCustodianId;
+        DateTime? borrowedRegistrationTime;
+        string borrowedName;
+        string borrowedLocationName;
+        int borrowedQuantity;
+        string? borrowedCondition;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var asset = await db.Assets.AsTracking().SingleAsync(x => x.Id == created.Data!.Id);
+            asset.Status = AssetStatus.Borrowed;
+            await db.SaveChangesAsync();
+            borrowedDepartmentId = asset.DepartmentId;
+            borrowedCustodianId = asset.CustodianId;
+            borrowedRegistrationTime = asset.RegistrationTime;
+            borrowedName = asset.Name;
+            borrowedLocationName = asset.LocationName!;
+            borrowedQuantity = asset.Quantity;
+            borrowedCondition = asset.CurrentCondition;
+        }
+
+        var forbidden = await _client.PutAsJsonAsync($"/api/assets/{created.Data!.Id}", new UpdateAssetRequest
+        {
+            Name = "借出资产被改名",
+            CategoryId = category.Id,
+            DepartmentId = borrowedDepartmentId,
+            CustodianId = borrowedCustodianId,
+            LocationName = "新位置",
+            Quantity = borrowedQuantity,
+            RegistrationTime = borrowedRegistrationTime,
+            CurrentCondition = borrowedCondition,
+            Status = AssetStatus.Borrowed,
+        });
+        forbidden.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var allowedResponse = await _client.PutAsJsonAsync($"/api/assets/{created.Data.Id}", new UpdateAssetRequest
+        {
+            Name = borrowedName,
+            CategoryId = category.Id,
+            DepartmentId = borrowedDepartmentId,
+            CustodianId = borrowedCustodianId,
+            LocationName = borrowedLocationName,
+            Quantity = borrowedQuantity,
+            RegistrationTime = borrowedRegistrationTime,
+            CurrentCondition = borrowedCondition,
+            Status = AssetStatus.Borrowed,
+            Remark = "借出期间仅修改备注",
+        });
+        allowedResponse.IsSuccessStatusCode.Should().BeTrue(
+            await allowedResponse.Content.ReadAsStringAsync());
+        var updated = await allowedResponse.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
+        updated!.Data!.Remark.Should().Be("借出期间仅修改备注");
+    }
+
+    [Fact]
+    public async Task Create_asset_requires_location()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var response = await _client.PostAsJsonAsync("/api/assets", new CreateAssetRequest
+        {
+            Name = "缺少位置资产",
+            CategoryId = category.Id,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -444,9 +529,9 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var category = await CreateCategory();
         var bytes = BuildXlsx(new[]
         {
-            new[] { "名称", "分类编码" },
-            new[] { "万用表", category.Code },
-            new[] { "无效资产", "NO-SUCH-CAT" }
+            new[] { "名称", "分类编码", "存放位置" },
+            new[] { "万用表", category.Code, "测试位置" },
+            new[] { "无效资产", "NO-SUCH-CAT", "测试位置" }
         });
 
         var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
@@ -527,8 +612,8 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var bytes = BuildXlsx(
             new[]
             {
-                new[] { "资产编号", "名称", "分类编码", "数量", "购入日期", "资产登记日期" },
-                new[] { "", "Excel 日期资产", category.Code, "1", "", "" }
+                new[] { "资产编号", "名称", "分类编码", "数量", "购入日期", "资产登记日期", "存放位置" },
+                new[] { "", "Excel 日期资产", category.Code, "1", "", "", "测试位置" }
             },
             new Dictionary<string, double>
             {
@@ -557,9 +642,9 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         await CreateUser(department.Data.Id);
         var bytes = BuildXlsx(new[]
         {
-            new[] { "资产编号", "名称", "分类编码", "数量", "保管人", "归属部门" },
-            new[] { "", "姓名不唯一资产", category.Code, "1", first.Name, department.Data.Name },
-            new[] { "", "工号唯一资产", category.Code, "1", first.EmployeeNo, department.Data.Name }
+            new[] { "资产编号", "名称", "分类编码", "数量", "保管人", "归属部门", "存放位置" },
+            new[] { "", "姓名不唯一资产", category.Code, "1", first.Name, department.Data.Name, "测试位置" },
+            new[] { "", "工号唯一资产", category.Code, "1", first.EmployeeNo, department.Data.Name, "测试位置" }
         });
 
         var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
@@ -608,8 +693,8 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var category = await CreateCategory();
         var bytes = BuildXlsx(new[]
         {
-            new[] { "名称", "分类编码", "数量" },
-            new[] { "数量过大资产", category.Code, "1000000" }
+            new[] { "名称", "分类编码", "数量", "存放位置" },
+            new[] { "数量过大资产", category.Code, "1000000", "测试位置" }
         });
 
         var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
@@ -637,9 +722,9 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
                 "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
                 "归属部门", "保管人工号", "存放位置", "数量", "资产编号"
             },
-            new[] { "文件重复一", category.Code, "", "", "", "", "", "", "", "1", duplicatedInFile },
-            new[] { "文件重复二", category.Code, "", "", "", "", "", "", "", "1", duplicatedInFile.ToLowerInvariant() },
-            new[] { "数据库重复", category.Code, "", "", "", "", "", "", "", "1", existing.Data!.AssetNo }
+            new[] { "文件重复一", category.Code, "", "", "", "", "", "", "测试位置", "1", duplicatedInFile },
+            new[] { "文件重复二", category.Code, "", "", "", "", "", "", "测试位置", "1", duplicatedInFile.ToLowerInvariant() },
+            new[] { "数据库重复", category.Code, "", "", "", "", "", "", "测试位置", "1", existing.Data!.AssetNo }
         });
 
         var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
@@ -663,8 +748,8 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
                 "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注",
                 "归属部门", "保管人工号", "存放位置", "数量", "资产编号"
             },
-            new[] { "自定义编号资产", category.Code, "", "", "", "", "", "", "", "1", $"{category.Code}-001" },
-            new[] { "自动编号资产", category.Code, "", "", "", "", "", "", "", "1", "" }
+            new[] { "自定义编号资产", category.Code, "", "", "", "", "", "", "测试位置", "1", $"{category.Code}-001" },
+            new[] { "自动编号资产", category.Code, "", "", "", "", "", "", "测试位置", "1", "" }
         });
 
         var confirmed = await PostFile<ApiResult<ImportConfirmResult>>("/api/assets/import/confirm", bytes);
@@ -683,9 +768,9 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         var category = await CreateCategory();
         var bytes = BuildXlsx(new[]
         {
-            new[] { "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注" },
-            new[] { new string('名', 101), category.Code, "", "", "", "" },
-            new[] { "合法名称", category.Code, "", "", "", new string('备', 501) },
+            new[] { "名称", "分类编码", "购入日期", "资产登记日期", "目前状况", "备注", "存放位置" },
+            new[] { new string('名', 101), category.Code, "", "", "", "", "测试位置" },
+            new[] { "合法名称", category.Code, "", "", "", new string('备', 501), "测试位置" },
         });
 
         var preview = await PostFile<ApiResult<List<ImportPreviewRow>>>("/api/assets/import/validate", bytes);
@@ -746,8 +831,8 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
         var bytes = BuildXlsx(new[]
         {
-            new[] { "名称", "分类编码" },
-            new[] { "编号四", category.Code }
+            new[] { "名称", "分类编码", "存放位置" },
+            new[] { "编号四", category.Code, "测试位置" }
         });
         var imported = await PostFile<ApiResult<ImportConfirmResult>>("/api/assets/import/confirm", bytes);
         var list = await _client.GetFromJsonAsync<ApiResult<PagedResult<AssetDto>>>(
@@ -777,6 +862,7 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "无效保管人资产",
             CategoryId = category.Id,
+            LocationName = "测试位置",
             CustodianId = int.MaxValue
         });
         invalidCustodianResponse.StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
@@ -982,6 +1068,10 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
     private async Task<T> Post<T>(string url, object body)
     {
+        if (body is CreateAssetRequest asset && string.IsNullOrWhiteSpace(asset.LocationName))
+        {
+            asset.LocationName = "测试位置";
+        }
         var res = await _client.PostAsJsonAsync(url, body);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
@@ -989,6 +1079,10 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
 
     private async Task<T> Put<T>(string url, object body)
     {
+        if (body is UpdateAssetRequest asset && string.IsNullOrWhiteSpace(asset.LocationName))
+        {
+            asset.LocationName = "测试位置";
+        }
         var res = await _client.PutAsJsonAsync(url, body);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;

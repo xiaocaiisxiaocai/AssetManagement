@@ -378,6 +378,8 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
 
     private async Task<T> Post<T>(string url, object data)
     {
+        if (data is CreateAssetRequest asset && string.IsNullOrWhiteSpace(asset.LocationName))
+            asset.LocationName = "测试位置";
         var res = await _client.PostAsJsonAsync(url, data);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;
@@ -385,6 +387,8 @@ public class AuditActionFilterTests : IClassFixture<TestWebAppFactory>
 
     private async Task<T> Put<T>(string url, object data)
     {
+        if (data is UpdateAssetRequest asset && string.IsNullOrWhiteSpace(asset.LocationName))
+            asset.LocationName = "测试位置";
         var res = await _client.PutAsJsonAsync(url, data);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;

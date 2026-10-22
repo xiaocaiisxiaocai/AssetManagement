@@ -304,6 +304,8 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
 
     private async Task<T> Post<T>(string url, object payload)
     {
+        if (payload is CreateAssetRequest asset && string.IsNullOrWhiteSpace(asset.LocationName))
+            asset.LocationName = "测试位置";
         var response = await _client.PostAsJsonAsync(url, payload);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<T>())!;

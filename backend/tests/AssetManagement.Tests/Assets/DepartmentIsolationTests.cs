@@ -157,6 +157,7 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
         {
             Name = "被越权修改",
             CategoryId = category.Id,
+            LocationName = "测试位置",
             DepartmentId = dept2.Data.Id,
             Quantity = 1,
             Status = AssetStatus.Available
@@ -211,6 +212,8 @@ public class DepartmentIsolationTests : IClassFixture<TestWebAppFactory>
 
     private async Task<T> Post<T>(string url, object body)
     {
+        if (body is CreateAssetRequest asset && string.IsNullOrWhiteSpace(asset.LocationName))
+            asset.LocationName = "测试位置";
         var res = await _client.PostAsJsonAsync(url, body);
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<T>())!;

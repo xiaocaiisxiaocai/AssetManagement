@@ -140,6 +140,7 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "非法图片地址资产",
             CategoryId = category.Id,
+            LocationName = "测试位置",
             Images = new List<string> { "https://attacker.example/tracker.png" },
         });
         var body = await response.Content.ReadFromJsonAsync<ApiResult<JsonElement>>();
@@ -158,6 +159,7 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "不存在图片资产",
             CategoryId = category.Id,
+            LocationName = "测试位置",
             Images = new List<string> { $"/api/files/{Guid.NewGuid():N}.png" },
         });
         var body = await response.Content.ReadFromJsonAsync<ApiResult<JsonElement>>();
@@ -180,6 +182,7 @@ public class FileApiTests : IClassFixture<TestWebAppFactory>
         {
             Name = "图片地址规范化资产",
             CategoryId = category.Id,
+            LocationName = "测试位置",
             Images = new List<string> { $"  {uploadedUrl}  " },
         });
         var body = await response.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();

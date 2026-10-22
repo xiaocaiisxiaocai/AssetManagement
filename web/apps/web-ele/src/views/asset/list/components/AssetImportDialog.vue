@@ -93,9 +93,12 @@ async function confirmImport() {
     return;
   }
 
-  importing.value = true;
+  const file = selectedFile.value;
+  const writeGeneration = importValidation.start(file);
+  if (writeGeneration === null) return;
   try {
-    const result = await confirmAssetImportApi(selectedFile.value);
+    const result = await confirmAssetImportApi(file);
+    if (!importValidation.canApply(writeGeneration)) return;
     rows.value = result.rows;
     if (result.successCount === 0) {
       ElMessage.warning('没有可导入记录，请检查分类编码后重新选择文件');
@@ -107,7 +110,7 @@ async function confirmImport() {
     visible.value = false;
     emit('imported');
   } finally {
-    importing.value = false;
+    importValidation.finish(writeGeneration);
   }
 }
 </script>
@@ -115,7 +118,10 @@ async function confirmImport() {
 <template>
   <ElDialog
     v-model="visible"
+    :close-on-click-modal="!importing"
+    :close-on-press-escape="!importing"
     destroy-on-close
+    :show-close="!importing"
     class="asset-import-dialog"
     title="批量导入资产"
     width="1040px"

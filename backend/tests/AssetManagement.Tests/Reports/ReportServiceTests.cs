@@ -255,6 +255,71 @@ public class ReportServiceTests : MySqlFixtureBase
     }
 
     [Fact]
+    public async Task QueryOverdue_orders_most_overdue_assets_first()
+    {
+        var category = new AssetCategory { CodeSeg = "ORD", Code = "ORD" };
+        _db.AssetCategories.Add(category);
+        await _db.SaveChangesAsync();
+        var older = new Asset
+        {
+            AssetNo = "ORD-001",
+            Name = "严重逾期资产",
+            CategoryId = category.Id,
+            Status = AssetStatus.Borrowed,
+            CreatedAt = DateTime.UtcNow,
+        };
+        var newer = new Asset
+        {
+            AssetNo = "ORD-002",
+            Name = "轻微逾期资产",
+            CategoryId = category.Id,
+            Status = AssetStatus.Borrowed,
+            CreatedAt = DateTime.UtcNow,
+        };
+        _db.Assets.AddRange(older, newer);
+        await _db.SaveChangesAsync();
+        var (applicantId, workflowId) = await CreateFlowReferencesAsync("overdue-order");
+        _db.ApprovalFlows.AddRange(
+            new ApprovalFlow
+            {
+                FlowNo = "ORD-FLOW-1",
+                BizType = "borrow",
+                Status = "approved",
+                AssetId = older.Id,
+                AssetNo = older.AssetNo,
+                AssetName = older.Name,
+                ApplicantId = applicantId,
+                WorkflowId = workflowId,
+                Applicant = "借用人",
+                ReturnDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-20)),
+                ApplyTime = DateTime.UtcNow.AddDays(-1),
+            },
+            new ApprovalFlow
+            {
+                FlowNo = "ORD-FLOW-2",
+                BizType = "borrow",
+                Status = "approved",
+                AssetId = newer.Id,
+                AssetNo = newer.AssetNo,
+                AssetName = newer.Name,
+                ApplicantId = applicantId,
+                WorkflowId = workflowId,
+                Applicant = "借用人",
+                ReturnDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-2)),
+                ApplyTime = DateTime.UtcNow.AddDays(-30),
+            });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.QueryOverduePageAsync(new OverdueReportQuery
+        {
+            Page = 1,
+            PageSize = 10,
+        });
+
+        result.Items.Select(x => x.AssetNo).Should().Equal("ORD-001", "ORD-002");
+    }
+
+    [Fact]
     public async Task QueryOverdue_does_not_apply_export_limit_before_due_date_filtering()
     {
         var category = new AssetCategory { CodeSeg = "CAP", Code = "CAP" };

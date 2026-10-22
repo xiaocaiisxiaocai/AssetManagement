@@ -35,10 +35,20 @@ const retentionDays = defineModel<number>('retentionDays', { required: true });
   >
     <ElForm label-position="top">
       <ElFormItem label="保留周期">
-        <ElRadioGroup v-model="retentionDays" @change="emit('preview')">
-          <ElRadioButton :value="7">7 天</ElRadioButton>
-          <ElRadioButton :value="14">14 天</ElRadioButton>
-          <ElRadioButton :value="30">30 天</ElRadioButton>
+        <ElRadioGroup
+          v-model="retentionDays"
+          :disabled="cleanupLoading"
+          @change="emit('preview')"
+        >
+          <ElRadioButton :disabled="cleanupLoading" :value="7">
+            7 天
+          </ElRadioButton>
+          <ElRadioButton :disabled="cleanupLoading" :value="14">
+            14 天
+          </ElRadioButton>
+          <ElRadioButton :disabled="cleanupLoading" :value="30">
+            30 天
+          </ElRadioButton>
         </ElRadioGroup>
       </ElFormItem>
 
@@ -62,7 +72,9 @@ const retentionDays = defineModel<number>('retentionDays', { required: true });
     </ElForm>
 
     <template #footer>
-      <ElButton @click="visible = false">取消</ElButton>
+      <ElButton :disabled="cleanupLoading" @click="visible = false">
+        取消
+      </ElButton>
       <ElButton
         :disabled="previewLoading"
         :loading="cleanupLoading"

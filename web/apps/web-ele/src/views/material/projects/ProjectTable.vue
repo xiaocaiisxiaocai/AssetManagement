@@ -112,15 +112,6 @@ function tableRowClassName({ row }: { row: TestProjectItem }) {
   return row.isDeleted ? 'project-row-deleted' : '';
 }
 
-const hasProjectActions = computed(
-  () =>
-    props.access.canEdit ||
-    props.access.canDelete ||
-    props.access.canManage ||
-    props.access.canRestore ||
-    props.access.canPurge,
-);
-
 const hasProjectFilters = computed(() => {
   return Boolean(
     filter.value.code.trim() ||
@@ -155,7 +146,27 @@ const tableColumns: TableColumnOption[] = [
   { key: 'actions', label: '操作', locked: true },
 ];
 const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
-  useTableColumns('project-list', tableColumns);
+  useTableColumns('project-list', tableColumns, (key, visible) => {
+    if (visible) return;
+    let changed = false;
+    if (key === 'projectType' && filter.value.projectTypeCodes.length > 0) {
+      filter.value.projectTypeCodes = [];
+      changed = true;
+    }
+    if (key === 'owner' && filter.value.ownerIds.length > 0) {
+      filter.value.ownerIds = [];
+      changed = true;
+    }
+    if (key === 'progress' && filter.value.progressCodes.length > 0) {
+      filter.value.progressCodes = [];
+      changed = true;
+    }
+    if (key === 'status' && deleteStatus.value !== 'active') {
+      deleteStatus.value = 'active';
+      changed = true;
+    }
+    if (changed) emit('search');
+  });
 </script>
 
 <template>
@@ -263,7 +274,7 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
         <template #default="{ row }">{{ row.ownerName || '-' }}</template>
       </ElTableColumn>
       <ElTableColumn
-        v-if="hasProjectActions && visibleColumn('startDate')"
+        v-if="visibleColumn('startDate')"
         align="center"
         class-name="hide-on-mobile"
         label="开始时间"

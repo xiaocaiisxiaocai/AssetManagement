@@ -42,7 +42,10 @@ function chooseImportFile() {
 <template>
   <ElDialog
     v-model="visible"
+    :close-on-click-modal="!importing"
+    :close-on-press-escape="!importing"
     class="user-import-dialog"
+    :show-close="!importing"
     title="批量导入用户"
     width="920px"
   >
@@ -55,7 +58,9 @@ function chooseImportFile() {
         type="file"
         @change="emit('fileChange', $event)"
       />
-      <ElButton @click="chooseImportFile">选择文件</ElButton>
+      <ElButton :disabled="importing" @click="chooseImportFile">
+        选择文件
+      </ElButton>
       <span class="user-import-file-name">
         {{ selectedFile?.name || '未选择文件' }}
       </span>

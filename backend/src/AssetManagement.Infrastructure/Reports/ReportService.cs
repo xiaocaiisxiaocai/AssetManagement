@@ -185,7 +185,9 @@ public class ReportService : IReportService
         var today = BusinessClock.TodayDateOnly;
         var allowedDepartmentIds = await AllowedDepartmentIdsAsync();
         var flows = ApplyOverdueQuery(today, allowedDepartmentIds)
-            .OrderByDescending(x => x.ApplyTime)
+            .OrderBy(x => x.ReturnDate)
+            .ThenByDescending(x => x.ApplyTime)
+            .ThenByDescending(x => x.Id)
             .Take(AppConstants.MaxExportRows + 1);
         var overdueFlows = await flows.ToListAsync();
         if (overdueFlows.Count > AppConstants.MaxExportRows)
@@ -212,7 +214,8 @@ public class ReportService : IReportService
         var seriousTotal = await flows.CountAsync(x => x.ReturnDate < seriousCutoff);
         var offset = Pagination.GetOffset(page, pageSize, total);
         var pageFlows = offset.HasValue
-            ? await flows.OrderByDescending(x => x.ApplyTime)
+            ? await flows.OrderBy(x => x.ReturnDate)
+                .ThenByDescending(x => x.ApplyTime)
                 .ThenByDescending(x => x.Id)
                 .Skip(offset.Value)
                 .Take(pageSize)

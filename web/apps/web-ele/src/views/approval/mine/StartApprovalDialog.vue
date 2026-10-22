@@ -43,7 +43,14 @@ const form = defineModel<StartApprovalFormModel>('form', { required: true });
 </script>
 
 <template>
-  <ElDialog v-model="visible" title="发起申请" width="540px">
+  <ElDialog
+    v-model="visible"
+    :close-on-click-modal="!saving"
+    :close-on-press-escape="!saving"
+    :show-close="!saving"
+    title="发起申请"
+    width="540px"
+  >
     <StartApprovalForm
       v-model:form="form"
       :asset-options-loading="assetOptionsLoading"
@@ -60,8 +67,8 @@ const form = defineModel<StartApprovalFormModel>('form', { required: true });
       @user-search="emit('userSearch', $event)"
     />
     <template #footer>
-      <ElButton @click="visible = false">取消</ElButton>
-      <ElButton :loading="saving" type="primary" @click="emit('submit')">
+      <ElButton :disabled="saving" @click="visible = false">取消</ElButton>
+      <ElButton :disabled="saving" :loading="saving" type="primary" @click="emit('submit')">
         提交
       </ElButton>
     </template>

@@ -10,7 +10,6 @@ export function bindUserImportActions(page: Record<string, any>) {
   const {
     importDialogVisible,
     importValidation,
-    importing,
     importRows,
     selectedImportFile,
     query,
@@ -64,9 +63,12 @@ export function bindUserImportActions(page: Record<string, any>) {
       return;
     }
 
-    importing.value = true;
+    const file = selectedImportFile.value;
+    const writeGeneration = importValidation.start(file);
+    if (writeGeneration === null) return;
     try {
-      const result = await importUsersApi(selectedImportFile.value);
+      const result = await importUsersApi(file);
+      if (!importValidation.canApply(writeGeneration)) return;
       importRows.value = result.rows;
       if (result.failedCount > 0) {
         ElMessage.warning(
@@ -79,7 +81,7 @@ export function bindUserImportActions(page: Record<string, any>) {
       query.page = 1;
       await loadData();
     } finally {
-      importing.value = false;
+      importValidation.finish(writeGeneration);
     }
   }
 

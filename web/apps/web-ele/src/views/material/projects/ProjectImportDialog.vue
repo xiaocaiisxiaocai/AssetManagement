@@ -88,9 +88,12 @@ async function confirmImport() {
     ElMessage.warning('请先选择 Excel 文件');
     return;
   }
-  importing.value = true;
+  const file = selectedFile.value;
+  const writeGeneration = importValidation.start(file);
+  if (writeGeneration === null) return;
   try {
-    const result = await confirmTestProjectImportApi(selectedFile.value);
+    const result = await confirmTestProjectImportApi(file);
+    if (!importValidation.canApply(writeGeneration)) return;
     rows.value = result.rows;
     if (result.failedCount > 0) {
       ElMessage.warning(`导入失败 ${result.failedCount} 条，请修正后重新导入`);
@@ -100,7 +103,7 @@ async function confirmImport() {
     visible.value = false;
     emit('imported');
   } finally {
-    importing.value = false;
+    importValidation.finish(writeGeneration);
   }
 }
 </script>
@@ -108,8 +111,11 @@ async function confirmImport() {
 <template>
   <ElDialog
     v-model="visible"
+    :close-on-click-modal="!importing"
+    :close-on-press-escape="!importing"
     class="project-import-dialog"
     destroy-on-close
+    :show-close="!importing"
     title="批量导入测试项目"
     width="1080px"
   >

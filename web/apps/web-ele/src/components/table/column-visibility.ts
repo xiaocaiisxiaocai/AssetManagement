@@ -107,6 +107,7 @@ export function writeHiddenColumnKeys(
 export function useTableColumns(
   tableId: string,
   columns: readonly TableColumnOption[],
+  onVisibilityChange?: (key: string, visible: boolean) => void,
 ) {
   const hiddenKeys = ref(readHiddenColumnKeys(tableId, columns));
 
@@ -122,6 +123,7 @@ export function useTableColumns(
       columns,
     );
     writeHiddenColumnKeys(tableId, hiddenKeys.value);
+    onVisibilityChange?.(key, visible);
   }
 
   function resetColumns() {
