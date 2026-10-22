@@ -52,7 +52,9 @@ function opinionText(step: WorkflowProgressStep) {
             ? 'success'
             : step.state === 'current'
               ? 'primary'
-              : 'info'
+              : step.state === 'unavailable'
+                ? 'danger'
+                : 'info'
       "
     >
       <div class="workflow-step-title">
@@ -67,6 +69,13 @@ function opinionText(step: WorkflowProgressStep) {
         </ElTag>
         <ElTag v-else-if="step.state === 'current'" size="small">
           当前处理
+        </ElTag>
+        <ElTag
+          v-else-if="step.state === 'unavailable'"
+          size="small"
+          type="danger"
+        >
+          无法继续
         </ElTag>
         <ElTag v-else size="small" type="info">
           {{ step.isPossible ? '可能下一步' : '下一步' }}
@@ -93,6 +102,12 @@ function opinionText(step: WorkflowProgressStep) {
         class="workflow-step-people"
       >
         处理人：{{ step.completedBy }}
+      </div>
+      <div
+        v-else-if="step.state === 'unavailable'"
+        class="workflow-step-people"
+      >
+        流程定义已变更，该节点无法继续审批
       </div>
       <div v-else class="workflow-step-people">待系统确定处理人</div>
       <div v-if="step.opinion" class="workflow-step-opinion">

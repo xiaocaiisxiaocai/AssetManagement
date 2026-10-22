@@ -39,6 +39,12 @@ export interface TestProjectItem {
   latestFollowUpAt?: null | string;
   latestFollowUpContent?: null | string;
   canWriteFollowUp: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canRestore: boolean;
+  canPurge: boolean;
+  canUpdateProgress: boolean;
+  canReopen: boolean;
   createdAt: string;
   isDeleted: boolean;
   deletedAt?: null | string;
@@ -118,6 +124,7 @@ export interface TestProjectFollowup {
   filledById: number;
   filledByName?: null | string;
   filledAt: string;
+  isLatest: boolean;
 }
 
 export interface SaveTestProjectFollowupPayload {

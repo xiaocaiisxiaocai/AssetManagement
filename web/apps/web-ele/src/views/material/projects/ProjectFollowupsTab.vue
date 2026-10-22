@@ -115,7 +115,7 @@ const canWrite = computed(
                   {{ formatDateTime(item.filledAt, { seconds: true }) }}</span
                 >
               </div>
-              <div v-if="canWrite" class="record-actions">
+              <div v-if="canWrite && item.isLatest" class="record-actions">
                 <ElButton
                   :disabled="saving"
                   link

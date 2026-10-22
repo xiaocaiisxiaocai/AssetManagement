@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AssetManagement.Application.Common;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
@@ -10,6 +11,8 @@ internal sealed class TestProjectAccessScope
 {
     private readonly AppDbContext _db;
     private readonly ClaimsPrincipal? _user;
+    private readonly Dictionary<int, int?> _ownerDepartments = new();
+    private int[]? _allowedDepartmentIds;
 
     public TestProjectAccessScope(AppDbContext db, IHttpContextAccessor http)
     {
@@ -45,54 +48,106 @@ internal sealed class TestProjectAccessScope
         if (IsAdmin) return true;
         if (ownerMayExecute && project.OwnerId == userId) return true;
         if (!HasPermission(permission)) return false;
-        return await IsInSupervisorScopeAsync(project, userId);
+        return await IsInDepartmentScopeAsync(project.OwnerId, userId);
     }
 
     public async Task EnsureScopeAsync(TestProject project, int userId)
     {
-        if (userId <= 0 || !await IsInSupervisorScopeAsync(project, userId))
-            throw new AssetManagement.Application.Common.BizException(4031, "无权管理其他部门的测试项目");
+        if (userId <= 0 || !await IsInDepartmentScopeAsync(project.OwnerId, userId))
+            throw new BizException(4031, "无权管理其他部门的测试项目");
     }
 
-    public async Task<IQueryable<TestProject>> ApplySupervisorScopeAsync(
-        IQueryable<TestProject> query,
-        int userId)
+    public async Task EnsureOwnerAssignableAsync(int ownerId, bool creating)
     {
-        if (!IsSupervisor || IsAdmin || userId <= 0) return query;
+        var error = await OwnerAssignmentErrorAsync(ownerId, creating);
+        if (error is not null)
+            throw new BizException(4031, error);
+    }
 
+    public async Task<string?> OwnerAssignmentErrorAsync(int? ownerId, bool creating)
+    {
+        if (IsAdmin || !ownerId.HasValue) return null;
+        var userId = CurrentUserId;
+        if (!userId.HasValue || userId.Value <= 0)
+            return creating && !IsSupervisor
+                ? "只能把自己设为项目负责人"
+                : "只能指定本部门及下级部门的人员为负责人";
+
+        if (creating && !IsSupervisor && ownerId.Value != userId.Value)
+            return "只能把自己设为项目负责人";
+
+        if (await IsInDepartmentScopeAsync(ownerId, userId.Value)) return null;
+        return "只能指定本部门及下级部门的人员为负责人";
+    }
+
+    public async Task PreloadAsync(IEnumerable<TestProject> projects, int userId)
+    {
+        if (userId > 0)
+            await AllowedDepartmentIdsAsync(userId);
+        await PreloadOwnerDepartmentsAsync(
+            projects.Where(x => x.OwnerId.HasValue).Select(x => x.OwnerId!.Value));
+    }
+
+    public bool IsInDepartmentScope(int? ownerId, int userId)
+    {
+        if (IsAdmin) return true;
+        if (ownerId == userId) return true;
+        if (!ownerId.HasValue || userId <= 0) return false;
+        var allowed = _allowedDepartmentIds ?? [];
+        return _ownerDepartments.TryGetValue(ownerId.Value, out var departmentId) &&
+               departmentId.HasValue &&
+               allowed.Contains(departmentId.Value);
+    }
+
+    private async Task<bool> IsInDepartmentScopeAsync(int? ownerId, int userId)
+    {
+        if (IsAdmin) return true;
+        if (ownerId == userId) return true;
+        if (!ownerId.HasValue || userId <= 0) return false;
+
+        var allowed = await AllowedDepartmentIdsAsync(userId);
+        if (allowed.Length == 0) return false;
+        var ownerDepartmentId = await OwnerDepartmentIdAsync(ownerId.Value);
+        return ownerDepartmentId.HasValue && allowed.Contains(ownerDepartmentId.Value);
+    }
+
+    private async Task PreloadOwnerDepartmentsAsync(IEnumerable<int> ownerIds)
+    {
+        var missing = ownerIds.Where(id => !_ownerDepartments.ContainsKey(id)).Distinct().ToArray();
+        if (missing.Length == 0) return;
+
+        var rows = await _db.Users.AsNoTracking()
+            .Where(x => missing.Contains(x.Id))
+            .Select(x => new { x.Id, x.DepartmentId })
+            .ToListAsync();
+        foreach (var id in missing)
+            _ownerDepartments[id] = null;
+        foreach (var row in rows)
+            _ownerDepartments[row.Id] = row.DepartmentId;
+    }
+
+    private async Task<int?> OwnerDepartmentIdAsync(int ownerId)
+    {
+        if (_ownerDepartments.TryGetValue(ownerId, out var cached)) return cached;
+        var departmentId = await _db.Users.AsNoTracking()
+            .Where(x => x.Id == ownerId)
+            .Select(x => x.DepartmentId)
+            .SingleOrDefaultAsync();
+        _ownerDepartments[ownerId] = departmentId;
+        return departmentId;
+    }
+
+    private async Task<int[]> AllowedDepartmentIdsAsync(int userId)
+    {
+        if (_allowedDepartmentIds is not null) return _allowedDepartmentIds;
         var departmentId = await _db.Users.AsNoTracking()
             .Where(x => x.Id == userId)
             .Select(x => x.DepartmentId)
             .SingleOrDefaultAsync();
-        if (!departmentId.HasValue) return query.Where(_ => false);
-
-        var allowed = await DescendantDepartmentIdsAsync(departmentId.Value);
-        var ownerIds = await _db.Users.AsNoTracking()
-            .Where(x => x.DepartmentId.HasValue && allowed.Contains(x.DepartmentId.Value))
-            .Select(x => x.Id)
-            .ToArrayAsync();
-        return query.Where(x => x.OwnerId.HasValue && ownerIds.Contains(x.OwnerId.Value));
-    }
-
-    private async Task<bool> IsInSupervisorScopeAsync(TestProject project, int userId)
-    {
-        if (IsAdmin || !IsSupervisor) return true;
-        if (project.OwnerId == userId) return true;
-        if (!project.OwnerId.HasValue) return false;
-
-        var supervisorDepartmentId = await _db.Users.AsNoTracking()
-            .Where(x => x.Id == userId)
-            .Select(x => x.DepartmentId)
-            .SingleOrDefaultAsync();
-        var ownerDepartmentId = await _db.Users.AsNoTracking()
-            .Where(x => x.Id == project.OwnerId.Value)
-            .Select(x => x.DepartmentId)
-            .SingleOrDefaultAsync();
-        if (!supervisorDepartmentId.HasValue || !ownerDepartmentId.HasValue)
-            return false;
-
-        var allowed = await DescendantDepartmentIdsAsync(supervisorDepartmentId.Value);
-        return allowed.Contains(ownerDepartmentId.Value);
+        _allowedDepartmentIds = departmentId.HasValue
+            ? await DescendantDepartmentIdsAsync(departmentId.Value)
+            : [];
+        return _allowedDepartmentIds;
     }
 
     private async Task<int[]> DescendantDepartmentIdsAsync(int rootId)

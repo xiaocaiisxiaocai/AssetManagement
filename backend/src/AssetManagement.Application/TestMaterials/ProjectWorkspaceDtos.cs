@@ -79,7 +79,7 @@ public interface IProjectWorkspaceService
     Task<ProjectTestStageDto> SaveStageAsync(int projectId, int? stageId, SaveProjectTestStageRequest request, int userId);
     Task DeleteStageAsync(int projectId, int stageId, uint rowVersion, int userId);
     Task<ProjectReportDocumentDto> UploadAsync(int projectId, int? stageId, string? description, string fileName, long length, Stream content, int userId);
-    Task<ProjectWorkspaceFile> DownloadAsync(int projectId, int documentId);
+    Task<ProjectWorkspaceFile> DownloadAsync(int projectId, int documentId, int userId);
     Task DeleteDocumentAsync(int projectId, int documentId, int userId);
     Task<ProjectWorkspaceFile> ExportAsync(int projectId, int? stageId, bool package, int userId);
 }

@@ -24,6 +24,27 @@ export async function refreshProjectAfterMaterialChange(
   await Promise.all([loadMaterials(), loadFlows(), loadProjects()]);
 }
 
+export function allowedProgressCodes(current: string) {
+  switch (current.trim().toLowerCase()) {
+    case '':
+    case 'planning': {
+      return ['planning', 'testing'];
+    }
+    case 'closed': {
+      return ['closed'];
+    }
+    case 'landing': {
+      return ['landing', 'closed'];
+    }
+    case 'testing': {
+      return ['testing', 'landing', 'closed'];
+    }
+    default: {
+      return ['planning', 'testing'];
+    }
+  }
+}
+
 export function canUpdateProjectProgress(
   project: Pick<TestProjectItem, 'closedDate' | 'isDeleted' | 'ownerId'>,
   currentUserId: number,

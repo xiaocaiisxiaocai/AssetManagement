@@ -126,6 +126,12 @@ public class TestProjectController : ControllerBase
     public async Task<ApiResult<TestProjectDto>> UpdateProgress(int id, UpdateTestProjectProgressRequest request)
         => ApiResult<TestProjectDto>.Ok(await _service.UpdateProgressAsync(id, request, CurrentUserId()));
 
+    [HttpPost("{id:int}/reopen")]
+    // 重新打开已结案项目只允许系统管理员，服务端再校验角色与行版本。
+    [Authorize]
+    public async Task<ApiResult<TestProjectDto>> Reopen(int id, ReopenTestProjectRequest request)
+        => ApiResult<TestProjectDto>.Ok(await _service.ReopenAsync(id, request.RowVersion));
+
     [HttpDelete("{id:int}")]
     [HasPermission("project:delete")]
     public async Task<ApiResult<object?>> Delete(int id)

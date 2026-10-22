@@ -63,6 +63,14 @@ export const updateTestProjectProgressApi = (
     ),
   );
 
+export const reopenTestProjectApi = (id: number, rowVersion?: number) =>
+  unwrap(
+    requestClient.post<ApiResult<TestProjectItem>>(
+      `/test-projects/${id}/reopen`,
+      { rowVersion },
+    ),
+  );
+
 export const deleteTestProjectApi = (id: number) =>
   unwrap(requestClient.delete<ApiResult<null>>(`/test-projects/${id}`));
 

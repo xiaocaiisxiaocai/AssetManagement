@@ -3,23 +3,7 @@ import type { TestProjectItem } from '#/api/test-project';
 
 import { ElButton } from 'element-plus';
 
-import { canUpdateProjectProgress } from './project-workspace-rules';
-
-type ProjectActionAccess = {
-  canCreate: boolean;
-  canDelete: boolean;
-  canEdit: boolean;
-  canExport: boolean;
-  canImport: boolean;
-  canManage: boolean;
-  canOption: boolean;
-  canPurge: boolean;
-  canRestore: boolean;
-};
-
 defineProps<{
-  access: ProjectActionAccess;
-  currentUserId: number;
   row: TestProjectItem;
 }>();
 
@@ -28,6 +12,7 @@ const emit = defineEmits<{
   progress: [];
   purge: [];
   remove: [];
+  reopen: [];
   restore: [];
 }>();
 </script>
@@ -35,7 +20,7 @@ const emit = defineEmits<{
 <template>
   <template v-if="!row.isDeleted">
     <ElButton
-      v-if="access.canEdit && !row.closedDate"
+      v-if="row.canEdit"
       link
       size="small"
       type="primary"
@@ -44,7 +29,7 @@ const emit = defineEmits<{
       编辑
     </ElButton>
     <ElButton
-      v-else-if="canUpdateProjectProgress(row, currentUserId, access.canManage)"
+      v-else-if="row.canUpdateProgress"
       link
       size="small"
       type="primary"
@@ -53,7 +38,16 @@ const emit = defineEmits<{
       更新进展
     </ElButton>
     <ElButton
-      v-if="access.canDelete"
+      v-if="row.canReopen"
+      link
+      size="small"
+      type="warning"
+      @click="emit('reopen')"
+    >
+      重新打开
+    </ElButton>
+    <ElButton
+      v-if="row.canDelete"
       link
       size="small"
       type="danger"
@@ -64,7 +58,7 @@ const emit = defineEmits<{
   </template>
   <template v-else>
     <ElButton
-      v-if="access.canRestore"
+      v-if="row.canRestore"
       link
       size="small"
       type="success"
@@ -73,7 +67,7 @@ const emit = defineEmits<{
       撤销删除
     </ElButton>
     <ElButton
-      v-if="access.canPurge"
+      v-if="row.canPurge"
       link
       size="small"
       type="danger"

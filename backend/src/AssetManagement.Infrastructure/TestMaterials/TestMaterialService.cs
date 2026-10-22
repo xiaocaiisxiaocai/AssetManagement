@@ -248,7 +248,7 @@ public class TestMaterialService : ITestMaterialService
             .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
-        await EnsureCanAccessAsync(m);
+        await EnsureCanDisposeMaterialAsync(m, "material:delete");
         await EnsureMaterialProjectOpenAsync(m.ProjectId);
         EnsureInUse(m, "已退回厂商的料件不能删除");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
@@ -276,7 +276,7 @@ public class TestMaterialService : ITestMaterialService
         await using var transaction = await _db.Database.BeginTransactionAsync();
         var m = await _db.TestMaterials.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4048, "测试料件不存在");
-        await EnsureCanAccessAsync(m);
+        await EnsureCanDisposeMaterialAsync(m, "material:restore");
         if (!m.IsDeleted) throw new BizException(4099, "料件未删除,无需恢复");
         await EnsureMaterialProjectOpenAsync(m.ProjectId);
         m.IsDeleted = false;
@@ -337,7 +337,7 @@ public class TestMaterialService : ITestMaterialService
             .SingleOrDefaultAsync()
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
-        await EnsureCanAccessAsync(m);
+        await EnsureCanDisposeMaterialAsync(m, "material:return");
         await EnsureMaterialProjectOpenAsync(m.ProjectId);
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能退回厂商");
@@ -465,6 +465,25 @@ public class TestMaterialService : ITestMaterialService
             .Select(x => x.DepartmentId)
             .SingleOrDefaultAsync();
         return departmentId.HasValue ? [departmentId.Value] : Array.Empty<int>();
+    }
+
+    private async Task EnsureCanDisposeMaterialAsync(TestMaterial material, string permission)
+    {
+        var user = _http.HttpContext?.User;
+        var roles = user?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray() ?? [];
+        if (roles.Contains("admin")) return;
+        if (user?.HasClaim("perm", permission) == true)
+        {
+            await EnsureCanAccessAsync(material);
+            return;
+        }
+
+        var currentUserId = CurrentUserId();
+        if (currentUserId.HasValue &&
+            await _db.TestProjects.AnyAsync(project =>
+                project.Id == material.ProjectId && project.OwnerId == currentUserId.Value))
+            return;
+        throw new BizException(4047, "无权维护该项目料件");
     }
 
     private async Task EnsureCanAccessAsync(TestMaterial m)

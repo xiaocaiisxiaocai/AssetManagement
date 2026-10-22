@@ -42,12 +42,14 @@ public class TestMaterialController : ControllerBase
         => ApiResult<TestMaterialDto>.Ok(await _service.UpdateAsync(id, request));
 
     [HttpPost("{id:int}/return")]
-    [HasPermission("material:return")]
+    // 项目负责人可退回自己项目下的料件，其余用户仍由服务按 material:return 与部门范围判断。
+    [Authorize]
     public async Task<ApiResult<TestMaterialDto>> Return(int id)
         => ApiResult<TestMaterialDto>.Ok(await _service.ReturnToVendorAsync(id, CurrentUserId()));
 
     [HttpDelete("{id:int}")]
-    [HasPermission("material:delete")]
+    // 项目负责人可删除自己项目下的料件，其余用户仍由服务按 material:delete 与部门范围判断。
+    [Authorize]
     public async Task<ApiResult<object?>> Delete(int id)
     {
         await _service.DeleteAsync(id);
@@ -55,7 +57,8 @@ public class TestMaterialController : ControllerBase
     }
 
     [HttpPost("{id:int}/restore")]
-    [HasPermission("material:restore")]
+    // 项目负责人可恢复自己项目下的料件，彻底删除仍只允许 material:purge。
+    [Authorize]
     public async Task<ApiResult<object?>> Restore(int id)
     {
         await _service.RestoreAsync(id);

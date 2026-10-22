@@ -50,11 +50,15 @@ public class AssetOverviewApiTests : IClassFixture<TestWebAppFactory>
         body.Data!.Total.Should().Be(0);
         body.Data.Available.Should().Be(0);
         body.Data.Borrowed.Should().Be(0);
+        body.Data.Maintenance.Should().Be(0);
+        body.Data.Scrapped.Should().Be(0);
         body.Data.UncategorizedTotal.Should().Be(0);
         body.Data.Categories.Should().OnlyContain(category =>
             category.Total == 0
             && category.Available == 0
-            && category.Borrowed == 0);
+            && category.Borrowed == 0
+            && category.Maintenance == 0
+            && category.Scrapped == 0);
     }
 
     private async Task<string> CreateTokenAsync(params string[] permissionCodes)

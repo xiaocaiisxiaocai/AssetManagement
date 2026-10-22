@@ -5,6 +5,12 @@ import { describe, expect, it } from 'vitest';
 import { filterProjects, type ProjectFilter } from './project-filter';
 
 const baseProject: TestProjectItem = {
+  canDelete: false,
+  canEdit: false,
+  canPurge: false,
+  canReopen: false,
+  canRestore: false,
+  canUpdateProgress: false,
   canWriteFollowUp: false,
   code: 'CODX-NT-001',
   createdAt: '2026-06-29T00:00:00',

@@ -48,7 +48,7 @@ public class ProjectWorkspaceController : ControllerBase
     [HttpGet("documents/{documentId:int}/download")]
     public async Task<FileStreamResult> Download(int projectId, int documentId)
     {
-        var file = await _service.DownloadAsync(projectId, documentId);
+        var file = await _service.DownloadAsync(projectId, documentId, CurrentUserId());
         return File(file.Stream, file.ContentType, file.FileName);
     }
 

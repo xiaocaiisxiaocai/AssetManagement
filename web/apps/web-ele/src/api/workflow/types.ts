@@ -69,7 +69,7 @@ export interface WorkflowProgressStep {
   nodeName: string;
   opinion?: null | string;
   startedAt?: null | string;
-  state: 'completed' | 'current' | 'next';
+  state: 'completed' | 'current' | 'next' | 'unavailable';
 }
 
 // 工作流定义（BPMN 模式）

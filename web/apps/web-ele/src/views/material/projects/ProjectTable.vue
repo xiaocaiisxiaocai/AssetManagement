@@ -35,7 +35,6 @@ type ProjectActionAccess = {
 
 const props = defineProps<{
   access: ProjectActionAccess;
-  currentUserId: number;
   filteredTotal: number;
   loading: boolean;
   ownerOptions: { id: number; name: string }[];
@@ -58,6 +57,7 @@ const emit = defineEmits<{
   progress: [project: TestProjectItem];
   purge: [project: TestProjectItem];
   remove: [project: TestProjectItem];
+  reopen: [project: TestProjectItem];
   reset: [];
   restore: [project: TestProjectItem];
   search: [];
@@ -324,17 +324,16 @@ const projectEmptyText = computed(() => {
         class-name="table-action-cell"
         fixed="right"
         label="操作"
-        width="160"
+        width="220"
       >
         <template #default="{ row }">
           <ProjectTableRowActions
-            :access="access"
-            :current-user-id="currentUserId"
             :row="row"
             @edit="emit('edit', row)"
             @progress="emit('progress', row)"
             @purge="emit('purge', row)"
             @remove="emit('remove', row)"
+            @reopen="emit('reopen', row)"
             @restore="emit('restore', row)"
           />
         </template>

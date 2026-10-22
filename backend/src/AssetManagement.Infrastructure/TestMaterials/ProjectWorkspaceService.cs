@@ -146,9 +146,11 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         }
     }
 
-    public async Task<ProjectWorkspaceFile> DownloadAsync(int projectId, int documentId)
+    public async Task<ProjectWorkspaceFile> DownloadAsync(int projectId, int documentId, int userId)
     {
-        await LoadProjectAsync(projectId);
+        var project = await LoadProjectAsync(projectId);
+        if (!await _accessScope.CanExecuteAsync(project, userId, "project:export", true))
+            throw new BizException(4031, "只有项目负责人或拥有项目导出权限的用户可以导出报告");
         var document = await _db.ProjectReportDocuments.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == documentId && x.ProjectId == projectId && !x.IsDeleted)
             ?? throw new BizException(4046, "报告不存在或已删除");

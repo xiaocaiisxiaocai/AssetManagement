@@ -5,6 +5,8 @@ public record AssetOverviewDto
     public int Total { get; init; }
     public int Available { get; init; }
     public int Borrowed { get; init; }
+    public int Maintenance { get; init; }
+    public int Scrapped { get; init; }
     public int UncategorizedTotal { get; init; }
     public List<AssetOverviewCategoryDto> Categories { get; init; } = new();
 }
@@ -19,6 +21,8 @@ public record AssetOverviewCategoryDto
     public int Total { get; init; }
     public int Available { get; init; }
     public int Borrowed { get; init; }
+    public int Maintenance { get; init; }
+    public int Scrapped { get; init; }
 }
 
 public interface IAssetOverviewService

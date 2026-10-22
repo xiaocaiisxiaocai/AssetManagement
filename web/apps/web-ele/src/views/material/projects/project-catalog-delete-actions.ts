@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   deleteTestProjectApi,
   purgeTestProjectApi,
+  reopenTestProjectApi,
   restoreTestProjectApi,
 } from '#/api/test-project';
 
@@ -70,5 +71,24 @@ export function bindProjectCatalogDeleteActions(deps: {
     }
   }
 
-  return { purge, remove, restore };
+  async function reopen(row: TestProjectItem) {
+    try {
+      await ElMessageBox.confirm(
+        `重新打开后，项目「${row.name}」会回到测试中，可以继续修正阶段、报告和料件。确认重新打开？`,
+        '重新打开',
+        { type: 'warning', confirmButtonText: '重新打开', cancelButtonText: '取消' },
+      );
+    } catch {
+      return;
+    }
+    try {
+      await reopenTestProjectApi(row.id, row.rowVersion);
+      ElMessage.success('已重新打开');
+      await loadData();
+    } catch {
+      // 错误已由 request.ts 拦截器统一弹出
+    }
+  }
+
+  return { purge, remove, reopen, restore };
 }

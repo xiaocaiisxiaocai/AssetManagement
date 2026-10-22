@@ -3,6 +3,7 @@ import type { MaterialFlowItem } from '#/api/material';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  allowedProgressCodes,
   canUpdateProjectProgress,
   canWithdrawMaterialFlow,
   isSupportedProjectProgress,
@@ -49,6 +50,19 @@ describe('测试项目工作台规则', () => {
         25,
       ),
     ).toBe(false);
+  });
+
+  it('进度选项只允许沿当前阶段向前', () => {
+    expect(allowedProgressCodes('')).toEqual(['planning', 'testing']);
+    expect(allowedProgressCodes('planning')).toEqual(['planning', 'testing']);
+    expect(allowedProgressCodes('testing')).toEqual([
+      'testing',
+      'landing',
+      'closed',
+    ]);
+    expect(allowedProgressCodes('landing')).toEqual(['landing', 'closed']);
+    expect(allowedProgressCodes('closed')).toEqual(['closed']);
+    expect(allowedProgressCodes('legacy')).toEqual(['planning', 'testing']);
   });
 
   it('只有后端明确授权的待审批料件流程才显示撤回', () => {

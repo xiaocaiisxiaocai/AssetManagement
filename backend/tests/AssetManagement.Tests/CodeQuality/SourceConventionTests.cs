@@ -294,7 +294,12 @@ public class SourceConventionTests
             "TestProjectController.cs:CreateFollowup",
             "TestProjectController.cs:UpdateFollowup",
             "TestProjectController.cs:DeleteFollowup",
-            "TestProjectController.cs:UpdateProgress"
+            "TestProjectController.cs:UpdateProgress",
+            "TestProjectController.cs:Reopen",
+            // 项目负责人可维护自己项目下的料件生命周期；有权限码的用户仍按原部门范围判断。
+            "TestMaterialController.cs:Return",
+            "TestMaterialController.cs:Delete",
+            "TestMaterialController.cs:Restore"
         };
 
         var offenders = Directory

@@ -125,6 +125,178 @@ public class TestMaterialAccessScopeApiTests : IClassFixture<TestWebAppFactory>
         crossDelete.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task Custom_role_with_project_edit_is_limited_to_its_department_tree()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var editPermission = await db.Permissions.SingleAsync(x => x.Code == "project:edit");
+        var ownDepartment = new Department { Code = $"CA-{suffix}", Name = $"自定义部门-{suffix}", IsActive = true };
+        var otherDepartment = new Department { Code = $"CB-{suffix}", Name = $"自定义外部门-{suffix}", IsActive = true };
+        var role = new Role { Code = $"cust-{suffix}", Name = $"自定义编辑-{suffix}", IsActive = true };
+        db.Departments.AddRange(ownDepartment, otherDepartment);
+        db.Roles.Add(role);
+        await db.SaveChangesAsync();
+        db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = editPermission.Id });
+        var editor = NewUser($"CE-{suffix}", "自定义编辑人", ownDepartment.Id);
+        var colleague = NewUser($"CC-{suffix}", "同部门同事", ownDepartment.Id);
+        var outsider = NewUser($"CO-{suffix}", "外部门负责人", otherDepartment.Id);
+        db.Users.AddRange(editor, colleague, outsider);
+        await db.SaveChangesAsync();
+        db.UserRoles.Add(new UserRole { UserId = editor.Id, RoleId = role.Id });
+        var ownProject = NewProject($"自定义本部门-{suffix}", colleague.Id);
+        var otherProject = NewProject($"自定义外部门-{suffix}", outsider.Id);
+        db.TestProjects.AddRange(ownProject, otherProject);
+        await db.SaveChangesAsync();
+
+        await Login(editor.EmployeeNo);
+        var ownUpdate = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{ownProject.Id}", ProjectRequest(ownProject, $"本部门可改-{suffix}"));
+        var crossUpdate = await _client.PutAsJsonAsync(
+            $"/api/test-projects/{otherProject.Id}", ProjectRequest(otherProject, $"外部门不可改-{suffix}"));
+
+        ownUpdate.StatusCode.Should().Be(HttpStatusCode.OK);
+        crossUpdate.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Project_row_actions_follow_department_scope_and_owner_progress_rights()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var supervisorRole = await db.Roles.SingleAsync(x => x.Code == "supervisor");
+        var employeeRole = await db.Roles.SingleAsync(x => x.Code == "employee");
+        var ownDepartment = new Department { Code = $"RA-{suffix}", Name = $"行权限部门-{suffix}", IsActive = true };
+        var otherDepartment = new Department { Code = $"RB-{suffix}", Name = $"行权限外部门-{suffix}", IsActive = true };
+        db.Departments.AddRange(ownDepartment, otherDepartment);
+        await db.SaveChangesAsync();
+        var supervisor = NewUser($"RS-{suffix}", "行权限主管", ownDepartment.Id);
+        var employee = NewUser($"RE-{suffix}", "行权限员工", ownDepartment.Id);
+        var outsider = NewUser($"RO-{suffix}", "行权限外人", otherDepartment.Id);
+        db.Users.AddRange(supervisor, employee, outsider);
+        await db.SaveChangesAsync();
+        db.UserRoles.AddRange(
+            new UserRole { UserId = supervisor.Id, RoleId = supervisorRole.Id },
+            new UserRole { UserId = employee.Id, RoleId = employeeRole.Id });
+        var ownProject = NewProject($"行权限本部门-{suffix}", employee.Id);
+        var otherProject = NewProject($"行权限外部门-{suffix}", outsider.Id);
+        db.TestProjects.AddRange(ownProject, otherProject);
+        await db.SaveChangesAsync();
+
+        await Login(supervisor.EmployeeNo);
+        var supervisorList = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>(
+            "/api/test-projects?deleteStatus=all");
+        var supervisorItems = supervisorList!.Data!;
+        supervisorItems.Single(x => x.Id == ownProject.Id).CanEdit.Should().BeTrue();
+        supervisorItems.Single(x => x.Id == ownProject.Id).CanUpdateProgress.Should().BeTrue();
+        supervisorItems.Single(x => x.Id == otherProject.Id).CanEdit.Should().BeFalse();
+        supervisorItems.Single(x => x.Id == otherProject.Id).CanUpdateProgress.Should().BeFalse();
+
+        await Login(employee.EmployeeNo);
+        var employeeList = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>(
+            "/api/test-projects?deleteStatus=all");
+        var owned = employeeList!.Data!.Single(x => x.Id == ownProject.Id);
+        owned.CanEdit.Should().BeFalse();
+        owned.CanUpdateProgress.Should().BeTrue();
+        employeeList!.Data!.Single(x => x.Id == otherProject.Id).CanUpdateProgress.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Non_supervisor_can_only_create_a_project_for_self_and_supervisor_stays_in_department()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var supervisorRole = await db.Roles.SingleAsync(x => x.Code == "supervisor");
+        var employeeRole = await db.Roles.SingleAsync(x => x.Code == "employee");
+        var ownDepartment = new Department { Code = $"OA-{suffix}", Name = $"负责人部门-{suffix}", IsActive = true };
+        var otherDepartment = new Department { Code = $"OB-{suffix}", Name = $"负责人外部门-{suffix}", IsActive = true };
+        db.Departments.AddRange(ownDepartment, otherDepartment);
+        await db.SaveChangesAsync();
+        var employee = NewUser($"OE-{suffix}", "创建员工", ownDepartment.Id);
+        var colleague = NewUser($"OC-{suffix}", "同部门同事", ownDepartment.Id);
+        var outsider = NewUser($"OO-{suffix}", "外部门人员", otherDepartment.Id);
+        var supervisor = NewUser($"OS-{suffix}", "创建主管", ownDepartment.Id);
+        db.Users.AddRange(employee, colleague, outsider, supervisor);
+        await db.SaveChangesAsync();
+        db.UserRoles.AddRange(
+            new UserRole { UserId = employee.Id, RoleId = employeeRole.Id },
+            new UserRole { UserId = colleague.Id, RoleId = employeeRole.Id },
+            new UserRole { UserId = supervisor.Id, RoleId = supervisorRole.Id });
+        await db.SaveChangesAsync();
+
+        await Login(employee.EmployeeNo);
+        var rejected = await _client.PostAsJsonAsync(
+            "/api/test-projects", CreateRequest($"员工指定他人-{suffix}", outsider.Id));
+        rejected.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await rejected.Content.ReadFromJsonAsync<ApiResult<object>>())!.Message
+            .Should().Contain("只能把自己设为项目负责人");
+
+        await Login(supervisor.EmployeeNo);
+        var outsideOwner = await _client.PostAsJsonAsync(
+            "/api/test-projects", CreateRequest($"主管指定外部门-{suffix}", outsider.Id));
+        outsideOwner.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await outsideOwner.Content.ReadFromJsonAsync<ApiResult<object>>())!.Message
+            .Should().Contain("只能指定本部门及下级部门的人员为负责人");
+        var insideOwner = await _client.PostAsJsonAsync(
+            "/api/test-projects", CreateRequest($"主管指定本部门-{suffix}", colleague.Id));
+        insideOwner.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Project_owner_can_dispose_open_materials_without_material_permissions()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var employeeRole = await db.Roles.SingleAsync(x => x.Code == "employee");
+        var department = new Department { Code = $"MD-{suffix}", Name = $"料件部门-{suffix}", IsActive = true };
+        db.Departments.Add(department);
+        await db.SaveChangesAsync();
+        var owner = NewUser($"MO-{suffix}", "项目负责人", department.Id);
+        var custodian = NewUser($"MC-{suffix}", "仅保管人", department.Id);
+        db.Users.AddRange(owner, custodian);
+        await db.SaveChangesAsync();
+        db.UserRoles.AddRange(
+            new UserRole { UserId = owner.Id, RoleId = employeeRole.Id },
+            new UserRole { UserId = custodian.Id, RoleId = employeeRole.Id });
+        var project = NewProject($"负责人料件-{suffix}", owner.Id);
+        db.TestProjects.Add(project);
+        await db.SaveChangesAsync();
+        var deletable = NewMaterial($"TM-D-{suffix}", $"可删除-{suffix}", project.Id, department.Id, custodian.Id);
+        var returnable = NewMaterial($"TM-R-{suffix}", $"可退回-{suffix}", project.Id, department.Id, custodian.Id);
+        db.TestMaterials.AddRange(deletable, returnable);
+        await db.SaveChangesAsync();
+
+        await Login(custodian.EmployeeNo);
+        (await _client.DeleteAsync($"/api/test-materials/{deletable.Id}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        await Login(owner.EmployeeNo);
+        (await _client.DeleteAsync($"/api/test-materials/{deletable.Id}"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.PostAsync($"/api/test-materials/{deletable.Id}/restore", null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.DeleteAsync($"/api/test-materials/{deletable.Id}/purge"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await _client.PostAsync($"/api/test-materials/{returnable.Id}/return", null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private static SaveTestProjectRequest CreateRequest(string name, int ownerId) => new()
+    {
+        Name = name,
+        Code = $"P-{Guid.NewGuid():N}"[..24],
+        ProjectTypeCode = "prototype",
+        ProgressCode = "planning",
+        OwnerId = ownerId,
+        StartDate = BusinessClock.Today,
+        PlannedFinishDate = BusinessClock.Today.AddDays(10),
+        FollowUpIntervalDays = 14
+    };
+
     private static User NewUser(string employeeNo, string name, int departmentId) => new()
     {
         EmployeeNo = employeeNo,

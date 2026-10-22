@@ -14,6 +14,8 @@ export function buildCategoryStatusSeries(stats: AssetOverview) {
   return {
     available: stats.categories.map((item) => item.available),
     borrowed: stats.categories.map((item) => item.borrowed),
+    maintenance: stats.categories.map((item) => item.maintenance),
+    scrapped: stats.categories.map((item) => item.scrapped),
     labels: stats.categories.map((item) => item.categoryCode),
   };
 }

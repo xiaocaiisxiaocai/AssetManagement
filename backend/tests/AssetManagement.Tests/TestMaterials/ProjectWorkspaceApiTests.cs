@@ -280,6 +280,101 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
         using var upload = PdfForm();
         (await viewer.PostAsync($"{Root(projectId)}/documents", upload)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await viewer.GetAsync($"{Root(projectId)}/report")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var (owner, ownedProjectId, _) = await SetupAsync();
+        var stage = await CreateAsync(owner, ownedProjectId, Draft("原件阶段", 1));
+        using var ownedReport = PdfForm(stage.Id, "原件报告.pdf");
+        var uploaded = await owner.PostAsync($"{Root(ownedProjectId)}/documents", ownedReport);
+        uploaded.EnsureSuccessStatusCode();
+        var document = (await uploaded.Content.ReadFromJsonAsync<ApiResult<ProjectReportDocumentDto>>())!.Data!;
+        (await viewer.GetAsync($"{Root(ownedProjectId)}/documents/{document.Id}/download"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await owner.GetAsync($"{Root(ownedProjectId)}/documents/{document.Id}/download"))
+            .EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task Progress_cannot_move_backward_or_skip_from_planning()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        var backward = await client.PutAsJsonAsync($"/api/test-projects/{projectId}/progress", new
+        {
+            ProgressCode = "planning",
+            RowVersion = await ProjectVersionAsync(projectId)
+        });
+        backward.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await backward.Content.ReadFromJsonAsync<ApiResult<object>>())!.Message.Should().Contain("不能回退");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var project = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == projectId);
+            project.ProgressCode = "planning";
+            await db.SaveChangesAsync();
+        }
+
+        var skipped = await client.PutAsJsonAsync($"/api/test-projects/{projectId}/progress", new
+        {
+            ProgressCode = "closed",
+            ClosedDate = BusinessClock.Today,
+            RowVersion = await ProjectVersionAsync(projectId)
+        });
+        skipped.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await skipped.Content.ReadFromJsonAsync<ApiResult<object>>())!.Message
+            .Should().Contain("计划中的项目只能保持计划中或进入测试中");
+    }
+
+    [Fact]
+    public async Task Admin_can_reopen_closed_project_but_supervisor_cannot()
+    {
+        var (_, projectId, _) = await SetupAsync();
+        uint version;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var supervisorRole = await db.Roles.SingleAsync(x => x.Code == "supervisor");
+            var department = new Department { Code = $"RW-{Guid.NewGuid():N}"[..12], Name = "重开部门", IsActive = true };
+            db.Departments.Add(department);
+            await db.SaveChangesAsync();
+            var supervisor = new User
+            {
+                EmployeeNo = $"RW-{Guid.NewGuid():N}"[..12],
+                Name = "重开主管",
+                DepartmentId = department.Id,
+                IsActive = true,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456")
+            };
+            db.Users.Add(supervisor);
+            await db.SaveChangesAsync();
+            db.UserRoles.Add(new UserRole { UserId = supervisor.Id, RoleId = supervisorRole.Id });
+            var project = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == projectId);
+            project.ProgressCode = "closed";
+            project.ClosedDate = BusinessClock.Today;
+            await db.SaveChangesAsync();
+            version = project.RowVersion;
+            var supervisorClient = _factory.CreateClient();
+            var login = await supervisorClient.PostAsJsonAsync(
+                "/api/auth/login", new LoginRequest { EmployeeNo = supervisor.EmployeeNo, Password = "123456" });
+            login.EnsureSuccessStatusCode();
+            var token = (await login.Content.ReadFromJsonAsync<ApiResult<LoginResponse>>())!.Data!.Token;
+            supervisorClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            (await supervisorClient.PostAsJsonAsync(
+                $"/api/test-projects/{projectId}/reopen", new { RowVersion = version }))
+                .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        }
+
+        var admin = _factory.CreateClient();
+        var adminLogin = await admin.PostAsJsonAsync(
+            "/api/auth/login", new LoginRequest { EmployeeNo = "1001", Password = "123456" });
+        adminLogin.EnsureSuccessStatusCode();
+        var adminToken = (await adminLogin.Content.ReadFromJsonAsync<ApiResult<LoginResponse>>())!.Data!.Token;
+        admin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+        var reopened = await admin.PostAsJsonAsync(
+            $"/api/test-projects/{projectId}/reopen", new { RowVersion = version });
+        reopened.EnsureSuccessStatusCode();
+        var body = await reopened.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+        body!.Data!.ProgressCode.Should().Be("testing");
+        body.Data.ClosedDate.Should().BeNull();
     }
 
     [Fact]

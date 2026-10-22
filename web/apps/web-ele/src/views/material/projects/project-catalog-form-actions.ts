@@ -3,7 +3,7 @@ import type {
   TestProjectItem,
 } from '#/api/test-project';
 
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 import {
   createTestProjectApi,
@@ -35,8 +35,27 @@ export function bindProjectCatalogFormActions(
     progressEditingProject,
     progressSaving,
     progressForm,
+    progressBaseline,
     normalizeText,
   } = page;
+
+  async function confirmClosing(nextProgress: string, alreadyClosed: boolean) {
+    if (nextProgress !== 'closed' || alreadyClosed) return true;
+    try {
+      await ElMessageBox.confirm(
+        '结案后项目不能再修改，只有系统管理员可以重新打开。确认结案？',
+        '确认结案',
+        {
+          cancelButtonText: '取消',
+          confirmButtonText: '确认结案',
+          type: 'warning',
+        },
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   function resetProjectForm() {
     Object.assign(form, {
@@ -56,6 +75,7 @@ export function bindProjectCatalogFormActions(
 
   function openCreate() {
     editingId.value = null;
+    progressBaseline.value = '';
     resetProjectForm();
     dialogVisible.value = true;
     runHandled(Promise.all([loadUsers(), loadBaseOptions()]));
@@ -71,6 +91,7 @@ export function bindProjectCatalogFormActions(
       name: row.ownerName,
     });
     editingId.value = row.id;
+    progressBaseline.value = (row.progressCode ?? '').toLowerCase();
     Object.assign(form, {
       closedDate: row.closedDate ? row.closedDate.slice(0, 10) : '',
       code: row.code ?? '',
@@ -96,6 +117,7 @@ export function bindProjectCatalogFormActions(
       return;
     }
     progressEditingProject.value = row;
+    progressBaseline.value = (row.progressCode ?? '').toLowerCase();
     Object.assign(progressForm, {
       closedDate: row.closedDate ? row.closedDate.slice(0, 10) : '',
       progressCode: row.progressCode ?? '',
@@ -127,6 +149,13 @@ export function bindProjectCatalogFormActions(
       ElMessage.warning(validationMessage);
       return;
     }
+    if (
+      !(await confirmClosing(
+        form.progressCode,
+        progressBaseline.value === 'closed',
+      ))
+    )
+      return;
     if (saving.value) return;
     saving.value = true;
     try {
@@ -168,6 +197,13 @@ export function bindProjectCatalogFormActions(
       ElMessage.warning('结案时间不能早于开始时间');
       return;
     }
+    if (
+      !(await confirmClosing(
+        progressForm.progressCode,
+        (project.progressCode ?? '').toLowerCase() === 'closed',
+      ))
+    )
+      return;
     if (progressSaving.value) return;
     progressSaving.value = true;
     try {

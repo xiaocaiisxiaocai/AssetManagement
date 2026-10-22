@@ -15,7 +15,15 @@ async function runComprehensiveTest() {
       '缺少 E2E_PASSWORD 环境变量，拒绝在测试脚本中保存默认或真实密码',
     );
   }
-  const browser = await chromium.launch({ headless: true });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+  } catch (error) {
+    if (!String(error?.message || error).includes("Executable doesn't exist")) {
+      throw error;
+    }
+    browser = await chromium.launch({ channel: 'chrome', headless: true });
+  }
   const context = await browser.newContext();
   const page = await context.newPage();
 
@@ -194,21 +202,33 @@ async function runComprehensiveTest() {
         'asset-list-fail',
       );
 
-      // 检查分类浏览/全部资产清单切换，并进入清单以验证后续操作。
+      // 清单可能直接打开。分类浏览与全部资产要能来回切换，最后停在清单以便检查后续操作。
       const showAllAssets = page.getByRole('button', {
         exact: true,
         name: '查看全部资产',
       });
-      const backToCategories = page.getByRole('button', {
+      const browseCategories = page.getByRole('button', {
         exact: true,
-        name: '返回分类浏览',
+        name: '分类浏览',
       });
       try {
-        if (await showAllAssets.count()) await showAllAssets.click();
-        await backToCategories.waitFor({ state: 'visible', timeout: 10_000 });
+        if (await browseCategories.count()) {
+          await browseCategories.click();
+          await showAllAssets.waitFor({ state: 'visible', timeout: 10_000 });
+        }
+        await showAllAssets.click();
+        await page
+          .getByText('全部资产清单', { exact: true })
+          .waitFor({ state: 'visible', timeout: 10_000 });
+        await browseCategories.waitFor({ state: 'visible', timeout: 10_000 });
+        await browseCategories.click();
+        await showAllAssets.waitFor({ state: 'visible', timeout: 10_000 });
+        await showAllAssets.click();
+        await browseCategories.waitFor({ state: 'visible', timeout: 10_000 });
         log('✓ 分类浏览与全部资产清单切换正常', 'pass');
-      } catch {
-        log('✗ 分类浏览与全部资产清单切换失败', 'fail');
+      } catch (error) {
+        log(`✗ 分类浏览与全部资产清单切换失败: ${error.message}`, 'fail');
+        await takeDebugScreenshot('asset-browse-toggle-fail');
       }
 
       // 存放位置已改为资产表单中的手工输入项，不再使用独立数据字典页面。

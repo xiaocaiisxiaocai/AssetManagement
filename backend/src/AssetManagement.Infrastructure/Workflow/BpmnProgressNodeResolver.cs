@@ -13,19 +13,32 @@ namespace AssetManagement.Infrastructure.Workflow;
 /// </summary>
 internal static class BpmnProgressNodeResolver
 {
+    public const string DefinitionMissingKey = "definitionMissing";
+
     public static BpmnNode? Resolve(BpmnProcess process, BpmnToken token)
     {
         var currentNode = process.FindNode(token.NodeId);
         if (currentNode is not null) return currentNode;
         if (!LooksLikeHistoricalUserTask(token)) return null;
 
+        var properties = new Dictionary<string, string>();
+        if (token.Status == BpmnTokenStatus.Active)
+            properties[DefinitionMissingKey] = "true";
+
         return new BpmnNode
         {
             Id = token.NodeId,
             Name = string.IsNullOrWhiteSpace(token.NodeName) ? token.NodeId : token.NodeName,
-            Type = BpmnNodeType.UserTask
+            Type = BpmnNodeType.UserTask,
+            Properties = properties
         };
     }
+
+    public static bool IsDefinitionMissing(BpmnNode? node) =>
+        node?.Properties.GetValueOrDefault(DefinitionMissingKey) == "true";
+
+    public static string CurrentStepState(BpmnNode node) =>
+        IsDefinitionMissing(node) ? "unavailable" : "current";
 
     public static bool HasHistoricalActivity(BpmnToken token)
         => token.Status is BpmnTokenStatus.Completed or BpmnTokenStatus.Skipped &&

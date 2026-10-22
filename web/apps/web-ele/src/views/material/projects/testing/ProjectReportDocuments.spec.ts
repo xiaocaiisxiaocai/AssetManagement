@@ -24,9 +24,10 @@ function document(
   };
 }
 
-function setup(canManage = true, stageId = 3) {
+function setup(canManage = true, stageId = 3, canDownload = true) {
   const wrapper = mount(ProjectReportDocuments, {
     props: {
+      canDownload,
       canManage,
       deletingDocumentId: null,
       documents: [
@@ -94,6 +95,16 @@ describe('阶段行报告附件', () => {
     await wrapper.setProps({ stageId: 4 });
     await selectFile(wrapper, new File(['pdf'], '原阶段报告.pdf'));
     expect(wrapper.emitted('upload')).toBeUndefined();
+  });
+
+  it('没有导出权限时只显示文件名，不能下载原件', () => {
+    const wrapper = setup(false, 3, false);
+    expect(wrapper.text()).toContain('第一阶段报告.pdf');
+    expect(
+      wrapper
+        .findAll('button')
+        .some((button) => button.text() === '第一阶段报告.pdf'),
+    ).toBe(false);
   });
 
   it('只读用户可以下载，不能上传或删除报告', () => {

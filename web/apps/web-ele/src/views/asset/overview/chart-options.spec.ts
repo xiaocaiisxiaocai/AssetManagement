@@ -10,6 +10,8 @@ import {
 const stats: AssetOverview = {
   available: 5,
   borrowed: 2,
+  maintenance: 0,
+  scrapped: 0,
   total: 7,
   uncategorizedTotal: 1,
   categories: [
@@ -22,6 +24,8 @@ const stats: AssetOverview = {
       total: 4,
       available: 3,
       borrowed: 1,
+      maintenance: 0,
+      scrapped: 0,
     },
     {
       categoryId: 5,
@@ -32,6 +36,8 @@ const stats: AssetOverview = {
       total: 2,
       available: 1,
       borrowed: 1,
+      maintenance: 0,
+      scrapped: 0,
     },
   ],
 };
@@ -50,11 +56,23 @@ describe('资产总览二级分类图表', () => {
   });
 
   it('在库和借出系列按相同分类顺序对应', () => {
-    expect(buildCategoryStatusSeries(stats)).toEqual({
+    const series = buildCategoryStatusSeries(stats);
+    expect(series).toEqual({
       labels: ['RD-PLC', 'IT-PLC'],
       available: [3, 1],
       borrowed: [1, 1],
+      maintenance: [0, 0],
+      scrapped: [0, 0],
     });
+    expect(
+      series.labels.map(
+        (_, index) =>
+          series.available[index]! +
+          series.borrowed[index]! +
+          series.maintenance[index]! +
+          series.scrapped[index]!,
+      ),
+    ).toEqual(stats.categories.map((item) => item.total));
   });
   it('空数据可呈现', () => {
     expect(

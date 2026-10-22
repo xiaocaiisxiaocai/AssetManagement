@@ -5,6 +5,8 @@ import { unwrap } from './unwrap';
 export interface AssetOverviewCategory {
   available: number;
   borrowed: number;
+  maintenance: number;
+  scrapped: number;
   categoryCode: string;
   categoryId: number;
   label: string;
@@ -16,6 +18,8 @@ export interface AssetOverviewCategory {
 export interface AssetOverview {
   available: number;
   borrowed: number;
+  maintenance: number;
+  scrapped: number;
   categories: AssetOverviewCategory[];
   total: number;
   uncategorizedTotal: number;

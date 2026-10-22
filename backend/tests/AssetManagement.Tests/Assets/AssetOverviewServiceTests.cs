@@ -40,6 +40,8 @@ public class AssetOverviewServiceTests : MySqlFixtureBase
             Asset("OV-005", rd.Id, AssetStatus.Available),
             Asset("OV-006", deletedSecond.Id, AssetStatus.Borrowed),
             Asset("OV-007", belowDeletedRoot.Id, AssetStatus.Available),
+            Asset("OV-008", rdPlc.Id, AssetStatus.Maintenance),
+            Asset("OV-009", opsPlc.Id, AssetStatus.Scrapped),
             Asset("OV-DELETED", rdPlc.Id, AssetStatus.Borrowed, isDeleted: true));
         await _db.SaveChangesAsync();
 
@@ -57,10 +59,12 @@ public class AssetOverviewServiceTests : MySqlFixtureBase
 
         var result = await new AssetOverviewService(queryDb).GetOverviewAsync();
 
-        result.Total.Should().Be(7, "统计应按资产记录数计算且排除已删除资产，不能累加 Quantity");
+        result.Total.Should().Be(9, "统计应按资产记录数计算且排除已删除资产，不能累加 Quantity");
         result.Available.Should().Be(4);
         result.Borrowed.Should().Be(3);
-        (result.Available + result.Borrowed).Should().Be(result.Total);
+        result.Maintenance.Should().Be(1);
+        result.Scrapped.Should().Be(1);
+        (result.Available + result.Borrowed + result.Maintenance + result.Scrapped).Should().Be(result.Total);
         result.UncategorizedTotal.Should().Be(3,
             "一级分类资产、已删除分类资产及已删除祖先下的资产均不能归入二级分类");
         (result.Categories.Sum(category => category.Total) + result.UncategorizedTotal)
@@ -72,25 +76,31 @@ public class AssetOverviewServiceTests : MySqlFixtureBase
             category.CategoryId == empty.Id
             && category.Total == 0
             && category.Available == 0
-            && category.Borrowed == 0);
+            && category.Borrowed == 0
+            && category.Maintenance == 0
+            && category.Scrapped == 0);
 
         var rdRow = result.Categories.Single(category => category.CategoryId == rdPlc.Id);
         rdRow.CategoryCode.Should().Be("RD-PLC");
         rdRow.Label.Should().Be("PLC");
         rdRow.ParentCode.Should().Be("RD");
         rdRow.Remark.Should().Be("研发控制器");
-        rdRow.Total.Should().Be(3);
+        rdRow.Total.Should().Be(4);
         rdRow.Available.Should().Be(2);
         rdRow.Borrowed.Should().Be(1);
+        rdRow.Maintenance.Should().Be(1);
+        rdRow.Scrapped.Should().Be(0);
 
         var opsRow = result.Categories.Single(category => category.CategoryId == opsPlc.Id);
         opsRow.CategoryCode.Should().Be("OPS-PLC");
         opsRow.Label.Should().Be("PLC");
         opsRow.ParentCode.Should().Be("OPS");
-        opsRow.Total.Should().Be(1,
+        opsRow.Total.Should().Be(2,
             "不同一级分类下同名的二级分类不能合并");
         opsRow.Available.Should().Be(0);
         opsRow.Borrowed.Should().Be(1);
+        opsRow.Maintenance.Should().Be(0);
+        opsRow.Scrapped.Should().Be(1);
 
         commandCounter.ReaderCount.Should().Be(2,
             "服务应只读取一次分类元数据和一次数据库聚合结果");

@@ -87,6 +87,14 @@ onBeforeUnmount(() => {
                 <div class="overview-label">借出资产</div>
                 <strong>{{ stats.borrowed }}</strong>
               </div>
+              <div class="overview-metric is-maintenance">
+                <div class="overview-label">维修资产</div>
+                <strong>{{ stats.maintenance }}</strong>
+              </div>
+              <div class="overview-metric is-scrapped">
+                <div class="overview-label">报废资产</div>
+                <strong>{{ stats.scrapped }}</strong>
+              </div>
               <div class="overview-metric">
                 <div class="overview-label">二级分类数</div>
                 <strong>{{ stats.categories.length }}</strong>

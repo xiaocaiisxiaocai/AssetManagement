@@ -33,23 +33,11 @@ export function useProjectPage() {
   const isCurrentProjectReadOnly = computed(
     () => state.currentProject.value?.isDeleted === true,
   );
-  const currentMaterialActionAccess = computed(() => {
-    if (!isTestingProjectOpen.value || isCurrentProjectReadOnly.value) {
-      return Object.fromEntries(
-        Object.keys(materialActionAccess.value).map((key) => [key, false]),
-      ) as typeof materialActionAccess.value;
-    }
-    return materialActionAccess.value;
-  });
   const isCurrentProjectOwner = computed(
     () =>
       !!state.currentProject.value?.ownerId &&
       String(state.currentProject.value.ownerId) ===
         String(userStore.userInfo?.userId ?? ''),
-  );
-  const currentUserId = computed(() => Number(userStore.userInfo?.userId ?? 0));
-  const isCurrentUserSupervisor = computed(() =>
-    userStore.userRoles.includes('supervisor'),
   );
   const isTestingProjectOpen = computed(
     () =>
@@ -58,6 +46,29 @@ export function useProjectPage() {
       ['planning', 'testing'].includes(
         (state.currentProject.value?.progressCode ?? '').toLowerCase(),
       ),
+  );
+  const currentMaterialActionAccess = computed(() => {
+    if (!isTestingProjectOpen.value || isCurrentProjectReadOnly.value) {
+      return Object.fromEntries(
+        Object.keys(materialActionAccess.value).map((key) => [key, false]),
+      ) as typeof materialActionAccess.value;
+    }
+    const access = { ...materialActionAccess.value };
+    if (isCurrentProjectOwner.value) {
+      access.canDelete = true;
+      access.canRestore = true;
+      access.canReturn = true;
+    }
+    return access;
+  });
+  const currentUserId = computed(() => Number(userStore.userInfo?.userId ?? 0));
+  const isCurrentUserSupervisor = computed(() =>
+    userStore.userRoles.includes('supervisor'),
+  );
+  const ownerLocked = computed(
+    () =>
+      !userStore.userRoles.includes('admin') &&
+      !userStore.userRoles.includes('supervisor'),
   );
   const canWriteCurrentProjectMaterial = computed(
     () =>
@@ -70,10 +81,7 @@ export function useProjectPage() {
       (materialActionAccess.value.canEdit || isCurrentProjectOwner.value),
   );
   const canUpdateCurrentProjectProgress = computed(
-    () =>
-      !isCurrentProjectReadOnly.value &&
-      !state.currentProject.value?.closedDate &&
-      (isCurrentProjectOwner.value || hasAccessByCodes(['project:manage'])),
+    () => state.currentProject.value?.canUpdateProgress === true,
   );
   const projectTypeOptions = computed(() => activeOptions('project_type'));
   const progressOptions = computed(() =>
@@ -194,6 +202,7 @@ export function useProjectPage() {
     isCurrentProjectOwner,
     isCurrentProjectReadOnly,
     isCurrentUserSupervisor,
+    ownerLocked,
     materialActionAccess,
     normalizeText,
     progressOptions,

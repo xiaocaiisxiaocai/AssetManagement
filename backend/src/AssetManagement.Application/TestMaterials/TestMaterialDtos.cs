@@ -27,6 +27,12 @@ public class TestProjectDto
     public string? LatestFollowUpContent { get; set; }
     public DateTime? LatestFollowUpAt { get; set; }
     public bool CanWriteFollowUp { get; set; }
+    public bool CanEdit { get; set; }
+    public bool CanDelete { get; set; }
+    public bool CanRestore { get; set; }
+    public bool CanPurge { get; set; }
+    public bool CanUpdateProgress { get; set; }
+    public bool CanReopen { get; set; }
     public DateTime CreatedAt { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
@@ -82,6 +88,11 @@ public class TestProjectImportResultDto
     public List<TestProjectImportRowDto> Rows { get; set; } = new();
 }
 
+public class ReopenTestProjectRequest
+{
+    public uint? RowVersion { get; set; }
+}
+
 public class UpdateTestProjectProgressRequest
 {
     [Required(ErrorMessage = "项目进度不能为空"), StringLength(50)]
@@ -123,6 +134,7 @@ public class TestProjectFollowupDto
     public int FilledById { get; set; }
     public string? FilledByName { get; set; }
     public DateTime FilledAt { get; set; }
+    public bool IsLatest { get; set; }
 }
 
 public class SaveTestProjectFollowupRequest

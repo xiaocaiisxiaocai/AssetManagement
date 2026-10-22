@@ -68,6 +68,7 @@ export function createProjectPageState() {
     testStatus: '',
     rowVersion: 0,
   });
+  const progressBaseline = ref('');
   const progressDialogVisible = ref(false);
   const progressEditingProject = ref<null | TestProjectItem>(null);
   const progressSaving = ref(false);
@@ -172,6 +173,7 @@ export function createProjectPageState() {
     saving,
     form,
     formModel: reactiveObjectModel(form),
+    progressBaseline,
     progressDialogVisible,
     progressEditingProject,
     progressSaving,

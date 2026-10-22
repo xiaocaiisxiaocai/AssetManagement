@@ -13,6 +13,7 @@ public interface ITestProjectService
     Task<TestProjectDto> CreateAsync(SaveTestProjectRequest request);
     Task<TestProjectDto> UpdateAsync(int id, SaveTestProjectRequest request);
     Task<TestProjectDto> UpdateProgressAsync(int id, UpdateTestProjectProgressRequest request, int currentUserId);
+    Task<TestProjectDto> ReopenAsync(int id, uint? rowVersion);
     Task DeleteAsync(int id);
     Task RestoreAsync(int id);
     Task PurgeAsync(int id);

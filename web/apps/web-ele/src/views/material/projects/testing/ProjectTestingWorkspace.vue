@@ -278,6 +278,7 @@ function dateRange(stage: ProjectStageDto) {
               <template #default="{ row }">
                 <ProjectReportDocuments
                   :key="row.id"
+                  :can-download="canExport"
                   :can-manage="canManage"
                   :deleting-document-id="deletingDocumentId"
                   :documents="workspace.documents"

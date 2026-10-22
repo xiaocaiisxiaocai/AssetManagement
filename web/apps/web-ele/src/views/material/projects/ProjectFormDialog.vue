@@ -18,8 +18,12 @@ import {
   ElSelect,
 } from 'element-plus';
 
+import { allowedProgressCodes } from './project-workspace-rules';
+
 const props = defineProps<{
   editing: boolean;
+  ownerLocked?: boolean;
+  progressBaseline?: string;
   progressOptions: TestProjectOption[];
   projectTypeOptions: TestProjectOption[];
   saving: boolean;
@@ -34,13 +38,14 @@ const props = defineProps<{
 const emit = defineEmits<{ save: [] }>();
 const form = defineModel<ProjectFormState>('form', { required: true });
 const visible = defineModel<boolean>('visible', { default: false });
-const selectableProgressOptions = computed(() =>
-  props.editing
-    ? props.progressOptions
-    : props.progressOptions.filter((item) =>
-        ['planning', 'testing'].includes(item.code.toLowerCase()),
-      ),
-);
+const selectableProgressOptions = computed(() => {
+  const allowed = new Set(
+    allowedProgressCodes(props.editing ? (props.progressBaseline ?? '') : ''),
+  );
+  return props.progressOptions.filter((item) =>
+    allowed.has(item.code.toLowerCase()),
+  );
+});
 
 function searchOwners(keyword: string) {
   return props.searchUsers?.(keyword, [form.value.ownerId]);
@@ -110,6 +115,7 @@ function onProgressChange(value: string) {
         <ElFormItem label="负责人" required>
           <ElSelect
             v-model="form.ownerId"
+            :disabled="ownerLocked"
             :loading="userOptionsLoading"
             :remote-method="searchOwners"
             clearable

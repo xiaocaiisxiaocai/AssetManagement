@@ -1383,6 +1383,41 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Employee_import_can_only_assign_self_as_project_owner()
+    {
+        await Login();
+        var self = await CreateUserInDb($"is{Guid.NewGuid():N}"[..12], "导入本人");
+        var other = await CreateUserInDb($"io{Guid.NewGuid():N}"[..12], "导入他人");
+        await Login(self.EmployeeNo, "123456");
+        var selfCode = $"IS-{Guid.NewGuid():N}"[..18];
+        var otherCode = $"IO-{Guid.NewGuid():N}"[..18];
+        var file = XlsxTable.Write(new[]
+        {
+            new[]
+            {
+                "项目编号", "项目名称", "项目类型", "负责人工号", "开始时间",
+                "计划完成时间", "项目进度", "结案时间", "跟进间隔(天)", "项目摘要"
+            },
+            new[]
+            {
+                selfCode, "员工导入自己的项目", "样机测试", self.EmployeeNo, "2026-07-01",
+                "2026-07-31", "测试中", "", "14", ""
+            },
+            new[]
+            {
+                otherCode, "员工导入他人的项目", "样机测试", other.EmployeeNo, "2026-07-01",
+                "2026-07-31", "测试中", "", "14", ""
+            }
+        });
+
+        var preview = await PostFile<ApiResult<TestProjectImportResultDto>>(
+            "/api/test-projects/import/validate", file);
+
+        preview.Data!.Rows.Single(x => x.Code == selfCode).IsValid.Should().BeTrue();
+        preview.Data.Rows.Single(x => x.Code == otherCode).Error.Should().Contain("只能把自己设为项目负责人");
+    }
+
+    [Fact]
     public async Task Editing_old_followup_preserves_author_and_does_not_change_latest_cycle()
     {
         await Login();
@@ -1394,6 +1429,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             followUpIntervalDays: 7);
 
         int oldFollowupId;
+        int historyLatestId;
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -1414,18 +1450,34 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             db.TestProjectFollowups.AddRange(history);
             await db.SaveChangesAsync();
             oldFollowupId = history[0].Id;
+            historyLatestId = history[1].Id;
         }
 
         await Login();
-        var edited = await Put<ApiResult<TestProjectFollowupDto>>(
+        var rejected = await _client.PutAsJsonAsync(
             $"/api/test-projects/{landing.Id}/followups/{oldFollowupId}",
-            new SaveTestProjectFollowupRequest { Content = "修正较早周期" });
+            new SaveTestProjectFollowupRequest { Content = "不应修改较早周期" });
+        var rejectedBody = await rejected.Content.ReadFromJsonAsync<ApiResult<TestProjectFollowupDto>>();
+        rejected.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        rejectedBody!.Code.Should().Be(4094);
+        rejectedBody.Message.Should().Contain("只能修改或删除最近一条跟进记录");
+
+        var latestId = historyLatestId;
+        var edited = await Put<ApiResult<TestProjectFollowupDto>>(
+            $"/api/test-projects/{landing.Id}/followups/{latestId}",
+            new SaveTestProjectFollowupRequest { Content = "修正最新周期" });
+        var listed = await _client.GetFromJsonAsync<ApiResult<List<TestProjectFollowupDto>>>(
+            $"/api/test-projects/{landing.Id}/followups");
         var projects = await _client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>("/api/test-projects");
         var summary = projects!.Data!.Single(x => x.Id == landing.Id);
 
         edited.Data!.FilledById.Should().Be(owner.Id);
         edited.Data.FilledByName.Should().Be("历史跟进负责人");
-        summary.LatestFollowUpContent.Should().Be("最新周期");
+        edited.Data.IsLatest.Should().BeTrue();
+        var listedItems = listed!.Data!;
+        listedItems.Single(x => x.Id == oldFollowupId).IsLatest.Should().BeFalse();
+        listedItems.Single(x => x.Id == latestId).IsLatest.Should().BeTrue();
+        summary.LatestFollowUpContent.Should().Be("修正最新周期");
         summary.NextFollowUpDueDate.Should().Be(new DateTime(2026, 7, 27));
     }
 

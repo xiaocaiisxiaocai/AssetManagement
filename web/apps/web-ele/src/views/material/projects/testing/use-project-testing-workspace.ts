@@ -73,9 +73,7 @@ export function useProjectTestingWorkspace(
   const canCreateStage = computed(
     () => canManage.value && isProjectTesting(props.projectProgressCode),
   );
-  const canExport = computed(
-    () => workspace.value?.canExport === true,
-  );
+  const canExport = computed(() => workspace.value?.canExport === true);
   const writeBusy = computed(
     () =>
       savingStage.value ||
@@ -331,6 +329,7 @@ export function useProjectTestingWorkspace(
   }
 
   function downloadDocument(document: ProjectDocumentDto) {
+    if (!canExport.value) return;
     const projectId = props.projectId;
     if (document.projectId !== projectId) return;
     return runDownload(

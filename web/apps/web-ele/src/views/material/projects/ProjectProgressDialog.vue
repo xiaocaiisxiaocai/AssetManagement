@@ -3,6 +3,8 @@ import type { ProjectProgressFormState } from './project-workspace-types';
 
 import type { TestProjectOption } from '#/api/test-project';
 
+import { computed } from 'vue';
+
 import {
   ElButton,
   ElDatePicker,
@@ -14,7 +16,10 @@ import {
   ElSelect,
 } from 'element-plus';
 
-defineProps<{
+import { allowedProgressCodes } from './project-workspace-rules';
+
+const props = defineProps<{
+  progressBaseline: string;
   progressOptions: TestProjectOption[];
   saving: boolean;
 }>();
@@ -22,6 +27,13 @@ defineProps<{
 const emit = defineEmits<{ save: [] }>();
 const form = defineModel<ProjectProgressFormState>('form', { required: true });
 const visible = defineModel<boolean>('visible', { default: false });
+
+const selectableProgressOptions = computed(() => {
+  const allowed = new Set(allowedProgressCodes(props.progressBaseline));
+  return props.progressOptions.filter((item) =>
+    allowed.has(item.code.toLowerCase()),
+  );
+});
 
 function onProgressChange(value: string) {
   if (value !== 'closed') form.value.closedDate = '';
@@ -45,7 +57,7 @@ function onProgressChange(value: string) {
           @change="onProgressChange"
         >
           <ElOption
-            v-for="item in progressOptions"
+            v-for="item in selectableProgressOptions"
             :key="item.id"
             :label="item.label"
             :value="item.code"

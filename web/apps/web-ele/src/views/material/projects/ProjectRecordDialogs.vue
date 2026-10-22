@@ -16,6 +16,8 @@ const {
   openOptionCreate,
   openOptionEdit,
   optionDialogVisible,
+  ownerLocked,
+  progressBaseline,
   optionEditingId,
   optionFormModel,
   optionSaving,
@@ -41,6 +43,8 @@ const {
     v-model:form="formModel"
     v-model:visible="dialogVisible"
     :editing="editingId !== null"
+    :owner-locked="ownerLocked"
+    :progress-baseline="progressBaseline"
     :progress-options="progressOptions"
     :project-type-options="projectTypeOptions"
     :saving="saving"
@@ -58,6 +62,7 @@ const {
   <ProjectProgressDialog
     v-model:form="progressFormModel"
     v-model:visible="progressDialogVisible"
+    :progress-baseline="progressBaseline"
     :progress-options="progressOptions"
     :saving="progressSaving"
     @save="saveProgress"

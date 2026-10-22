@@ -10,6 +10,7 @@ import { formatDateTime } from '#/utils/date-format';
 import { validateProjectDocument } from './project-testing-rules';
 
 const props = defineProps<{
+  canDownload: boolean;
   canManage: boolean;
   deletingDocumentId: null | number;
   documents: ProjectDocumentDto[];
@@ -62,20 +63,24 @@ function onFileChange(event: Event) {
 <template>
   <div class="stage-report-cell">
     <div v-if="documents.length > 0" class="stage-report-links">
-      <ElButton
-        v-for="document in documents.slice(0, 2)"
-        :key="document.id"
-        :disabled="Boolean(downloadingKey)"
-        :loading="downloadingKey === `document-${document.id}`"
-        :title="document.fileName"
-        class="stage-report-file"
-        link
-        size="small"
-        type="primary"
-        @click="emit('download', document)"
-      >
-        {{ document.fileName }}
-      </ElButton>
+      <template v-for="document in documents.slice(0, 2)" :key="document.id">
+        <ElButton
+          v-if="canDownload"
+          :disabled="Boolean(downloadingKey)"
+          :loading="downloadingKey === `document-${document.id}`"
+          :title="document.fileName"
+          class="stage-report-file"
+          link
+          size="small"
+          type="primary"
+          @click="emit('download', document)"
+        >
+          {{ document.fileName }}
+        </ElButton>
+        <span v-else :title="document.fileName" class="stage-report-file">
+          {{ document.fileName }}
+        </span>
+      </template>
     </div>
     <div class="stage-report-actions">
       <ElButton
@@ -110,6 +115,7 @@ function onFileChange(event: Event) {
             class="stage-report-item"
           >
             <ElButton
+              v-if="canDownload"
               :disabled="Boolean(downloadingKey)"
               :loading="downloadingKey === `document-${document.id}`"
               :title="document.fileName"
@@ -121,6 +127,9 @@ function onFileChange(event: Event) {
             >
               {{ document.fileName }}
             </ElButton>
+            <span v-else :title="document.fileName" class="stage-report-file">
+              {{ document.fileName }}
+            </span>
             <div class="stage-report-meta">
               {{ document.uploadedBy }} ·
               {{ formatDateTime(document.uploadedAt) }}

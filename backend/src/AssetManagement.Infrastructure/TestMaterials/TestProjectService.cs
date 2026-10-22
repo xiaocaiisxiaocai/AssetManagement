@@ -90,7 +90,6 @@ public class TestProjectService : ITestProjectService
     public async Task<byte[]> ExportAsync(TestProjectPageQuery query, int currentUserId)
     {
         var projectsQuery = ApplyProjectQuery(_db.TestProjects.AsNoTracking(), query);
-        projectsQuery = await _accessScope.ApplySupervisorScopeAsync(projectsQuery, currentUserId);
         if (await projectsQuery.CountAsync() > AppConstants.MaxExportRows)
             throw new BizException(4130, $"导出项目不能超过 {AppConstants.MaxExportRows} 条，请缩小筛选范围");
 
@@ -252,6 +251,7 @@ public class TestProjectService : ITestProjectService
             existingNames,
             seenCodes,
             seenNames)).ToList();
+        await ApplyImportOwnerPolicyAsync(rows);
 
         return BuildImportResult(rows);
     }
@@ -306,6 +306,7 @@ public class TestProjectService : ITestProjectService
         ValidateInitialProjectProgress(request.ProgressCode);
         await EnsureProjectUnique(code, name);
         await ValidateProjectReferences(request);
+        await _accessScope.EnsureOwnerAssignableAsync(request.OwnerId!.Value, creating: true);
         var project = new TestProject
         {
             Name = name,
@@ -329,7 +330,7 @@ public class TestProjectService : ITestProjectService
         {
             throw new BizException(4094, "项目编号或项目名称已存在");
         }
-        return (await ToDtos(new[] { project }, new Dictionary<int, int>(), null)).Single();
+        return (await ToDtos(new[] { project }, new Dictionary<int, int>(), _accessScope.CurrentUserId)).Single();
     }
 
     public async Task<TestProjectDto> UpdateAsync(int id, SaveTestProjectRequest request)
@@ -356,6 +357,7 @@ public class TestProjectService : ITestProjectService
         ValidateSupportedProgress(request.ProgressCode);
         await EnsureProjectUnique(code, name, id);
         await ValidateProjectReferences(request);
+        await _accessScope.EnsureOwnerAssignableAsync(request.OwnerId!.Value, creating: false);
         await EnsureProjectStagesFitTimelineAsync(id, request.StartDate, request.ClosedDate);
         ValidateProgressTransition(project.ProgressCode, request.ProgressCode);
         if (ShouldRequireTestingCompletion(project.ProgressCode, request.ProgressCode))
@@ -385,7 +387,44 @@ public class TestProjectService : ITestProjectService
         }
         await transaction.CommitAsync();
         var count = await _db.TestMaterials.CountAsync(x => !x.IsDeleted && x.ProjectId == id);
-        return (await ToDtos(new[] { project }, new Dictionary<int, int> { [id] = count }, null)).Single();
+        return (await ToDtos(new[] { project }, new Dictionary<int, int> { [id] = count }, _accessScope.CurrentUserId)).Single();
+    }
+
+    public async Task<TestProjectDto> ReopenAsync(int id, uint? rowVersion)
+    {
+        if (!_accessScope.IsAdmin)
+            throw new BizException(4031, "只有系统管理员可以重新打开已结案项目");
+
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        var project = await _db.TestProjects
+            .FromSqlInterpolated($"SELECT * FROM test_projects WHERE Id = {id} FOR UPDATE")
+            .AsTracking()
+            .SingleOrDefaultAsync()
+            ?? throw new BizException(4046, "测试项目不存在");
+        if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
+        if (!project.ClosedDate.HasValue &&
+            !string.Equals(project.ProgressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase))
+            throw new BizException(4099, "项目未结案，无需重新打开");
+
+        EnsureProjectVersion(project, rowVersion);
+        project.ClosedDate = null;
+        project.ProgressCode = TestProjectLifecycleRules.Testing;
+        project.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该项目已被他人修改，请刷新后重试");
+        }
+
+        await transaction.CommitAsync();
+        var count = await _db.TestMaterials.CountAsync(x => !x.IsDeleted && x.ProjectId == id);
+        return (await ToDtos(
+            new[] { project },
+            new Dictionary<int, int> { [id] = count },
+            _accessScope.CurrentUserId)).Single();
     }
 
     public async Task<TestProjectDto> UpdateProgressAsync(
@@ -677,6 +716,7 @@ public class TestProjectService : ITestProjectService
         var followup = await _db.TestProjectFollowups.AsTracking()
             .SingleOrDefaultAsync(x => x.Id == followupId && x.ProjectId == projectId)
             ?? throw new BizException(4046, "跟进记录不存在");
+        await EnsureLatestFollowupAsync(projectId, followup.Id);
         var content = (request.Content ?? "").Trim();
         if (string.IsNullOrWhiteSpace(content)) throw new BizException(4001, "请填写落地情况");
         EnsureMaxLength(content, 2000, "落地情况");
@@ -702,6 +742,7 @@ public class TestProjectService : ITestProjectService
         var followup = await _db.TestProjectFollowups.AsTracking()
             .SingleOrDefaultAsync(x => x.Id == followupId && x.ProjectId == projectId)
             ?? throw new BizException(4046, "跟进记录不存在");
+        await EnsureLatestFollowupAsync(projectId, followup.Id);
         _db.TestProjectFollowups.Remove(followup);
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();
@@ -789,18 +830,18 @@ public class TestProjectService : ITestProjectService
         var latestByProject = followups
             .GroupBy(x => x.ProjectId)
             .ToDictionary(x => x.Key, x => x.First());
-        var canWriteFollowupByProject = new Dictionary<int, bool>();
-        if (currentUserId is int userId)
-        {
-            foreach (var project in list)
-                canWriteFollowupByProject[project.Id] =
-                    await _accessScope.CanExecuteAsync(project, userId, "project:followup", true);
-        }
+        var userId = currentUserId.GetValueOrDefault();
+        if (userId > 0)
+            await _accessScope.PreloadAsync(list, userId);
 
         return list.Select(x =>
         {
             latestByProject.TryGetValue(x.Id, out var latest);
             var isLanding = IsLandingProgress(x);
+            var isClosed = x.ClosedDate.HasValue ||
+                string.Equals(x.ProgressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase);
+            var inScope = userId > 0 && _accessScope.IsInDepartmentScope(x.OwnerId, userId);
+            var canChange = !x.IsDeleted && !x.ClosedDate.HasValue;
             DateTime? nextDue = isLanding ? NextFollowUpDueDate(x, latest) : null;
             return new TestProjectDto
             {
@@ -825,7 +866,14 @@ public class TestProjectService : ITestProjectService
                 LatestFollowUpContent = latest?.Content,
                 LatestFollowUpAt = latest?.FilledAt,
                 CanWriteFollowUp = !x.IsDeleted && isLanding &&
-                    canWriteFollowupByProject.GetValueOrDefault(x.Id),
+                    CanExecuteLoaded(x, userId, "project:followup", ownerMayExecute: true),
+                CanEdit = canChange && CanExecuteLoaded(x, userId, "project:edit", ownerMayExecute: false),
+                CanDelete = !x.IsDeleted && inScope && _accessScope.HasPermission("project:delete"),
+                CanRestore = x.IsDeleted && inScope && _accessScope.HasPermission("project:restore"),
+                CanPurge = x.IsDeleted && inScope && _accessScope.HasPermission("project:purge"),
+                CanUpdateProgress = canChange &&
+                    CanExecuteLoaded(x, userId, "project:manage", ownerMayExecute: true),
+                CanReopen = _accessScope.IsAdmin && !x.IsDeleted && isClosed,
                 CreatedAt = x.CreatedAt,
                 IsDeleted = x.IsDeleted,
                 DeletedAt = x.DeletedAt,
@@ -835,6 +883,15 @@ public class TestProjectService : ITestProjectService
         }).ToList();
     }
 
+    private bool CanExecuteLoaded(TestProject project, int userId, string permission, bool ownerMayExecute)
+    {
+        if (userId <= 0) return false;
+        if (_accessScope.IsAdmin) return true;
+        if (ownerMayExecute && project.OwnerId == userId) return true;
+        return _accessScope.HasPermission(permission) &&
+               _accessScope.IsInDepartmentScope(project.OwnerId, userId);
+    }
+
     private async Task<List<TestProjectFollowupDto>> ToFollowupDtos(IEnumerable<TestProjectFollowup> followups)
     {
         var list = followups.ToList();
@@ -842,6 +899,15 @@ public class TestProjectService : ITestProjectService
         var users = await _db.Users.AsNoTracking()
             .Where(x => userIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name);
+        var projectIds = list.Select(x => x.ProjectId).Distinct().ToArray();
+        var latestIds = (await _db.TestProjectFollowups.AsNoTracking()
+                .Where(x => projectIds.Contains(x.ProjectId))
+                .Select(x => new { x.Id, x.ProjectId, x.DueDate })
+                .ToListAsync())
+            .GroupBy(x => x.ProjectId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(x => x.DueDate).ThenByDescending(x => x.Id).First().Id);
         return list.Select(x => new TestProjectFollowupDto
         {
             Id = x.Id,
@@ -850,8 +916,37 @@ public class TestProjectService : ITestProjectService
             Content = x.Content,
             FilledById = x.FilledById,
             FilledByName = users.GetValueOrDefault(x.FilledById),
-            FilledAt = x.FilledAt
+            FilledAt = x.FilledAt,
+            IsLatest = latestIds.TryGetValue(x.ProjectId, out var latestId) && latestId == x.Id
         }).ToList();
+    }
+
+    private async Task ApplyImportOwnerPolicyAsync(List<TestProjectImportRowDto> rows)
+    {
+        if (_accessScope.IsAdmin) return;
+        var ownerIds = rows.Where(x => x.OwnerId.HasValue).Select(x => x.OwnerId!.Value).Distinct().ToArray();
+        if (_accessScope.CurrentUserId is int userId && userId > 0)
+            await _accessScope.PreloadAsync(ownerIds.Select(id => new TestProject { OwnerId = id }), userId);
+
+        foreach (var row in rows)
+        {
+            var error = await _accessScope.OwnerAssignmentErrorAsync(row.OwnerId, creating: true);
+            if (error is null) continue;
+            row.IsValid = false;
+            row.Error = string.IsNullOrEmpty(row.Error) ? error : $"{row.Error}；{error}";
+        }
+    }
+
+    private async Task EnsureLatestFollowupAsync(int projectId, int followupId)
+    {
+        var latestId = await _db.TestProjectFollowups.AsNoTracking()
+            .Where(x => x.ProjectId == projectId)
+            .OrderByDescending(x => x.DueDate)
+            .ThenByDescending(x => x.Id)
+            .Select(x => x.Id)
+            .FirstOrDefaultAsync();
+        if (latestId != followupId)
+            throw new BizException(4094, "只能修改或删除最近一条跟进记录");
     }
 
     private async Task ValidateProjectReferences(SaveTestProjectRequest request)
@@ -914,10 +1009,10 @@ public class TestProjectService : ITestProjectService
 
     private static void ValidateProgressTransition(string? currentProgressCode, string? nextProgressCode)
     {
-        if (string.Equals(currentProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(nextProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(nextProgressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase))
-            throw new BizException(4094, "项目已进入落地跟进，不能退回测试阶段");
+        if (TestProjectLifecycleRules.CanTransition(currentProgressCode, nextProgressCode)) return;
+        if (string.Equals(currentProgressCode, TestProjectLifecycleRules.Planning, StringComparison.OrdinalIgnoreCase))
+            throw new BizException(4094, "计划中的项目只能保持计划中或进入测试中");
+        throw new BizException(4094, "项目进度不能回退");
     }
 
     private static bool ShouldRequireTestingCompletion(

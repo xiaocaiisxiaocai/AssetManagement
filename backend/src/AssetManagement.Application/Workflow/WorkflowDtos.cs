@@ -92,7 +92,7 @@ public record WorkflowProgressStepDto
 {
     public string NodeId { get; init; } = "";
     public string NodeName { get; init; } = "";
-    /// <summary>completed / current / next</summary>
+    /// <summary>completed / current / next / unavailable。unavailable 表示定义已变更、节点无法继续审批。</summary>
     public string State { get; init; } = "";
     public bool IsPossible { get; init; }
     public DateTime? StartedAt { get; init; }

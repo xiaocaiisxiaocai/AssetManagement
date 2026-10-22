@@ -35,7 +35,7 @@
 
 .overview-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: var(--asset-page-gap);
 }
 
@@ -68,6 +68,14 @@
 
 .overview-metric.is-borrowed strong {
   color: var(--el-color-warning);
+}
+
+.overview-metric.is-maintenance strong {
+  color: var(--el-color-primary);
+}
+
+.overview-metric.is-scrapped strong {
+  color: var(--el-color-danger);
 }
 
 .overview-charts {

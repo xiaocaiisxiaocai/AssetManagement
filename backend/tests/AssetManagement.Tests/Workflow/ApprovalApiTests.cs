@@ -435,7 +435,8 @@ public class ApprovalApiTests : IClassFixture<TestWebAppFactory>
         var resultFlow = page!.Data!.Items.Should().ContainSingle().Which;
 
         resultFlow.ProgressSteps.Should().ContainSingle(step =>
-            step.NodeId == "Task_activeCounterSign" && step.State == "current");
+            step.NodeId == "Task_activeCounterSign" && step.State == "unavailable");
+        resultFlow.ProgressSteps.Should().NotContain(step => step.State == "completed");
     }
 
     [Theory]

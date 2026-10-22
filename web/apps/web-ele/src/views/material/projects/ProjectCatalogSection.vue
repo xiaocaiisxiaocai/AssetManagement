@@ -3,7 +3,6 @@ import { useProjectPageContext } from './project-page-context';
 import ProjectTable from './ProjectTable.vue';
 
 const {
-  currentUserId,
   deleteStatus,
   exportProjects,
   importDialogVisible,
@@ -26,6 +25,7 @@ const {
   progressOptions,
   purge,
   remove,
+  reopen,
   resetProjectFilter,
   restore,
   searchProjects,
@@ -40,7 +40,6 @@ const {
     v-model:filter="projectFilterModel"
     v-model:query="projectQueryModel"
     :access="projectActionAccess"
-    :current-user-id="currentUserId"
     :filtered-total="projectTotal"
     :loading="loading"
     :owner-options="projectOwnerOptions"
@@ -60,6 +59,7 @@ const {
     @progress="openProgress"
     @purge="purge"
     @remove="remove"
+    @reopen="reopen"
     @reset="resetProjectFilter"
     @restore="restore"
     @search="searchProjects"

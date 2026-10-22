@@ -1122,7 +1122,8 @@ public class MaterialFlowService : IMaterialFlowService
                 .Select(nodeId => flow.BpmnTokens.TryGetValue(nodeId, out var token)
                     ? BpmnProgressNodeResolver.Resolve(process, token)
                     : process.FindNode(nodeId))
-                .Where(node => node?.Type == BpmnNodeType.UserTask)
+                .Where(node => node?.Type == BpmnNodeType.UserTask &&
+                               !BpmnProgressNodeResolver.IsDefinitionMissing(node))
                 .Cast<BpmnNode>()
                 .Concat(flow.Status == FlowStatus.Pending
                     ? FindNextUserTasks(process, flow.CurrentNodeIds).Select(candidate => candidate.Node)
@@ -1221,7 +1222,13 @@ public class MaterialFlowService : IMaterialFlowService
                 ? process.FindNode(nodeId)
                 : BpmnProgressNodeResolver.Resolve(process, token);
             if (node?.Type != BpmnNodeType.UserTask) continue;
-            current.Add(await BuildProgressStepAsync(node, flow, token, "current", false, renderContext));
+            current.Add(await BuildProgressStepAsync(
+                node,
+                flow,
+                token,
+                BpmnProgressNodeResolver.CurrentStepState(node),
+                false,
+                renderContext));
         }
 
         var next = new List<WorkflowProgressStepDto>();
@@ -1255,6 +1262,18 @@ public class MaterialFlowService : IMaterialFlowService
         bool isPossible,
         ProgressRenderContext? renderContext = null)
     {
+        if (state == "unavailable")
+        {
+            return new WorkflowProgressStepDto
+            {
+                NodeId = node.Id,
+                NodeName = string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name,
+                State = state,
+                IsPossible = isPossible,
+                StartedAt = token?.StartedAt
+            };
+        }
+
         var userIds = state == "completed"
             ? ParseCompletedApproverIds(token)
             : renderContext?.ResolvedApprovers.GetValueOrDefault(

@@ -54,19 +54,14 @@ public class AssetOverviewService : IAssetOverviewService
         var total = 0;
         var available = 0;
         var borrowed = 0;
+        var maintenance = 0;
+        var scrapped = 0;
         var uncategorizedTotal = 0;
 
         foreach (var group in assetGroups)
         {
             total += group.Count;
-            if (group.Status == AssetStatus.Available)
-            {
-                available += group.Count;
-            }
-            else if (group.Status == AssetStatus.Borrowed)
-            {
-                borrowed += group.Count;
-            }
+            AddStatus(group.Status, group.Count, ref available, ref borrowed, ref maintenance, ref scrapped);
 
             var secondLevelId = ResolveSecondLevelCategoryId(group.CategoryId, categoryMap);
             if (!secondLevelId.HasValue || !categoryStats.TryGetValue(secondLevelId.Value, out var stats))
@@ -76,14 +71,7 @@ public class AssetOverviewService : IAssetOverviewService
             }
 
             stats.Total += group.Count;
-            if (group.Status == AssetStatus.Available)
-            {
-                stats.Available += group.Count;
-            }
-            else if (group.Status == AssetStatus.Borrowed)
-            {
-                stats.Borrowed += group.Count;
-            }
+            AddStatus(group.Status, group.Count, ref stats);
         }
 
         return new AssetOverviewDto
@@ -91,6 +79,8 @@ public class AssetOverviewService : IAssetOverviewService
             Total = total,
             Available = available,
             Borrowed = borrowed,
+            Maintenance = maintenance,
+            Scrapped = scrapped,
             UncategorizedTotal = uncategorizedTotal,
             Categories = categoryStats.Values
                 .OrderBy(stats => stats.ParentCode, StringComparer.Ordinal)
@@ -105,7 +95,9 @@ public class AssetOverviewService : IAssetOverviewService
                     Remark = stats.Category.Remark,
                     Total = stats.Total,
                     Available = stats.Available,
-                    Borrowed = stats.Borrowed
+                    Borrowed = stats.Borrowed,
+                    Maintenance = stats.Maintenance,
+                    Scrapped = stats.Scrapped
                 })
                 .ToList()
         };
@@ -172,5 +164,29 @@ public class AssetOverviewService : IAssetOverviewService
         public int Total { get; set; }
         public int Available { get; set; }
         public int Borrowed { get; set; }
+        public int Maintenance { get; set; }
+        public int Scrapped { get; set; }
+    }
+
+    private static void AddStatus(
+        AssetStatus status,
+        int count,
+        ref int available,
+        ref int borrowed,
+        ref int maintenance,
+        ref int scrapped)
+    {
+        if (status == AssetStatus.Available) available += count;
+        else if (status == AssetStatus.Borrowed) borrowed += count;
+        else if (status == AssetStatus.Maintenance) maintenance += count;
+        else if (status == AssetStatus.Scrapped) scrapped += count;
+    }
+
+    private static void AddStatus(AssetStatus status, int count, ref MutableCategoryStats stats)
+    {
+        if (status == AssetStatus.Available) stats.Available += count;
+        else if (status == AssetStatus.Borrowed) stats.Borrowed += count;
+        else if (status == AssetStatus.Maintenance) stats.Maintenance += count;
+        else if (status == AssetStatus.Scrapped) stats.Scrapped += count;
     }
 }

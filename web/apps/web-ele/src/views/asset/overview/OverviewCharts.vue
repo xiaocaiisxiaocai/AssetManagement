@@ -118,6 +118,34 @@ async function renderCharts() {
           data: series.borrowed,
           color: '#e9a23b',
         },
+        {
+          name: '维修',
+          type: 'bar',
+          stack: 'total',
+          barMaxWidth: 24,
+          label: {
+            show: true,
+            position: 'inside',
+            formatter: (params) =>
+              Number(params.value) > 0 ? `${params.value}` : '',
+          },
+          data: series.maintenance,
+          color: '#3b82d6',
+        },
+        {
+          name: '报废',
+          type: 'bar',
+          stack: 'total',
+          barMaxWidth: 24,
+          label: {
+            show: true,
+            position: 'inside',
+            formatter: (params) =>
+              Number(params.value) > 0 ? `${params.value}` : '',
+          },
+          data: series.scrapped,
+          color: '#d4564e',
+        },
       ],
     });
   }
@@ -156,14 +184,14 @@ onBeforeUnmount(() => {
       />
     </div>
     <div class="overview-chart-card">
-      <h3>二级分类在库 / 借出分布</h3>
+      <h3>二级分类状态分布</h3>
       <div v-show="stats.categories.length > 0" class="overview-bar-scroll">
         <EchartsUI
           ref="statusRef"
           :style="{
             height: `${Math.max(280, stats.categories.length * 38 + 70)}px`,
           }"
-          aria-label="各二级分类在库和借出数量，详细数据见下方分类汇总表"
+          aria-label="各二级分类在库、借出、维修和报废数量"
           role="img"
         />
       </div>
