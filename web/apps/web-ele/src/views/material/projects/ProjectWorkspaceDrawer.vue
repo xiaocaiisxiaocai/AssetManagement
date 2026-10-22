@@ -130,7 +130,14 @@ function statusMeta(project: TestProjectItem) {
 </script>
 
 <template>
-  <ElDrawer v-model="visible" class="project-workspace-drawer" size="88%">
+  <ElDrawer
+    v-model="visible"
+    :close-on-click-modal="!followupSaving"
+    :close-on-press-escape="!followupSaving"
+    :show-close="!followupSaving"
+    class="project-workspace-drawer"
+    size="88%"
+  >
     <template #header>
       <div class="drawer-workspace-title">
         <strong>项目跟进工作台</strong>

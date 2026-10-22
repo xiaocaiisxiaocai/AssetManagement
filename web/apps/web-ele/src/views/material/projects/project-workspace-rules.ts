@@ -1,6 +1,17 @@
 import type { MaterialFlowItem } from '#/api/material';
 import type { TestProjectItem } from '#/api/test-project';
 
+const SUPPORTED_PROJECT_PROGRESS_CODES = new Set([
+  'planning',
+  'testing',
+  'landing',
+  'closed',
+]);
+
+export function isSupportedProjectProgress(value: string) {
+  return SUPPORTED_PROJECT_PROGRESS_CODES.has(value.trim().toLowerCase());
+}
+
 export function canWithdrawMaterialFlow(flow: MaterialFlowItem) {
   return flow.status === 'pending' && flow.canWithdraw === true;
 }

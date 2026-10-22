@@ -93,6 +93,7 @@ export function createProjectPageState() {
   const followups = ref<TestProjectFollowup[]>([]);
   const followupLoading = ref(false);
   const followupSaving = ref(false);
+  const followupOperationGuard = createLatestRequestGuard();
   const editingFollowupId = ref<null | number>(null);
   const followupForm = reactive({ content: '' });
   const materialLoading = ref(false);
@@ -187,6 +188,7 @@ export function createProjectPageState() {
     followups,
     followupLoading,
     followupSaving,
+    followupOperationGuard,
     editingFollowupId,
     followupForm,
     followupFormModel: reactiveObjectModel(followupForm),

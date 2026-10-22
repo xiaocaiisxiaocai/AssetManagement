@@ -55,6 +55,7 @@ const canWrite = computed(
             <ElFormItem label="落地情况">
               <ElInput
                 v-model="form.content"
+                :disabled="saving"
                 :rows="7"
                 class="followup-textarea"
                 maxlength="2000"
@@ -66,7 +67,11 @@ const canWrite = computed(
             </ElFormItem>
           </ElForm>
           <div class="followup-actions">
-            <ElButton v-if="editingId" @click="emit('cancelEdit')">
+            <ElButton
+              v-if="editingId"
+              :disabled="saving"
+              @click="emit('cancelEdit')"
+            >
               取消编辑
             </ElButton>
             <ElButton :loading="saving" type="primary" @click="emit('save')">
@@ -112,6 +117,7 @@ const canWrite = computed(
               </div>
               <div v-if="canWrite" class="record-actions">
                 <ElButton
+                  :disabled="saving"
                   link
                   size="small"
                   type="primary"
@@ -120,6 +126,7 @@ const canWrite = computed(
                   编辑
                 </ElButton>
                 <ElButton
+                  :disabled="saving"
                   link
                   size="small"
                   type="danger"

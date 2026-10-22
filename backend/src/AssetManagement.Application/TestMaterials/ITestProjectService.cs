@@ -6,7 +6,7 @@ public interface ITestProjectService
 {
     Task<List<TestProjectDto>> ListAsync(string? deleteStatus, int currentUserId);
     Task<PagedResult<TestProjectDto>> ListPageAsync(TestProjectPageQuery query, int currentUserId);
-    Task<byte[]> ExportAsync(TestProjectPageQuery query);
+    Task<byte[]> ExportAsync(TestProjectPageQuery query, int currentUserId);
     Task<byte[]> BuildImportTemplateAsync();
     Task<TestProjectImportResultDto> ValidateImportAsync(Stream file);
     Task<TestProjectImportResultDto> ConfirmImportAsync(Stream file);

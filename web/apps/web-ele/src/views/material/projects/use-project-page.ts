@@ -18,6 +18,7 @@ import {
 import { bindProjectCatalogActions } from './project-catalog-actions';
 import { createProjectPageState } from './project-page-state';
 import { bindProjectWorkspaceActions } from './project-workspace-actions';
+import { isSupportedProjectProgress } from './project-workspace-rules';
 
 export function useProjectPage() {
   const { hasAccessByCodes } = useAccess();
@@ -75,7 +76,11 @@ export function useProjectPage() {
       (isCurrentProjectOwner.value || hasAccessByCodes(['project:manage'])),
   );
   const projectTypeOptions = computed(() => activeOptions('project_type'));
-  const progressOptions = computed(() => activeOptions('project_progress'));
+  const progressOptions = computed(() =>
+    activeOptions('project_progress').filter((item) =>
+      isSupportedProjectProgress(item.code),
+    ),
+  );
   const displayedOptions = computed(() =>
     state.options.value.filter(
       (item) => item.kind === state.activeOptionKind.value,
@@ -152,6 +157,7 @@ export function useProjectPage() {
 
   watch(state.followupDrawerVisible, (opened) => {
     if (opened) return;
+    state.followupOperationGuard.invalidate();
     state.followupRequestGuard.invalidate();
     state.materialRequestGuard.invalidate();
     state.pendingFlowRequestGuard.invalidate();

@@ -33,7 +33,7 @@ public class TestProjectController : ControllerBase
     [HasPermission("project:export")]
     public async Task<FileContentResult> Export([FromQuery] TestProjectPageQuery query)
         => File(
-            await _service.ExportAsync(query),
+            await _service.ExportAsync(query, CurrentUserId()),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "test-projects.xlsx");
 

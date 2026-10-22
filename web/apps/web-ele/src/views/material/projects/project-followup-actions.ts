@@ -28,6 +28,7 @@ export function bindProjectFollowupActions(
     followups,
     followupLoading,
     followupSaving,
+    followupOperationGuard,
     editingFollowupId,
     followupForm,
     followupRequestGuard,
@@ -48,6 +49,11 @@ export function bindProjectFollowupActions(
   } = page;
 
   async function openFollowups(row: TestProjectItem) {
+    if (followupSaving.value) {
+      ElMessage.warning('跟进正在保存，请稍候');
+      return;
+    }
+    followupOperationGuard.invalidate();
     followupRequestGuard.invalidate();
     materialRequestGuard.invalidate();
     pendingFlowRequestGuard.invalidate();
@@ -117,25 +123,39 @@ export function bindProjectFollowupActions(
       ElMessage.warning('请填写落地情况');
       return;
     }
+    if (followupSaving.value) return;
+    const operationGeneration = followupOperationGuard.next();
+    const projectId = project.id;
+    const editingId = editingFollowupId.value;
     followupSaving.value = true;
     try {
       const payload: SaveTestProjectFollowupPayload = {
         content: followupForm.content.trim(),
       };
-      await (editingFollowupId.value
+      await (editingId
         ? updateTestProjectFollowupApi(
-            project.id,
-            editingFollowupId.value,
+            projectId,
+            editingId,
             payload,
           )
-        : createTestProjectFollowupApi(project.id, payload));
+        : createTestProjectFollowupApi(projectId, payload));
+      if (
+        !followupOperationGuard.isLatest(operationGeneration) ||
+        !followupDrawerVisible.value ||
+        currentProject.value?.id !== projectId
+      ) return;
       ElMessage.success('跟进已保存');
-      await Promise.all([loadFollowups(project.id), loadData()]);
-      cancelFollowupEdit();
+      await Promise.all([loadFollowups(projectId), loadData()]);
+      if (
+        followupOperationGuard.isLatest(operationGeneration) &&
+        followupDrawerVisible.value &&
+        currentProject.value?.id === projectId
+      ) cancelFollowupEdit();
     } catch {
       // 错误已由 request.ts 拦截器统一弹出
     } finally {
-      followupSaving.value = false;
+      if (followupOperationGuard.isLatest(operationGeneration))
+        followupSaving.value = false;
     }
   }
 

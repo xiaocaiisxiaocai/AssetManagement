@@ -17,12 +17,14 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     private readonly AppDbContext _db;
     private readonly ProjectReportStorage _storage;
     private readonly IHttpContextAccessor _http;
+    private readonly TestProjectAccessScope _accessScope;
 
     public ProjectWorkspaceService(AppDbContext db, ProjectReportStorage storage, IHttpContextAccessor http)
     {
         _db = db;
         _storage = storage;
         _http = http;
+        _accessScope = new TestProjectAccessScope(db, http);
     }
 
     public async Task<ProjectWorkspaceDto> GetAsync(int projectId, int userId)
@@ -35,8 +37,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
                 IsTestingMaintainable(project) &&
                 await CanManageAsync(project, userId),
             CanExport = !project.IsDeleted &&
-                (await CanManageAsync(project, userId) ||
-                 _http.HttpContext?.User.HasClaim("perm", "project:export") == true),
+                await _accessScope.CanExecuteAsync(project, userId, "project:export", true),
             Stages = (await _db.ProjectTestStages.AsNoTracking()
                 .Where(x => x.ProjectId == projectId && !x.IsDeleted)
                 .OrderBy(x => x.Sequence).ThenBy(x => x.Id).ToListAsync()).Select(StageDto).ToList(),
@@ -51,6 +52,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         ValidateStage(request);
         await using var transaction = await _db.Database.BeginTransactionAsync();
         var project = await LockWritableProjectAsync(projectId, userId);
+        ValidateStage(request, project.StartDate);
         if (!stageId.HasValue &&
             !string.Equals(project.ProgressCode, "testing", StringComparison.OrdinalIgnoreCase))
             throw new BizException(4092, "项目进入测试中后才能新增测试阶段");
@@ -170,8 +172,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     {
         await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead);
         var project = await LoadProjectAsync(projectId);
-        if (!await CanManageAsync(project, userId) &&
-            _http.HttpContext?.User.HasClaim("perm", "project:export") != true)
+        if (!await _accessScope.CanExecuteAsync(project, userId, "project:export", true))
             throw new BizException(4031, "只有项目负责人或拥有项目导出权限的用户可以导出报告");
         await CheckStageAsync(projectId, stageId);
         var data = await ReportDataAsync(project, stageId);
@@ -304,10 +305,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     }
 
     private async Task<bool> CanManageAsync(TestProject project, int userId) =>
-        userId > 0 && (project.OwnerId == userId ||
-            _http.HttpContext?.User.HasClaim("perm", "project:manage") == true ||
-            await _db.UserRoles
-                .AnyAsync(x => x.UserId == userId && x.Role.IsActive && x.Role.Code == "admin"));
+        await _accessScope.CanExecuteAsync(project, userId, "project:manage", true);
 
     private async Task EnsureWritableAsync(TestProject project, int userId)
     {
@@ -329,7 +327,9 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
             throw new BizException(4046, "测试阶段不存在或不属于当前项目");
     }
 
-    internal static void ValidateStage(SaveProjectTestStageRequest request)
+    internal static void ValidateStage(
+        SaveProjectTestStageRequest request,
+        DateTime? projectStartDate = null)
     {
         if (request.Sequence is < 1 or > 999) throw new BizException(4001, "阶段序号必须为 1–999");
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 100)
@@ -341,6 +341,10 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
             throw new BizException(4001, "阶段目标最多 2000 字，测试内容/结果最多 8000 字");
         if (request.StartDate.HasValue && request.EndDate.HasValue && request.EndDate.Value.Date < request.StartDate.Value.Date)
             throw new BizException(4001, "结束日期不能早于开始日期");
+        if (projectStartDate.HasValue &&
+            ((request.StartDate.HasValue && request.StartDate.Value.Date < projectStartDate.Value.Date) ||
+             (request.EndDate.HasValue && request.EndDate.Value.Date < projectStartDate.Value.Date)))
+            throw new BizException(4001, "测试阶段日期不能早于项目开始日期");
         if (IsCurrent(request.Status) && !request.StartDate.HasValue)
             throw new BizException(4001, "进行中或受阻的阶段必须填写开始日期");
         if (request.Status == "completed")

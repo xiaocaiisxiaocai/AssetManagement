@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   canUpdateProjectProgress,
   canWithdrawMaterialFlow,
+  isSupportedProjectProgress,
   projectFollowUpStatusMeta,
   refreshProjectAfterMaterialChange,
 } from './project-workspace-rules';
@@ -97,5 +98,11 @@ describe('测试项目工作台规则', () => {
     expect(loadMaterials).toHaveBeenCalledOnce();
     expect(loadFlows).toHaveBeenCalledOnce();
     expect(loadProjects).toHaveBeenCalledOnce();
+  });
+
+  it('项目生命周期只接受四个系统进度', () => {
+    expect(['planning', 'testing', 'landing', 'closed'].every(isSupportedProjectProgress)).toBe(true);
+    expect(isSupportedProjectProgress('reviewing')).toBe(false);
+    expect(isSupportedProjectProgress('')).toBe(false);
   });
 });

@@ -19,6 +19,7 @@ public class TestMaterialService : ITestMaterialService
     private readonly IHttpContextAccessor _http;
     private readonly IMemoryCache _cache;
     private readonly IFileStorageService _files;
+    private readonly TestProjectAccessScope _projectAccess;
     private const string DepartmentTreeCacheKey = "department_tree";
 
     public TestMaterialService(AppDbContext db, IHttpContextAccessor http, IMemoryCache cache, IFileStorageService files)
@@ -27,6 +28,7 @@ public class TestMaterialService : ITestMaterialService
         _http = http;
         _cache = cache;
         _files = files;
+        _projectAccess = new TestProjectAccessScope(db, http);
     }
 
     public async Task<PagedResult<TestMaterialDto>> QueryAsync(TestMaterialQuery query)
@@ -144,7 +146,7 @@ public class TestMaterialService : ITestMaterialService
             .SingleOrDefaultAsync();
         if (project is null || project.IsDeleted)
             throw new BizException(4046, "测试项目不存在");
-        EnsureCanWriteMaterial(project, "material:create");
+        await EnsureCanWriteMaterial(project, "material:create");
         await EnsureMaterialNameAvailableAsync(request.ProjectId, name);
         var m = new TestMaterial
         {
@@ -201,7 +203,7 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4095, "料件所属项目不能修改");
         var originalProject = await _db.TestProjects.AsNoTracking().SingleOrDefaultAsync(x => x.Id == m.ProjectId && !x.IsDeleted)
             ?? throw new BizException(4046, "测试项目不存在");
-        EnsureCanWriteMaterial(originalProject, "material:edit");
+        await EnsureCanWriteMaterial(originalProject, "material:edit");
         if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
             throw new BizException(4092, "该料件有进行中的流转,不能编辑");
         var name = request.Name.Trim();
@@ -379,9 +381,25 @@ public class TestMaterialService : ITestMaterialService
             _ => q.Where(x => !x.IsDeleted)
         };
 
+        var user = _http.HttpContext?.User;
+        var roles = user?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray() ?? [];
         var allowed = await AllowedDepartmentIdsAsync();
-        if (allowed != null)
+        if (roles.Contains("supervisor") && allowed != null)
             q = q.Where(x => x.DepartmentId.HasValue && allowed.Contains(x.DepartmentId.Value));
+        else if (!roles.Contains("admin"))
+        {
+            var currentUserId = CurrentUserId();
+            if (!currentUserId.HasValue)
+                q = q.Where(_ => false);
+            else
+                q = q.Where(x => x.CustodianId == currentUserId.Value ||
+                    _db.TestProjects.Any(project =>
+                        project.Id == x.ProjectId && project.OwnerId == currentUserId.Value) ||
+                    _db.MaterialFlows.Any(flow =>
+                        flow.MaterialId == x.Id &&
+                        (flow.ApplicantId == currentUserId.Value ||
+                         flow.TransfereeId == currentUserId.Value)));
+        }
 
         if (!string.IsNullOrWhiteSpace(query.MaterialNo))
         {
@@ -440,20 +458,52 @@ public class TestMaterialService : ITestMaterialService
                 return await DescendantDepartmentIdsAsync(deptId);
             return Array.Empty<int>();
         }
-        return null;
+        var currentUserId = CurrentUserId();
+        if (!currentUserId.HasValue) return Array.Empty<int>();
+        var departmentId = await _db.Users.AsNoTracking()
+            .Where(x => x.Id == currentUserId.Value)
+            .Select(x => x.DepartmentId)
+            .SingleOrDefaultAsync();
+        return departmentId.HasValue ? [departmentId.Value] : Array.Empty<int>();
     }
 
     private async Task EnsureCanAccessAsync(TestMaterial m)
     {
+        var user = _http.HttpContext?.User;
+        var roles = user?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray() ?? [];
+        if (roles.Contains("admin")) return;
         var allowed = await AllowedDepartmentIdsAsync();
-        if (allowed != null && (!m.DepartmentId.HasValue || !allowed.Contains(m.DepartmentId.Value)))
+        if (roles.Contains("supervisor"))
+        {
+            if (allowed != null && (!m.DepartmentId.HasValue || !allowed.Contains(m.DepartmentId.Value)))
+                throw new BizException(4047, "无权访问该测试料件");
+            return;
+        }
+
+        var currentUserId = CurrentUserId();
+        if (!currentUserId.HasValue ||
+            (m.CustodianId != currentUserId.Value &&
+             !await _db.TestProjects.AnyAsync(x =>
+                 x.Id == m.ProjectId && x.OwnerId == currentUserId.Value) &&
+             !await _db.MaterialFlows.AnyAsync(x =>
+                 x.MaterialId == m.Id &&
+                 (x.ApplicantId == currentUserId.Value ||
+                  x.TransfereeId == currentUserId.Value))))
             throw new BizException(4047, "无权访问该测试料件");
     }
 
     private async Task EnsureCanAssignDepartmentAsync(int? departmentId)
     {
+        var roles = _http.HttpContext?.User?
+            .FindAll(ClaimTypes.Role)
+            .Select(c => c.Value)
+            .ToArray() ?? [];
         var allowed = await AllowedDepartmentIdsAsync();
-        if (allowed != null && (!departmentId.HasValue || !allowed.Contains(departmentId.Value)))
+        if (roles.Contains("supervisor") && allowed != null &&
+            (!departmentId.HasValue || !allowed.Contains(departmentId.Value)))
+            throw new BizException(4047, "无权将料件归属到该部门");
+        if (!roles.Contains("supervisor") && !roles.Contains("admin") &&
+            departmentId.HasValue && allowed != null && !allowed.Contains(departmentId.Value))
             throw new BizException(4047, "无权将料件归属到该部门");
     }
 
@@ -486,7 +536,7 @@ public class TestMaterialService : ITestMaterialService
         }
     }
 
-    private void EnsureCanWriteMaterial(TestProject project, string permission)
+    private async Task EnsureCanWriteMaterial(TestProject project, string permission)
     {
         if (!TestProjectLifecycleRules.IsMaterialMaintainable(
                 project.ProgressCode,
@@ -494,10 +544,9 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4092, "项目已进入落地跟进或已结案，不能新增或编辑测试料件");
 
         // 料件维护既允许拥有菜单权限的角色操作，也允许项目负责人维护自己负责项目下的料件。
-        var user = _http.HttpContext?.User;
         var currentUserId = CurrentUserId();
-        var permissions = user?.FindAll("perm").Select(x => x.Value).ToArray() ?? Array.Empty<string>();
-        if (user?.IsInRole("admin") == true || permissions.Contains(permission) || project.OwnerId == currentUserId)
+        if (currentUserId.HasValue &&
+            await _projectAccess.CanExecuteAsync(project, currentUserId.Value, permission, true))
             return;
         throw new BizException(4047, "无权维护该项目料件");
     }

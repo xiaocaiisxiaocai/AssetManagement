@@ -948,6 +948,42 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Project_progress_rejects_custom_lifecycle_codes()
+    {
+        await Login();
+        var code = $"review_{Guid.NewGuid():N}"[..20];
+        var created = await _client.PostAsJsonAsync(
+            "/api/test-projects/options",
+            new SaveTestProjectOptionRequest
+            {
+                Kind = "project_progress",
+                Code = code,
+                Label = "复测中",
+                Sort = 30,
+                IsActive = true
+            });
+        created.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var project = await CreateProject("旧自定义进度兼容校验");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.TestProjectOptions.Add(new TestProjectOption
+            {
+                Kind = "project_progress", Code = code, Label = "历史复测中",
+                Sort = 30, IsActive = true
+            });
+            await db.SaveChangesAsync();
+        }
+        var updated = await _client.PutAsJsonAsync($"/api/test-projects/{project.Id}/progress", new
+        {
+            ProgressCode = code,
+            RowVersion = project.RowVersion
+        });
+        updated.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task Material_with_flow_history_cannot_be_purged()
     {
         await Login();

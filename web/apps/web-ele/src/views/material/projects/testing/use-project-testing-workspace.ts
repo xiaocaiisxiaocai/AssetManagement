@@ -7,8 +7,6 @@ import type {
 
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 
-import { useAccess } from '@vben/access';
-
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 import {
@@ -56,7 +54,6 @@ function safeFileName(value: string) {
 export function useProjectTestingWorkspace(
   props: Readonly<ProjectTestingWorkspaceProps>,
 ) {
-  const { hasAccessByCodes } = useAccess();
   const requestCoordinator = createWorkspaceRequestCoordinator();
   let operationGeneration = 0;
   const workspace = ref<null | ProjectWorkspaceDto>(null);
@@ -77,9 +74,7 @@ export function useProjectTestingWorkspace(
     () => canManage.value && isProjectTesting(props.projectProgressCode),
   );
   const canExport = computed(
-    () =>
-      workspace.value?.canExport === true ||
-      hasAccessByCodes(['project:export']),
+    () => workspace.value?.canExport === true,
   );
   const writeBusy = computed(
     () =>

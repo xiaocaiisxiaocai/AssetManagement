@@ -17,15 +17,23 @@ public class TestProjectService : ITestProjectService
     public const string ProgressLanding = TestProjectLifecycleRules.Landing;
     public const string ProgressClosed = TestProjectLifecycleRules.Closed;
     private static readonly HashSet<string> ReservedProgressCodes =
-        new(StringComparer.OrdinalIgnoreCase) { ProgressLanding, ProgressClosed };
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            TestProjectLifecycleRules.Planning,
+            TestProjectLifecycleRules.Testing,
+            ProgressLanding,
+            ProgressClosed
+        };
 
     private readonly AppDbContext _db;
     private readonly IHttpContextAccessor _http;
+    private readonly TestProjectAccessScope _accessScope;
 
     public TestProjectService(AppDbContext db, IHttpContextAccessor http)
     {
         _db = db;
         _http = http;
+        _accessScope = new TestProjectAccessScope(db, http);
     }
 
     public async Task<List<TestProjectDto>> ListAsync(string? deleteStatus, int currentUserId)
@@ -79,9 +87,10 @@ public class TestProjectService : ITestProjectService
         };
     }
 
-    public async Task<byte[]> ExportAsync(TestProjectPageQuery query)
+    public async Task<byte[]> ExportAsync(TestProjectPageQuery query, int currentUserId)
     {
         var projectsQuery = ApplyProjectQuery(_db.TestProjects.AsNoTracking(), query);
+        projectsQuery = await _accessScope.ApplySupervisorScopeAsync(projectsQuery, currentUserId);
         if (await projectsQuery.CountAsync() > AppConstants.MaxExportRows)
             throw new BizException(4130, $"导出项目不能超过 {AppConstants.MaxExportRows} 条，请缩小筛选范围");
 
@@ -333,6 +342,8 @@ public class TestProjectService : ITestProjectService
             .SingleOrDefaultAsync()
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
+        if (_accessScope.CurrentUserId is int currentUserId)
+            await _accessScope.EnsureScopeAsync(project, currentUserId);
         EnsureProjectCanChange(project);
         var name = (request.Name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(name)) throw new BizException(4001, "项目名称不能为空");
@@ -342,8 +353,10 @@ public class TestProjectService : ITestProjectService
         ValidateProjectRequiredFields(request);
         ValidateProjectTimeline(request);
         EnsureProjectVersion(project, request.RowVersion);
+        ValidateSupportedProgress(request.ProgressCode);
         await EnsureProjectUnique(code, name, id);
         await ValidateProjectReferences(request);
+        await EnsureProjectStagesFitTimelineAsync(id, request.StartDate, request.ClosedDate);
         ValidateProgressTransition(project.ProgressCode, request.ProgressCode);
         if (ShouldRequireTestingCompletion(project.ProgressCode, request.ProgressCode))
             await EnsureTestingCompletionAsync(id, request.ProgressCode, request.ClosedDate);
@@ -387,8 +400,7 @@ public class TestProjectService : ITestProjectService
             .SingleOrDefaultAsync()
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
-        if (project.OwnerId != currentUserId && !await IsAdmin(currentUserId) &&
-            !HasPermission("project:manage"))
+        if (!await _accessScope.CanExecuteAsync(project, currentUserId, "project:manage", true))
             throw new BizException(4031, "只有项目负责人、项目管理人员或管理员可以更新项目进展");
         EnsureProjectCanChange(project);
         EnsureProjectVersion(project, request.RowVersion);
@@ -396,6 +408,7 @@ public class TestProjectService : ITestProjectService
         var progressCode = request.ProgressCode?.Trim();
         if (string.IsNullOrWhiteSpace(progressCode))
             throw new BizException(4001, "项目进度不能为空");
+        ValidateSupportedProgress(progressCode);
         if (!await _db.TestProjectOptions.AnyAsync(x =>
                 x.Kind == OptionKindProgress && x.Code == progressCode && x.IsActive))
             throw new BizException(4002, "项目进度不存在或已停用");
@@ -440,6 +453,8 @@ public class TestProjectService : ITestProjectService
             .SingleOrDefaultAsync()
             ?? throw new BizException(4046, "测试项目不存在");
         if (project.IsDeleted) throw new BizException(4046, "测试项目不存在");
+        if (_accessScope.CurrentUserId is int currentUserId)
+            await _accessScope.EnsureScopeAsync(project, currentUserId);
         if (await _db.TestMaterials.AnyAsync(x => !x.IsDeleted && x.ProjectId == id))
             throw new BizException(4092, "该项目下仍有测试料件,不能删除");
         project.IsDeleted = true;
@@ -460,6 +475,8 @@ public class TestProjectService : ITestProjectService
     {
         var project = await _db.TestProjects.AsTracking().SingleOrDefaultAsync(x => x.Id == id)
             ?? throw new BizException(4046, "测试项目不存在");
+        if (_accessScope.CurrentUserId is int currentUserId)
+            await _accessScope.EnsureScopeAsync(project, currentUserId);
         if (!project.IsDeleted) throw new BizException(4099, "项目未删除,无需恢复");
         project.IsDeleted = false;
         project.DeletedAt = null;
@@ -482,6 +499,8 @@ public class TestProjectService : ITestProjectService
             .AsTracking()
             .SingleOrDefaultAsync()
             ?? throw new BizException(4046, "测试项目不存在");
+        if (_accessScope.CurrentUserId is int currentUserId)
+            await _accessScope.EnsureScopeAsync(project, currentUserId);
         if (!project.IsDeleted) throw new BizException(4097, "请先删除项目后再彻底删除");
         if (await _db.TestMaterials.AnyAsync(x => x.ProjectId == id))
             throw new BizException(4092, "该项目下仍有测试料件(含已删除),不能彻底删除");
@@ -524,6 +543,7 @@ public class TestProjectService : ITestProjectService
         ValidateOptionRequest(request);
         var kind = request.Kind.Trim();
         var code = request.Code.Trim().ToLowerInvariant();
+        EnsureSupportedProgressOption(kind, code);
         await EnsureOptionCodeAvailable(kind, code);
         var option = new TestProjectOption
         {
@@ -552,6 +572,10 @@ public class TestProjectService : ITestProjectService
             ?? throw new BizException(4046, "项目配置项不存在");
         var kind = request.Kind.Trim();
         var code = request.Code.Trim().ToLowerInvariant();
+        if (kind == OptionKindProgress && !ReservedProgressCodes.Contains(code) &&
+            (option.Kind != OptionKindProgress || option.Code != code || request.IsActive))
+            throw new BizException(4094, "历史自定义项目进度已废弃，请停用或删除后使用系统生命周期状态");
+        EnsureSupportedProgressOption(kind, code, allowExisting: true);
         await EnsureOptionCodeAvailable(kind, code, id);
         await EnsureOptionCanChangeAsync(option, kind, code, request.IsActive);
         option.Kind = kind;
@@ -576,7 +600,7 @@ public class TestProjectService : ITestProjectService
             ?? throw new BizException(4046, "项目配置项不存在");
         if (option.Kind == OptionKindProgress && ReservedProgressCodes.Contains(option.Code))
         {
-            throw new BizException(4094, "落地跟进和已结案是系统保留进度，不能删除");
+            throw new BizException(4094, "系统生命周期进度不能删除");
         }
         if (option.Kind == OptionKindProjectType &&
             await _db.TestProjects.AnyAsync(x => x.ProjectTypeCode == option.Code))
@@ -765,8 +789,13 @@ public class TestProjectService : ITestProjectService
         var latestByProject = followups
             .GroupBy(x => x.ProjectId)
             .ToDictionary(x => x.Key, x => x.First());
-        var isAdmin = currentUserId.HasValue && await IsAdmin(currentUserId.Value);
-        var canManageFollowup = HasPermission("project:followup");
+        var canWriteFollowupByProject = new Dictionary<int, bool>();
+        if (currentUserId is int userId)
+        {
+            foreach (var project in list)
+                canWriteFollowupByProject[project.Id] =
+                    await _accessScope.CanExecuteAsync(project, userId, "project:followup", true);
+        }
 
         return list.Select(x =>
         {
@@ -795,8 +824,8 @@ public class TestProjectService : ITestProjectService
                     : FollowUpStatus(nextDue),
                 LatestFollowUpContent = latest?.Content,
                 LatestFollowUpAt = latest?.FilledAt,
-                CanWriteFollowUp = !x.IsDeleted && isLanding && currentUserId.HasValue &&
-                    (isAdmin || canManageFollowup || x.OwnerId == currentUserId.Value),
+                CanWriteFollowUp = !x.IsDeleted && isLanding &&
+                    canWriteFollowupByProject.GetValueOrDefault(x.Id),
                 CreatedAt = x.CreatedAt,
                 IsDeleted = x.IsDeleted,
                 DeletedAt = x.DeletedAt,
@@ -929,8 +958,12 @@ public class TestProjectService : ITestProjectService
         {
             if (requestedClosedDate.Value.Date > BusinessClock.Today)
                 throw new BizException(4001, "结案时间不能晚于今天");
-            if (finalStage.EndDate.HasValue && requestedClosedDate.Value.Date < finalStage.EndDate.Value.Date)
-                throw new BizException(4001, "结案时间不能早于最后测试阶段结束日期");
+            var latestStageEndDate = stages.Where(x => x.EndDate.HasValue)
+                .Select(x => x.EndDate!.Value.Date)
+                .DefaultIfEmpty()
+                .Max();
+            if (latestStageEndDate != default && requestedClosedDate.Value.Date < latestStageEndDate)
+                throw new BizException(4001, "结案时间不能早于所有测试阶段的结束日期");
         }
 
         if (!await _db.ProjectReportDocuments.AnyAsync(x =>
@@ -947,6 +980,38 @@ public class TestProjectService : ITestProjectService
     {
         if (!TestProjectLifecycleRules.IsInitialProjectProgressAllowed(progressCode))
             throw new BizException(4094, "新建或导入项目只能处于计划中或测试中，请按流程推进项目");
+    }
+
+    private static void ValidateSupportedProgress(string? progressCode)
+    {
+        if (!TestProjectLifecycleRules.IsSupportedProgress(progressCode))
+            throw new BizException(4094, "项目进度只能使用计划中、测试中、落地跟进或已结案");
+    }
+
+    private static void EnsureSupportedProgressOption(
+        string kind,
+        string code,
+        bool allowExisting = false)
+    {
+        if (kind == OptionKindProgress && !ReservedProgressCodes.Contains(code) && !allowExisting)
+            throw new BizException(4094, "项目进度由系统生命周期控制，不能新增自定义进度");
+    }
+
+    private async Task EnsureProjectStagesFitTimelineAsync(
+        int projectId,
+        DateTime? projectStartDate,
+        DateTime? requestedClosedDate)
+    {
+        var stages = await _db.ProjectTestStages.AsNoTracking()
+            .Where(x => x.ProjectId == projectId && !x.IsDeleted)
+            .ToListAsync();
+        if (projectStartDate.HasValue && stages.Any(x =>
+                (x.StartDate.HasValue && x.StartDate.Value.Date < projectStartDate.Value.Date) ||
+                (x.EndDate.HasValue && x.EndDate.Value.Date < projectStartDate.Value.Date)))
+            throw new BizException(4001, "项目开始时间不能晚于已有测试阶段日期");
+        if (requestedClosedDate.HasValue && stages.Any(x =>
+                x.EndDate.HasValue && x.EndDate.Value.Date > requestedClosedDate.Value.Date))
+            throw new BizException(4001, "结案时间不能早于所有测试阶段的结束日期");
     }
 
     private static IQueryable<TestProject> ApplyProjectQuery(
@@ -1048,21 +1113,12 @@ public class TestProjectService : ITestProjectService
         // 落地跟进不是普通项目编辑权限：只有进入落地阶段后，负责人、跟进管理人员或管理员才能填写。
         if (!IsLandingProgress(project))
             throw new BizException(4031, "项目进入落地跟进后才能填写落地跟进");
-        if (project.OwnerId == currentUserId || await IsAdmin(currentUserId) ||
-            HasPermission("project:followup")) return;
+        if (await _accessScope.CanExecuteAsync(project, currentUserId, "project:followup", true)) return;
         throw new BizException(4031, "只有项目负责人、跟进管理人员或管理员可以填写落地跟进");
     }
 
     private static bool IsLandingProgress(TestProject project)
         => string.Equals(project.ProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase);
-
-    private async Task<bool> IsAdmin(int userId)
-        => await _db.UserRoles
-            .Include(x => x.Role)
-            .AnyAsync(x => x.UserId == userId && x.Role != null && x.Role.Code == "admin");
-
-    private bool HasPermission(string permission)
-        => _http.HttpContext?.User.HasClaim("perm", permission) == true;
 
     private async Task<TestProjectFollowup?> LatestFollowup(int projectId)
         => await _db.TestProjectFollowups
@@ -1150,7 +1206,7 @@ public class TestProjectService : ITestProjectService
                 || !string.Equals(nextCode, option.Code, StringComparison.OrdinalIgnoreCase)
                 || !nextIsActive))
         {
-            throw new BizException(4094, "落地跟进和已结案是系统保留进度，不能改码、改类型或停用");
+            throw new BizException(4094, "系统生命周期进度不能改码、改类型或停用");
         }
 
         var isUsed = option.Kind switch
@@ -1228,6 +1284,8 @@ public class TestProjectService : ITestProjectService
         if (projectType is null) errors.Add("项目类型不存在或已停用");
         var progress = ResolveImportOption(options, OptionKindProgress, progressText);
         if (progress is null) errors.Add("项目进度不存在或已停用");
+        else if (!TestProjectLifecycleRules.IsSupportedProgress(progress.Code))
+            errors.Add("项目进度只能使用计划中、测试中、落地跟进或已结案");
 
         users.TryGetValue(ownerEmployeeNo, out var owner);
         if (string.IsNullOrWhiteSpace(ownerEmployeeNo)) errors.Add("负责人工号必填");

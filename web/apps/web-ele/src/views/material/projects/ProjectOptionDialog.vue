@@ -85,13 +85,16 @@ function onKindChange(kind: number | string) {
           取消编辑
         </ElButton>
         <ElButton
-          v-if="canManage"
+          v-if="canManage && (activeKind !== 'project_progress' || editingId)"
           :loading="saving"
           type="primary"
           @click="emit('save')"
         >
           {{ editingId ? '保存修改' : '新增' }}
         </ElButton>
+        <span v-if="activeKind === 'project_progress'" class="option-hint">
+          项目进度由系统生命周期固定管理
+        </span>
       </div>
     </div>
     <ElTable :data="displayedOptions" border>

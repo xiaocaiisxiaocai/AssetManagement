@@ -223,6 +223,53 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Stage_dates_cannot_precede_project_start_date()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        var request = Draft("早于项目开始的阶段", 1);
+        request.Status = "completed";
+        request.StartDate = BusinessClock.Today.AddDays(-8);
+        request.EndDate = BusinessClock.Today.AddDays(-6);
+        request.TestContent = "测试内容";
+        request.TestResult = "测试结果";
+
+        var response = await client.PostAsJsonAsync($"{Root(projectId)}/stages", request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await WorkspaceAsync(client, projectId)).Stages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Close_date_cannot_precede_any_completed_stage_end_date()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        await CreateAsync(client, projectId, new SaveProjectTestStageRequest
+        {
+            Name = "后结束的阶段", Sequence = 1, Status = "completed",
+            StartDate = BusinessClock.Today.AddDays(-3), EndDate = BusinessClock.Today,
+            TestContent = "测试内容", TestResult = "通过"
+        });
+        var finalStage = await CreateAsync(client, projectId, new SaveProjectTestStageRequest
+        {
+            Name = "序号最大的阶段", Sequence = 2, Status = "completed",
+            StartDate = BusinessClock.Today.AddDays(-4), EndDate = BusinessClock.Today.AddDays(-2),
+            TestContent = "测试内容", TestResult = "通过"
+        });
+        using var report = PdfForm(finalStage.Id, "最终阶段报告.pdf");
+        (await client.PostAsync($"{Root(projectId)}/documents", report)).EnsureSuccessStatusCode();
+
+        var response = await client.PutAsJsonAsync($"/api/test-projects/{projectId}/progress", new
+        {
+            ProgressCode = "closed",
+            ClosedDate = BusinessClock.Today.AddDays(-1),
+            TestStatus = "不应提前结案",
+            RowVersion = await ProjectVersionAsync(projectId)
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Viewer_cannot_modify_stages_upload_reports_or_export_another_project()
     {
         var (_, projectId, _) = await SetupAsync();
