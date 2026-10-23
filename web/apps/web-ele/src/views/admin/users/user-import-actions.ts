@@ -64,11 +64,17 @@ export function bindUserImportActions(page: Record<string, any>) {
     }
 
     const file = selectedImportFile.value;
-    const writeGeneration = importValidation.start(file);
+    const writeGeneration = importValidation.beginWrite();
     if (writeGeneration === null) return;
     try {
       const result = await importUsersApi(file);
-      if (!importValidation.canApply(writeGeneration)) return;
+      if (!importValidation.canApply(writeGeneration)) {
+        if (result.failedCount === 0) {
+          query.page = 1;
+          await loadData();
+        }
+        return;
+      }
       importRows.value = result.rows;
       if (result.failedCount > 0) {
         ElMessage.warning(

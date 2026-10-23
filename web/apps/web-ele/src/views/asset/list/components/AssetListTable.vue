@@ -130,10 +130,10 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
     }
     if (
       key === 'status' &&
-      (query.value.statuses.length > 0 || query.value.deleteStatus !== 'active')
+      (query.value.statuses.length > 0 || query.value.deleteStatus !== 'all')
     ) {
       query.value.statuses = [];
-      query.value.deleteStatus = 'active';
+      query.value.deleteStatus = 'all';
       changed = true;
     }
     if (changed) emit('search');

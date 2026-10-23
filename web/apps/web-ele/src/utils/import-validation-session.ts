@@ -23,6 +23,12 @@ export function createImportValidationSession<Row>() {
     return guard.next();
   }
 
+  function beginWrite() {
+    if (loading.value || !selectedFile.value) return null;
+    loading.value = true;
+    return guard.next();
+  }
+
   function canApply(generation: number) {
     return guard.isLatest(generation);
   }
@@ -33,5 +39,5 @@ export function createImportValidationSession<Row>() {
     }
   }
 
-  return { canApply, finish, loading, reset, rows, selectedFile, start };
+  return { beginWrite, canApply, finish, loading, reset, rows, selectedFile, start };
 }

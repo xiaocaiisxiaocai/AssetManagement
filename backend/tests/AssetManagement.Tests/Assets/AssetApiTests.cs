@@ -365,6 +365,72 @@ public class AssetApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Borrowed_asset_without_location_can_update_remark_and_backfill_location()
+    {
+        await Login();
+        var category = await CreateCategory();
+        var created = await Post<ApiResult<AssetDto>>("/api/assets", new CreateAssetRequest
+        {
+            Name = "借出空位置资产",
+            CategoryId = category.Id,
+            LocationName = "待清空",
+        });
+        int? departmentId;
+        int? custodianId;
+        DateTime? registrationTime;
+        int quantity;
+        string? condition;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var asset = await db.Assets.AsTracking().SingleAsync(x => x.Id == created.Data!.Id);
+            asset.Status = AssetStatus.Borrowed;
+            asset.LocationName = null;
+            await db.SaveChangesAsync();
+            departmentId = asset.DepartmentId;
+            custodianId = asset.CustodianId;
+            registrationTime = asset.RegistrationTime;
+            quantity = asset.Quantity;
+            condition = asset.CurrentCondition;
+        }
+
+        UpdateAssetRequest Payload(string? location, string? remark, string? name = null) => new()
+        {
+            Name = name ?? "借出空位置资产",
+            CategoryId = category.Id,
+            DepartmentId = departmentId,
+            CustodianId = custodianId,
+            LocationName = location ?? "",
+            Quantity = quantity,
+            RegistrationTime = registrationTime,
+            CurrentCondition = condition,
+            Status = AssetStatus.Borrowed,
+            Remark = remark,
+        };
+
+        var renamed = await _client.PutAsJsonAsync(
+            $"/api/assets/{created.Data!.Id}",
+            Payload("补填位置", "不应成功", "借出空位置被改名"));
+        renamed.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var remarked = await _client.PutAsJsonAsync(
+            $"/api/assets/{created.Data.Id}",
+            Payload(null, "空位置仍可改备注"));
+        remarked.IsSuccessStatusCode.Should().BeTrue(await remarked.Content.ReadAsStringAsync());
+        var remarkedBody = await remarked.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
+        remarkedBody!.Data!.Remark.Should().Be("空位置仍可改备注");
+        remarkedBody.Data.LocationName.Should().BeNull();
+
+        var backfilled = await _client.PutAsJsonAsync(
+            $"/api/assets/{created.Data.Id}",
+            Payload("补填后的位置", "补填位置并改备注"));
+        backfilled.IsSuccessStatusCode.Should().BeTrue(await backfilled.Content.ReadAsStringAsync());
+        var backfilledBody = await backfilled.Content.ReadFromJsonAsync<ApiResult<AssetDto>>();
+        backfilledBody!.Data!.LocationName.Should().Be("补填后的位置");
+        backfilledBody.Data.Remark.Should().Be("补填位置并改备注");
+    }
+
+    [Fact]
     public async Task Create_asset_requires_location()
     {
         await Login();

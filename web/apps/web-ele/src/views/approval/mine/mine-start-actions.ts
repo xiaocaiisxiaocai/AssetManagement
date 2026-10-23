@@ -160,20 +160,26 @@ export function bindMineStartActions(page: Record<string, any>) {
     saving.value = true;
     const session = startSession;
     const assetId = form.assetId;
+    const payload = {
+      assetId,
+      bizType: form.bizType,
+      reason: form.reason.trim() || undefined,
+      returnDate: showReturnDate.value ? form.returnDate : undefined,
+      transfereeId:
+        form.bizType === 'transfer' ? form.transfereeId : undefined,
+    };
     try {
-      await startApprovalApi({
-        assetId: form.assetId,
-        bizType: form.bizType,
-        reason: form.reason.trim() || undefined,
-        returnDate: showReturnDate.value ? form.returnDate : undefined,
-        transfereeId:
-          form.bizType === 'transfer' ? form.transfereeId : undefined,
-      });
-      if (session !== startSession || !dialogVisible.value || form.assetId !== assetId) return;
+      await startApprovalApi(payload);
+      const stillCurrent =
+        session === startSession &&
+        dialogVisible.value &&
+        form.assetId === assetId;
       ElMessage.success('申请已提交');
-      dialogVisible.value = false;
-      activeSource.value = 'asset';
-      assetPage.page = 1;
+      if (stillCurrent) {
+        dialogVisible.value = false;
+        activeSource.value = 'asset';
+        assetPage.page = 1;
+      }
       await loadData();
     } catch {
       // 错误已由 request.ts 拦截器统一弹出

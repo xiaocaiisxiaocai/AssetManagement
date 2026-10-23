@@ -57,6 +57,7 @@ const form = defineModel<StartApprovalFormModel>('form', { required: true });
       :asset-select-copy="assetSelectCopy"
       :assets="assets"
       :disable-return-date="disableReturnDate"
+      :disabled="saving"
       :inherited-return-date="inheritedReturnDate"
       :show-return-date="showReturnDate"
       :transferee-options="transfereeOptions"

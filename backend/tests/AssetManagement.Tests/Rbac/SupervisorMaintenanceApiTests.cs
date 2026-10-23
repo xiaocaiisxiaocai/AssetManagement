@@ -5,16 +5,22 @@ using AssetManagement.Application.Auth;
 using AssetManagement.Application.BaseData;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.Rbac;
+using AssetManagement.Domain.Entities;
+using AssetManagement.Infrastructure.Persistence;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AssetManagement.Tests.Rbac;
 
 public class SupervisorMaintenanceApiTests : IClassFixture<TestWebAppFactory>
 {
     private readonly HttpClient _client;
+    private readonly TestWebAppFactory _factory;
 
     public SupervisorMaintenanceApiTests(TestWebAppFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -150,6 +156,46 @@ public class SupervisorMaintenanceApiTests : IClassFixture<TestWebAppFactory>
 
         await AssertForbidden(await _client.DeleteAsync($"/api/users/{administrator.Id}"), "无权管理该用户");
         await AssertForbidden(await _client.DeleteAsync($"/api/users/{supervisor.Id}"), "无权管理该用户");
+    }
+
+    [Fact]
+    public async Task Supervisor_can_edit_employee_who_still_has_an_inactive_role()
+    {
+        await Login();
+        var employeeRole = (await _client.GetFromJsonAsync<ApiResult<PagedResult<RoleDto>>>("/api/roles?pageSize=100"))!
+            .Data!.Items.Single(x => x.Code == "employee");
+        var employee = await PostSuccess<UserDto>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = UniqueEmployeeNo("inactive-role"),
+            Name = "带停用角色的员工",
+            RoleIds = new[] { employeeRole.Id }
+        });
+        int retiredRoleId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var retired = new Role
+            {
+                Code = $"old-{Guid.NewGuid():N}"[..20],
+                Name = $"停用角色{Guid.NewGuid():N}"[..12],
+                IsActive = false
+            };
+            db.Roles.Add(retired);
+            await db.SaveChangesAsync();
+            db.UserRoles.Add(new UserRole { UserId = employee.Id, RoleId = retired.Id });
+            await db.SaveChangesAsync();
+            retiredRoleId = retired.Id;
+        }
+
+        await Login("TEST-SUPERVISOR");
+        var updated = await PutSuccess<UserDto>($"/api/users/{employee.Id}", new UpdateUserRequest
+        {
+            Name = "停用角色不影响编辑",
+            RoleIds = new[] { employeeRole.Id }
+        });
+
+        updated.Name.Should().Be("停用角色不影响编辑");
+        updated.RoleIds.Should().BeEquivalentTo(new[] { employeeRole.Id, retiredRoleId });
     }
 
     private async Task Login(string employeeNo = "1001")

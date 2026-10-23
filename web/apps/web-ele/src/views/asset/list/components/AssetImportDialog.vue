@@ -94,11 +94,14 @@ async function confirmImport() {
   }
 
   const file = selectedFile.value;
-  const writeGeneration = importValidation.start(file);
+  const writeGeneration = importValidation.beginWrite();
   if (writeGeneration === null) return;
   try {
     const result = await confirmAssetImportApi(file);
-    if (!importValidation.canApply(writeGeneration)) return;
+    if (!importValidation.canApply(writeGeneration)) {
+      if (result.successCount > 0) emit('imported');
+      return;
+    }
     rows.value = result.rows;
     if (result.successCount === 0) {
       ElMessage.warning('没有可导入记录，请检查分类编码后重新选择文件');

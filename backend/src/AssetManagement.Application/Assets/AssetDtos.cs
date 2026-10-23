@@ -74,8 +74,9 @@ public record UpdateAssetRequest
     public string Name { get; init; } = "";
     public int CategoryId { get; init; }
     public int? DepartmentId { get; init; }
-    [Required, StringLength(100)]
-    public string LocationName { get; set; } = "";
+    // 新建仍强制必填。更新允许借出中的历史空位置继续留空，具体规则在 AssetService。
+    [StringLength(100)]
+    public string? LocationName { get; set; }
     public int? CustodianId { get; init; }
     public int Quantity { get; init; } = 1;
     public AssetStatus Status { get; init; } = AssetStatus.Available;

@@ -27,6 +27,7 @@ defineProps<{
   assetSelectCopy: { emptyText: string; helpText: string; placeholder: string };
   disableReturnDate: (time: Date) => boolean;
   inheritedReturnDate: string;
+  disabled?: boolean;
   showReturnDate: boolean;
   transfereeOptions: UserOptionDto[];
   userOptionsLoading: boolean;
@@ -43,7 +44,7 @@ const form = defineModel<StartApprovalFormState>('form', { required: true });
 </script>
 
 <template>
-  <ElForm class="start-approval-form" label-width="100px">
+  <ElForm :disabled="disabled" class="start-approval-form" label-width="100px">
     <ElFormItem label="申请类型" required>
       <ElSelect
         v-model="form.bizType"

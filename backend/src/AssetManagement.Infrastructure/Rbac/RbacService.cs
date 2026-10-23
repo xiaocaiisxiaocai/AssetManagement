@@ -309,21 +309,29 @@ public class RbacService : IRbacService
             .AsTracking()
             .SingleOrDefaultAsync()
             ?? throw new BizException(4041, "用户不存在");
+        var roleIds = request.RoleIds;
         if (IsDepartmentSupervisor())
         {
-            var roleCodes = await _db.UserRoles
+            var assignments = await _db.UserRoles
                 .Where(x => x.UserId == id)
-                .Join(_db.Roles, x => x.RoleId, x => x.Id, (_, role) => role.Code)
+                .Select(x => new { x.RoleId, x.Role.Code, x.Role.IsActive })
                 .ToArrayAsync();
-            if (!IsManagedEmployee(roleCodes))
+            var activeCodes = assignments
+                .Where(x => x.IsActive)
+                .Select(x => x.Code)
+                .ToArray();
+            if (!IsManagedEmployee(activeCodes))
             {
                 throw new BizException(4032, "无权管理该用户");
             }
+
+            // 主管不能分配角色。编辑请求带回的角色只用于回显，写回时保留现有角色，包括已停用角色。
+            roleIds = assignments.Select(x => x.RoleId).Distinct().ToArray();
         }
         await ValidateUserRelationsAsync(request.DepartmentId, request.SupervisorId, id);
         await EnsureUserRoleChangeAllowed(
             id,
-            request.RoleIds,
+            roleIds,
             currentUserId,
             canAssignRole && !IsDepartmentSupervisor());
         user.Name = request.Name.Trim();
@@ -331,7 +339,7 @@ public class RbacService : IRbacService
         user.Phone = request.Phone;
         user.DepartmentId = request.DepartmentId;
         user.SupervisorId = request.SupervisorId;
-        await RewriteUserRoles(id, request.RoleIds);
+        await RewriteUserRoles(id, roleIds);
         await _db.SaveChangesAsync();
         var result = await LoadUserDto(id);
         await transaction.CommitAsync();

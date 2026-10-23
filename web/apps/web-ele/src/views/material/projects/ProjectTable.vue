@@ -161,8 +161,8 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
       filter.value.progressCodes = [];
       changed = true;
     }
-    if (key === 'status' && deleteStatus.value !== 'active') {
-      deleteStatus.value = 'active';
+    if (key === 'status' && deleteStatus.value !== 'all') {
+      deleteStatus.value = 'all';
       changed = true;
     }
     if (changed) emit('search');

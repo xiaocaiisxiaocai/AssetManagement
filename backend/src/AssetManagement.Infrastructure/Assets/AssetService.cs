@@ -243,14 +243,7 @@ public class AssetService : IAssetService
         await EnsureCanManageAsync(asset);
         if (request.Status != asset.Status || request.CustodianId != asset.CustodianId || request.DepartmentId != asset.DepartmentId)
             throw new BizException(4095, "资产状态、保管人和归属部门只能通过审批流转变更");
-        if (asset.Status == AssetStatus.Borrowed &&
-            (!string.Equals(request.Name.Trim(), asset.Name, StringComparison.Ordinal) ||
-             request.CategoryId != asset.CategoryId ||
-             !SameDate(request.PurchaseDate, asset.PurchaseDate) ||
-             !SameDate(request.RegistrationTime, asset.RegistrationTime) ||
-             !string.Equals(NormalizeLocationName(request.LocationName), asset.LocationName, StringComparison.Ordinal) ||
-             request.Quantity != asset.Quantity ||
-             !string.Equals(request.CurrentCondition?.Trim(), asset.CurrentCondition, StringComparison.Ordinal)))
+        if (asset.Status == AssetStatus.Borrowed && BorrowedCoreFieldsChanged(request, asset))
         {
             throw new BizException(4095, "借出中的资产仅可修改备注和附件");
         }
@@ -261,7 +254,7 @@ public class AssetService : IAssetService
         {
             await EnsureAssignableCategoryAsync(category);
         }
-        var locationName = NormalizeLocationName(request.LocationName);
+        var locationName = ResolveUpdatedLocationName(request.LocationName, asset);
         var imageUrls = request.Images is null ? null : JoinImages(request.Images);
         var normalizedImages = SplitImages(imageUrls);
         await using var imageLease = request.Images is null
@@ -953,6 +946,40 @@ public class AssetService : IAssetService
 
     private static bool SameDate(DateTime? left, DateTime? right)
         => left?.Date == right?.Date;
+
+    private static bool BorrowedCoreFieldsChanged(UpdateAssetRequest request, Asset asset)
+        => !string.Equals(request.Name.Trim(), asset.Name, StringComparison.Ordinal)
+           || request.CategoryId != asset.CategoryId
+           || !SameDate(request.PurchaseDate, asset.PurchaseDate)
+           || !SameDate(request.RegistrationTime, asset.RegistrationTime)
+           || BorrowedLocationChanged(request.LocationName, asset.LocationName)
+           || request.Quantity != asset.Quantity
+           || !string.Equals(request.CurrentCondition?.Trim(), asset.CurrentCondition, StringComparison.Ordinal);
+
+    /// <summary>
+    /// 历史借出资产可能没有存放位置。留空或补填都不算修改核心资料，避免备注和附件无法保存。
+    /// </summary>
+    private static bool BorrowedLocationChanged(string? requested, string? current)
+    {
+        if (string.IsNullOrWhiteSpace(current)) return false;
+        var normalized = requested?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized)) return true;
+        return !string.Equals(normalized, current, StringComparison.Ordinal);
+    }
+
+    private static string? ResolveUpdatedLocationName(string? requested, Asset asset)
+    {
+        if (asset.Status == AssetStatus.Borrowed && string.IsNullOrWhiteSpace(asset.LocationName))
+        {
+            var normalized = requested?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized)) return null;
+            if (normalized.Length > 100)
+                throw new BizException(4001, "存放位置不能超过 100 个字符");
+            return normalized;
+        }
+
+        return NormalizeLocationName(requested);
+    }
 
     private static ImportPreviewRow ValidateRow(
         int rowNumber,

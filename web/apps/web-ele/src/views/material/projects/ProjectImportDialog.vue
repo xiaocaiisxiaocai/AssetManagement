@@ -89,11 +89,14 @@ async function confirmImport() {
     return;
   }
   const file = selectedFile.value;
-  const writeGeneration = importValidation.start(file);
+  const writeGeneration = importValidation.beginWrite();
   if (writeGeneration === null) return;
   try {
     const result = await confirmTestProjectImportApi(file);
-    if (!importValidation.canApply(writeGeneration)) return;
+    if (!importValidation.canApply(writeGeneration)) {
+      if (result.failedCount === 0) emit('imported');
+      return;
+    }
     rows.value = result.rows;
     if (result.failedCount > 0) {
       ElMessage.warning(`导入失败 ${result.failedCount} 条，请修正后重新导入`);
