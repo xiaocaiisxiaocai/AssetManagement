@@ -22,6 +22,7 @@ const props = defineProps<{
   progressBaseline: string;
   progressOptions: TestProjectOption[];
   saving: boolean;
+  testingIncomplete?: boolean;
 }>();
 
 const emit = defineEmits<{ save: [] }>();
@@ -29,7 +30,9 @@ const form = defineModel<ProjectProgressFormState>('form', { required: true });
 const visible = defineModel<boolean>('visible', { default: false });
 
 const selectableProgressOptions = computed(() => {
-  const allowed = new Set(allowedProgressCodes(props.progressBaseline));
+  const allowed = new Set(
+    allowedProgressCodes(props.progressBaseline, props.testingIncomplete),
+  );
   return props.progressOptions.filter((item) =>
     allowed.has(item.code.toLowerCase()),
   );

@@ -97,6 +97,7 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4130, $"导出项目不能超过 {AppConstants.MaxExportRows} 条，请缩小筛选范围");
 
         var projects = await projectsQuery.OrderBy(x => x.Code).ThenBy(x => x.Id).ToListAsync();
+        await RevertIncompleteLandingAsync(projects);
         var projectIds = projects.Select(x => x.Id).ToArray();
         var materials = await _db.TestMaterials.AsNoTracking()
             .Where(x => projectIds.Contains(x.ProjectId))
@@ -362,9 +363,14 @@ public class TestProjectService : ITestProjectService
         await ValidateProjectReferences(request);
         await _accessScope.EnsureOwnerAssignableAsync(request.OwnerId!.Value, creating: false);
         await EnsureProjectStagesFitTimelineAsync(id, request.StartDate, request.ClosedDate);
-        ValidateProgressTransition(project.ProgressCode, request.ProgressCode);
-        if (ShouldRequireTestingCompletion(project.ProgressCode, request.ProgressCode))
-            await EnsureTestingCompletionAsync(id, request.ProgressCode, request.ClosedDate);
+        var nextProgress = NormalizeOptional(request.ProgressCode);
+        if (!AllowsReturnToTesting(
+                project.ProgressCode,
+                nextProgress,
+                await StagesBlockLandingAsync(id)))
+            ValidateProgressTransition(project.ProgressCode, nextProgress);
+        if (ShouldRequireTestingCompletion(project.ProgressCode, nextProgress))
+            await EnsureTestingCompletionAsync(id, nextProgress, request.ClosedDate);
         project.Name = name;
         project.Code = code;
         project.ProjectTypeCode = NormalizeOptional(request.ProjectTypeCode);
@@ -456,7 +462,11 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4002, "项目进度不存在或已停用");
 
         var closedDate = request.ClosedDate?.Date;
-        ValidateProgressTransition(project.ProgressCode, progressCode);
+        if (!AllowsReturnToTesting(
+                project.ProgressCode,
+                progressCode,
+                await StagesBlockLandingAsync(id)))
+            ValidateProgressTransition(project.ProgressCode, progressCode);
         if (ShouldRequireTestingCompletion(project.ProgressCode, progressCode))
             await EnsureTestingCompletionAsync(id, progressCode, closedDate);
         ValidateProjectProgressTimeline(project.StartDate, progressCode, closedDate);
@@ -755,6 +765,7 @@ public class TestProjectService : ITestProjectService
         var visibleProjects = await _accessScope.ApplyVisibilityAsync(
             _db.TestProjects.AsNoTracking().Where(x => !x.IsDeleted), currentUserId);
         var projects = await visibleProjects.ToListAsync();
+        await RevertIncompleteLandingAsync(projects);
 
         var typeOptions = await _db.TestProjectOptions.AsNoTracking()
             .Where(x => x.Kind == OptionKindProjectType && x.IsActive)
@@ -813,6 +824,7 @@ public class TestProjectService : ITestProjectService
     private async Task<List<TestProjectDto>> ToDtos(IEnumerable<TestProject> projects, Dictionary<int, int> counts, int? currentUserId)
     {
         var list = projects.ToList();
+        await RevertIncompleteLandingAsync(list);
         var ownerIds = list.Where(x => x.OwnerId.HasValue).Select(x => x.OwnerId!.Value).Distinct().ToArray();
         var users = await _db.Users.AsNoTracking()
             .Where(x => ownerIds.Contains(x.Id))
@@ -822,6 +834,13 @@ public class TestProjectService : ITestProjectService
             .GroupBy(x => (x.Kind, Code: x.Code.ToLowerInvariant()))
             .ToDictionary(x => x.Key, x => x.First().Label);
         var projectIds = list.Select(x => x.Id).ToArray();
+        var blockingProjectIds = (await _db.ProjectTestStages.AsNoTracking()
+                .Where(x => projectIds.Contains(x.ProjectId) && !x.IsDeleted)
+                .Select(x => new { x.ProjectId, x.Status, x.EndDate })
+                .ToListAsync())
+            .Where(x => TestProjectLifecycleRules.StageBlocksLanding(x.Status, x.EndDate))
+            .Select(x => x.ProjectId)
+            .ToHashSet();
         var followups = await _db.TestProjectFollowups.AsNoTracking()
             .Where(x => projectIds.Contains(x.ProjectId))
             .OrderByDescending(x => x.DueDate)
@@ -838,6 +857,7 @@ public class TestProjectService : ITestProjectService
         {
             latestByProject.TryGetValue(x.Id, out var latest);
             var isLanding = IsLandingProgress(x);
+            var testingIncomplete = blockingProjectIds.Contains(x.Id);
             var isClosed = x.ClosedDate.HasValue ||
                 string.Equals(x.ProgressCode, ProgressClosed, StringComparison.OrdinalIgnoreCase);
             var inScope = userId > 0 && _accessScope.IsInDepartmentScope(x.OwnerId, userId);
@@ -865,8 +885,9 @@ public class TestProjectService : ITestProjectService
                     : FollowUpStatus(nextDue),
                 LatestFollowUpContent = latest?.Content,
                 LatestFollowUpAt = latest?.FilledAt,
-                CanWriteFollowUp = !x.IsDeleted && isLanding &&
+                CanWriteFollowUp = !x.IsDeleted && isLanding && !testingIncomplete &&
                     CanExecuteLoaded(x, userId, "project:followup", ownerMayExecute: true),
+                TestingIncomplete = testingIncomplete,
                 CanEdit = canChange && CanExecuteLoaded(x, userId, "project:edit", ownerMayExecute: false),
                 CanDelete = !x.IsDeleted && inScope && _accessScope.HasPermission("project:delete"),
                 CanRestore = x.IsDeleted && inScope && _accessScope.HasPermission("project:restore"),
@@ -1043,11 +1064,13 @@ public class TestProjectService : ITestProjectService
             .ToListAsync();
         var finalStage = stages.FirstOrDefault();
         if (finalStage is null ||
-            stages.Any(x => !string.Equals(x.Status, "completed", StringComparison.OrdinalIgnoreCase)) ||
-            !string.Equals(finalStage.Status, "completed", StringComparison.OrdinalIgnoreCase) ||
+            stages.Any(x =>
+                TestProjectLifecycleRules.StageBlocksLanding(x.Status, x.EndDate) ||
+                string.IsNullOrWhiteSpace(x.TestContent) ||
+                string.IsNullOrWhiteSpace(x.TestResult)) ||
             string.IsNullOrWhiteSpace(finalStage.TestContent) ||
             string.IsNullOrWhiteSpace(finalStage.TestResult))
-            throw new BizException(4094, "进入落地跟进或结案前，必须完成所有测试阶段并填写测试结果");
+            throw new BizException(4094, "进入落地跟进或结案前，必须完成所有测试阶段，并填写结束日期和测试结果");
 
         if (requestedClosedDate.HasValue)
         {
@@ -1208,12 +1231,74 @@ public class TestProjectService : ITestProjectService
         // 落地跟进不是普通项目编辑权限：只有进入落地阶段后，负责人、跟进管理人员或管理员才能填写。
         if (!IsLandingProgress(project))
             throw new BizException(4031, "项目进入落地跟进后才能填写落地跟进");
+        if (await StagesBlockLandingAsync(project.Id))
+            throw new BizException(4094, "测试阶段尚未全部完成或缺少结束日期，不能填写落地跟进");
         if (await _accessScope.CanExecuteAsync(project, currentUserId, "project:followup", true)) return;
         throw new BizException(4031, "只有项目负责人、跟进管理人员或管理员可以填写落地跟进");
     }
 
     private static bool IsLandingProgress(TestProject project)
         => string.Equals(project.ProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 阶段未完成或缺少结束日期时，不能停留在落地跟进，进度退回测试中。历史跟进记录保留。
+    /// </summary>
+    private async Task RevertIncompleteLandingAsync(IReadOnlyCollection<TestProject> projects)
+    {
+        var candidates = projects
+            .Where(x =>
+                !x.IsDeleted &&
+                !x.ClosedDate.HasValue &&
+                string.Equals(x.ProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (candidates.Count == 0) return;
+
+        var ids = candidates.Select(x => x.Id).ToArray();
+        var blockingIds = (await _db.ProjectTestStages.AsNoTracking()
+                .Where(x => ids.Contains(x.ProjectId) && !x.IsDeleted)
+                .Select(x => new { x.ProjectId, x.Status, x.EndDate })
+                .ToListAsync())
+            .Where(x => TestProjectLifecycleRules.StageBlocksLanding(x.Status, x.EndDate))
+            .Select(x => x.ProjectId)
+            .ToHashSet();
+        if (blockingIds.Count == 0) return;
+
+        await _db.TestProjects
+            .Where(x =>
+                blockingIds.Contains(x.Id) &&
+                !x.IsDeleted &&
+                x.ClosedDate == null &&
+                x.ProgressCode != null &&
+                x.ProgressCode.ToLower() == ProgressLanding)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.ProgressCode, TestProjectLifecycleRules.Testing)
+                .SetProperty(x => x.RowVersion, x => x.RowVersion + 1));
+
+        var refreshed = await _db.TestProjects.AsNoTracking()
+            .Where(x => blockingIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.ProgressCode, x.RowVersion })
+            .ToDictionaryAsync(x => x.Id);
+        foreach (var project in candidates)
+        {
+            if (!refreshed.TryGetValue(project.Id, out var updated)) continue;
+            project.ProgressCode = updated.ProgressCode;
+            project.RowVersion = updated.RowVersion;
+        }
+    }
+
+    private static bool AllowsReturnToTesting(
+        string? currentProgressCode,
+        string? nextProgressCode,
+        bool stagesBlockLanding) =>
+        stagesBlockLanding &&
+        string.Equals(currentProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(nextProgressCode, TestProjectLifecycleRules.Testing, StringComparison.OrdinalIgnoreCase);
+
+    private Task<bool> StagesBlockLandingAsync(int projectId) =>
+        _db.ProjectTestStages.AnyAsync(x =>
+            x.ProjectId == projectId &&
+            !x.IsDeleted &&
+            (x.Status != "completed" || x.EndDate == null));
 
     private async Task<TestProjectFollowup?> LatestFollowup(int projectId)
         => await _db.TestProjectFollowups

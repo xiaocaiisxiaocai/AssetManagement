@@ -27,6 +27,8 @@ public class TestProjectDto
     public string? LatestFollowUpContent { get; set; }
     public DateTime? LatestFollowUpAt { get; set; }
     public bool CanWriteFollowUp { get; set; }
+    /// <summary>已有测试阶段尚未完成，或缺少结束日期。</summary>
+    public bool TestingIncomplete { get; set; }
     public bool CanEdit { get; set; }
     public bool CanDelete { get; set; }
     public bool CanRestore { get; set; }

@@ -30,8 +30,14 @@ const emit = defineEmits<{
   save: [];
 }>();
 const form = defineModel<{ content: string }>('form', { required: true });
+const blockedByTesting = computed(
+  () => props.project.testingIncomplete === true,
+);
 const canWrite = computed(
-  () => props.project.canWriteFollowUp && !props.project.isDeleted,
+  () =>
+    props.project.canWriteFollowUp &&
+    !props.project.isDeleted &&
+    !blockedByTesting.value,
 );
 </script>
 
@@ -47,7 +53,8 @@ const canWrite = computed(
             <h3>{{ editingId ? '编辑跟进记录' : '新增跟进记录' }}</h3>
             <p>提交时自动记录当天，历史日期不可修改。</p>
           </div>
-          <ElTag v-if="!canWrite" type="info">只读</ElTag>
+          <ElTag v-if="blockedByTesting" type="warning">阶段未完成</ElTag>
+          <ElTag v-else-if="!canWrite" type="info">只读</ElTag>
         </div>
         <template v-if="canWrite">
           <ElForm label-position="top">
@@ -82,9 +89,11 @@ const canWrite = computed(
           {{
             project.isDeleted
               ? '项目已删除，仅保留历史记录供查看。'
-              : project.closedDate
-                ? '项目已结案，跟进记录已锁定。'
-                : '项目进入落地跟进后，负责人或管理员才能填写。'
+              : blockedByTesting
+                ? '测试阶段仍在进行或尚未填写结束日期，完成后再填写落地跟进。'
+                : project.closedDate
+                  ? '项目已结案，跟进记录已锁定。'
+                  : '项目进入落地跟进后，负责人或管理员才能填写。'
           }}
         </div>
       </aside>

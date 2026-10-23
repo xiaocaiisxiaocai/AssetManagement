@@ -24,6 +24,7 @@ const props = defineProps<{
   editing: boolean;
   ownerLocked?: boolean;
   progressBaseline?: string;
+  testingIncomplete?: boolean;
   progressOptions: TestProjectOption[];
   projectTypeOptions: TestProjectOption[];
   saving: boolean;
@@ -40,7 +41,10 @@ const form = defineModel<ProjectFormState>('form', { required: true });
 const visible = defineModel<boolean>('visible', { default: false });
 const selectableProgressOptions = computed(() => {
   const allowed = new Set(
-    allowedProgressCodes(props.editing ? (props.progressBaseline ?? '') : ''),
+    allowedProgressCodes(
+      props.editing ? (props.progressBaseline ?? '') : '',
+      props.testingIncomplete,
+    ),
   );
   return props.progressOptions.filter((item) =>
     allowed.has(item.code.toLowerCase()),

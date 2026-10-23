@@ -6,6 +6,7 @@ import {
   createEmptyStageForm,
   isProjectClosed,
   isProjectTesting,
+  stageBlocksLanding,
   stageToForm,
   validateProjectDocument,
   validateProjectStageForm,
@@ -34,6 +35,16 @@ describe('测试阶段表单规则', () => {
     expect(isProjectTesting('planning')).toBe(false);
     expect(isProjectTesting('testing')).toBe(true);
     expect(isProjectTesting('landing')).toBe(false);
+  });
+
+  it('进行中或没有结束日期的阶段不能进入落地跟进', () => {
+    expect(stageBlocksLanding({ endDate: null, status: 'in_progress' })).toBe(
+      true,
+    );
+    expect(stageBlocksLanding({ endDate: '', status: 'completed' })).toBe(true);
+    expect(
+      stageBlocksLanding({ endDate: '2026-10-17', status: 'completed' }),
+    ).toBe(false);
   });
 
   it('阶段序号必须为 1-999 的整数且名称必填', () => {

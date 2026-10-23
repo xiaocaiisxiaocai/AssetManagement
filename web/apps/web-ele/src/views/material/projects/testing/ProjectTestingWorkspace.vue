@@ -25,6 +25,7 @@ import {
   dateOnly,
   isProjectClosed,
   isProjectTesting,
+  stageBlocksLanding,
 } from './project-testing-rules';
 import ProjectReportDocuments from './ProjectReportDocuments.vue';
 import ProjectStageDialog from './ProjectStageDialog.vue';
@@ -86,13 +87,18 @@ const completedCount = computed(
 const projectClosed = computed(() =>
   isProjectClosed(props.projectProgressCode, props.projectClosedDate),
 );
-const testingLocked = computed(
+const landingNeedsStageFinish = computed(
   () =>
-    projectClosed.value ||
-    !['planning', 'testing'].includes(
-      (props.projectProgressCode ?? '').toLowerCase(),
-    ),
+    (props.projectProgressCode ?? '').toLowerCase() === 'landing' &&
+    orderedStages.value.some((stage) => stageBlocksLanding(stage)),
 );
+const testingLocked = computed(() => {
+  if (projectClosed.value) return true;
+  if (landingNeedsStageFinish.value) return false;
+  return !['planning', 'testing'].includes(
+    (props.projectProgressCode ?? '').toLowerCase(),
+  );
+});
 const finalStageId = computed(() => {
   if (!projectClosed.value || orderedStages.value.length === 0) return null;
   return orderedStages.value[orderedStages.value.length - 1]?.id ?? null;
@@ -176,7 +182,10 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
                   : '暂无进行中阶段'
             }}
           </strong>
-          <ElTag v-if="testingLocked" size="small" type="info">
+          <ElTag v-if="landingNeedsStageFinish" size="small" type="warning">
+            阶段未完成，不能落地跟进
+          </ElTag>
+          <ElTag v-else-if="testingLocked" size="small" type="info">
             {{
               props.projectClosedDate ||
               props.projectProgressCode?.toLowerCase() === 'closed'

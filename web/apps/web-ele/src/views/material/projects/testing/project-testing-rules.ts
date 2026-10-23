@@ -71,6 +71,13 @@ export function isProjectTesting(progressCode?: null | string) {
   return progressCode?.toLowerCase() === 'testing';
 }
 
+export function stageBlocksLanding(stage: {
+  endDate?: null | string;
+  status?: string;
+}) {
+  return stage.status !== 'completed' || !stage.endDate;
+}
+
 export function validateProjectStageForm(
   form: ProjectStageFormState,
   today = businessDateText(),

@@ -161,6 +161,58 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Incomplete_stage_blocks_landing_followup_until_end_date_is_filled()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        var draft = Draft("进行中的阶段", 1);
+        draft.Status = "in_progress";
+        draft.StartDate = BusinessClock.Today.AddDays(-3);
+        draft.TestContent = "111";
+        draft.TestResult = "ok";
+        var created = await CreateAsync(client, projectId, draft);
+
+        await SetProgressAsync(projectId, "landing");
+        var followup = await client.PostAsJsonAsync(
+            $"/api/test-projects/{projectId}/followups",
+            new { Content = "不应落地跟进" });
+        followup.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var listed = await client.GetFromJsonAsync<ApiResult<List<TestProjectDto>>>(
+            "/api/test-projects?deleteStatus=all");
+        listed!.Data.Should().Contain(x =>
+            x.Id == projectId &&
+            x.ProgressCode == "testing" &&
+            x.TestingIncomplete &&
+            !x.CanWriteFollowUp);
+        (await WorkspaceAsync(client, projectId)).CanManage.Should().BeTrue();
+
+        var returned = await client.PutAsJsonAsync($"/api/test-projects/{projectId}/progress", new
+        {
+            ProgressCode = "testing",
+            ClosedDate = (DateTime?)null,
+            TestStatus = "退回补齐阶段",
+            RowVersion = await ProjectVersionAsync(projectId)
+        });
+        returned.EnsureSuccessStatusCode();
+
+        await SetProgressAsync(projectId, "landing");
+        var finish = new SaveProjectTestStageRequest
+        {
+            Name = created.Name,
+            Sequence = created.Sequence,
+            Objective = created.Objective,
+            StartDate = created.StartDate,
+            EndDate = BusinessClock.Today,
+            Status = "completed",
+            TestContent = "111",
+            TestResult = "ok",
+            RowVersion = created.RowVersion
+        };
+        (await client.PutAsJsonAsync($"{Root(projectId)}/stages/{created.Id}", finish))
+            .EnsureSuccessStatusCode();
+        (await WorkspaceAsync(client, projectId)).CanManage.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Stage_updates_reject_stale_versions_without_overwriting_saved_results()
     {
         var (client, projectId, _) = await SetupAsync();
@@ -537,6 +589,15 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     {
         var response = await client.GetFromJsonAsync<ApiResult<ProjectWorkspaceDto>>(Root(projectId));
         return response!.Data!;
+    }
+
+    private async Task SetProgressAsync(int projectId, string progressCode)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var project = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == projectId);
+        project.ProgressCode = progressCode;
+        await db.SaveChangesAsync();
     }
 
     private async Task<uint> ProjectVersionAsync(int projectId)

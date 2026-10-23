@@ -34,8 +34,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         return new ProjectWorkspaceDto
         {
             ProjectId = projectId,
-            CanManage = !project.IsDeleted &&
-                IsTestingMaintainable(project) &&
+            CanManage = await CanMaintainStagesAsync(project) &&
                 await CanManageAsync(project, userId),
             CanExport = !project.IsDeleted &&
                 await _accessScope.CanExecuteAsync(project, userId, "project:export", true),
@@ -315,7 +314,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     private async Task EnsureWritableAsync(TestProject project, int userId)
     {
         if (project.IsDeleted) throw new BizException(4092, "已删除项目为只读，不能修改测试阶段或报告");
-        if (!IsTestingMaintainable(project))
+        if (!await CanMaintainStagesAsync(project))
             throw new BizException(4092, "项目只有进入测试中后才能维护测试阶段与报告，落地跟进和已结案项目已锁定");
         if (!await CanManageAsync(project, userId))
             throw new BizException(4031, "只有项目负责人、项目管理人员或管理员可以维护测试阶段和报告");
@@ -325,6 +324,24 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         TestProjectLifecycleRules.IsTestingStageMaintainable(
             project.ProgressCode,
             project.ClosedDate);
+
+    /// <summary>
+    /// 测试中可以维护阶段。已经标成落地跟进、但阶段仍未完成或没有结束日期时，也允许补齐。
+    /// </summary>
+    private async Task<bool> CanMaintainStagesAsync(TestProject project)
+    {
+        if (project.IsDeleted || project.ClosedDate.HasValue) return false;
+        if (IsTestingMaintainable(project)) return true;
+        if (!string.Equals(
+                project.ProgressCode,
+                TestProjectLifecycleRules.Landing,
+                StringComparison.OrdinalIgnoreCase))
+            return false;
+        return await _db.ProjectTestStages.AnyAsync(x =>
+            x.ProjectId == project.Id &&
+            !x.IsDeleted &&
+            (x.Status != "completed" || x.EndDate == null));
+    }
 
     private async Task CheckStageAsync(int projectId, int? stageId)
     {

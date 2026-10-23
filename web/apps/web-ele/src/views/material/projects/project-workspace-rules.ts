@@ -32,7 +32,10 @@ export async function refreshProjectAfterMaterialChange(
   await Promise.all([loadMaterials(), loadFlows(), loadProjects()]);
 }
 
-export function allowedProgressCodes(current: string) {
+export function allowedProgressCodes(
+  current: string,
+  testingIncomplete = false,
+) {
   switch (current.trim().toLowerCase()) {
     case '':
     case 'planning': {
@@ -42,10 +45,10 @@ export function allowedProgressCodes(current: string) {
       return ['closed'];
     }
     case 'landing': {
-      return ['landing', 'closed'];
+      return testingIncomplete ? ['testing'] : ['landing', 'closed'];
     }
     case 'testing': {
-      return ['testing', 'landing', 'closed'];
+      return testingIncomplete ? ['testing'] : ['testing', 'landing', 'closed'];
     }
     default: {
       return ['planning', 'testing'];

@@ -36,8 +36,17 @@ export function bindProjectCatalogFormActions(
     progressSaving,
     progressForm,
     progressBaseline,
+    progressTestingIncomplete,
     normalizeText,
   } = page;
+
+  function rememberProgress(row: TestProjectItem) {
+    progressTestingIncomplete.value = row.testingIncomplete === true;
+    progressBaseline.value = (row.progressCode ?? '').toLowerCase();
+    return progressTestingIncomplete.value && progressBaseline.value === 'landing'
+      ? 'testing'
+      : (row.progressCode ?? '');
+  }
 
   async function confirmClosing(nextProgress: string, alreadyClosed: boolean) {
     if (nextProgress !== 'closed' || alreadyClosed) return true;
@@ -76,6 +85,7 @@ export function bindProjectCatalogFormActions(
   function openCreate() {
     editingId.value = null;
     progressBaseline.value = '';
+    progressTestingIncomplete.value = false;
     resetProjectForm();
     dialogVisible.value = true;
     runHandled(Promise.all([loadUsers(), loadBaseOptions()]));
@@ -91,7 +101,7 @@ export function bindProjectCatalogFormActions(
       name: row.ownerName,
     });
     editingId.value = row.id;
-    progressBaseline.value = (row.progressCode ?? '').toLowerCase();
+    const progressCode = rememberProgress(row);
     Object.assign(form, {
       closedDate: row.closedDate ? row.closedDate.slice(0, 10) : '',
       code: row.code ?? '',
@@ -101,7 +111,7 @@ export function bindProjectCatalogFormActions(
       plannedFinishDate: row.plannedFinishDate
         ? row.plannedFinishDate.slice(0, 10)
         : '',
-      progressCode: row.progressCode ?? '',
+      progressCode,
       projectTypeCode: row.projectTypeCode ?? '',
       startDate: row.startDate ? row.startDate.slice(0, 10) : '',
       testStatus: row.testStatus ?? '',
@@ -117,10 +127,10 @@ export function bindProjectCatalogFormActions(
       return;
     }
     progressEditingProject.value = row;
-    progressBaseline.value = (row.progressCode ?? '').toLowerCase();
+    const progressCode = rememberProgress(row);
     Object.assign(progressForm, {
       closedDate: row.closedDate ? row.closedDate.slice(0, 10) : '',
-      progressCode: row.progressCode ?? '',
+      progressCode,
       testStatus: row.testStatus ?? '',
       rowVersion: row.rowVersion ?? 0,
     });

@@ -114,6 +114,12 @@ export function bindProjectFollowupActions(
   async function saveFollowup() {
     const project = currentProject.value;
     if (!project) return;
+    if (project.testingIncomplete) {
+      ElMessage.warning(
+        '测试阶段仍在进行或尚未填写结束日期，完成后再填写落地跟进',
+      );
+      return;
+    }
     if (project.isDeleted || !project.canWriteFollowUp) {
       ElMessage.warning('项目进入落地跟进后，负责人或管理员才能填写');
       return;

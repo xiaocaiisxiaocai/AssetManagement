@@ -61,7 +61,9 @@ describe('测试项目工作台规则', () => {
       'landing',
       'closed',
     ]);
+    expect(allowedProgressCodes('testing', true)).toEqual(['testing']);
     expect(allowedProgressCodes('landing')).toEqual(['landing', 'closed']);
+    expect(allowedProgressCodes('landing', true)).toEqual(['testing']);
     expect(allowedProgressCodes('closed')).toEqual(['closed']);
     expect(allowedProgressCodes('legacy')).toEqual(['planning', 'testing']);
   });

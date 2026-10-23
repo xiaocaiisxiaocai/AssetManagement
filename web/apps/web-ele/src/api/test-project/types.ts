@@ -39,6 +39,7 @@ export interface TestProjectItem {
   latestFollowUpAt?: null | string;
   latestFollowUpContent?: null | string;
   canWriteFollowUp: boolean;
+  testingIncomplete?: boolean;
   canEdit: boolean;
   canDelete: boolean;
   canRestore: boolean;

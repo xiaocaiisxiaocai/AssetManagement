@@ -25,6 +25,7 @@ import { downloadBlob } from '#/utils/download';
 import {
   createEmptyStageForm,
   isProjectTesting,
+  stageBlocksLanding,
   stageToForm,
   validateProjectStageForm,
 } from './project-testing-rules';
@@ -71,7 +72,13 @@ export function useProjectTestingWorkspace(
 
   const canManage = computed(() => workspace.value?.canManage === true);
   const canCreateStage = computed(
-    () => canManage.value && isProjectTesting(props.projectProgressCode),
+    () =>
+      canManage.value &&
+      (isProjectTesting(props.projectProgressCode) ||
+        ((props.projectProgressCode ?? '').toLowerCase() === 'landing' &&
+          (workspace.value?.stages ?? []).some((stage) =>
+            stageBlocksLanding(stage),
+          ))),
   );
   const canExport = computed(() => workspace.value?.canExport === true);
   const writeBusy = computed(

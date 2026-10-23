@@ -18,6 +18,7 @@ const {
   optionDialogVisible,
   ownerLocked,
   progressBaseline,
+  progressTestingIncomplete,
   optionEditingId,
   optionFormModel,
   optionSaving,
@@ -47,6 +48,7 @@ const {
     :progress-baseline="progressBaseline"
     :progress-options="progressOptions"
     :project-type-options="projectTypeOptions"
+    :testing-incomplete="progressTestingIncomplete"
     :saving="saving"
     :search-users="searchUsers"
     :user-options-loading="userOptionsLoading"
@@ -65,6 +67,7 @@ const {
     :progress-baseline="progressBaseline"
     :progress-options="progressOptions"
     :saving="progressSaving"
+    :testing-incomplete="progressTestingIncomplete"
     @save="saveProgress"
   />
 

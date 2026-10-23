@@ -190,7 +190,9 @@ function statusMeta(project: TestProjectItem) {
         <div class="project-brief-stats">
           <div class="brief-stat">
             <span class="brief-stat-label">项目整体进度</span>
-            <strong>{{ currentProjectProgressText }}</strong>
+            <div class="brief-stat-value">
+              <strong>{{ currentProjectProgressText }}</strong>
+            </div>
           </div>
           <div class="brief-stat">
             <span class="brief-stat-label">负责人</span>
