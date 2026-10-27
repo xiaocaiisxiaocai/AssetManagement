@@ -33,7 +33,6 @@ function deferred<T>() {
 
 function setup() {
   const page = {
-    activeProjectTab: ref('followups'),
     currentProject: ref({
       canWriteFollowUp: true,
       id: 1,
@@ -47,13 +46,30 @@ function setup() {
     followupRequestGuard: createLatestRequestGuard(),
     followupSaving: ref(false),
     followups: ref([]),
+    handledFlowQuery: reactive({ page: 1, pageSize: 10 }),
+    handledFlowRequestGuard: createLatestRequestGuard(),
+    handledFlows: ref([]),
+    handledFlowTotal: ref(0),
     loadData: vi.fn(async () => {}),
+    materialRequestGuard: createLatestRequestGuard(),
+    materials: ref([]),
+    materialTotal: ref(0),
+    myFlowQuery: reactive({ page: 1, pageSize: 10 }),
+    myFlowRequestGuard: createLatestRequestGuard(),
+    myFlows: ref([]),
+    myFlowTotal: ref(0),
+    pendingFlowQuery: reactive({ page: 1, pageSize: 10 }),
+    pendingFlowRequestGuard: createLatestRequestGuard(),
+    pendingFlows: ref([]),
+    pendingFlowTotal: ref(0),
   };
-  const actions = bindProjectFollowupActions(page as any, {
+  const deps = {
+    loadProjectFlows: vi.fn(async () => {}),
     loadProjectMaterials: vi.fn(async () => {}),
     resetMaterialQuery: vi.fn(),
-  });
-  return { actions, page };
+  };
+  const actions = bindProjectFollowupActions(page as any, deps);
+  return { actions, deps, page };
 }
 
 beforeEach(() => {
@@ -92,5 +108,21 @@ describe('项目跟进保存时序', () => {
 
     expect(page.followupForm.content).toBe('重新打开后的新草稿');
     expect(mocks.success).not.toHaveBeenCalled();
+  });
+});
+
+describe('打开项目跟进', () => {
+  it('打开新项目后清空上一项目的流转数量并重新加载', async () => {
+    const { actions, deps, page } = setup();
+    page.pendingFlowTotal.value = 4;
+    page.handledFlowTotal.value = 2;
+    page.myFlowTotal.value = 1;
+
+    await actions.openFollowups({ id: 9 } as any);
+
+    expect(page.pendingFlowTotal.value).toBe(0);
+    expect(page.handledFlowTotal.value).toBe(0);
+    expect(page.myFlowTotal.value).toBe(0);
+    expect(deps.loadProjectFlows).toHaveBeenCalledWith(9);
   });
 });

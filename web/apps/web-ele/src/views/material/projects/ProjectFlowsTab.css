@@ -1,22 +1,47 @@
-/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep(). */
-.tab-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 18px;
-  padding: 0 6px;
-  margin-left: 6px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--el-text-color-secondary);
-  background: var(--el-fill-color-light);
-  border-radius: 999px;
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep() and :global(). */
+.section-count.is-warning {
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+}
+
+.flow-tabs {
+  --el-tabs-header-height: 28px;
+
+  flex: none;
+  height: 28px;
+  margin: 0;
+}
+
+.flow-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+
+.flow-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.flow-tabs :deep(.el-tabs__item) {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+  line-height: 28px;
+}
+
+.flow-tabs :deep(.el-tabs__content) {
+  display: none;
+}
+
+.flow-pane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .drawer-table-panel {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
@@ -25,42 +50,177 @@
   border-radius: 8px;
 }
 
-.drawer-table-panel :deep(.el-table) {
-  flex: 1;
-  min-height: 0;
-}
-
-.flow-table-panel {
-  flex: 1;
-  height: auto;
-  min-height: 0;
-}
-
-.inner-flow-tabs {
+.flow-fill-table {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
   flex-direction: column;
-  height: auto;
   min-height: 0;
+  overflow: hidden;
 }
 
-.inner-flow-tabs :deep(.el-tabs__content) {
-  flex: 1;
-  order: 1;
-  min-height: 0;
+.flow-table-panel :deep(.workflow-summary),
+.flow-table-panel :deep(.workflow-summary-line) {
+  min-width: 0;
+  max-width: 100%;
 }
 
-.inner-flow-tabs :deep(.el-tabs__header) {
-  flex-shrink: 0;
-  order: 0;
-  margin-bottom: 12px;
+.flow-table-panel :deep(.table-action-cell .el-button) {
+  white-space: nowrap;
 }
 
-.inner-flow-tabs :deep(.el-tab-pane) {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
+.workspace-flow-body {
+  overflow: hidden;
+}
+
+:global(
+  .project-workspace-drawer .workspace-flow-body .flow-fill-table .el-table
+) {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-table__inner-wrapper
+) {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-table__header-wrapper
+) {
+  flex: none !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-table__body-wrapper
+) {
+  flex: 1 1 auto !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-scrollbar
+),
+:global(
+  .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-scrollbar__wrap
+) {
+  height: 100% !important;
+  max-height: 100% !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-scrollbar__wrap
+) {
+  overflow: auto !important;
+}
+
+:global(
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body
+    .flow-pane
+),
+:global(
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body
+    .flow-table-panel
+),
+:global(
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+) {
+  flex: none !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+:global(
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+),
+:global(
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-table__inner-wrapper
+),
+:global(
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-table__body-wrapper
+),
+:global(
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-scrollbar
+),
+:global(
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-scrollbar__wrap
+),
+:global(
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body
+    .flow-fill-table
+    .el-table
+    .el-scrollbar__view
+) {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
 }
 
 .table-bottom-pager {
@@ -87,17 +247,4 @@
 
 .table-bottom-pager-divider {
   color: var(--asset-page-border);
-}
-
-@media (max-width: 768px) {
-  .flow-table-panel,
-  .inner-flow-tabs {
-    height: auto;
-  }
-}
-
-@media (max-height: 760px) {
-  .flow-table-panel {
-    height: 320px;
-  }
 }

@@ -4,8 +4,6 @@ import {
   createProjectStageApi,
   deleteProjectStageApi,
   downloadProjectDocumentApi,
-  downloadProjectPackageApi,
-  downloadProjectReportApi,
   getProjectWorkspaceApi,
   updateProjectStageApi,
   uploadProjectDocumentApi,
@@ -60,19 +58,9 @@ describe('项目测试工作台接口契约', () => {
     expect(form.get('stageId')).toBe('9');
     expect(form.get('description')).toBe('第一阶段结论');
     await downloadProjectDocumentApi(7, 11);
-    await downloadProjectReportApi(7, 9);
-    await downloadProjectPackageApi(7);
     expect(client.get).toHaveBeenCalledWith(
       '/test-projects/7/workspace/documents/11/download',
       { responseType: 'blob' },
-    );
-    expect(client.get).toHaveBeenCalledWith(
-      '/test-projects/7/workspace/report',
-      { params: { stageId: 9 }, responseType: 'blob' },
-    );
-    expect(client.get).toHaveBeenCalledWith(
-      '/test-projects/7/workspace/package',
-      { params: undefined, responseType: 'blob' },
     );
   });
 });

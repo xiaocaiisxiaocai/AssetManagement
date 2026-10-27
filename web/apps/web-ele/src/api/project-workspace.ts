@@ -141,18 +141,3 @@ export const downloadProjectDocumentApi = (
     `${workspaceUrl(projectId)}/documents/${documentId}/download`,
     { responseType: 'blob' },
   );
-
-export const downloadProjectReportApi = (projectId: number, stageId?: number) =>
-  requestClient.get(`${workspaceUrl(projectId)}/report`, {
-    params: stageId === undefined ? undefined : { stageId },
-    responseType: 'blob',
-  });
-
-export const downloadProjectPackageApi = (
-  projectId: number,
-  stageId?: number,
-) =>
-  requestClient.get(`${workspaceUrl(projectId)}/package`, {
-    params: stageId === undefined ? undefined : { stageId },
-    responseType: 'blob',
-  });

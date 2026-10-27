@@ -1,10 +1,10 @@
 /* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep() and :global(). */
 .followup-panel {
   display: flex;
-  flex: none;
+  flex: 1 1 0;
   flex-direction: column;
-  gap: 12px;
-  height: auto;
+  gap: 10px;
+  height: 100%;
   min-height: 0;
 }
 
@@ -49,11 +49,11 @@
 
 :global(.project-workspace-drawer .el-drawer__body) {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
-  height: auto;
   min-height: 0;
-  padding: 18px 20px 16px;
-  overflow: auto;
+  padding: 12px 16px;
+  overflow: hidden;
   background: var(--el-bg-color-page);
 }
 
@@ -70,30 +70,64 @@
   color: var(--asset-page-panel-header-text);
 }
 
-.project-brief {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  padding: 10px 12px;
-  overflow: hidden;
-  background: var(--el-fill-color-blank);
-  border: 1px solid
-    color-mix(
-      in srgb,
-      var(--el-color-primary) 22%,
-      var(--el-border-color-light)
-    );
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgb(31 78 121 / 7%);
-}
-
 .workspace-project-heading {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
   justify-content: space-between;
   padding-inline: 2px;
+}
+
+.workspace-splitter {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/*
+ * 分隔条本身宽高为 0，用面板内边距在相邻卡片之间留出 10px 间距，拖拽线居中其中。
+ * 首末块用显式类名，拖拽时分隔容器末尾会插入遮罩层，:last-child 不可靠。
+ */
+.workspace-splitter :deep(.el-splitter-panel) {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-splitter :deep(.workspace-panel-v) {
+  padding-block: 5px;
+}
+
+.workspace-splitter :deep(.workspace-panel-v.is-first) {
+  padding-top: 0;
+}
+
+.workspace-splitter :deep(.workspace-panel-v.is-last) {
+  padding-bottom: 0;
+}
+
+.workspace-splitter :deep(.workspace-panel-h) {
+  padding-inline: 5px;
+}
+
+.workspace-splitter :deep(.workspace-panel-h.is-first) {
+  padding-left: 0;
+}
+
+.workspace-splitter :deep(.workspace-panel-h.is-last) {
+  padding-right: 0;
+}
+
+.workspace-bottom-splitter {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.followup-panel :deep(.el-table__cell) {
+  padding: 6px 0;
 }
 
 .workspace-project-heading-main {
@@ -111,24 +145,6 @@
   gap: 8px;
   align-items: center;
   justify-content: flex-end;
-}
-
-.project-brief::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  content: '';
-  background: var(--el-color-primary);
-}
-
-.project-brief::after {
-  position: absolute;
-  inset: 0 0 auto auto;
-  width: 260px;
-  height: 100%;
-  pointer-events: none;
-  content: '';
-  background: linear-gradient(125deg, transparent, rgb(64 158 255 / 7%));
 }
 
 .project-title {
@@ -159,108 +175,30 @@
   content: '/';
 }
 
-.project-brief-stats {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0;
-  overflow: hidden;
-  background: color-mix(
-    in srgb,
-    var(--el-color-primary) 3%,
-    var(--el-fill-color-blank)
-  );
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-}
-
-.brief-stat {
-  min-width: 0;
-  padding: 8px 12px;
-  border-right: 1px solid var(--el-border-color-lighter);
-}
-
-.brief-stat:last-child {
-  border-right: 0;
-}
-
-.brief-stat-label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.brief-stat strong {
-  display: block;
-  overflow: hidden;
-  font-size: 15px;
-  font-weight: 650;
+.project-meta-progress {
+  font-weight: 600;
   color: var(--el-text-color-primary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.brief-stat-value {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
+/* 屏幕过矮或过窄时不再强行塞进一屏：分隔容器给固定高度，抽屉主体整体滚动。 */
+@media (max-width: 1100px), (max-height: 600px) {
+  :global(.project-workspace-drawer .el-drawer__body) {
+    overflow: auto;
+  }
 
-.project-work-tabs {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  min-height: 0;
-}
+  .followup-panel {
+    flex: none;
+    height: auto;
+  }
 
-.project-work-tabs :deep(.el-tabs__content) {
-  flex: none;
-  order: 1;
-  min-height: 0;
-  overflow: visible;
-}
-
-.project-work-tabs :deep(.el-tabs__header) {
-  flex-shrink: 0;
-  order: 0;
-  padding: 0 14px;
-  margin-bottom: 12px;
-  background: var(--el-fill-color-blank);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 9px;
-  box-shadow: 0 4px 14px rgb(31 78 121 / 4%);
-}
-
-.project-work-tabs :deep(.el-tabs__nav-wrap::after) {
-  height: 0;
-}
-
-.project-work-tabs :deep(.el-tab-pane) {
-  display: flex;
-  flex-direction: column;
-  height: auto;
-  min-height: 0;
-}
-
-.project-work-tabs :deep(.flow-table-panel) {
-  flex: none;
-  height: 440px;
+  .workspace-splitter {
+    flex: none;
+    height: 1200px;
+  }
 }
 
 @media (max-width: 768px) {
   :global(.project-workspace-drawer.el-drawer) {
     width: 100% !important;
-  }
-
-  .project-brief,
-  .project-brief-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .project-brief {
-    display: block;
   }
 }

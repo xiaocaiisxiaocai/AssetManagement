@@ -6,10 +6,7 @@ import { computed } from 'vue';
 import {
   ElButton,
   ElEmpty,
-  ElForm,
-  ElFormItem,
   ElInput,
-  ElTabPane,
   ElTag,
   ElTimeline,
   ElTimelineItem,
@@ -42,36 +39,33 @@ const canWrite = computed(
 </script>
 
 <template>
-  <ElTabPane name="followups">
-    <template #label>
-      <span>落地跟进</span><span class="tab-count">{{ followups.length }}</span>
-    </template>
-    <div class="followup-workspace">
-      <aside class="followup-editor-panel">
-        <div class="panel-heading">
-          <div>
-            <h3>{{ editingId ? '编辑跟进记录' : '新增跟进记录' }}</h3>
-            <p>提交时自动记录当天，历史日期不可修改。</p>
-          </div>
-          <ElTag v-if="blockedByTesting" type="warning">阶段未完成</ElTag>
-          <ElTag v-else-if="!canWrite" type="info">只读</ElTag>
-        </div>
+  <section aria-label="落地跟进" class="workspace-section">
+    <div class="workspace-section-heading">
+      <h3>
+        落地跟进
+        <span class="section-count">{{ followups.length }}</span>
+      </h3>
+      <ElTag v-if="blockedByTesting" size="small" type="warning">
+        阶段未完成
+      </ElTag>
+      <ElTag v-else-if="!canWrite" size="small" type="info">只读</ElTag>
+      <ElTag v-else-if="editingId" size="small" type="primary">编辑中</ElTag>
+    </div>
+    <div class="workspace-section-body followup-workspace">
+      <div class="followup-editor-panel">
         <template v-if="canWrite">
-          <ElForm label-position="top">
-            <ElFormItem label="落地情况">
-              <ElInput
-                v-model="form.content"
-                :disabled="saving"
-                :rows="7"
-                class="followup-textarea"
-                maxlength="2000"
-                placeholder="填写本周期落地进展、问题和下一步"
-                resize="none"
-                show-word-limit
-                type="textarea"
-              />
-            </ElFormItem>
-          </ElForm>
+          <ElInput
+            v-model="form.content"
+            :autosize="{ minRows: 1, maxRows: 3 }"
+            :disabled="saving"
+            aria-label="落地情况"
+            class="followup-input"
+            maxlength="2000"
+            placeholder="填写本周期落地进展、问题和下一步"
+            resize="none"
+            show-word-limit
+            type="textarea"
+          />
           <div class="followup-actions">
             <ElButton
               v-if="editingId"
@@ -96,53 +90,54 @@ const canWrite = computed(
                   : '项目进入落地跟进后，负责人或管理员才能填写。'
           }}
         </div>
-      </aside>
+      </div>
       <section class="followup-history-panel" v-loading="loading">
-        <div class="panel-heading">
-          <div>
-            <h3>历史跟进</h3>
-            <p>按填写时间倒序展示，记录保留备查。</p>
-          </div>
+        <div
+          :class="{ 'is-empty': followups.length === 0 && !loading }"
+          class="followup-history-scroll"
+        >
+          <ElEmpty
+            v-if="followups.length === 0 && !loading"
+            :image-size="40"
+            class="compact-empty"
+            description="暂无跟进记录"
+          />
+          <ElTimeline v-else class="followup-timeline">
+            <ElTimelineItem
+              v-for="item in followups"
+              :key="item.id"
+              placement="top"
+            >
+              <div class="followup-record-heading">
+                <div class="followup-record-meta">
+                  <span>{{ item.filledByName || '-' }}</span>
+                  <span
+                    >跟进时间
+                    {{ formatDateTime(item.filledAt, { seconds: true }) }}</span
+                  >
+                </div>
+                <div v-if="canWrite && item.isLatest" class="record-actions">
+                  <ElButton
+                    :disabled="saving"
+                    link
+                    size="small"
+                    type="primary"
+                    @click="emit('edit', item)"
+                  >
+                    编辑
+                  </ElButton>
+                </div>
+              </div>
+              <article class="followup-record">
+                <div class="followup-content">{{ item.content }}</div>
+              </article>
+            </ElTimelineItem>
+          </ElTimeline>
         </div>
-        <ElEmpty
-          v-if="followups.length === 0 && !loading"
-          class="compact-empty"
-          description="暂无跟进记录"
-        />
-        <ElTimeline v-else class="followup-timeline">
-          <ElTimelineItem
-            v-for="item in followups"
-            :key="item.id"
-            placement="top"
-          >
-            <div class="followup-record-heading">
-              <div class="followup-record-meta">
-                <span>{{ item.filledByName || '-' }}</span>
-                <span
-                  >跟进时间
-                  {{ formatDateTime(item.filledAt, { seconds: true }) }}</span
-                >
-              </div>
-              <div v-if="canWrite && item.isLatest" class="record-actions">
-                <ElButton
-                  :disabled="saving"
-                  link
-                  size="small"
-                  type="primary"
-                  @click="emit('edit', item)"
-                >
-                  编辑
-                </ElButton>
-              </div>
-            </div>
-            <article class="followup-record">
-              <div class="followup-content">{{ item.content }}</div>
-            </article>
-          </ElTimelineItem>
-        </ElTimeline>
       </section>
     </div>
-  </ElTabPane>
+  </section>
 </template>
 
+<style scoped src="./project-workspace-section.css"></style>
 <style scoped src="./ProjectFollowupsTab.css"></style>

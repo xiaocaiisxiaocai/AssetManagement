@@ -1,0 +1,154 @@
+/* stylelint-disable selector-pseudo-class-no-unknown -- Vue scoped styles use :deep(). */
+.section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  margin-left: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+  border-radius: 999px;
+}
+
+/* 区块填满所在的分隔面板，高度由工作台的拖拽分隔条决定。 */
+.workspace-section {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px 12px;
+  overflow: hidden;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+}
+
+.workspace-section.is-collapsed .workspace-section-heading {
+  margin-bottom: 0;
+}
+
+.workspace-section-heading {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 28px;
+  margin-bottom: 8px;
+}
+
+.workspace-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.workspace-section-heading h3 {
+  flex: none;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.workspace-section-body {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-fill-table {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 全局 table-layout 用 height:auto !important 把表格撑成内容高度，这里用更高优先级收回区块内滚动。 */
+:global(
+  .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+) {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-table__inner-wrapper
+) {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-table__header-wrapper
+) {
+  flex: none !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-table__body-wrapper
+) {
+  flex: 1 1 auto !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-scrollbar
+) {
+  height: 100% !important;
+  max-height: 100% !important;
+}
+
+:global(
+  .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-scrollbar__wrap
+) {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: auto !important;
+}

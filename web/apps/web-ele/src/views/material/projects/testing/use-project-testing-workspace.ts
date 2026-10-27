@@ -14,8 +14,6 @@ import {
   deleteProjectDocumentApi,
   deleteProjectStageApi,
   downloadProjectDocumentApi,
-  downloadProjectPackageApi,
-  downloadProjectReportApi,
   getProjectWorkspaceApi,
   updateProjectStageApi,
   uploadProjectDocumentApi,
@@ -353,40 +351,6 @@ export function useProjectTestingWorkspace(
     );
   }
 
-  function downloadReport(stage?: ProjectStageDto) {
-    if (!canExport.value) return;
-    const projectId = props.projectId;
-    if (stage && stage.projectId !== projectId) return;
-    return runDownload(
-      stage ? `report-${stage.id}` : 'report-all',
-      projectId,
-      async () => {
-        const response = await downloadProjectReportApi(projectId, stage?.id);
-        return response.data;
-      },
-      stage
-        ? `测试阶段_${stage.sequence}_${stage.name}.docx`
-        : `项目_${projectId}_测试报告.docx`,
-    );
-  }
-
-  function downloadPackage(stage?: ProjectStageDto) {
-    if (!canExport.value) return;
-    const projectId = props.projectId;
-    if (stage && stage.projectId !== projectId) return;
-    return runDownload(
-      stage ? `package-${stage.id}` : 'package-all',
-      projectId,
-      async () => {
-        const response = await downloadProjectPackageApi(projectId, stage?.id);
-        return response.data;
-      },
-      stage
-        ? `测试阶段_${stage.sequence}_${stage.name}_资料包.zip`
-        : `项目_${projectId}_全部资料包.zip`,
-    );
-  }
-
   watch(
     () => [props.enabled, props.projectId] as const,
     ([enabled]) => {
@@ -415,8 +379,6 @@ export function useProjectTestingWorkspace(
     deletingStageId,
     downloadDocument,
     downloadingKey,
-    downloadPackage,
-    downloadReport,
     editingStage,
     loadError,
     loading,

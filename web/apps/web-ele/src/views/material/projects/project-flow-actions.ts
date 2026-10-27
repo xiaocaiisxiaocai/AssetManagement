@@ -23,6 +23,7 @@ export function bindProjectFlowActions(
   const { loadProjectMaterials } = deps;
   const {
     currentProject,
+    currentMaterialActionAccess,
     materialActionAccess,
     isCurrentProjectReadOnly,
     followupDrawerVisible,
@@ -30,7 +31,6 @@ export function bindProjectFlowActions(
     handledFlowRequestGuard,
     myFlowRequestGuard,
     workflowNodeSelector,
-    flowActiveTab,
     pendingFlowLoading,
     handledFlowLoading,
     myFlowLoading,
@@ -58,29 +58,62 @@ export function bindProjectFlowActions(
     );
   }
 
-  async function loadProjectFlows(projectId = currentProject.value?.id) {
-    if (!projectId) return;
-    const loadMine = flowActiveTab.value === 'mine';
-    const loadHandled = flowActiveTab.value === 'handled';
-    if (!loadMine && !materialActionAccess.value.canApprove) return;
-    if (loadMine) myFlowLoading.value = true;
-    else if (loadHandled) handledFlowLoading.value = true;
-    else pendingFlowLoading.value = true;
-    let requestGuard = pendingFlowRequestGuard;
-    if (loadMine) requestGuard = myFlowRequestGuard;
-    else if (loadHandled) requestGuard = handledFlowRequestGuard;
+  type ProjectFlowListKind = 'handled' | 'mine' | 'pending';
+
+  /** 待我审批、我已处理按账号审批权限展示；项目阶段只决定能否在工作台内处理。 */
+  function canViewApprovalLists() {
+    return materialActionAccess.value?.canApprove === true;
+  }
+
+  function canHandleApprovals() {
+    return (
+      !isCurrentProjectReadOnly.value &&
+      currentMaterialActionAccess.value?.canApprove === true
+    );
+  }
+
+  function flowListState(kind: ProjectFlowListKind) {
+    if (kind === 'handled') {
+      return {
+        flows: handledFlows,
+        loading: handledFlowLoading,
+        loadPage: listHandledFlowsPageApi,
+        query: handledFlowQuery,
+        requestGuard: handledFlowRequestGuard,
+        total: handledFlowTotal,
+      };
+    }
+    if (kind === 'mine') {
+      return {
+        flows: myFlows,
+        loading: myFlowLoading,
+        loadPage: listMyFlowsPageApi,
+        query: myFlowQuery,
+        requestGuard: myFlowRequestGuard,
+        total: myFlowTotal,
+      };
+    }
+    return {
+      flows: pendingFlows,
+      loading: pendingFlowLoading,
+      loadPage: listPendingFlowsPageApi,
+      query: pendingFlowQuery,
+      requestGuard: pendingFlowRequestGuard,
+      total: pendingFlowTotal,
+    };
+  }
+
+  async function loadProjectFlowList(
+    projectId: number,
+    kind: ProjectFlowListKind,
+  ) {
+    if (kind !== 'mine' && !canViewApprovalLists()) return;
+    const { flows, loading, loadPage, query, requestGuard, total } =
+      flowListState(kind);
+    loading.value = true;
     const requestGeneration = requestGuard.next();
     try {
-      let query = pendingFlowQuery;
-      let loadFlowsPage = listPendingFlowsPageApi;
-      if (loadMine) {
-        query = myFlowQuery;
-        loadFlowsPage = listMyFlowsPageApi;
-      } else if (loadHandled) {
-        query = handledFlowQuery;
-        loadFlowsPage = listHandledFlowsPageApi;
-      }
-      const result = await loadFlowsPage({ ...query, projectId });
+      const result = await loadPage({ ...query, projectId });
       if (
         !requestGuard.isLatest(requestGeneration) ||
         !followupDrawerVisible.value ||
@@ -91,30 +124,37 @@ export function bindProjectFlowActions(
       const lastPage = Math.max(1, Math.ceil(result.total / query.pageSize));
       if (query.page > lastPage) {
         query.page = lastPage;
-        await loadProjectFlows(projectId);
+        await loadProjectFlowList(projectId, kind);
         return;
       }
-      if (loadMine) {
-        myFlows.value = result.items;
-        myFlowTotal.value = result.total;
-      } else if (loadHandled) {
-        handledFlows.value = result.items;
-        handledFlowTotal.value = result.total;
-      } else {
-        pendingFlows.value = result.items;
-        pendingFlowTotal.value = result.total;
-      }
+      flows.value = result.items;
+      total.value = result.total;
     } finally {
       if (requestGuard.isLatest(requestGeneration)) {
-        if (loadMine) myFlowLoading.value = false;
-        else if (loadHandled) handledFlowLoading.value = false;
-        else pendingFlowLoading.value = false;
+        loading.value = false;
       }
     }
   }
 
+  async function loadProjectFlows(
+    projectId = currentProject.value?.id,
+    kind?: ProjectFlowListKind,
+  ) {
+    if (!projectId) return;
+    if (kind) {
+      await loadProjectFlowList(projectId, kind);
+      return;
+    }
+    const kinds: ProjectFlowListKind[] = canViewApprovalLists()
+      ? ['pending', 'handled', 'mine']
+      : ['mine'];
+    await Promise.all(
+      kinds.map((item) => loadProjectFlowList(projectId, item)),
+    );
+  }
+
   async function approveFlow(row: MaterialFlowItem) {
-    if (isCurrentProjectReadOnly.value) return;
+    if (!canHandleApprovals()) return;
     if (!beginFlowProcessing(row.id)) return;
     try {
       const node = await workflowNodeSelector.value?.selectNode(row, '通过');
@@ -135,7 +175,7 @@ export function bindProjectFlowActions(
   }
 
   async function rejectFlow(row: MaterialFlowItem) {
-    if (isCurrentProjectReadOnly.value) return;
+    if (!canHandleApprovals()) return;
     if (!beginFlowProcessing(row.id)) return;
     try {
       const node = await workflowNodeSelector.value?.selectNode(row, '驳回');
@@ -207,32 +247,19 @@ export function bindProjectFlowActions(
     }
   }
 
-  function onProjectTabChange(name: number | string) {
-    if (name === 'materials') {
-      runHandled(loadProjectMaterials());
-    }
-    if (name === 'flows') {
-      runHandled(loadProjectFlows());
-    }
-  }
-
-  function onFlowTabChange() {
-    runHandled(loadProjectFlows());
-  }
-
   function onPendingFlowPageSizeChange() {
     pendingFlowQuery.page = 1;
-    runHandled(loadProjectFlows());
+    runHandled(loadProjectFlows(undefined, 'pending'));
   }
 
   function onHandledFlowPageSizeChange() {
     handledFlowQuery.page = 1;
-    runHandled(loadProjectFlows());
+    runHandled(loadProjectFlows(undefined, 'handled'));
   }
 
   function onMyFlowPageSizeChange() {
     myFlowQuery.page = 1;
-    runHandled(loadProjectFlows());
+    runHandled(loadProjectFlows(undefined, 'mine'));
   }
 
   return {
@@ -241,8 +268,6 @@ export function bindProjectFlowActions(
     rejectFlow,
     releaseFlow,
     withdrawFlow,
-    onProjectTabChange,
-    onFlowTabChange,
     onPendingFlowPageSizeChange,
     onHandledFlowPageSizeChange,
     onMyFlowPageSizeChange,

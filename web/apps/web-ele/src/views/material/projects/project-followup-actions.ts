@@ -15,15 +15,17 @@ import {
 export function bindProjectFollowupActions(
   page: Record<string, any>,
   deps: {
+    loadProjectFlows: (
+      projectId?: number,
+      kind?: 'handled' | 'mine' | 'pending',
+    ) => Promise<void>;
     loadProjectMaterials: (projectId?: number) => Promise<void>;
     resetMaterialQuery: () => void;
   },
 ) {
   const {
     currentProject,
-    currentMaterialActionAccess,
     followupDrawerVisible,
-    activeProjectTab,
     followups,
     followupLoading,
     followupSaving,
@@ -40,7 +42,9 @@ export function bindProjectFollowupActions(
     pendingFlows,
     handledFlows,
     myFlows,
-    flowActiveTab,
+    pendingFlowTotal,
+    handledFlowTotal,
+    myFlowTotal,
     pendingFlowQuery,
     myFlowQuery,
     handledFlowQuery,
@@ -64,14 +68,13 @@ export function bindProjectFollowupActions(
     pendingFlows.value = [];
     handledFlows.value = [];
     myFlows.value = [];
-    flowActiveTab.value = currentMaterialActionAccess.value.canApprove
-      ? 'pending'
-      : 'mine';
+    pendingFlowTotal.value = 0;
+    handledFlowTotal.value = 0;
+    myFlowTotal.value = 0;
     pendingFlowQuery.page = 1;
     handledFlowQuery.page = 1;
     myFlowQuery.page = 1;
     deps.resetMaterialQuery();
-    activeProjectTab.value = 'stages';
     followups.value = [];
     editingFollowupId.value = null;
     Object.assign(followupForm, { content: '' });
@@ -79,6 +82,7 @@ export function bindProjectFollowupActions(
     await Promise.allSettled([
       loadFollowups(row.id),
       deps.loadProjectMaterials(row.id),
+      deps.loadProjectFlows(row.id),
     ]);
   }
 
@@ -138,24 +142,22 @@ export function bindProjectFollowupActions(
         content: followupForm.content.trim(),
       };
       await (editingId
-        ? updateTestProjectFollowupApi(
-            projectId,
-            editingId,
-            payload,
-          )
+        ? updateTestProjectFollowupApi(projectId, editingId, payload)
         : createTestProjectFollowupApi(projectId, payload));
       if (
         !followupOperationGuard.isLatest(operationGeneration) ||
         !followupDrawerVisible.value ||
         currentProject.value?.id !== projectId
-      ) return;
+      )
+        return;
       ElMessage.success('跟进已保存');
       await Promise.all([loadFollowups(projectId), loadData()]);
       if (
         followupOperationGuard.isLatest(operationGeneration) &&
         followupDrawerVisible.value &&
         currentProject.value?.id === projectId
-      ) cancelFollowupEdit();
+      )
+        cancelFollowupEdit();
     } catch {
       // 错误已由 request.ts 拦截器统一弹出
     } finally {

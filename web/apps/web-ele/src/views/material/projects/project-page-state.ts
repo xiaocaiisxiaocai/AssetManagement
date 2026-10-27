@@ -91,7 +91,6 @@ export function createProjectPageState() {
     sort: 0,
   });
   const followupDrawerVisible = ref(false);
-  const activeProjectTab = ref('stages');
   const followups = ref<TestProjectFollowup[]>([]);
   const followupLoading = ref(false);
   const followupSaving = ref(false);
@@ -127,7 +126,6 @@ export function createProjectPageState() {
     statuses: [] as MaterialStatus[],
   });
   const materialPageSizeOptions = ref(createPageSizeOptions(20));
-  const flowActiveTab = ref('mine');
   const pendingFlowLoading = ref(false);
   const handledFlowLoading = ref(false);
   const myFlowLoading = ref(false);
@@ -188,7 +186,6 @@ export function createProjectPageState() {
     optionForm,
     optionFormModel: reactiveObjectModel(optionForm),
     followupDrawerVisible,
-    activeProjectTab,
     followups,
     followupLoading,
     followupSaving,
@@ -217,7 +214,6 @@ export function createProjectPageState() {
     materialQuery,
     materialQueryModel: reactiveObjectModel(materialQuery),
     materialPageSizeOptions,
-    flowActiveTab,
     pendingFlowLoading,
     handledFlowLoading,
     myFlowLoading,

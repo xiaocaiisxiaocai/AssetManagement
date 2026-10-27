@@ -12,7 +12,6 @@ import {
   ElEmpty,
   ElResult,
   ElSkeleton,
-  ElSkeletonItem,
   ElTable,
   ElTableColumn,
   ElTag,
@@ -48,8 +47,6 @@ const {
   deletingStageId,
   downloadDocument,
   downloadingKey,
-  downloadPackage,
-  downloadReport,
   editingStage,
   loadError,
   loading,
@@ -143,81 +140,51 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
 </script>
 
 <template>
-  <div v-if="enabled" class="testing-workspace">
-    <div v-if="loading && !workspace" class="testing-loading-panel">
-      <ElSkeleton :rows="7" animated>
-        <template #template>
-          <div class="testing-skeleton-header">
-            <ElSkeletonItem style="width: 32%; height: 38px" variant="rect" />
-            <ElSkeletonItem style="width: 28%; height: 38px" variant="rect" />
-          </div>
-          <ElSkeletonItem style="width: 100%; height: 280px" variant="rect" />
-        </template>
-      </ElSkeleton>
-    </div>
-
-    <ElResult
-      v-else-if="loadError"
-      :sub-title="loadError"
-      icon="error"
-      title="测试阶段与报告加载失败"
+  <template v-if="enabled">
+    <section
+      aria-label="测试阶段与报告"
+      class="workspace-section workspace-testing-section"
     >
-      <template #extra>
-        <ElButton :loading="loading" type="primary" @click="loadWorkspace">
-          重新加载
-        </ElButton>
-      </template>
-    </ElResult>
-
-    <template v-else-if="workspace">
-      <section class="testing-summary-bar">
-        <div class="testing-summary-item testing-summary-current">
-          <span>当前阶段</span>
-          <strong>
-            {{
-              testingLocked
-                ? '测试阶段已锁定'
-                : currentStage
-                  ? `${currentStage.sequence}. ${currentStage.name}`
-                  : '暂无进行中阶段'
-            }}
-          </strong>
-          <ElTag v-if="landingNeedsStageFinish" size="small" type="warning">
-            阶段未完成，不能落地跟进
-          </ElTag>
-          <ElTag v-else-if="testingLocked" size="small" type="info">
-            {{
-              props.projectClosedDate ||
-              props.projectProgressCode?.toLowerCase() === 'closed'
-                ? '已结案'
-                : '落地跟进'
-            }}
-          </ElTag>
-          <ElTag
-            v-else-if="currentStage"
-            :type="statusMap[currentStage.status].type"
-            size="small"
-          >
-            {{ statusMap[currentStage.status].label }}
-          </ElTag>
+      <div class="workspace-section-heading">
+        <h3>测试阶段与报告</h3>
+        <div v-if="workspace" class="testing-summary-inline">
+          <div class="testing-summary-item testing-summary-current">
+            <span>当前阶段</span>
+            <strong>
+              {{
+                testingLocked
+                  ? '测试阶段已锁定'
+                  : currentStage
+                    ? `${currentStage.sequence}. ${currentStage.name}`
+                    : '暂无进行中阶段'
+              }}
+            </strong>
+            <ElTag v-if="landingNeedsStageFinish" size="small" type="warning">
+              阶段未完成，不能落地跟进
+            </ElTag>
+            <ElTag v-else-if="testingLocked" size="small" type="info">
+              {{
+                props.projectClosedDate ||
+                props.projectProgressCode?.toLowerCase() === 'closed'
+                  ? '已结案'
+                  : '落地跟进'
+              }}
+            </ElTag>
+            <ElTag
+              v-else-if="currentStage"
+              :type="statusMap[currentStage.status].type"
+              size="small"
+            >
+              {{ statusMap[currentStage.status].label }}
+            </ElTag>
+          </div>
+          <div class="testing-summary-item">
+            <span>阶段进度</span>
+            <strong>{{ completedCount }} / {{ orderedStages.length }}</strong>
+          </div>
         </div>
-        <div class="testing-summary-item">
-          <span>阶段进度</span>
-          <strong>{{ completedCount }} / {{ orderedStages.length }}</strong>
-          <small>已完成 / 全部</small>
-        </div>
-        <div class="testing-summary-actions">
+        <div v-if="workspace" class="workspace-section-actions">
           <ElTag v-if="!canManage" size="small" type="info">只读</ElTag>
-          <ElButton
-            v-if="canExport"
-            :disabled="
-              Boolean(downloadingKey) && downloadingKey !== 'package-all'
-            "
-            :loading="downloadingKey === 'package-all'"
-            @click="downloadPackage()"
-          >
-            导出完整资料包
-          </ElButton>
           <ElButton
             v-if="canCreateStage"
             :disabled="writeBusy"
@@ -226,29 +193,46 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
           >
             新增阶段
           </ElButton>
-        </div>
-      </section>
-
-      <section class="testing-section stage-ledger-section">
-        <header class="testing-section-header">
-          <div>
-            <h3>测试阶段台账</h3>
-          </div>
           <TableColumnPicker
             :columns="stageColumns"
             :hidden-keys="hiddenKeys"
             @reset="resetColumns"
             @toggle="setColumnVisible"
           />
-        </header>
-        <div class="stage-table-wrap" v-loading="loading">
+        </div>
+      </div>
+
+      <div class="workspace-section-body">
+        <div v-if="loading && !workspace" class="testing-loading-panel">
+          <ElSkeleton :rows="4" animated />
+        </div>
+
+        <ElResult
+          v-else-if="loadError"
+          :sub-title="loadError"
+          class="testing-load-error"
+          icon="error"
+          title="测试阶段与报告加载失败"
+        >
+          <template #extra>
+            <ElButton :loading="loading" type="primary" @click="loadWorkspace">
+              重新加载
+            </ElButton>
+          </template>
+        </ElResult>
+
+        <div
+          v-else-if="workspace"
+          class="stage-table-wrap workspace-fill-table workspace-stage-table"
+          v-loading="loading"
+        >
           <ElTable
             v-if="orderedStages.length > 0"
             :data="orderedStages"
-            :max-height="480"
             border
             class="compact-table stage-ledger-table"
             empty-text="暂无测试阶段"
+            height="100%"
             row-key="id"
             table-layout="fixed"
           >
@@ -363,12 +347,12 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
               </template>
             </ElTableColumn>
             <ElTableColumn
-              v-if="(canManage || canExport) && visibleColumn('actions')"
-              :width="canManage ? 220 : 150"
+              v-if="canManage && visibleColumn('actions')"
               align="center"
               class-name="table-action-cell"
               fixed="right"
               label="操作"
+              width="120"
             >
               <template #default="{ row }">
                 <div class="centered-actions stage-row-actions">
@@ -393,34 +377,6 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
                   >
                     删除
                   </ElButton>
-                  <ElButton
-                    v-if="canExport"
-                    :disabled="
-                      Boolean(downloadingKey) &&
-                      downloadingKey !== `report-${row.id}`
-                    "
-                    :loading="downloadingKey === `report-${row.id}`"
-                    link
-                    size="small"
-                    type="primary"
-                    @click="downloadReport(row)"
-                  >
-                    导出报告
-                  </ElButton>
-                  <ElButton
-                    v-if="canExport"
-                    :disabled="
-                      Boolean(downloadingKey) &&
-                      downloadingKey !== `package-${row.id}`
-                    "
-                    :loading="downloadingKey === `package-${row.id}`"
-                    link
-                    size="small"
-                    type="primary"
-                    @click="downloadPackage(row)"
-                  >
-                    资料包
-                  </ElButton>
                 </div>
               </template>
             </ElTableColumn>
@@ -436,10 +392,11 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
                     : '暂无测试阶段'
                   : '进入测试中后可维护测试阶段'
             "
+            :image-size="48"
           />
         </div>
-      </section>
-    </template>
+      </div>
+    </section>
 
     <ProjectStageDialog
       v-model:form="stageForm"
@@ -448,7 +405,8 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
       :saving="savingStage"
       @save="saveStage"
     />
-  </div>
+  </template>
 </template>
 
+<style scoped src="../project-workspace-section.css"></style>
 <style scoped src="./testing-workspace.css"></style>

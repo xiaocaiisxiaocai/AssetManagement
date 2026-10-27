@@ -5,12 +5,12 @@ import type { MaterialItem, MaterialStatus } from '#/api/material';
 import type { TableColumnOption } from '#/components/table/column-visibility';
 import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
 
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 
 import {
   ElButton,
-  ElOption,
   ElEmpty,
+  ElOption,
   ElPagination,
   ElSelect,
   ElTable,
@@ -18,13 +18,13 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { useTableColumns } from '#/components/table/column-visibility';
 import {
   deleteFlagsFromStatus,
   deleteStatusFromFlags,
 } from '#/components/table/header-multi-filter';
-import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
-import { useTableColumns } from '#/components/table/column-visibility';
 import HeaderMultiFilter from '#/components/table/HeaderMultiFilter.vue';
+import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
 
 import ProjectMaterialFilterBar from './ProjectMaterialFilterBar.vue';
 import ProjectMaterialRowActions from './ProjectMaterialRowActions.vue';
@@ -68,7 +68,9 @@ const query = defineModel<{
   pageSize: number;
   statuses: MaterialStatus[];
 }>('query', { required: true });
-const materialsCollapsed = ref(false);
+const materialsCollapsed = defineModel<boolean>('collapsed', {
+  default: false,
+});
 
 const statusOptions: Array<{
   label: string;
@@ -152,12 +154,16 @@ const materialEmptyText = computed(() => {
 </script>
 
 <template>
-  <section aria-label="项目料件清单" class="workspace-materials">
-    <div class="material-section-heading">
+  <section
+    :class="{ 'is-collapsed': materialsCollapsed }"
+    aria-label="项目料件清单"
+    class="workspace-section workspace-materials-section"
+  >
+    <div class="workspace-section-heading">
       <h3>
-        料件清单 <span class="tab-count">{{ total }}</span>
+        料件清单 <span class="section-count">{{ total }}</span>
       </h3>
-      <div class="material-section-actions">
+      <div class="workspace-section-actions">
         <TableColumnPicker
           :columns="tableColumns"
           :hidden-keys="hiddenKeys"
@@ -169,8 +175,8 @@ const materialEmptyText = computed(() => {
           @create="emit('create')"
         />
         <ElButton
-          :aria-controls="'project-materials-table'"
           :aria-expanded="!materialsCollapsed"
+          aria-controls="project-materials-table"
           link
           size="small"
           @click="materialsCollapsed = !materialsCollapsed"
@@ -182,176 +188,188 @@ const materialEmptyText = computed(() => {
     <div
       v-if="!materialsCollapsed"
       id="project-materials-table"
-      class="drawer-table-panel material-table-panel"
+      class="workspace-section-body"
     >
-      <ElTable
-        :data="materials"
-        height="180"
-        :row-class-name="rowClassName"
-        border
-        :empty-text="materialEmptyText"
-        scrollbar-always-on
-        stripe
-        v-loading="loading"
-      >
-        <template #empty>
-          <ElEmpty :description="materialEmptyText">
-            <ElButton v-if="hasMaterialFilters" @click="emit('reset')">
-              清空筛选
-            </ElButton>
-          </ElEmpty>
-        </template>
-        <ElTableColumn
-          v-if="visibleColumn('materialNo')"
-          label="料件编号"
-          min-width="150"
-          prop="materialNo"
-        />
-        <ElTableColumn
-          v-if="visibleColumn('name')"
-          label="名称"
-          min-width="140"
-          prop="name"
-          show-overflow-tooltip
-        />
-        <ElTableColumn
-          v-if="visibleColumn('vendor')"
-          class-name="hide-on-mobile"
-          label="寄件厂商"
-          min-width="120"
-          prop="vendorName"
-          show-overflow-tooltip
-        />
-        <ElTableColumn
-          v-if="visibleColumn('model')"
-          class-name="hide-on-mobile"
-          label="型号品牌"
-          min-width="140"
-          show-overflow-tooltip
-        >
-          <template #default="{ row }">
-            <span v-if="row.model || row.brand">
-              {{ row.model }} {{ row.brand }}
-            </span>
-            <span v-else>-</span>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn
-          v-if="visibleColumn('quantity')"
-          align="center"
-          label="数量"
-          prop="quantity"
-          width="70"
-        />
-        <ElTableColumn
-          v-if="visibleColumn('dockingVendor')"
-          class-name="hide-on-mobile"
-          label="对接厂商"
-          min-width="120"
-          prop="dockingVendorName"
-          show-overflow-tooltip
-        />
-        <ElTableColumn
-          v-if="visibleColumn('department')"
-          class-name="hide-on-mobile"
-          label="部门"
-          min-width="110"
-          prop="departmentName"
-          show-overflow-tooltip
-        />
-        <ElTableColumn
-          v-if="visibleColumn('custodian')"
-          class-name="hide-on-mobile"
-          label="保管人"
-          min-width="100"
-          prop="custodianName"
-          show-overflow-tooltip
-        />
-        <ElTableColumn
-          v-if="visibleColumn('remark')"
-          class-name="hide-on-mobile"
-          label="备注"
-          min-width="180"
-          show-overflow-tooltip
-        >
-          <template #default="{ row }">{{ row.remark || '-' }}</template>
-        </ElTableColumn>
-        <ElTableColumn
-          v-if="visibleColumn('status')"
-          align="center"
-          label="状态"
-          width="140"
-        >
-          <template #header>
-            <HeaderMultiFilter
-              v-model="statusHeader"
-              :groups="statusGroups"
-              label="状态"
-              @change="emit('search')"
-            />
-          </template>
-          <template #default="{ row }">
-            <ElTag :type="statusMeta(row.status).tag" size="small">
-              {{ statusMeta(row.status).label }}
-            </ElTag>
-            <ElTag v-if="row.isDeleted" class="ml-1" size="small" type="danger">
-              已删除
-            </ElTag>
-          </template>
-        </ElTableColumn>
-        <ElTableColumn
-          v-if="visibleColumn('actions')"
-          align="center"
-          class-name="table-action-cell"
-          fixed="right"
-          label="操作"
-          width="150"
-        >
-          <template #default="{ row }">
-            <ProjectMaterialRowActions
-              :access="access"
-              :can-edit="canEdit"
-              :current-user-id="currentUserId"
-              :is-supervisor="isSupervisor"
-              :project-owner-id="projectOwnerId"
-              :row="row"
-              @command="(command) => emit('command', command, row)"
-              @detail="emit('detail', row)"
-              @edit="emit('edit', row)"
-            />
-          </template>
-        </ElTableColumn>
-      </ElTable>
-      <div v-if="total > 3 || query.page > 1" class="table-bottom-pager">
-        <div class="table-bottom-pager-left">
-          <span>共 {{ total }} 条记录</span>
-          <span class="table-bottom-pager-divider">|</span>
-          <span>每页</span>
-          <ElSelect
-            v-model="query.pageSize"
-            aria-label="料件列表每页条数"
-            style="width: 92px"
-            @change="emit('pageSizeChange')"
+      <div class="drawer-table-panel material-table-panel">
+        <div class="workspace-fill-table">
+          <ElTable
+            :data="materials"
+            :empty-text="materialEmptyText"
+            :row-class-name="rowClassName"
+            border
+            height="100%"
+            stripe
+            v-loading="loading"
           >
-            <ElOption
-              v-for="size in pageSizeOptions"
-              :key="size"
-              :label="`${size}`"
-              :value="size"
+            <template #empty>
+              <ElEmpty :description="materialEmptyText">
+                <ElButton v-if="hasMaterialFilters" @click="emit('reset')">
+                  清空筛选
+                </ElButton>
+              </ElEmpty>
+            </template>
+            <ElTableColumn
+              v-if="visibleColumn('materialNo')"
+              label="料件编号"
+              min-width="150"
+              prop="materialNo"
             />
-          </ElSelect>
+            <ElTableColumn
+              v-if="visibleColumn('name')"
+              label="名称"
+              min-width="140"
+              prop="name"
+              show-overflow-tooltip
+            />
+            <ElTableColumn
+              v-if="visibleColumn('vendor')"
+              class-name="hide-on-mobile"
+              label="寄件厂商"
+              min-width="120"
+              prop="vendorName"
+              show-overflow-tooltip
+            />
+            <ElTableColumn
+              v-if="visibleColumn('model')"
+              class-name="hide-on-mobile"
+              label="型号品牌"
+              min-width="140"
+              show-overflow-tooltip
+            >
+              <template #default="{ row }">
+                <span v-if="row.model || row.brand">
+                  {{ row.model }} {{ row.brand }}
+                </span>
+                <span v-else>-</span>
+              </template>
+            </ElTableColumn>
+            <ElTableColumn
+              v-if="visibleColumn('quantity')"
+              align="center"
+              label="数量"
+              prop="quantity"
+              width="70"
+            />
+            <ElTableColumn
+              v-if="visibleColumn('dockingVendor')"
+              class-name="hide-on-mobile"
+              label="对接厂商"
+              min-width="120"
+              prop="dockingVendorName"
+              show-overflow-tooltip
+            />
+            <ElTableColumn
+              v-if="visibleColumn('department')"
+              class-name="hide-on-mobile"
+              label="部门"
+              min-width="110"
+              prop="departmentName"
+              show-overflow-tooltip
+            />
+            <ElTableColumn
+              v-if="visibleColumn('custodian')"
+              class-name="hide-on-mobile"
+              label="保管人"
+              min-width="100"
+              prop="custodianName"
+              show-overflow-tooltip
+            />
+            <ElTableColumn
+              v-if="visibleColumn('remark')"
+              class-name="hide-on-mobile"
+              label="备注"
+              min-width="180"
+              show-overflow-tooltip
+            >
+              <template #default="{ row }">{{ row.remark || '-' }}</template>
+            </ElTableColumn>
+            <ElTableColumn
+              v-if="visibleColumn('status')"
+              align="center"
+              label="状态"
+              width="140"
+            >
+              <template #header>
+                <HeaderMultiFilter
+                  v-model="statusHeader"
+                  :groups="statusGroups"
+                  label="状态"
+                  @change="emit('search')"
+                />
+              </template>
+              <template #default="{ row }">
+                <ElTag :type="statusMeta(row.status).tag" size="small">
+                  {{ statusMeta(row.status).label }}
+                </ElTag>
+                <ElTag
+                  v-if="row.isDeleted"
+                  class="ml-1"
+                  size="small"
+                  type="danger"
+                >
+                  已删除
+                </ElTag>
+              </template>
+            </ElTableColumn>
+            <ElTableColumn
+              v-if="visibleColumn('actions')"
+              align="center"
+              class-name="table-action-cell"
+              fixed="right"
+              label="操作"
+              width="150"
+            >
+              <template #default="{ row }">
+                <ProjectMaterialRowActions
+                  :access="access"
+                  :can-edit="canEdit"
+                  :current-user-id="currentUserId"
+                  :is-supervisor="isSupervisor"
+                  :project-owner-id="projectOwnerId"
+                  :row="row"
+                  @command="(command) => emit('command', command, row)"
+                  @detail="emit('detail', row)"
+                  @edit="emit('edit', row)"
+                />
+              </template>
+            </ElTableColumn>
+          </ElTable>
         </div>
-        <ElPagination
-          v-model:current-page="query.page"
-          :page-size="query.pageSize"
-          :total="total"
-          background
-          layout="prev, pager, next"
-          @current-change="emit('pageChange')"
-        />
+        <div
+          v-if="total > query.pageSize || query.page > 1"
+          class="table-bottom-pager"
+        >
+          <div class="table-bottom-pager-left">
+            <span>共 {{ total }} 条记录</span>
+            <span class="table-bottom-pager-divider">|</span>
+            <span>每页</span>
+            <ElSelect
+              v-model="query.pageSize"
+              aria-label="料件列表每页条数"
+              style="width: 92px"
+              @change="emit('pageSizeChange')"
+            >
+              <ElOption
+                v-for="size in pageSizeOptions"
+                :key="size"
+                :label="`${size}`"
+                :value="size"
+              />
+            </ElSelect>
+          </div>
+          <ElPagination
+            v-model:current-page="query.page"
+            :page-size="query.pageSize"
+            :total="total"
+            background
+            layout="prev, pager, next"
+            @current-change="emit('pageChange')"
+          />
+        </div>
       </div>
     </div>
   </section>
 </template>
 
+<style scoped src="./project-workspace-section.css"></style>
 <style scoped src="./ProjectMaterialsTab.css"></style>

@@ -1,0 +1,188 @@
+@media print {
+  html.project-workspace-printing,
+  html.project-workspace-printing body {
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  html.project-workspace-printing
+    body
+    *:not(:has(.project-workspace-overlay)):not(.project-workspace-overlay):not(
+      .project-workspace-overlay *
+    ) {
+    display: none !important;
+  }
+
+  html.project-workspace-printing body *:has(.project-workspace-overlay) {
+    position: static !important;
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  html.project-workspace-printing .project-workspace-overlay,
+  html.project-workspace-printing .project-workspace-overlay .el-splitter,
+  html.project-workspace-printing
+    .project-workspace-overlay
+    .el-splitter-panel {
+    position: static !important;
+    inset: auto !important;
+    flex-basis: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+
+  /* 抽屉自身与工作台的拖拽分隔容器都改为单列依次展开。 */
+  html.project-workspace-printing .project-workspace-overlay .el-splitter {
+    display: block !important;
+  }
+
+  html.project-workspace-printing .el-splitter-bar,
+  html.project-workspace-printing .el-splitter__mask,
+  html.project-workspace-printing
+    .project-workspace-overlay
+    .el-drawer-splitter
+    > .el-splitter-panel:not(:has(.el-drawer)) {
+    display: none !important;
+  }
+
+  html.project-workspace-printing .el-drawer {
+    position: static !important;
+    width: var(--workspace-print-width) !important;
+    max-width: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    zoom: var(--workspace-print-zoom);
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  html.project-workspace-printing .el-drawer__body {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  html.project-workspace-printing .el-drawer__close-btn,
+  html.project-workspace-printing
+    .workspace-project-heading-actions
+    .el-button {
+    display: none !important;
+  }
+
+  html.project-workspace-printing .el-drawer tr {
+    break-inside: avoid;
+  }
+
+  html.project-workspace-printing .project-workspace-drawer .followup-panel,
+  html.project-workspace-printing .project-workspace-drawer .workspace-section,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-section-body,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-fill-table,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .material-table-panel,
+  html.project-workspace-printing .project-workspace-drawer .stage-table-wrap,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .followup-history-scroll,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .workspace-flow-body,
+  html.project-workspace-printing .project-workspace-drawer .followup-workspace,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .followup-history-panel,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .followup-editor-panel,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .testing-loading-panel,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .testing-load-error {
+    flex: none !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  html.project-workspace-printing .project-workspace-drawer .el-table,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .el-table__inner-wrapper,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .el-table__body-wrapper,
+  html.project-workspace-printing .project-workspace-drawer .el-scrollbar,
+  html.project-workspace-printing .project-workspace-drawer .el-scrollbar__wrap,
+  html.project-workspace-printing .project-workspace-drawer .el-scrollbar__view,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-table__inner-wrapper,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-table__body-wrapper,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-scrollbar,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-scrollbar__wrap,
+  html.project-workspace-printing
+    .project-workspace-drawer
+    .followup-panel
+    .workspace-section
+    .workspace-fill-table
+    .el-table
+    .el-scrollbar__view {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  html.project-workspace-printing .project-workspace-drawer .el-scrollbar__bar {
+    display: none !important;
+  }
+}

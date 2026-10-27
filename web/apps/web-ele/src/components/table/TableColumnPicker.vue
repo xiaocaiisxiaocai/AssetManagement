@@ -7,10 +7,14 @@ import { ElButton, ElCheckbox, ElPopover } from 'element-plus';
 
 import { isLastVisibleDataColumn } from './column-visibility';
 
-const props = defineProps<{
-  columns: readonly TableColumnOption[];
-  hiddenKeys: readonly string[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    columns: readonly TableColumnOption[];
+    hiddenKeys: readonly string[];
+    size?: 'default' | 'small';
+  }>(),
+  { size: 'default' },
+);
 
 const emit = defineEmits<{
   reset: [];
@@ -44,7 +48,9 @@ function onToggle(column: TableColumnOption, value: CheckboxValueType) {
       trigger="click"
     >
       <template #reference>
-        <ElButton class="table-column-picker-trigger">列设置</ElButton>
+        <ElButton :size="size" class="table-column-picker-trigger">
+          列设置
+        </ElButton>
       </template>
       <div class="table-column-picker-list">
         <ElCheckbox

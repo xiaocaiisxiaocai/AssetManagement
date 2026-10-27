@@ -6,7 +6,10 @@ import { bindProjectMaterialQueryActions } from './project-material-query-action
 export function bindProjectWorkspaceActions(page: Record<string, any>) {
   // 跟进会调用料件函数，料件变更会调用流转函数；占位后在调用时读取，避免循环依赖。
   const lateDeps = {} as {
-    loadProjectFlows: (projectId?: number) => Promise<void>;
+    loadProjectFlows: (
+      projectId?: number,
+      kind?: 'handled' | 'mine' | 'pending',
+    ) => Promise<void>;
     loadProjectMaterials: (projectId?: number) => Promise<void>;
     resetMaterialQuery: () => void;
   };

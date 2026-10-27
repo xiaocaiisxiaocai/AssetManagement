@@ -187,7 +187,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **`TestProject`**(测评项目):`Name`(必填)、`Code`、`ProjectTypeCode`(项目类型,取自选项字典)、`ProgressCode`(进度状态,取自选项字典)、`OwnerId`(负责人)、`StartDate`/`PlannedFinishDate`/`ClosedDate`(开始/计划完成/结案)、`TestStatus`、`FollowUpIntervalDays`(跟进周期天数,默认 14)、软删除字段。**已从早期薄分组实体扩展为完整项目生命周期实体**。
 - **`TestProjectOption`**(项目选项字典):`Kind`(分组,如项目类型 `project_type`/进度状态 `project_progress`)、`Code`/`Label`/`Sort`/`IsActive`。为项目类型、进度等下拉提供可维护字典项。
 - **`TestProjectFollowup`**(项目跟进记录):`ProjectId`、`DueDate`(跟进到期日)、`Content`、`FilledById`/`FilledAt`。按 `FollowUpIntervalDays` 周期性跟进。
-- **`ProjectTestStage` / `ProjectReportDocument`**：项目测试阶段台账与阶段/项目报告归档。工作台顶部常驻紧凑料件清单，下方展示整体进度和阶段表；负责人/管理员维护测试目标、内容、结果、结论、起止日期及状态。同一项目最多一个当前阶段，支持阶段/整项目 Word 报告与包含原附件的 ZIP 资料包。详细口径见 `docs/项目测试阶段与报告.md`。
+- **`ProjectTestStage` / `ProjectReportDocument`**：项目测试阶段台账与阶段/项目报告归档。项目跟进工作台为单页。桌面视口（宽于 1100px 且高于 600px）下抽屉保持一屏：料件清单、测试阶段与报告、底部行（流转审批 Tab | 落地跟进）用 `ElSplitter` 分隔，可拖拽调整高度与宽度，占比按浏览器记住（`project-workspace-layout.ts`），内容在区块内滚动；更小视口改为固定高度分隔容器加整页滚动，打印时展开全部内容。负责人/管理员维护测试目标、内容、结果、结论、起止日期及状态。同一项目最多一个当前阶段。前端已移除阶段/整项目 Word 报告与包含原附件的 ZIP 资料包导出入口（后端接口保留）；工作台提供「导出页面」，通过浏览器打印另存为 PDF。详细口径见 `docs/项目测试阶段与报告.md`。
 - **`TestMaterial`**(测试料件):`MaterialNo`(自动生成 `TM-YYYYMMDD-XXX`)、`Name`(必填)、`ProjectId`(必填,外键到 `TestProject`)、`VendorName`(厂商)、`Model`/`Brand`/`Quantity`、`DepartmentId`/`CustodianId`(可选)、`LocationName`(用户手工填写的存放位置文本)、`ReceivedDate`(接收日期)、`Status`(0=在用、1=已退回厂商)、`Images`(JSON 数组,复用 `FileStorageService`)、`Remark`、软删除字段、`HasPendingFlow`(计算属性,标识有待审批流转)。
 - **`TestMaterialRecord`**(料件生命周期操作记录):`MaterialId`、`Action`(当前含 `return_to_vendor`)、`OperatorUserId`/`Operator`、`Comment`、`OperatedAt`;独立于人员流转审批单，确保退回厂商等动作可追溯。
 - **`MaterialFlow`**(流转记录):`FlowNo`(流转单号 `MF-YYYYMMDD-XXX`)、`MaterialId`、`ApplicantId`/`TransfereeId`(受让人)、`Reason`、`Status`(pending/approved/rejected)、`DirectTransfer`(布尔,标识绕过审批直接转移)、`BpmnTokens`(BPMN 引擎状态,JSON)、`CurrentNodeIds`(活跃节点列表,JSON)。
@@ -216,7 +216,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 普通员工默认拥有 `project:create`，可以创建新产品新技术项目但没有删除/彻底删除项目权限；同时拥有 `file:upload` 与 `file:view`,用于测试料件新增/编辑时上传并预览照片。已有数据库通过一次性增量种子补齐这些增量权限;补齐完成后仍保留管理员后续调整角色授权的能力。
 
-菜单结构:一级入口界面名 **"新产品新技术"**(根菜单 `Name=Material`、`Path=/material`、`Component=BasicLayout`、图标 `lucide:flask-conical`)→ 两个子页面:**项目总览**(`/material/home` → `/material/home/index`)、**测试项目**(`/material/projects` → `/material/projects/index`),二者均以 `project:view` 控权。`DbSeeder.SeedTestMaterialModule`(幂等增量种子)确保权限/菜单/工作流模板/系统参数(`material.transfer.approval.enabled`,默认 `false`)齐全。**旧的 `/material/list`、`/material/transfers` 独立路由已废弃**,料件清单与流转审批现内嵌为「测试项目」页的 Tab。
+菜单结构:一级入口界面名 **"新产品新技术"**(根菜单 `Name=Material`、`Path=/material`、`Component=BasicLayout`、图标 `lucide:flask-conical`)→ 两个子页面:**项目总览**(`/material/home` → `/material/home/index`)、**测试项目**(`/material/projects` → `/material/projects/index`),二者均以 `project:view` 控权。`DbSeeder.SeedTestMaterialModule`(幂等增量种子)确保权限/菜单/工作流模板/系统参数(`material.transfer.approval.enabled`,默认 `false`)齐全。**旧的 `/material/list`、`/material/transfers` 独立路由已废弃**,料件清单、测试阶段与报告、流转审批和落地跟进现为「测试项目」页项目跟进工作台的单页四块。桌面宽于 1100px 且高于 760px 时抽屉保持一屏，流转审批与落地跟进并排，超出内容在区块内滚动；更小视口整页滚动，打印展开全部内容。
 
 #### 前端页面
 
@@ -382,7 +382,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
   - `views/approval/` — 审批流程(`pending` 待我审批、`mine` 我的申请、`confirm-return` 确认入库)
   - `views/report/` — 报表(`summary` 汇总、`borrow` 借用明细、`overdue` 逾期)
   - `views/admin/` — 基础数据与系统管理(`departments` 部门、`users` 用户、`roles` 角色、`categories` 资产分类、`settings` 系统参数、`audit` 审计日志、`workflows` 工作流设计器、`backups` 数据库备份)
-  - `views/material/` — 新产品新技术/测试料件(`home` 项目总览仪表盘、`projects` 测试项目工作台并内嵌料件清单/流转审批 Tab、`components` 共享对话框与校验规则)
+  - `views/material/` — 新产品新技术/测试料件(`home` 项目总览仪表盘、`projects` 测试项目单页工作台（桌面紧凑一屏：料件清单、测试阶段与报告、并排的流转审批与落地跟进，区块间可拖拽分隔，区块内滚动，打印展开全部）、`components` 共享对话框与校验规则)
   - `views/dashboard/`、`views/demos/`、`views/_core/` — vue-vben-admin 上游模板自带目录,业务不涉及,**新功能不在此实现**
 - 复用上游 `@vben/*`、`@core/*` 包的能力(布局、请求客户端、preferences、stores),不要重复造轮子;改动 `web/packages/` 下的核心包会影响所有 app,需谨慎。
 - 提交前跑 `pnpm -F @vben/web-ele run typecheck`;monorepo 根有 `pnpm check`(circular/dep/type/cspell)。

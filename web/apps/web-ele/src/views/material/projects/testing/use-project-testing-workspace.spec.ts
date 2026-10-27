@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
   download: vi.fn(),
   get: vi.fn(),
   remove: vi.fn(),
-  report: vi.fn(),
   success: vi.fn(),
 }));
 vi.mock('@vben/access', () => ({
@@ -32,8 +31,6 @@ vi.mock('#/api/project-workspace', () => ({
   deleteProjectDocumentApi: vi.fn(),
   deleteProjectStageApi: mocks.remove,
   downloadProjectDocumentApi: vi.fn(),
-  downloadProjectPackageApi: vi.fn(),
-  downloadProjectReportApi: mocks.report,
   getProjectWorkspaceApi: mocks.get,
   updateProjectStageApi: vi.fn(),
   uploadProjectDocumentApi: vi.fn(),
@@ -164,16 +161,5 @@ describe('项目测试工作台交互', () => {
     await deletion;
     expect(mocks.remove).not.toHaveBeenCalled();
     expect(state.workspace.value?.projectId).toBe(2);
-  });
-
-  it('项目负责人可导出且按实际二进制响应下载 Word', async () => {
-    const { state } = setup();
-    await flushPromises();
-    const blob = new Blob(['word'], { type: 'application/zip' });
-    mocks.report.mockResolvedValue({ data: blob });
-    expect(state.canExport.value).toBe(true);
-    await state.downloadReport();
-    expect(mocks.report).toHaveBeenCalledWith(1, undefined);
-    expect(mocks.download).toHaveBeenCalledWith(blob, '项目_1_测试报告.docx');
   });
 });

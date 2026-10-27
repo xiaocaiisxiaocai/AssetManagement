@@ -8,13 +8,29 @@ import type {
 } from '#/api/material';
 import type { TestProjectFollowup, TestProjectItem } from '#/api/test-project';
 
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
-import { ElButton, ElDrawer, ElTabPane, ElTabs, ElTag } from 'element-plus';
+import { useMediaQuery } from '@vueuse/core';
+import {
+  ElButton,
+  ElDrawer,
+  ElSplitter,
+  ElSplitterPanel,
+  ElTag,
+} from 'element-plus';
 
-import { formatDate } from '#/utils/date-format';
-
-import { projectFollowUpStatusMeta } from './project-workspace-rules';
+import {
+  ratioAt,
+  readWorkspaceLayout,
+  toPercent,
+  writeWorkspaceLayout,
+} from './project-workspace-layout';
+import {
+  startWorkspacePrint,
+  stopWorkspacePrint,
+  workspacePrinting,
+  workspacePrintTitle,
+} from './project-workspace-print';
 import ProjectFlowsTab from './ProjectFlowsTab.vue';
 import ProjectFollowupsTab from './ProjectFollowupsTab.vue';
 import ProjectMaterialsTab from './ProjectMaterialsTab.vue';
@@ -33,6 +49,8 @@ const props = defineProps<{
   canCreate: boolean;
   canEdit: boolean;
   canUpdateProgress: boolean;
+  /** 账号是否有审批权限，与项目阶段无关；能否处理仍看 materialAccess.canApprove。 */
+  canViewApprovals: boolean;
   currentProject: null | TestProjectItem;
   currentUserId: number;
   editingFollowupId: null | number;
@@ -65,8 +83,7 @@ const emit = defineEmits<{
   create: [];
   detail: [material: MaterialItem];
   edit: [material: MaterialItem];
-  flowPageChange: [];
-  flowTabChange: [];
+  flowPageChange: [kind: 'handled' | 'mine' | 'pending'];
   followupCancelEdit: [];
   followupEdit: [followup: TestProjectFollowup];
   followupSave: [];
@@ -80,12 +97,9 @@ const emit = defineEmits<{
   release: [flow: MaterialFlowItem];
   reset: [];
   search: [];
-  tabChange: [name: number | string];
   withdraw: [flow: MaterialFlowItem];
 }>();
 const visible = defineModel<boolean>('visible', { required: true });
-const activeTab = defineModel<string>('activeTab', { required: true });
-const flowActiveTab = defineModel<string>('flowActiveTab', { required: true });
 const followupForm = defineModel<{ content: string }>('followupForm', {
   required: true,
 });
@@ -124,9 +138,62 @@ const currentProjectProgressText = computed(
     props.currentProject?.progressCode ||
     '未设置进度',
 );
-function statusMeta(project: TestProjectItem) {
-  return projectFollowUpStatusMeta(project);
+
+/** 收起后只保留标题行：上下内边距 20 + 标题行 28 + 边框 2 + 与下一块的间距 5。 */
+const MATERIALS_COLLAPSED_SIZE = 55;
+
+const layout = readWorkspaceLayout();
+const materialsCollapsed = ref(false);
+const materialsSize = ref<number | string>(toPercent(layout.materials));
+const testingSize = ref<number | string>(toPercent(layout.testing));
+const flowsSize = ref<number | string>(toPercent(layout.flows));
+const narrowLayout = useMediaQuery('(max-width: 1100px)');
+const bottomPanelClass = computed(() =>
+  narrowLayout.value ? 'workspace-panel-v' : 'workspace-panel-h',
+);
+
+const materialsPanelSize = computed(() =>
+  materialsCollapsed.value ? MATERIALS_COLLAPSED_SIZE : materialsSize.value,
+);
+
+function onMaterialsSizeUpdate(size: number | string) {
+  if (!materialsCollapsed.value) materialsSize.value = size;
 }
+
+function onVerticalResizeEnd(_index: number, pxSizes: number[]) {
+  const testing = ratioAt(pxSizes, 1);
+  if (testing !== undefined) layout.testing = testing;
+  const materials = materialsCollapsed.value ? undefined : ratioAt(pxSizes, 0);
+  if (materials !== undefined) layout.materials = materials;
+  writeWorkspaceLayout(layout);
+}
+
+function onBottomResizeEnd(_index: number, pxSizes: number[]) {
+  const flows = ratioAt(pxSizes, 0);
+  if (flows === undefined) return;
+  layout.flows = flows;
+  writeWorkspaceLayout(layout);
+}
+
+function printWorkspace(event: MouseEvent) {
+  const project = props.currentProject;
+  if (!project || workspacePrinting.value) return;
+  const target = event.currentTarget;
+  if (!(target instanceof HTMLElement)) return;
+  const drawer = target.closest('.el-drawer');
+  if (!(drawer instanceof HTMLElement)) return;
+  startWorkspacePrint({
+    drawer,
+    title: workspacePrintTitle(project.name, project.code, new Date()),
+  });
+}
+
+watch(visible, (open) => {
+  if (!open) stopWorkspacePrint();
+});
+onBeforeUnmount(() => {
+  stopWorkspacePrint();
+});
 </script>
 
 <template>
@@ -136,6 +203,7 @@ function statusMeta(project: TestProjectItem) {
     :close-on-press-escape="!followupSaving"
     :show-close="!followupSaving"
     class="project-workspace-drawer"
+    modal-class="project-workspace-overlay"
     size="88%"
   >
     <template #header>
@@ -150,9 +218,20 @@ function statusMeta(project: TestProjectItem) {
           <div class="project-meta-line">
             <span>{{ currentProjectCodeText }}</span>
             <span>{{ currentProjectTypeText }}</span>
+            <span class="project-meta-progress">
+              {{ currentProjectProgressText }}
+            </span>
+            <span>负责人：{{ currentProject.ownerName || '-' }}</span>
           </div>
         </div>
         <div class="workspace-project-heading-actions">
+          <ElButton
+            :disabled="workspacePrinting"
+            size="small"
+            @click="printWorkspace"
+          >
+            导出页面
+          </ElButton>
           <ElButton
             v-if="canUpdateProgress"
             size="small"
@@ -164,68 +243,47 @@ function statusMeta(project: TestProjectItem) {
         </div>
       </header>
 
-      <ProjectMaterialsTab
-        v-model:query="materialQuery"
-        :access="materialAccess"
-        :can-create="canCreate"
-        :can-edit="canEdit"
-        :current-user-id="currentUserId"
-        :is-supervisor="isSupervisor"
-        :loading="materialLoading"
-        :materials="materials"
-        :page-size-options="materialPageSizeOptions"
-        :project-owner-id="currentProject.ownerId"
-        :total="materialTotal"
-        @command="(command, row) => emit('command', command, row)"
-        @create="emit('create')"
-        @detail="emit('detail', $event)"
-        @edit="emit('edit', $event)"
-        @page-change="emit('materialPageChange')"
-        @page-size-change="emit('materialPageSizeChange')"
-        @reset="emit('reset')"
-        @search="emit('search')"
-      />
-
-      <section aria-label="项目进度与跟进概况" class="project-brief">
-        <div class="project-brief-stats">
-          <div class="brief-stat">
-            <span class="brief-stat-label">项目整体进度</span>
-            <div class="brief-stat-value">
-              <strong>{{ currentProjectProgressText }}</strong>
-            </div>
-          </div>
-          <div class="brief-stat">
-            <span class="brief-stat-label">负责人</span>
-            <strong>{{ currentProject.ownerName || '-' }}</strong>
-          </div>
-          <div class="brief-stat">
-            <span class="brief-stat-label">下次跟进</span>
-            <div class="brief-stat-value">
-              <strong>{{
-                formatDate(currentProject.nextFollowUpDueDate)
-              }}</strong>
-              <ElTag :type="statusMeta(currentProject).type" size="small">
-                {{ statusMeta(currentProject).label }}
-              </ElTag>
-            </div>
-          </div>
-          <div class="brief-stat">
-            <span class="brief-stat-label">跟进间隔</span>
-            <strong>{{ currentProject.followUpIntervalDays }} 天</strong>
-          </div>
-          <div class="brief-stat">
-            <span class="brief-stat-label">料件数</span>
-            <strong>{{ currentProject.materialCount }} 件</strong>
-          </div>
-        </div>
-      </section>
-
-      <ElTabs
-        v-model="activeTab"
-        class="project-work-tabs"
-        @tab-change="emit('tabChange', $event)"
+      <ElSplitter
+        class="workspace-splitter"
+        layout="vertical"
+        @resize-end="onVerticalResizeEnd"
       >
-        <ElTabPane label="测试阶段与报告" name="stages">
+        <ElSplitterPanel
+          :min="materialsCollapsed ? undefined : 120"
+          :resizable="!materialsCollapsed"
+          :size="materialsPanelSize"
+          class="workspace-panel-v is-first"
+          @update:size="onMaterialsSizeUpdate"
+        >
+          <ProjectMaterialsTab
+            v-model:collapsed="materialsCollapsed"
+            v-model:query="materialQuery"
+            :access="materialAccess"
+            :can-create="canCreate"
+            :can-edit="canEdit"
+            :current-user-id="currentUserId"
+            :is-supervisor="isSupervisor"
+            :loading="materialLoading"
+            :materials="materials"
+            :page-size-options="materialPageSizeOptions"
+            :project-owner-id="currentProject.ownerId"
+            :total="materialTotal"
+            @command="(command, row) => emit('command', command, row)"
+            @create="emit('create')"
+            @detail="emit('detail', $event)"
+            @edit="emit('edit', $event)"
+            @page-change="emit('materialPageChange')"
+            @page-size-change="emit('materialPageSizeChange')"
+            @reset="emit('reset')"
+            @search="emit('search')"
+          />
+        </ElSplitterPanel>
+
+        <ElSplitterPanel
+          v-model:size="testingSize"
+          :min="140"
+          class="workspace-panel-v"
+        >
           <ProjectTestingWorkspace
             :key="currentProject.id"
             :enabled="visible"
@@ -233,51 +291,73 @@ function statusMeta(project: TestProjectItem) {
             :project-id="currentProject.id"
             :project-progress-code="currentProject.progressCode"
           />
-        </ElTabPane>
+        </ElSplitterPanel>
 
-        <ProjectFlowsTab
-          v-model:active-tab="flowActiveTab"
-          v-model:handled-query="handledQuery"
-          v-model:my-query="myQuery"
-          v-model:pending-query="pendingQuery"
-          :can-approve="materialAccess.canApprove"
-          :handled-count="handledCount"
-          :handled-flows="handledFlows"
-          :handled-loading="handledLoading"
-          :my-count="myCount"
-          :my-flows="myFlows"
-          :my-loading="myLoading"
-          :page-size-options="pageSizeOptions"
-          :pending-count="pendingCount"
-          :pending-flows="pendingFlows"
-          :pending-loading="pendingLoading"
-          :processing-flow-ids="processingFlowIds"
-          :read-only="readOnly"
-          @approve="emit('approve', $event)"
-          @handled-page-size-change="emit('handledPageSizeChange')"
-          @my-page-size-change="emit('myPageSizeChange')"
-          @page-change="emit('flowPageChange')"
-          @pending-page-size-change="emit('pendingPageSizeChange')"
-          @reject="emit('reject', $event)"
-          @release="emit('release', $event)"
-          @tab-change="emit('flowTabChange')"
-          @withdraw="emit('withdraw', $event)"
-        />
+        <ElSplitterPanel :min="200" class="workspace-panel-v is-last">
+          <ElSplitter
+            :layout="narrowLayout ? 'vertical' : 'horizontal'"
+            class="workspace-bottom-splitter"
+            @resize-end="onBottomResizeEnd"
+          >
+            <ElSplitterPanel
+              v-model:size="flowsSize"
+              :class="bottomPanelClass"
+              :min="narrowLayout ? 160 : 420"
+              class="is-first"
+            >
+              <ProjectFlowsTab
+                :key="currentProject.id"
+                v-model:handled-query="handledQuery"
+                v-model:my-query="myQuery"
+                v-model:pending-query="pendingQuery"
+                :can-handle="materialAccess.canApprove && !readOnly"
+                :can-view-approvals="canViewApprovals"
+                :handled-count="handledCount"
+                :handled-flows="handledFlows"
+                :handled-loading="handledLoading"
+                :my-count="myCount"
+                :my-flows="myFlows"
+                :my-loading="myLoading"
+                :page-size-options="pageSizeOptions"
+                :pending-count="pendingCount"
+                :pending-flows="pendingFlows"
+                :pending-loading="pendingLoading"
+                :processing-flow-ids="processingFlowIds"
+                :read-only="readOnly"
+                @approve="emit('approve', $event)"
+                @handled-page-size-change="emit('handledPageSizeChange')"
+                @my-page-size-change="emit('myPageSizeChange')"
+                @page-change="emit('flowPageChange', $event)"
+                @pending-page-size-change="emit('pendingPageSizeChange')"
+                @reject="emit('reject', $event)"
+                @release="emit('release', $event)"
+                @withdraw="emit('withdraw', $event)"
+              />
+            </ElSplitterPanel>
 
-        <ProjectFollowupsTab
-          v-model:form="followupForm"
-          :editing-id="editingFollowupId"
-          :followups="followups"
-          :loading="followupLoading"
-          :project="currentProject"
-          :saving="followupSaving"
-          @cancel-edit="emit('followupCancelEdit')"
-          @edit="emit('followupEdit', $event)"
-          @save="emit('followupSave')"
-        />
-      </ElTabs>
+            <ElSplitterPanel
+              :class="bottomPanelClass"
+              :min="narrowLayout ? 160 : 320"
+              class="is-last"
+            >
+              <ProjectFollowupsTab
+                v-model:form="followupForm"
+                :editing-id="editingFollowupId"
+                :followups="followups"
+                :loading="followupLoading"
+                :project="currentProject"
+                :saving="followupSaving"
+                @cancel-edit="emit('followupCancelEdit')"
+                @edit="emit('followupEdit', $event)"
+                @save="emit('followupSave')"
+              />
+            </ElSplitterPanel>
+          </ElSplitter>
+        </ElSplitterPanel>
+      </ElSplitter>
     </div>
   </ElDrawer>
 </template>
 
 <style scoped src="./ProjectWorkspaceDrawer.css"></style>
+<style src="./project-workspace-print.css"></style>

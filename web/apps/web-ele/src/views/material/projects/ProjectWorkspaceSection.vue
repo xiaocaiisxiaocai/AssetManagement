@@ -9,7 +9,6 @@ defineProps<{
 }>();
 
 const {
-  activeProjectTab,
   approveFlow,
   canEditCurrentProjectMaterial,
   canUpdateCurrentProjectProgress,
@@ -20,7 +19,6 @@ const {
   currentUserId,
   editingFollowupId,
   editFollowup,
-  flowActiveTab,
   flowPageSizeOptions,
   followupDrawerVisible,
   followupFormModel,
@@ -34,6 +32,7 @@ const {
   isCurrentUserSupervisor,
   loadProjectFlows,
   loadProjectMaterials,
+  materialActionAccess,
   materialLoading,
   materialPageSizeOptions,
   materialQueryModel,
@@ -43,13 +42,11 @@ const {
   myFlowQueryModel,
   myFlows,
   myFlowTotal,
-  onFlowTabChange,
   onHandledFlowPageSizeChange,
   onMaterialPageSizeChange,
   onMaterialRowCommand,
   onMyFlowPageSizeChange,
   onPendingFlowPageSizeChange,
-  onProjectTabChange,
   openCreateMaterial,
   openEditMaterial,
   openMaterialDetail,
@@ -70,8 +67,6 @@ const {
 
 <template>
   <ProjectWorkspaceDrawer
-    v-model:active-tab="activeProjectTab"
-    v-model:flow-active-tab="flowActiveTab"
     v-model:followup-form="followupFormModel"
     v-model:handled-query="handledFlowQueryModel"
     v-model:material-query="materialQueryModel"
@@ -81,6 +76,7 @@ const {
     :can-create="canWriteCurrentProjectMaterial"
     :can-edit="canEditCurrentProjectMaterial"
     :can-update-progress="canUpdateCurrentProjectProgress"
+    :can-view-approvals="materialActionAccess.canApprove"
     :current-project="currentProject"
     :current-user-id="currentUserId"
     :editing-followup-id="editingFollowupId"
@@ -110,8 +106,7 @@ const {
     @create="openCreateMaterial"
     @detail="openMaterialDetail"
     @edit="openEditMaterial"
-    @flow-page-change="loadProjectFlows"
-    @flow-tab-change="onFlowTabChange"
+    @flow-page-change="loadProjectFlows(undefined, $event)"
     @followup-cancel-edit="cancelFollowupEdit"
     @followup-edit="editFollowup"
     @followup-save="saveFollowup"
@@ -125,7 +120,6 @@ const {
     @release="releaseFlow"
     @reset="resetMaterialQuery"
     @search="searchMaterials"
-    @tab-change="onProjectTabChange"
     @withdraw="withdrawFlow"
   />
 </template>
