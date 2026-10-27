@@ -223,6 +223,7 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
       />
       <ElTableColumn
         v-if="visibleColumn('name')"
+        fixed
         label="项目名称"
         min-width="150"
         show-overflow-tooltip
@@ -391,7 +392,6 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
         v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
-        fixed="right"
         label="操作"
         width="220"
       >
