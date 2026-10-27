@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import type { OverdueReportRow } from '#/api/report';
-import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import {
   ElButton,
@@ -11,9 +10,6 @@ import {
   ElTag,
 } from 'element-plus';
 
-import { useTableColumns } from '#/components/table/column-visibility';
-import TableColumnPicker from '#/components/table/TableColumnPicker.vue';
-
 defineProps<{
   overdueRows: null | OverdueReportRow[];
 }>();
@@ -21,14 +17,6 @@ defineProps<{
 const emit = defineEmits<{
   navigate: [path: null | string];
 }>();
-
-const tableColumns: TableColumnOption[] = [
-  { key: 'asset', label: '资产' },
-  { key: 'borrower', label: '借用人' },
-  { key: 'overdueDays', label: '逾期天数' },
-];
-const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
-  useTableColumns('dashboard-overdue', tableColumns);
 </script>
 
 <template>
@@ -37,12 +25,6 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
       <div class="workspace-card-header">
         <span>逾期资产</span>
         <div class="workspace-card-actions">
-          <TableColumnPicker
-            :columns="tableColumns"
-            :hidden-keys="hiddenKeys"
-            @reset="resetColumns"
-            @toggle="setColumnVisible"
-          />
           <ElButton
             link
             type="primary"
@@ -59,12 +41,7 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
       border
       class="workspace-table workspace-overdue-table"
     >
-      <ElTableColumn
-        v-if="visibleColumn('asset')"
-        align="center"
-        label="资产"
-        min-width="180"
-      >
+      <ElTableColumn align="center" label="资产" min-width="180">
         <template #default="{ row }">
           <div class="workspace-overdue-asset">
             <div class="workspace-overdue-name">{{ row.assetName }}</div>
@@ -74,18 +51,8 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
           </div>
         </template>
       </ElTableColumn>
-      <ElTableColumn
-        v-if="visibleColumn('borrower')"
-        label="借用人"
-        prop="borrower"
-        width="96"
-      />
-      <ElTableColumn
-        v-if="visibleColumn('overdueDays')"
-        align="center"
-        label="逾期天数"
-        width="104"
-      >
+      <ElTableColumn label="借用人" prop="borrower" width="96" />
+      <ElTableColumn align="center" label="逾期天数" width="104">
         <template #default="{ row }">
           <ElTag :type="row.isSerious ? 'danger' : 'warning'" size="small">
             {{ row.overdueDays }} 天
