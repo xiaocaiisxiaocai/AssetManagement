@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildMonthlySeriesData,
-  buildMonthlyTableRows,
   buildStatusDistribution,
   monthLabels,
   quantityAxisLabel,
@@ -40,7 +39,7 @@ describe('测试项目总览图表配置', () => {
     expect(quantityAxisLabel.formatter(12)).toBe('12个');
   });
 
-  it('为图表生成等价的语义化数据表', () => {
+  it('进度状态分布按规划/测试中、结案、落地跟进的顺序汇总', () => {
     expect(
       buildStatusDistribution({ closed: 3, inProgress: 4, landed: 2 }),
     ).toEqual([
@@ -48,15 +47,5 @@ describe('测试项目总览图表配置', () => {
       { label: '结案', value: 3 },
       { label: '落地跟进', value: 2 },
     ]);
-
-    const rows = buildMonthlyTableRows([
-      { month: 2, closedCount: 5, followUpCount: 3 },
-    ]);
-    expect(rows).toHaveLength(12);
-    expect(rows[1]).toEqual({
-      closedCount: 5,
-      followUpCount: 3,
-      month: '2月',
-    });
   });
 });

@@ -37,12 +37,3 @@ export function buildMonthlySeriesData(monthlyStat: MonthlyStat[]) {
     }),
   };
 }
-
-export function buildMonthlyTableRows(monthlyStat: MonthlyStat[]) {
-  const { closedData, followUpData } = buildMonthlySeriesData(monthlyStat);
-  return monthLabels.map((month, index) => ({
-    closedCount: closedData[index] ?? 0,
-    followUpCount: followUpData[index] ?? 0,
-    month,
-  }));
-}

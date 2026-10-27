@@ -88,31 +88,6 @@ useHomeChartCard(() => props.stats, renderChart);
         description="暂无项目数据"
       />
     </div>
-    <details class="chart-data-details">
-      <summary>查看测评类型分布数据表</summary>
-      <div class="chart-data-table-wrap">
-        <table class="chart-data-table">
-          <caption>
-            测评类型分布
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">类型</th>
-              <th scope="col">数量</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in stats?.typeDist ?? []" :key="item.label">
-              <th scope="row">{{ item.label }}</th>
-              <td>{{ item.count }}</td>
-            </tr>
-            <tr v-if="!stats?.typeDist.length">
-              <td colspan="2">暂无数据</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </details>
   </div>
 </template>
 

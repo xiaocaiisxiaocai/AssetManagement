@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import type { TestProjectStats } from '#/api/test-project';
 
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 
 import {
   EchartsUI,
@@ -11,7 +11,6 @@ import {
 
 import {
   buildMonthlySeriesData,
-  buildMonthlyTableRows,
   monthLabels,
   quantityAxisLabel,
 } from './chart-options';
@@ -22,10 +21,6 @@ const props = defineProps<{
   loading: boolean;
   stats: null | TestProjectStats;
 }>();
-
-const monthlyTableRows = computed(() =>
-  props.stats ? buildMonthlyTableRows(props.stats.monthlyStat) : [],
-);
 
 const barChartRef = ref<EchartsUIType>();
 const { renderEcharts: renderBarChart } = useEcharts(barChartRef);
@@ -106,37 +101,6 @@ useHomeChartCard(() => props.stats, renderChart);
         role="img"
       />
     </div>
-    <details class="chart-data-details">
-      <summary>
-        查看{{ stats?.year ? `${stats.year}年` : '' }}结案与跟进数据表
-      </summary>
-      <div class="chart-data-table-wrap">
-        <table class="chart-data-table">
-          <caption>
-            {{
-              stats?.year ? `${stats.year}年` : ''
-            }}结案与跟进记录统计
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">月份</th>
-              <th scope="col">结案数量</th>
-              <th scope="col">跟进记录数</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in monthlyTableRows" :key="item.month">
-              <th scope="row">{{ item.month }}</th>
-              <td>{{ item.closedCount }}</td>
-              <td>{{ item.followUpCount }}</td>
-            </tr>
-            <tr v-if="monthlyTableRows.length === 0">
-              <td colspan="3">暂无数据</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </details>
   </div>
 </template>
 
