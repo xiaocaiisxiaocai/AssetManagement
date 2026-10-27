@@ -175,12 +175,14 @@ function tableRowClassName({ row }: { row: AssetItem }) {
     >
       <ElTableColumn
         v-if="visibleColumn('assetNo')"
+        fixed
         label="资产编号"
         min-width="160"
         prop="assetNo"
       />
       <ElTableColumn
         v-if="visibleColumn('name')"
+        fixed
         label="资产名称"
         min-width="180"
         prop="name"
@@ -325,7 +327,6 @@ function tableRowClassName({ row }: { row: AssetItem }) {
         v-if="visibleColumn('actions')"
         align="center"
         class-name="table-action-cell"
-        fixed="right"
         label="操作"
         width="160"
       >
