@@ -24,12 +24,6 @@
   color: var(--workflow-title, var(--el-text-color-primary));
 }
 
-.panel-subtitle {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--workflow-muted, var(--el-text-color-secondary));
-}
-
 .empty-state {
   display: flex;
   align-items: center;

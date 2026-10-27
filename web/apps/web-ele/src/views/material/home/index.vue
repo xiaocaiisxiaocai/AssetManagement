@@ -52,13 +52,6 @@ onBeforeUnmount(() => {
       <header class="material-home-heading">
         <div>
           <h1>项目总览</h1>
-          <p>
-            {{
-              stats
-                ? stats.year + ' 年度项目、进度和落地跟进概况'
-                : '项目、进度和落地跟进概况'
-            }}
-          </p>
         </div>
         <div class="material-home-heading-actions">
           <ElButton :loading="statsLoading" @click="loadStats">刷新</ElButton>

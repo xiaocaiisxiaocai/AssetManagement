@@ -5,11 +5,6 @@
   align-items: center;
 }
 
-.pending-view-tip {
-  font-size: 13px;
-  color: var(--asset-page-muted);
-}
-
 :deep(.el-input__inner) {
   font-size: 14px;
   line-height: 20px;

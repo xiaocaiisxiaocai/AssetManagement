@@ -40,13 +40,6 @@ const query = defineModel<{ bizTypes: string[]; keyword: string }>('query', {
       <ElRadioButton value="pending">待我处理</ElRadioButton>
       <ElRadioButton value="handled">我已处理</ElRadioButton>
     </ElRadioGroup>
-    <span class="pending-view-tip">
-      {{
-        viewMode === 'pending'
-          ? '仅显示当前需要您处理的审批任务'
-          : '显示您已经通过或驳回的审批记录'
-      }}
-    </span>
   </div>
 
   <div class="filter-panel">

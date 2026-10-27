@@ -173,7 +173,6 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
   <header class="project-page-heading">
     <div>
       <h1>测试项目</h1>
-      <p>管理新产品新技术项目、料件、测试阶段和落地跟进。</p>
     </div>
   </header>
   <ProjectTableToolbar

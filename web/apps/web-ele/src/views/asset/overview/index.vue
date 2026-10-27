@@ -45,7 +45,6 @@ onBeforeUnmount(() => {
       <header class="overview-heading">
         <div>
           <h2>资产总览</h2>
-          <p>按二级分类汇总下属资产，统计未删除的资产记录数（条）</p>
         </div>
         <div class="overview-actions">
           <ElButton :loading="loading" @click="loadOverview">刷新</ElButton>

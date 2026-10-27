@@ -27,12 +27,6 @@
   color: var(--asset-page-text);
 }
 
-.overview-heading p {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--asset-page-muted);
-}
-
 .overview-actions {
   display: flex;
   flex-wrap: wrap;

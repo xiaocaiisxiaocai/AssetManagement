@@ -32,20 +32,13 @@ const emit = defineEmits<{
   <div class="asset-workspace-head">
     <div>
       <div class="asset-section-title">{{ currentLevelTitle }}</div>
-      <div class="asset-path">
-        <template v-if="flatMode && !hierarchyParent">
-          <span class="text-muted-foreground">
-            跨分类查看全部资产，可用下方条件筛选
-          </span>
-        </template>
-        <template v-else>
-          <a href="#" @click.prevent="emit('navigate', -1)"> 全部分类 </a>
-          <template v-for="(node, index) in hierarchyTrail" :key="node.id">
-            <span class="text-muted-foreground">›</span>
-            <a href="#" @click.prevent="emit('navigate', index)">
-              {{ node.code }}
-            </a>
-          </template>
+      <div v-if="!flatMode || hierarchyParent" class="asset-path">
+        <a href="#" @click.prevent="emit('navigate', -1)"> 全部分类 </a>
+        <template v-for="(node, index) in hierarchyTrail" :key="node.id">
+          <span class="text-muted-foreground">›</span>
+          <a href="#" @click.prevent="emit('navigate', index)">
+            {{ node.code }}
+          </a>
         </template>
       </div>
     </div>

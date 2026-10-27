@@ -55,7 +55,6 @@ const {
     <div class="panel-header">
       <div>
         <div class="panel-title">属性配置</div>
-        <div class="panel-subtitle">按业务语言维护流程规则</div>
       </div>
     </div>
 

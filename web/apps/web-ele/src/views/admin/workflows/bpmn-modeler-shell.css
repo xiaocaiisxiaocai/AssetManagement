@@ -81,13 +81,6 @@
   color: var(--workflow-title);
 }
 
-.bpmn-modeler-wrapper .brand-subtitle,
-.bpmn-modeler-wrapper .tool-hint {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--workflow-muted);
-}
-
 .bpmn-modeler-wrapper .designer-content {
   display: flex;
   flex: 1;

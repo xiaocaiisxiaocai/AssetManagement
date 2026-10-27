@@ -19,13 +19,7 @@ const emit = defineEmits<{
   <div class="designer-toolbar">
     <div class="toolbar-brand">
       <span class="brand-mark">流程</span>
-      <div>
-        <div class="brand-title">审批流程设计</div>
-        <div class="brand-subtitle">标准 BPMN 模型，业务化中文配置</div>
-      </div>
-    </div>
-    <div class="toolbar-center">
-      <span class="tool-hint">左侧拖拽节点，右侧配置审批人与条件</span>
+      <div class="brand-title">审批流程设计</div>
     </div>
     <div class="toolbar-actions">
       <ElButtonGroup>
