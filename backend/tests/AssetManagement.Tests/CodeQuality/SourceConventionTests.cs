@@ -102,17 +102,33 @@ public class SourceConventionTests
             "通知写入失败必须向外传播并回滚业务事务，不能降级为仅记录告警");
 
         var materialStart = ExtractMethod(materialSource, "public async Task<MaterialFlowDto> InitiateTransferAsync");
-        materialStart.Should().Contain("_notifications.CreateAsync")
+        materialStart.Should().Contain("NotifyEnteredReceivingAsync")
             .And.Contain("await tx.CommitAsync()")
             .And.Contain("NotifyCurrentApproversAsync")
             .And.Contain("await bpmnTx.CommitAsync()");
-        materialStart.IndexOf("_notifications.CreateAsync", StringComparison.Ordinal)
+        materialStart.IndexOf("NotifyEnteredReceivingAsync", StringComparison.Ordinal)
             .Should().BeLessThan(materialStart.IndexOf("await tx.CommitAsync()", StringComparison.Ordinal),
-                "直接流转与接收通知必须由同一事务原子提交");
+                "直接流转进入待接收的通知必须在提交前写入");
         materialStart.IndexOf("NotifyCurrentApproversAsync", StringComparison.Ordinal)
             .Should().BeLessThan(materialStart.IndexOf("await bpmnTx.CommitAsync()", StringComparison.Ordinal),
                 "审批流转与待办通知必须由同一事务原子提交");
         materialStart.Should().NotContain("catch (Exception",
+            "通知写入失败必须向外传播并回滚业务事务，不能降级为仅记录告警");
+
+        var enteredReceiving = ExtractMethod(materialSource, "private async Task NotifyEnteredReceivingAsync");
+        (enteredReceiving.Contains("_notifications.CreateAsync", StringComparison.Ordinal)
+         || enteredReceiving.Contains("_notifications.CreateBatchAsync", StringComparison.Ordinal))
+            .Should().BeTrue("进入待接收的通知必须实际写入");
+        enteredReceiving.Should().NotContain("catch",
+            "通知写入失败必须向外传播并回滚业务事务，不能降级为仅记录告警");
+
+        var confirmReceipt = ExtractMethod(materialSource, "public async Task<MaterialFlowDto> ConfirmReceiptAsync");
+        confirmReceipt.Should().Contain("_notifications.CreateAsync")
+            .And.Contain("await tx.CommitAsync()");
+        confirmReceipt.IndexOf("_notifications.CreateAsync", StringComparison.Ordinal)
+            .Should().BeLessThan(confirmReceipt.IndexOf("await tx.CommitAsync()", StringComparison.Ordinal),
+                "确认接收与结果通知必须由同一事务原子提交");
+        confirmReceipt.Should().NotContain("catch (Exception",
             "通知写入失败必须向外传播并回滚业务事务，不能降级为仅记录告警");
     }
 
@@ -299,7 +315,10 @@ public class SourceConventionTests
             // 项目负责人可维护自己项目下的料件生命周期；有权限码的用户仍按原部门范围判断。
             "TestMaterialController.cs:Return",
             "TestMaterialController.cs:Delete",
-            "TestMaterialController.cs:Restore"
+            "TestMaterialController.cs:Restore",
+            // 仅接收人本人可操作，最终授权在 Service 层按 TransfereeId 判断。
+            "MaterialFlowController.cs:ReceivingPage",
+            "MaterialFlowController.cs:ConfirmReceipt"
         };
 
         var offenders = Directory

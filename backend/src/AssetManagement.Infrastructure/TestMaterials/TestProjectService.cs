@@ -1,6 +1,7 @@
 using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
+using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Persistence;
 using AssetManagement.Infrastructure.Common;
 using Microsoft.AspNetCore.Http;
@@ -97,7 +98,6 @@ public class TestProjectService : ITestProjectService
             throw new BizException(4130, $"导出项目不能超过 {AppConstants.MaxExportRows} 条，请缩小筛选范围");
 
         var projects = await projectsQuery.OrderBy(x => x.Code).ThenBy(x => x.Id).ToListAsync();
-        await RevertIncompleteLandingAsync(projects);
         var projectIds = projects.Select(x => x.Id).ToArray();
         var materials = await _db.TestMaterials.AsNoTracking()
             .Where(x => projectIds.Contains(x.ProjectId))
@@ -765,7 +765,6 @@ public class TestProjectService : ITestProjectService
         var visibleProjects = await _accessScope.ApplyVisibilityAsync(
             _db.TestProjects.AsNoTracking().Where(x => !x.IsDeleted), currentUserId);
         var projects = await visibleProjects.ToListAsync();
-        await RevertIncompleteLandingAsync(projects);
 
         var typeOptions = await _db.TestProjectOptions.AsNoTracking()
             .Where(x => x.Kind == OptionKindProjectType && x.IsActive)
@@ -824,7 +823,6 @@ public class TestProjectService : ITestProjectService
     private async Task<List<TestProjectDto>> ToDtos(IEnumerable<TestProject> projects, Dictionary<int, int> counts, int? currentUserId)
     {
         var list = projects.ToList();
-        await RevertIncompleteLandingAsync(list);
         var ownerIds = list.Where(x => x.OwnerId.HasValue).Select(x => x.OwnerId!.Value).Distinct().ToArray();
         var users = await _db.Users.AsNoTracking()
             .Where(x => ownerIds.Contains(x.Id))
@@ -836,9 +834,9 @@ public class TestProjectService : ITestProjectService
         var projectIds = list.Select(x => x.Id).ToArray();
         var blockingProjectIds = (await _db.ProjectTestStages.AsNoTracking()
                 .Where(x => projectIds.Contains(x.ProjectId) && !x.IsDeleted)
-                .Select(x => new { x.ProjectId, x.Status, x.EndDate })
+                .Select(x => new { x.ProjectId, x.EndDate, x.TestContent, x.TestResult })
                 .ToListAsync())
-            .Where(x => TestProjectLifecycleRules.StageBlocksLanding(x.Status, x.EndDate))
+            .Where(x => TestProjectLifecycleRules.StageBlocksLanding(x.EndDate, x.TestContent, x.TestResult))
             .Select(x => x.ProjectId)
             .ToHashSet();
         var followups = await _db.TestProjectFollowups.AsNoTracking()
@@ -1052,7 +1050,7 @@ public class TestProjectService : ITestProjectService
             return;
 
         if (await _db.MaterialFlows.AnyAsync(flow =>
-                flow.Status == "pending" &&
+                (flow.Status == FlowStatus.Pending || flow.Status == FlowStatus.Receiving) &&
                 _db.TestMaterials.Any(material =>
                     material.Id == flow.MaterialId && material.ProjectId == projectId)))
             throw new BizException(4092, "项目存在进行中的料件流转，请先处理完再进入落地跟进或结案");
@@ -1065,11 +1063,7 @@ public class TestProjectService : ITestProjectService
         var finalStage = stages.FirstOrDefault();
         if (finalStage is null ||
             stages.Any(x =>
-                TestProjectLifecycleRules.StageBlocksLanding(x.Status, x.EndDate) ||
-                string.IsNullOrWhiteSpace(x.TestContent) ||
-                string.IsNullOrWhiteSpace(x.TestResult)) ||
-            string.IsNullOrWhiteSpace(finalStage.TestContent) ||
-            string.IsNullOrWhiteSpace(finalStage.TestResult))
+                TestProjectLifecycleRules.StageBlocksLanding(x.EndDate, x.TestContent, x.TestResult)))
             throw new BizException(4094, "进入落地跟进或结案前，必须完成所有测试阶段，并填写结束日期和测试结果");
 
         if (requestedClosedDate.HasValue)
@@ -1240,52 +1234,6 @@ public class TestProjectService : ITestProjectService
     private static bool IsLandingProgress(TestProject project)
         => string.Equals(project.ProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// 阶段未完成或缺少结束日期时，不能停留在落地跟进，进度退回测试中。历史跟进记录保留。
-    /// </summary>
-    private async Task RevertIncompleteLandingAsync(IReadOnlyCollection<TestProject> projects)
-    {
-        var candidates = projects
-            .Where(x =>
-                !x.IsDeleted &&
-                !x.ClosedDate.HasValue &&
-                string.Equals(x.ProgressCode, ProgressLanding, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        if (candidates.Count == 0) return;
-
-        var ids = candidates.Select(x => x.Id).ToArray();
-        var blockingIds = (await _db.ProjectTestStages.AsNoTracking()
-                .Where(x => ids.Contains(x.ProjectId) && !x.IsDeleted)
-                .Select(x => new { x.ProjectId, x.Status, x.EndDate })
-                .ToListAsync())
-            .Where(x => TestProjectLifecycleRules.StageBlocksLanding(x.Status, x.EndDate))
-            .Select(x => x.ProjectId)
-            .ToHashSet();
-        if (blockingIds.Count == 0) return;
-
-        await _db.TestProjects
-            .Where(x =>
-                blockingIds.Contains(x.Id) &&
-                !x.IsDeleted &&
-                x.ClosedDate == null &&
-                x.ProgressCode != null &&
-                x.ProgressCode.ToLower() == ProgressLanding)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.ProgressCode, TestProjectLifecycleRules.Testing)
-                .SetProperty(x => x.RowVersion, x => x.RowVersion + 1));
-
-        var refreshed = await _db.TestProjects.AsNoTracking()
-            .Where(x => blockingIds.Contains(x.Id))
-            .Select(x => new { x.Id, x.ProgressCode, x.RowVersion })
-            .ToDictionaryAsync(x => x.Id);
-        foreach (var project in candidates)
-        {
-            if (!refreshed.TryGetValue(project.Id, out var updated)) continue;
-            project.ProgressCode = updated.ProgressCode;
-            project.RowVersion = updated.RowVersion;
-        }
-    }
-
     private static bool AllowsReturnToTesting(
         string? currentProgressCode,
         string? nextProgressCode,
@@ -1298,7 +1246,9 @@ public class TestProjectService : ITestProjectService
         _db.ProjectTestStages.AnyAsync(x =>
             x.ProjectId == projectId &&
             !x.IsDeleted &&
-            (x.Status != "completed" || x.EndDate == null));
+            (x.EndDate == null ||
+             x.TestContent == null || x.TestContent.Trim() == "" ||
+             x.TestResult == null || x.TestResult.Trim() == ""));
 
     private async Task<TestProjectFollowup?> LatestFollowup(int projectId)
         => await _db.TestProjectFollowups

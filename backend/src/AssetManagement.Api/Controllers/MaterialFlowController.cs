@@ -2,6 +2,7 @@ using System.Security.Claims;
 using AssetManagement.Application.Common;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Infrastructure.Auth;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AssetManagement.Api.Controllers;
@@ -17,6 +18,13 @@ public class MaterialFlowController : ControllerBase
     [HasPermission("material-flow:transfer")]
     public async Task<ApiResult<MaterialFlowDto>> Initiate(InitiateTransferRequest request)
         => ApiResult<MaterialFlowDto>.Ok(await _service.InitiateTransferAsync(request, CurrentUserId()));
+
+    [HttpGet("transferee-options")]
+    [HasPermission("material-flow:transfer")]
+    public async Task<ApiResult<List<TransfereeOptionDto>>> TransfereeOptions(
+        [FromQuery] int materialId, [FromQuery] string? keyword)
+        => ApiResult<List<TransfereeOptionDto>>.Ok(
+            await _service.GetTransfereeOptionsAsync(materialId, keyword, CurrentUserId()));
 
     [HttpGet("pending")]
     [HasPermission("material-flow:approve")]
@@ -43,6 +51,11 @@ public class MaterialFlowController : ControllerBase
     public async Task<ApiResult<PagedResult<MaterialFlowDto>>> MinePage([FromQuery] MaterialFlowPageQuery query)
         => ApiResult<PagedResult<MaterialFlowDto>>.Ok(await _service.MinePageAsync(CurrentUserId(), query));
 
+    [HttpGet("receiving-page")]
+    [Authorize]
+    public async Task<ApiResult<PagedResult<MaterialFlowDto>>> ReceivingPage([FromQuery] MaterialFlowPageQuery query)
+        => ApiResult<PagedResult<MaterialFlowDto>>.Ok(await _service.ReceivingPageAsync(CurrentUserId(), query));
+
     [HttpGet("{id:int}")]
     [HasPermission("material-flow:view")]
     public async Task<ApiResult<MaterialFlowDto>> Get(int id)
@@ -62,6 +75,11 @@ public class MaterialFlowController : ControllerBase
     [HasPermission("material-flow:view")]
     public async Task<ApiResult<MaterialFlowDto>> Withdraw(int id)
         => ApiResult<MaterialFlowDto>.Ok(await _service.WithdrawAsync(id, CurrentUserId()));
+
+    [HttpPost("{id:int}/confirm-receipt")]
+    [Authorize]
+    public async Task<ApiResult<MaterialFlowDto>> ConfirmReceipt(int id)
+        => ApiResult<MaterialFlowDto>.Ok(await _service.ConfirmReceiptAsync(id, CurrentUserId()));
 
     [HttpPost("{id:int}/release-stuck")]
     [HasPermission("material-flow:view")]

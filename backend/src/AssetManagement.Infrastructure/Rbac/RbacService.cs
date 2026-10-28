@@ -1063,13 +1063,15 @@ public class RbacService : IRbacService
         }
 
         if (await _db.MaterialFlows.AsNoTracking()
-                .AnyAsync(x => x.Status == "pending" && x.TransfereeId == userId))
+                .AnyAsync(x => (x.Status == FlowStatus.Pending || x.Status == FlowStatus.Receiving) &&
+                               x.TransfereeId == userId))
         {
             throw new BizException(4092, "该用户是在途料件流转的受让人，流程结束前不能停用");
         }
 
         if (await _db.MaterialFlows.AsNoTracking()
-                .AnyAsync(x => x.Status == "pending" && x.ApplicantId == userId))
+                .AnyAsync(x => (x.Status == FlowStatus.Pending || x.Status == FlowStatus.Receiving) &&
+                               x.ApplicantId == userId))
         {
             throw new BizException(4092, "该用户有进行中的料件流转申请，流程结束前不能停用");
         }

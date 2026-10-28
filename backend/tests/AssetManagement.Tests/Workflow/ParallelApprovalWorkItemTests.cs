@@ -139,7 +139,7 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
 
             var approvedB = await Post<ApiResult<MaterialFlowDto>>($"/api/material-flows/{flow.Data.Id}/approve",
                 new MaterialApprovalRequest { NodeId = NodeB, Opinion = "B节点通过" });
-            approvedB.Data!.Status.Should().Be("approved");
+            approvedB.Data!.Status.Should().Be("receiving");
         }
         finally
         {
@@ -227,12 +227,25 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
         })).Data!;
 
     private async Task<TestMaterialDto> CreateMaterial(int projectId, string name)
-        => (await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
+    {
+        int? departmentId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            departmentId = await db.Users.AsNoTracking()
+                .Where(x => x.Id == 1)
+                .Select(x => x.DepartmentId)
+                .SingleAsync();
+        }
+
+        return (await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
         {
             Name = name,
             ProjectId = projectId,
+            DepartmentId = departmentId,
             CustodianId = 1
         })).Data!;
+    }
 
     private Task<UserDto> CreateApprover(string prefix, string name)
         => CreateUser(prefix, name, "admin");
@@ -245,12 +258,7 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
         var employeeNo = $"{prefix}{Guid.NewGuid():N}"[..12].ToUpperInvariant();
         int? departmentId = null;
         if (roleCode == "employee")
-        {
-            departmentId = (await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
-            {
-                Name = $"接收部门{Guid.NewGuid():N}"[..24]
-            })).Data!.Id;
-        }
+            departmentId = await AdminDepartmentId();
         return (await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = employeeNo,
@@ -259,6 +267,30 @@ public class ParallelApprovalWorkItemTests : IClassFixture<TestWebAppFactory>
             DepartmentId = departmentId,
             RoleIds = new[] { (await Role(roleCode)).Id }
         })).Data!;
+    }
+
+    private async Task<int> AdminDepartmentId()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var admin = await db.Users.AsTracking().SingleAsync(x => x.EmployeeNo == "1001");
+        if (admin.DepartmentId is int departmentId &&
+            await db.Departments.AnyAsync(x => x.Id == departmentId && x.IsActive))
+        {
+            return departmentId;
+        }
+
+        var department = new Department
+        {
+            Code = $"AD{Guid.NewGuid():N}"[..12],
+            Name = "管理员所属部门",
+            IsActive = true
+        };
+        db.Departments.Add(department);
+        await db.SaveChangesAsync();
+        admin.DepartmentId = department.Id;
+        await db.SaveChangesAsync();
+        return department.Id;
     }
 
     private async Task<RoleDto> Role(string code)

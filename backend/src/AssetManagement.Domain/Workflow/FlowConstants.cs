@@ -11,6 +11,11 @@ public static class FlowStatus
     public const string Pending = "pending";
 
     /// <summary>
+    /// 审批已结束或无需审批，等待接收人确认。保管人尚未变更。
+    /// </summary>
+    public const string Receiving = "receiving";
+
+    /// <summary>
     /// 已通过
     /// </summary>
     public const string Approved = "approved";
@@ -24,6 +29,13 @@ public static class FlowStatus
     /// 申请人已撤回
     /// </summary>
     public const string Withdrawn = "withdrawn";
+
+    /// <summary>
+    /// 料件流转尚未结束：审批中或待接收。资产流程不要使用此判断。
+    /// </summary>
+    public static bool IsMaterialInProgress(string? status) =>
+        string.Equals(status, Pending, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, Receiving, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>

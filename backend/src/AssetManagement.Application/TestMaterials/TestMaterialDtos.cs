@@ -171,7 +171,7 @@ public class TestMaterialDto
     public DateTime CreatedAt { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
-    /// <summary>是否存在进行中的流转单(派生锁定标志)</summary>
+    /// <summary>是否存在进行中的流转单（审批中或待接收）</summary>
     public bool HasPendingFlow { get; set; }
 }
 
@@ -218,6 +218,7 @@ public class MaterialFlowDto
     public int Id { get; set; }
     public string FlowNo { get; set; } = "";
     public string BizType { get; set; } = "";
+    public int ProjectId { get; set; }
     public int MaterialId { get; set; }
     public string MaterialNo { get; set; } = "";
     public string MaterialName { get; set; } = "";
@@ -291,6 +292,14 @@ public class TestMaterialDetailDto
     public TestMaterialDto Material { get; set; } = new();
     public List<MaterialFlowDto> Flows { get; set; } = new();
     public List<MaterialFlowRecordDto> Records { get; set; } = new();
+}
+
+public class TransfereeOptionDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string EmployeeNo { get; set; } = "";
+    public string? DepartmentName { get; set; }
 }
 
 public class InitiateTransferRequest

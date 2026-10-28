@@ -111,7 +111,7 @@ internal static class ProjectReportBuilder
             AppendHtmlTable(html, new[] { "序号", "阶段名称", "状态", "开始日期", "结束日期", "最近更新" },
                 stages.Select(x => new[]
                 {
-                    x.Sequence.ToString(CultureInfo.InvariantCulture), Display(x.Name), StageStatusText(x.Status),
+                    x.Sequence.ToString(CultureInfo.InvariantCulture), Display(x.Name), StageStatusText(x),
                     FormatDate(x.StartDate), FormatDate(x.EndDate), FormatDateTime(x.UpdatedAt)
                 }));
         }
@@ -132,7 +132,7 @@ internal static class ProjectReportBuilder
                     .Append(H($"{stage.Sequence}. {Display(stage.Name)}"))
                     .Append("</h3>");
                 AppendHtmlPropertyTable(html,
-                    ("状态", StageStatusText(stage.Status)), ("开始日期", FormatDate(stage.StartDate)),
+                    ("状态", StageStatusText(stage)), ("开始日期", FormatDate(stage.StartDate)),
                     ("结束日期", FormatDate(stage.EndDate)), ("最近更新", FormatDateTime(stage.UpdatedAt)));
                 AppendHtmlLongText(html, "阶段目标", stage.Objective);
                 AppendHtmlLongText(html, "测试内容", stage.TestContent);
@@ -248,7 +248,7 @@ internal static class ProjectReportBuilder
             : Table(new[] { "序号", "阶段名称", "状态", "开始日期", "结束日期", "最近更新" },
                 stages.Select(x => new[]
                 {
-                    x.Sequence.ToString(CultureInfo.InvariantCulture), Display(x.Name), StageStatusText(x.Status),
+                    x.Sequence.ToString(CultureInfo.InvariantCulture), Display(x.Name), StageStatusText(x),
                     FormatDate(x.StartDate), FormatDate(x.EndDate), FormatDateTime(x.UpdatedAt)
                 })));
 
@@ -264,7 +264,7 @@ internal static class ProjectReportBuilder
                 var stage = stages[index];
                 body.Add(Heading($"{stage.Sequence}. {Display(stage.Name)}", 2, index > 0));
                 body.Add(PropertyTable(
-                    ("状态", StageStatusText(stage.Status)), ("开始日期", FormatDate(stage.StartDate)),
+                    ("状态", StageStatusText(stage)), ("开始日期", FormatDate(stage.StartDate)),
                     ("结束日期", FormatDate(stage.EndDate)), ("最近更新", FormatDateTime(stage.UpdatedAt))));
                 body.Add(LongTextBlock("阶段目标", stage.Objective));
                 body.Add(LongTextBlock("测试内容", stage.TestContent));
@@ -605,10 +605,9 @@ internal static class ProjectReportBuilder
     private static IEnumerable<string[]> StageStatusRows(IReadOnlyCollection<ProjectTestStageDto> stages) =>
         new[]
         {
-            new[] { "未开始", stages.Count(x => string.Equals(x.Status, "planned", StringComparison.OrdinalIgnoreCase)).ToString(CultureInfo.InvariantCulture) },
-            new[] { "进行中", stages.Count(x => string.Equals(x.Status, "in_progress", StringComparison.OrdinalIgnoreCase)).ToString(CultureInfo.InvariantCulture) },
-            new[] { "已完成", stages.Count(x => string.Equals(x.Status, "completed", StringComparison.OrdinalIgnoreCase)).ToString(CultureInfo.InvariantCulture) },
-            new[] { "受阻", stages.Count(x => string.Equals(x.Status, "blocked", StringComparison.OrdinalIgnoreCase)).ToString(CultureInfo.InvariantCulture) }
+            new[] { "未开始", stages.Count(x => !x.StartDate.HasValue && !x.EndDate.HasValue).ToString(CultureInfo.InvariantCulture) },
+            new[] { "进行中", stages.Count(x => x.StartDate.HasValue && !x.EndDate.HasValue).ToString(CultureInfo.InvariantCulture) },
+            new[] { "已完成", stages.Count(x => x.EndDate.HasValue).ToString(CultureInfo.InvariantCulture) }
         };
 
     private static string ReportTitle(ProjectReportData data)
@@ -625,20 +624,14 @@ internal static class ProjectReportBuilder
             return $"项目进度：{Display(project.ProgressLabel ?? project.ProgressCode)}；尚未设置测试阶段。";
         }
 
-        var completed = stages.Count(x => string.Equals(x.Status, "completed", StringComparison.OrdinalIgnoreCase));
+        var completed = stages.Count(x => x.EndDate.HasValue);
         var percent = completed * 100 / stages.Count;
         var scope = stageOnly ? "本报告仅包含选定阶段" : "本报告包含项目全部阶段";
         return $"项目整体进度：{Display(project.ProgressLabel ?? project.ProgressCode)}；{scope}，共 {stages.Count} 个阶段，已完成 {completed} 个，所含阶段完成率 {percent}%。";
     }
 
-    private static string StageStatusText(string? status) => status?.Trim().ToLowerInvariant() switch
-    {
-        "planned" => "未开始",
-        "in_progress" => "进行中",
-        "completed" => "已完成",
-        "blocked" => "受阻",
-        _ => Display(status)
-    };
+    private static string StageStatusText(ProjectTestStageDto stage) =>
+        stage.EndDate.HasValue ? "已完成" : stage.StartDate.HasValue ? "进行中" : "未开始";
 
     private static string MaterialStatusText(MaterialStatus status) => status switch
     {
@@ -649,6 +642,7 @@ internal static class ProjectReportBuilder
     private static string FlowStatusText(string? status) => status?.Trim().ToLowerInvariant() switch
     {
         "pending" => "审批中",
+        "receiving" => "待接收",
         "approved" => "已通过",
         "rejected" => "已驳回",
         "withdrawn" => "已撤回",

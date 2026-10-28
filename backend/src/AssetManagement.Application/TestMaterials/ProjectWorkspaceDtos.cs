@@ -41,8 +41,8 @@ public class SaveProjectTestStageRequest
     public string? TestResult { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
-    [Required, StringLength(20)]
-    public string Status { get; set; } = "planned";
+    /// <summary>历史请求字段。服务端按起止日期重算，不采用传入值。</summary>
+    public string? Status { get; set; }
     public uint RowVersion { get; set; }
 }
 

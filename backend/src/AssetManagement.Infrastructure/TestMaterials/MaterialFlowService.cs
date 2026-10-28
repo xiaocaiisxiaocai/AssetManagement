@@ -59,11 +59,12 @@ public class MaterialFlowService : IMaterialFlowService
             ?? throw new BizException(4041, "受让人不存在或已停用");
         if (transferee.Id == applicant.Id) throw new BizException(4001, "接收人不能与申请人相同");
         if (transferee.Id == material.CustodianId) throw new BizException(4001, "接收人不能是当前保管人");
+        await EnsureCanReceiveProjectAsync(transferee, project);
         await EnsureTransfereeDepartmentAsync(transferee);
 
         var approvalEnabled = await IsApprovalEnabled();
 
-        // 开关关闭:直接转移(仍落一条 status=approved 的流转单,保证详情时间线可追溯)
+        // 开关关闭:进入待接收。不改保管人，仍落一条流转单供时间线追溯。
         if (!approvalEnabled)
         {
             for (var attempt = 0; ; attempt++)
@@ -72,11 +73,12 @@ public class MaterialFlowService : IMaterialFlowService
                 var lockedProject = await LockProjectForMaterialAsync(request.MaterialId);
                 EnsureMaterialProjectOpen(lockedProject);
                 transferee = await LockActiveUserAsync(transferee.Id);
+                await EnsureCanReceiveProjectAsync(transferee, lockedProject);
                 await EnsureTransfereeDepartmentAsync(transferee);
                 material = await LockTransferableMaterialAsync(request.MaterialId);
                 await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id, lockedProject);
                 // 防重检查放事务内，避免并发请求同时通过检查
-                if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
+                if (await HasInProgressMaterialFlowAsync(material.Id))
                     throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
                 var directFlow = new MaterialFlow
                 {
@@ -93,14 +95,12 @@ public class MaterialFlowService : IMaterialFlowService
                     Transferee = transferee.Name,
                     TransfereeDept = await DepartmentName(transferee.DepartmentId),
                     Reason = request.Reason,
-                    Status = "approved",
+                    Status = FlowStatus.Receiving,
                     DirectTransfer = true,
+                    ActiveScopeKey = MaterialScopeKey(material.Id),
                     ApplyTime = DateTime.UtcNow,
                     Deadline = DateTime.UtcNow
                 };
-                material.CustodianId = transferee.Id;
-                material.DepartmentId = transferee.DepartmentId;
-                material.RowVersion++;
                 _db.MaterialFlows.Add(directFlow);
                 try
                 {
@@ -115,19 +115,13 @@ public class MaterialFlowService : IMaterialFlowService
                     await tx.RollbackAsync();
                     _db.Entry(directFlow).State = EntityState.Detached;
                     _db.Entry(material).State = EntityState.Detached;
+                    if (await HasInProgressMaterialFlowAsync(material.Id))
+                        throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
                     continue;
                 }
                 await AddRecord(directFlow.Id, "direct_transfer", applicant.Id, applicant.Name,
-                    $"直接转移给 {transferee.Name}: {request.Reason}");
-                await _notifications.CreateAsync(new CreateNotificationRequest
-                {
-                    Type = "material_transferred",
-                    Title = $"料件已转移给您：{material.Name}",
-                    Body = $"料件 {material.MaterialNo}（{material.Name}）已由 {applicant.Name} 直接转移给您。备注：{request.Reason}",
-                    FlowId = directFlow.Id,
-                    UserId = transferee.Id,
-                    IdempotencyKey = $"material_transferred_{directFlow.Id}_{transferee.Id}"
-                });
+                    $"待 {transferee.Name} 确认接收：{request.Reason}");
+                await NotifyEnteredReceivingAsync(directFlow, notifyApplicantApproved: false);
                 await tx.CommitAsync();
 
                 return await ToDtoAsync(directFlow, currentUserId: applicantId);
@@ -154,11 +148,12 @@ public class MaterialFlowService : IMaterialFlowService
                 throw new BizException(4051, "流程定义不完整,缺少 BPMN XML");
             var process = BpmnParser.Parse(workflow.BpmnXml);
             transferee = await LockActiveUserAsync(transferee.Id);
+            await EnsureCanReceiveProjectAsync(transferee, lockedProject);
             await EnsureTransfereeDepartmentAsync(transferee);
             material = await LockTransferableMaterialAsync(request.MaterialId);
             await EnsureTransferStillAllowedAsync(material, applicant, transferee.Id, lockedProject);
             // 防重检查放事务内，避免并发请求同时通过检查
-            if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
+            if (await HasInProgressMaterialFlowAsync(material.Id))
                 throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
             var flow = new MaterialFlow
             {
@@ -183,10 +178,12 @@ public class MaterialFlowService : IMaterialFlowService
             ExecuteBpmn(() => BpmnEngine.Start(flow, process));
             await NormalizeSignStatesAsync(flow, process);
             await EnsureCurrentApproversResolvableAsync(flow, process);
-            flow.ActiveScopeKey = flow.Status == "pending" ? $"material:{material.Id}" : null;
+            if (flow.Status == FlowStatus.Approved)
+                flow.Status = FlowStatus.Receiving;
+            flow.ActiveScopeKey = flow.Status is FlowStatus.Pending or FlowStatus.Receiving
+                ? MaterialScopeKey(material.Id)
+                : null;
             _db.MaterialFlows.Add(flow);
-            if (flow.Status == "approved")
-                await ApplyMaterialTransferAsync(flow);
             try
             {
                 await _db.SaveChangesAsync();
@@ -195,14 +192,17 @@ public class MaterialFlowService : IMaterialFlowService
             {
                 await bpmnTx.RollbackAsync();
                 _db.Entry(flow).State = EntityState.Detached;
-                if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == material.Id && x.Status == "pending"))
+                if (await HasInProgressMaterialFlowAsync(material.Id))
                     throw new BizException(4056, "该料件已有进行中的流转,请勿重复发起");
                 _db.Entry(material).State = EntityState.Detached;
                 continue;
             }
             await AddRecord(flow.Id, "start", applicant.Id, applicant.Name, request.Reason);
-            await NotifyCurrentApproversAsync(flow, process,
-                $"您有新的料件流转待审批：{material.Name}（{material.MaterialNo}）转移给 {transferee.Name}");
+            if (flow.Status == FlowStatus.Receiving)
+                await NotifyEnteredReceivingAsync(flow, notifyApplicantApproved: true);
+            else if (flow.Status == FlowStatus.Pending)
+                await NotifyCurrentApproversAsync(flow, process,
+                    $"您有新的料件流转待审批：{material.Name}（{material.MaterialNo}）转移给 {transferee.Name}");
             await bpmnTx.CommitAsync();
 
             return await ToDtoAsync(flow, currentUserId: applicantId);
@@ -328,6 +328,23 @@ public class MaterialFlowService : IMaterialFlowService
         return new PagedResult<MaterialFlowDto> { Items = result, Total = total, Page = page, PageSize = pageSize };
     }
 
+    public async Task<PagedResult<MaterialFlowDto>> ReceivingPageAsync(int userId, MaterialFlowPageQuery filter)
+    {
+        var (page, pageSize) = NormalizePage(filter.Page, filter.PageSize);
+        var query = ApplyMaterialFlowPageFilters(_db.MaterialFlows.AsNoTracking()
+            .Where(flow => flow.Status == FlowStatus.Receiving && flow.TransfereeId == userId), filter);
+        var total = await query.CountAsync();
+        var pageOffset = PageOffset(page, pageSize);
+        if (pageOffset >= total)
+            return new PagedResult<MaterialFlowDto> { Total = total, Page = page, PageSize = pageSize };
+        var flows = await query.OrderByDescending(flow => flow.Id)
+            .Skip((int)pageOffset).Take(pageSize).ToListAsync();
+        var renderContext = await BuildProgressRenderContextAsync(flows);
+        var result = new List<MaterialFlowDto>();
+        foreach (var flow in flows) result.Add(await ToDtoAsync(flow, currentUserId: userId, renderContext: renderContext));
+        return new PagedResult<MaterialFlowDto> { Items = result, Total = total, Page = page, PageSize = pageSize };
+    }
+
     public async Task<MaterialFlowDto> GetAsync(int id, int userId)
     {
         var flow = await LoadFlow(id);
@@ -355,17 +372,17 @@ public class MaterialFlowService : IMaterialFlowService
         await ReconcileInactiveSignersAsync(flow, nodeId);
         ExecuteBpmn(() => BpmnEngine.Approve(flow, process, nodeId, ApprovalIdentity(flow, nodeId, user), request.Opinion));
 
-        if (flow.Status == "pending")
+        if (flow.Status == FlowStatus.Pending)
         {
             await NormalizeSignStatesAsync(flow, process);
             await EnsureCurrentApproversResolvableAsync(flow, process);
         }
 
-        // 流程完成 -> 落地业务副作用(改保管人 + 部门)
-        if (flow.Status == "approved")
+        // 流程完成只进入待接收。保管人要等接收人确认后才变更。
+        if (flow.Status == FlowStatus.Approved)
         {
-            flow.ActiveScopeKey = null;
-            await ApplyMaterialTransferAsync(flow);
+            flow.Status = FlowStatus.Receiving;
+            flow.ActiveScopeKey = MaterialScopeKey(flow.MaterialId);
         }
 
         flow.RowVersion++;
@@ -379,36 +396,10 @@ public class MaterialFlowService : IMaterialFlowService
         }
         await AddRecord(id, "approve", user.Id, user.Name, $"节点 {nodeId}: {request.Opinion}", nodeId);
 
-        // 流程完成 → 通知申请人；未完成 → 通知下一审批节点审批人
-        if (flow.Status == "approved")
-        {
-            var notifications = new List<CreateNotificationRequest>
-            {
-                new()
-                {
-                    Type = "material_approved",
-                    Title = $"料件流转审批通过：{flow.MaterialName}",
-                    Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请已通过审批。",
-                    FlowId = id,
-                    UserId = flow.ApplicantId,
-                    IdempotencyKey = $"material_approved_{id}_{flow.ApplicantId}"
-                }
-            };
-            if (flow.TransfereeId is int transfereeId && transfereeId != flow.ApplicantId)
-            {
-                notifications.Add(new CreateNotificationRequest
-                {
-                    Type = "material_transferred",
-                    Title = $"料件已转移给您：{flow.MaterialName}",
-                    Body = $"料件 {flow.MaterialNo}（{flow.MaterialName}）已完成转移审批，当前保管人为您。",
-                    FlowId = id,
-                    UserId = transfereeId,
-                    IdempotencyKey = $"material_transferred_{id}_{transfereeId}"
-                });
-            }
-            await _notifications.CreateBatchAsync(notifications);
-        }
-        else if (flow.Status == "pending")
+        // 进入待接收时通知申请人与接收人；节点未走完则只通知下一审批人。
+        if (flow.Status == FlowStatus.Receiving)
+            await NotifyEnteredReceivingAsync(flow, notifyApplicantApproved: true);
+        else if (flow.Status == FlowStatus.Pending)
         {
             await NotifyCurrentApproversAsync(flow, process,
                 $"您有新的料件流转待审批：{flow.MaterialName}（{flow.MaterialNo}）转移给 {flow.Transferee}");
@@ -458,13 +449,17 @@ public class MaterialFlowService : IMaterialFlowService
     public async Task<MaterialFlowDto> WithdrawAsync(int id, int userId)
     {
         var flow = await LoadFlow(id);
-        EnsureActive(flow);
+        if (flow.Status != FlowStatus.Pending && flow.Status != FlowStatus.Receiving)
+            throw new BizException(4013, "该流转单已结束,无法操作");
         if (flow.ApplicantId != userId)
             throw new BizException(4031, "只有申请人本人可以撤回该申请");
 
         var applicant = await LoadUser(userId);
         await using var tx = await _db.Database.BeginTransactionAsync();
-        ExecuteBpmn(() => BpmnEngine.Withdraw(flow, applicant.Name));
+        if (flow.Status == FlowStatus.Pending)
+            ExecuteBpmn(() => BpmnEngine.Withdraw(flow, applicant.Name));
+        else
+            flow.Status = FlowStatus.Withdrawn;
         flow.ActiveScopeKey = null;
         flow.RowVersion++;
         try
@@ -476,6 +471,51 @@ public class MaterialFlowService : IMaterialFlowService
             throw new BizException(4090, "操作冲突，该流转单已被他人处理，请刷新后重试");
         }
         await AddRecord(id, "withdraw", applicant.Id, applicant.Name, "申请人主动撤回");
+        await tx.CommitAsync();
+
+        return await ToDtoAsync(flow, currentUserId: userId);
+    }
+
+    public async Task<MaterialFlowDto> ConfirmReceiptAsync(int id, int userId)
+    {
+        var flow = await LoadFlow(id);
+        if (flow.Status != FlowStatus.Receiving)
+            throw new BizException(4013, "该流转单已结束,无法操作");
+        if (flow.TransfereeId is not int transfereeId || transfereeId != userId)
+            throw new BizException(4031, "只有接收人本人可以确认接收");
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var project = await LockProjectForMaterialAsync(flow.MaterialId);
+        EnsureMaterialProjectOpen(project);
+        var material = await LockTransferableMaterialAsync(flow.MaterialId);
+        if (material.ProjectId != project.Id)
+            throw new BizException(4090, "料件所属项目已变化，请刷新后重试");
+        var transferee = await LockActiveUserAsync(transfereeId);
+        if (!await CanReceiveProjectAsync(transferee, project))
+            throw new BizException(4091, "您已不能查看该项目，无法确认接收。请联系申请人撤回后重新发起。");
+        await EnsureTransfereeDepartmentAsync(transferee);
+        await ApplyMaterialTransferAsync(flow);
+        flow.Status = FlowStatus.Approved;
+        flow.ActiveScopeKey = null;
+        flow.RowVersion++;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BizException(4090, "操作冲突，该流转单已被他人处理，请刷新后重试");
+        }
+        await AddRecord(id, "confirm_receipt", transferee.Id, transferee.Name, "接收人确认接收");
+        await _notifications.CreateAsync(new CreateNotificationRequest
+        {
+            Type = "material_received",
+            Title = $"料件已确认接收：{flow.MaterialName}",
+            Body = $"{flow.Transferee} 已确认接收料件 {flow.MaterialNo}（{flow.MaterialName}）。",
+            FlowId = id,
+            UserId = flow.ApplicantId,
+            IdempotencyKey = $"material_received_{id}_{flow.ApplicantId}"
+        });
         await tx.CommitAsync();
 
         return await ToDtoAsync(flow, currentUserId: userId);
@@ -621,8 +661,15 @@ public class MaterialFlowService : IMaterialFlowService
 
     private static void EnsureActive(MaterialFlow flow)
     {
-        if (flow.Status != "pending") throw new BizException(4013, "该流转单已结束,无法操作");
+        if (flow.Status != FlowStatus.Pending) throw new BizException(4013, "该流转单已结束,无法操作");
     }
+
+    private static string MaterialScopeKey(int materialId) => $"material:{materialId}";
+
+    private Task<bool> HasInProgressMaterialFlowAsync(int materialId) =>
+        _db.MaterialFlows.AnyAsync(x =>
+            x.MaterialId == materialId &&
+            (x.Status == FlowStatus.Pending || x.Status == FlowStatus.Receiving));
 
     private static string ResolveNode(MaterialFlow flow, string? nodeId)
     {
@@ -747,6 +794,186 @@ public class MaterialFlowService : IMaterialFlowService
             throw new BizException(4001, "接收人必须属于有效部门");
         }
     }
+
+    public async Task<List<TransfereeOptionDto>> GetTransfereeOptionsAsync(
+        int materialId, string? keyword, int userId)
+    {
+        var material = await _db.TestMaterials.AsNoTracking().SingleOrDefaultAsync(x => x.Id == materialId)
+            ?? throw new BizException(4048, "测试料件不存在");
+        if (material.IsDeleted) throw new BizException(4048, "测试料件不存在");
+        if (material.Status != MaterialStatus.InUse)
+            throw new BizException(4098, "已退回厂商的料件不能转移");
+        var project = await _db.TestProjects.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == material.ProjectId);
+        if (project is null || project.IsDeleted)
+            throw new BizException(4046, "测试项目不存在");
+        if (!TestProjectLifecycleRules.IsMaterialMaintainable(
+                project.ProgressCode,
+                project.ClosedDate))
+            throw new BizException(4092, "项目已进入落地跟进或已结案，料件已锁定");
+
+        var applicant = await _db.Users
+            .Include(x => x.UserRoles)
+            .ThenInclude(x => x.Role)
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == userId && x.IsActive)
+            ?? throw new BizException(4041, "用户不存在或已停用");
+        await EnsureMaterialInScopeAsync(material, applicant);
+        var isSupervisor = applicant.UserRoles.Any(x => x.Role is { Code: "supervisor", IsActive: true });
+        var isProjectOwner = await _db.TestProjects.AnyAsync(x =>
+            x.Id == material.ProjectId && x.OwnerId == userId);
+        if (!isSupervisor && material.CustodianId != userId && !isProjectOwner)
+            throw new BizException(4047, "只能流转本人保管或本人负责项目的料件");
+
+        var query = _db.Users.AsNoTracking().Where(x => x.IsActive && x.Id != userId);
+        if (material.CustodianId is int custodianId)
+            query = query.Where(x => x.Id != custodianId);
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var value = keyword.Trim();
+            query = query.Where(x => x.EmployeeNo.Contains(value) || x.Name.Contains(value));
+        }
+
+        query = query.Where(x =>
+            x.DepartmentId.HasValue &&
+            _db.Departments.Any(d => d.Id == x.DepartmentId && d.IsActive));
+        var candidates = await query
+            .OrderBy(x => x.EmployeeNo.Length)
+            .ThenBy(x => x.EmployeeNo)
+            .ThenBy(x => x.Id)
+            .Select(x => new TransfereeCandidate(
+                x.Id, x.Name, x.EmployeeNo, x.DepartmentId!.Value))
+            .ToListAsync();
+        if (candidates.Count == 0) return [];
+
+        var candidateIds = candidates.Select(x => x.Id).ToArray();
+        var roleRows = await _db.UserRoles.AsNoTracking()
+            .Where(ur => candidateIds.Contains(ur.UserId) && ur.Role.IsActive)
+            .Select(ur => new RecipientRole(ur.UserId, ur.RoleId, ur.Role.Code))
+            .ToListAsync();
+        var roleIds = roleRows.Select(x => x.RoleId).Distinct().ToArray();
+        var viewRoleIds = roleIds.Length == 0
+            ? []
+            : await _db.RolePermissions.AsNoTracking()
+                .Where(rp => roleIds.Contains(rp.RoleId) && rp.Permission.Code == "project:view")
+                .Select(rp => rp.RoleId)
+                .ToListAsync();
+        var viewRoles = viewRoleIds.ToHashSet();
+        var rolesByUser = roleRows.GroupBy(x => x.UserId)
+            .ToDictionary(x => x.Key, x => x.ToList());
+        int? ownerDepartmentId = project.OwnerId.HasValue
+            ? await _db.Users.AsNoTracking()
+                .Where(x => x.Id == project.OwnerId.Value)
+                .Select(x => x.DepartmentId)
+                .SingleOrDefaultAsync()
+            : null;
+        var departmentRows = await _db.Departments.AsNoTracking()
+            .Select(x => new { x.Id, x.ParentId, x.Name })
+            .ToListAsync();
+        var departmentNames = departmentRows.ToDictionary(x => x.Id, x => x.Name);
+        var childrenByParent = departmentRows.ToLookup(x => x.ParentId, x => x.Id);
+        var descendantCache = new Dictionary<int, HashSet<int>>();
+
+        var result = new List<TransfereeOptionDto>();
+        foreach (var candidate in candidates)
+        {
+            rolesByUser.TryGetValue(candidate.Id, out var roles);
+            roles ??= [];
+            var isAdmin = roles.Any(x => x.Code == "admin");
+            var hasProjectView = roles.Any(x => viewRoles.Contains(x.RoleId));
+            if (!CanSeeProject(
+                    isAdmin,
+                    hasProjectView,
+                    candidate.Id,
+                    candidate.DepartmentId,
+                    project.OwnerId,
+                    ownerDepartmentId,
+                    () => Descendants(childrenByParent, descendantCache, candidate.DepartmentId)))
+                continue;
+
+            result.Add(new TransfereeOptionDto
+            {
+                Id = candidate.Id,
+                Name = candidate.Name,
+                EmployeeNo = candidate.EmployeeNo,
+                DepartmentName = departmentNames.GetValueOrDefault(candidate.DepartmentId)
+            });
+            if (result.Count == 20) break;
+        }
+
+        return result;
+    }
+
+    private async Task EnsureCanReceiveProjectAsync(User transferee, TestProject project)
+    {
+        if (!await CanReceiveProjectAsync(transferee, project))
+            throw new BizException(4031, "接收人无权查看该项目");
+    }
+
+    private async Task<bool> CanReceiveProjectAsync(User recipient, TestProject project)
+    {
+        var roles = await _db.UserRoles.AsNoTracking()
+            .Where(ur => ur.UserId == recipient.Id && ur.Role.IsActive)
+            .Select(ur => new { ur.RoleId, ur.Role.Code })
+            .ToListAsync();
+        if (roles.Any(x => x.Code == "admin")) return true;
+
+        var roleIds = roles.Select(x => x.RoleId).ToArray();
+        var hasProjectView = roleIds.Length > 0 && await _db.RolePermissions.AsNoTracking()
+            .AnyAsync(rp => roleIds.Contains(rp.RoleId) && rp.Permission.Code == "project:view");
+        if (!hasProjectView) return false;
+        if (project.OwnerId == recipient.Id) return true;
+        if (!recipient.DepartmentId.HasValue || !project.OwnerId.HasValue) return false;
+
+        var ownerDepartmentId = await _db.Users.AsNoTracking()
+            .Where(x => x.Id == project.OwnerId.Value)
+            .Select(x => x.DepartmentId)
+            .SingleOrDefaultAsync();
+        if (!ownerDepartmentId.HasValue) return false;
+        var allowed = await DescendantDepartmentIdsAsync(recipient.DepartmentId.Value);
+        return allowed.Contains(ownerDepartmentId.Value);
+    }
+
+    private static bool CanSeeProject(
+        bool isAdmin,
+        bool hasProjectView,
+        int recipientId,
+        int? recipientDepartmentId,
+        int? ownerId,
+        int? ownerDepartmentId,
+        Func<HashSet<int>> recipientDescendants)
+    {
+        if (isAdmin) return true;
+        if (!hasProjectView) return false;
+        if (ownerId == recipientId) return true;
+        if (!recipientDepartmentId.HasValue || !ownerDepartmentId.HasValue) return false;
+        return recipientDescendants().Contains(ownerDepartmentId.Value);
+    }
+
+    private static HashSet<int> Descendants(
+        ILookup<int?, int> childrenByParent,
+        Dictionary<int, HashSet<int>> cache,
+        int rootId)
+    {
+        if (cache.TryGetValue(rootId, out var cached)) return cached;
+        var ids = new HashSet<int> { rootId };
+        var queue = new Queue<int>();
+        queue.Enqueue(rootId);
+        while (queue.TryDequeue(out var parentId))
+        {
+            foreach (var childId in childrenByParent[parentId])
+            {
+                if (ids.Add(childId)) queue.Enqueue(childId);
+            }
+        }
+
+        cache[rootId] = ids;
+        return ids;
+    }
+
+    private sealed record TransfereeCandidate(int Id, string Name, string EmployeeNo, int DepartmentId);
+
+    private sealed record RecipientRole(int UserId, int RoleId, string Code);
 
     private async Task EnsureMaterialInScopeAsync(TestMaterial material, User user)
     {
@@ -1067,6 +1294,41 @@ public class MaterialFlowService : IMaterialFlowService
     private static string? Truncate(string? value, int maxLength)
         => value is null || value.Length <= maxLength ? value : value[..maxLength];
 
+    private async Task NotifyEnteredReceivingAsync(MaterialFlow flow, bool notifyApplicantApproved)
+    {
+        var requests = new List<CreateNotificationRequest>();
+        if (notifyApplicantApproved)
+        {
+            requests.Add(new CreateNotificationRequest
+            {
+                Type = "material_approved",
+                Title = $"料件流转审批通过：{flow.MaterialName}",
+                Body = $"您发起的料件 {flow.MaterialNo}（{flow.MaterialName}）转移给 {flow.Transferee} 的申请已通过审批，待接收人确认。",
+                FlowId = flow.Id,
+                UserId = flow.ApplicantId,
+                IdempotencyKey = $"material_approved_{flow.Id}_{flow.ApplicantId}"
+            });
+        }
+
+        if (flow.TransfereeId is int transfereeId)
+        {
+            requests.Add(new CreateNotificationRequest
+            {
+                Type = "material_receipt_pending",
+                Title = $"料件待您确认接收：{flow.MaterialName}",
+                Body = $"{flow.Applicant} 将料件 {flow.MaterialNo}（{flow.MaterialName}）转移给您，请确认接收。备注：{flow.Reason}",
+                FlowId = flow.Id,
+                UserId = transfereeId,
+                IdempotencyKey = $"material_receipt_pending_{flow.Id}_{transfereeId}"
+            });
+        }
+
+        if (requests.Count == 1)
+            await _notifications.CreateAsync(requests[0]);
+        else if (requests.Count > 1)
+            await _notifications.CreateBatchAsync(requests);
+    }
+
     private async Task NotifyCurrentApproversAsync(MaterialFlow flow, BpmnProcess process, string bodyText)
     {
         var requests = new List<CreateNotificationRequest>();
@@ -1233,6 +1495,13 @@ public class MaterialFlowService : IMaterialFlowService
             .Where(user => userIds.Contains(user.Id))
             .Select(user => new ProgressUser(user.Id, user.EmployeeNo, user.Name))
             .ToDictionaryAsync(user => user.Id);
+        var materialIds = flows.Select(flow => flow.MaterialId).Distinct().ToArray();
+        if (materialIds.Length > 0)
+        {
+            context.ProjectIdsByMaterial = await _db.TestMaterials.AsNoTracking()
+                .Where(material => materialIds.Contains(material.Id))
+                .ToDictionaryAsync(material => material.Id, material => material.ProjectId);
+        }
         return context;
     }
 
@@ -1249,6 +1518,7 @@ public class MaterialFlowService : IMaterialFlowService
         public Dictionary<int, BpmnProcess> Processes { get; } = new();
         public Dictionary<string, List<int>> ResolvedApprovers { get; } = new(StringComparer.Ordinal);
         public Dictionary<int, ProgressUser> Users { get; set; } = new();
+        public Dictionary<int, int> ProjectIdsByMaterial { get; set; } = new();
     }
 
     private static string ProgressApproverCacheKey(int workflowId, BpmnNode node, MaterialFlow flow)
@@ -1272,9 +1542,10 @@ public class MaterialFlowService : IMaterialFlowService
         bool viewerIsAdmin = false)
     {
         var dto = ToDto(flow, actionableNodeIds);
+        dto.ProjectId = await ResolveProjectIdAsync(flow, renderContext);
         dto.CanWithdraw = currentUserId.HasValue &&
                           flow.ApplicantId == currentUserId.Value &&
-                          flow.Status == FlowStatus.Pending;
+                          (flow.Status == FlowStatus.Pending || flow.Status == FlowStatus.Receiving);
         BpmnProcess? process;
         if (renderContext is null)
         {
@@ -1336,6 +1607,16 @@ public class MaterialFlowService : IMaterialFlowService
         dto.NextSteps = next;
         ApplyReleaseState(dto, flow, process, currentUserId, viewerIsAdmin);
         return dto;
+    }
+
+    private async Task<int> ResolveProjectIdAsync(MaterialFlow flow, ProgressRenderContext? renderContext)
+    {
+        if (renderContext?.ProjectIdsByMaterial.TryGetValue(flow.MaterialId, out var projectId) == true)
+            return projectId;
+        return await _db.TestMaterials.AsNoTracking()
+            .Where(material => material.Id == flow.MaterialId)
+            .Select(material => material.ProjectId)
+            .SingleOrDefaultAsync();
     }
 
     private async Task<BpmnProcess?> LoadBoundProcessAsync(int? workflowId)

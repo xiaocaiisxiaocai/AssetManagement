@@ -1551,6 +1551,100 @@ public class RbacManagementApiTests : IClassFixture<TestWebAppFactory>
     }
 
     [Fact]
+    public async Task Disabling_receiving_material_transferee_or_applicant_is_rejected()
+    {
+        await Login();
+        var roleId = await CreateRoleId();
+        var transferee = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("recv-user"), Name = "待接收受让人", RoleIds = new[] { roleId },
+        });
+        var applicant = await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
+        {
+            EmployeeNo = Unique("recv-applicant"), Name = "待接收申请人", RoleIds = new[] { roleId },
+        });
+        transferee.Code.Should().Be(0, transferee.Message);
+        applicant.Code.Should().Be(0, applicant.Message);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var adminId = await db.Users.Where(x => x.EmployeeNo == "1001").Select(x => x.Id).SingleAsync();
+            var project = new TestProject
+            {
+                Name = Unique("recv-disable"),
+                Code = Unique("RD")[..20],
+                OwnerId = adminId,
+                CreatedAt = DateTime.UtcNow,
+            };
+            db.TestProjects.Add(project);
+            await db.SaveChangesAsync();
+            var transfereeMaterial = new TestMaterial
+            {
+                MaterialNo = Unique("tm-recv"),
+                Name = "待接收受让料件",
+                ProjectId = project.Id,
+                Status = MaterialStatus.InUse,
+                CreatedAt = DateTime.UtcNow,
+            };
+            var applicantMaterial = new TestMaterial
+            {
+                MaterialNo = Unique("tm-apply"),
+                Name = "待接收申请料件",
+                ProjectId = project.Id,
+                Status = MaterialStatus.InUse,
+                CreatedAt = DateTime.UtcNow,
+            };
+            db.TestMaterials.AddRange(transfereeMaterial, applicantMaterial);
+            await db.SaveChangesAsync();
+            db.MaterialFlows.AddRange(
+                new MaterialFlow
+                {
+                    FlowNo = Unique("mf-recv")[..40],
+                    BizType = "material_transfer",
+                    MaterialId = transfereeMaterial.Id,
+                    MaterialNo = transfereeMaterial.MaterialNo,
+                    MaterialName = transfereeMaterial.Name,
+                    ApplicantId = adminId,
+                    Applicant = "系统管理员",
+                    TransfereeId = transferee.Data!.Id,
+                    Transferee = transferee.Data.Name,
+                    Status = FlowStatus.Receiving,
+                    ActiveScopeKey = $"material:{transfereeMaterial.Id}",
+                    ApplyTime = DateTime.UtcNow,
+                    Deadline = DateTime.UtcNow.AddDays(1),
+                },
+                new MaterialFlow
+                {
+                    FlowNo = Unique("mf-apply")[..40],
+                    BizType = "material_transfer",
+                    MaterialId = applicantMaterial.Id,
+                    MaterialNo = applicantMaterial.MaterialNo,
+                    MaterialName = applicantMaterial.Name,
+                    ApplicantId = applicant.Data!.Id,
+                    Applicant = applicant.Data.Name,
+                    TransfereeId = adminId,
+                    Transferee = "系统管理员",
+                    Status = FlowStatus.Receiving,
+                    ActiveScopeKey = $"material:{applicantMaterial.Id}",
+                    ApplyTime = DateTime.UtcNow,
+                    Deadline = DateTime.UtcNow.AddDays(1),
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var transfereeResult = await Post<ApiResult<object?>>(
+            $"/api/users/{transferee.Data!.Id}/toggle-status", new { isActive = false });
+        var applicantResult = await Post<ApiResult<object?>>(
+            $"/api/users/{applicant.Data!.Id}/toggle-status", new { isActive = false });
+
+        transfereeResult.Code.Should().Be(4092);
+        transfereeResult.Message.Should().Contain("受让人");
+        applicantResult.Code.Should().Be(4092);
+        applicantResult.Message.Should().Contain("料件流转申请");
+    }
+
+    [Fact]
     public async Task Disabled_user_cannot_login()
     {
         await Login();

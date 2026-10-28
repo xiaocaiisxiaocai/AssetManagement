@@ -59,12 +59,13 @@ public class ProjectReportBuilderTests
             .And.Contain("未开始")
             .And.Contain("进行中")
             .And.Contain("已完成")
-            .And.Contain("受阻")
+            .And.NotContain("受阻")
             .And.Contain("第一行中文说明")
             .And.Contain("第二行中文说明")
             .And.Contain("documents/31/阶段报告.pdf")
             .And.Contain("落地跟进")
             .And.Contain("料件流转摘要")
+            .And.Contain("待接收")
             .And.Contain("2026-10-19 09:30:00")
             .And.NotContain("阶段结论");
         text.IndexOf("阶段一", StringComparison.Ordinal).Should()
@@ -105,7 +106,8 @@ public class ProjectReportBuilderTests
             .And.Contain("目标第一行\n目标第二行&lt;script&gt;bad()&lt;/script&gt;")
             .And.Contain($"href=\"documents/31/{Uri.EscapeDataString(data.Documents[0].FileName)}\"")
             .And.Contain("进行中")
-            .And.Contain("受阻")
+            .And.Contain("已完成")
+            .And.NotContain("受阻")
             .And.NotContain("阶段结论")
             .And.NotContain("<script>")
             .And.NotContain("<link ")
@@ -249,6 +251,21 @@ public class ProjectReportBuilderTests
                 Status = "approved",
                 ApplyTime = new DateTime(2026, 10, 1, 9, 0, 0),
                 Deadline = new DateTime(2026, 10, 5, 18, 0, 0)
+            },
+            new()
+            {
+                Id = 52,
+                FlowNo = "MF-20261002-002",
+                BizType = "material_transfer",
+                MaterialId = 11,
+                MaterialNo = "TM-20260901-001",
+                MaterialName = "压力传感器",
+                Applicant = "申请人甲",
+                Transferee = "接收人乙",
+                Reason = "等待确认接收",
+                Status = "receiving",
+                ApplyTime = new DateTime(2026, 10, 2, 9, 0, 0),
+                Deadline = new DateTime(2026, 10, 6, 18, 0, 0)
             }
         },
         GeneratedAt = new DateTime(2026, 10, 19, 9, 30, 0, DateTimeKind.Local)

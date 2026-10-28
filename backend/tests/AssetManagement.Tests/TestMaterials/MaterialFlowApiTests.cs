@@ -50,11 +50,37 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             Reason = "测试直接转移"
         });
         flow.Data!.DirectTransfer.Should().BeTrue();
-        flow.Data.Status.Should().Be("approved");
+        flow.Data.Status.Should().Be("receiving");
+        flow.Data.CanWithdraw.Should().BeTrue();
+        flow.Data.ProjectId.Should().Be(project.Id);
         (await UsedWorkflowId(flow.Data.Id)).Should().BeNull("直接转移不应使用 0 伪造流程外键");
 
-        var got = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
-        got!.Data!.CustodianId.Should().Be(transferee.Id);
+        var before = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
+        before!.Data!.CustodianId.Should().NotBe(transferee.Id);
+
+        Auth(await LoginToken(transferee.EmployeeNo, "TestPass123"));
+        var receiving = await _client.GetFromJsonAsync<ApiResult<PagedResult<MaterialFlowDto>>>(
+            $"/api/material-flows/receiving-page?projectId={project.Id}&flowId={flow.Data.Id}");
+        receiving!.Data!.Items.Should().ContainSingle(x => x.Id == flow.Data.Id && x.ProjectId == project.Id);
+
+        var confirmed = await Post<ApiResult<MaterialFlowDto>>(
+            $"/api/material-flows/{flow.Data.Id}/confirm-receipt", new { });
+        confirmed.Data!.Status.Should().Be("approved");
+        confirmed.Data.CanWithdraw.Should().BeFalse();
+
+        await Login();
+        var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
+        after!.Data!.CustodianId.Should().Be(transferee.Id);
+        after.Data.HasPendingFlow.Should().BeFalse();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var notifications = await db.Notifications.AsNoTracking()
+            .Where(x => x.FlowId == flow.Data.Id)
+            .Select(x => x.Type)
+            .ToListAsync();
+        notifications.Should().Contain("material_receipt_pending").And.Contain("material_received");
+        notifications.Should().NotContain("material_transferred").And.NotContain("material_approved");
     }
 
     [Fact]
@@ -110,11 +136,11 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             var current = currentMaterial!.Data!;
             var disableResult = disable!;
 
-            (transfer!.Code == 0 && disableResult.Code == 0).Should().BeFalse(
-                $"attempt={attempt}, transfer={transfer.Code}/{transfer.Message}, " +
-                $"disable={disableResult.Code}/{disableResult.Message}, " +
-                $"custodian={current.CustodianId}, userActive={currentUser.IsActive}");
-            (current.CustodianId == transferee.Id && !currentUser.IsActive).Should().BeFalse();
+            if (transfer!.Code == 0)
+                transfer.Data!.Status.Should().Be("receiving");
+            current.CustodianId.Should().NotBe(transferee.Id,
+                $"attempt={attempt}, transfer={transfer!.Code}/{transfer.Message}, " +
+                $"disable={disableResult.Code}/{disableResult.Message}, userActive={currentUser.IsActive}");
         }
     }
 
@@ -158,15 +184,17 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var detail = await _client.GetFromJsonAsync<ApiResult<TestMaterialDetailDto>>(
             $"/api/test-materials/{material.Id}/detail");
 
-        detail!.Data!.Flows.Should().ContainSingle(x =>
+        detail!.Data!.Material.CustodianId.Should().NotBe(transferee.Id);
+        detail.Data.Flows.Should().ContainSingle(x =>
             x.Id == flow.Data!.Id &&
-            x.Status == "approved" &&
+            x.Status == "receiving" &&
+            x.ProjectId == project.Id &&
             x.Transferee == transferee.Name &&
             x.Reason == "详情应保留流转历史");
         detail.Data.Records.Should().ContainSingle(x =>
             x.Action == "direct_transfer" &&
             x.Operator == "系统管理员" &&
-            x.Comment!.Contains(transferee.Name));
+            x.Comment!.Contains($"待 {transferee.Name} 确认接收"));
     }
 
     [Fact]
@@ -195,7 +223,8 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         // 默认项目负责人分支明确将审批节点分配给工号 1001。
         var approved = await Post<ApiResult<MaterialFlowDto>>(
             $"/api/material-flows/{flow.Data.Id}/approve", new MaterialApprovalRequest { Opinion = "同意" });
-        approved.Data!.Status.Should().Be("approved");
+        approved.Data!.Status.Should().Be("receiving");
+        approved.Data.CanWithdraw.Should().BeTrue();
 
         var handled = await _client.GetFromJsonAsync<ApiResult<PagedResult<MaterialFlowDto>>>(
             $"/api/material-flows/handled-page?page=1&pageSize=20&flowId={flow.Data.Id}");
@@ -204,6 +233,26 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         handledRecord.MyApprovalNodeId.Should().NotBeNullOrWhiteSpace();
         handledRecord.MyApprovalTime.Should().NotBeNull();
 
+        var waiting = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
+        waiting!.Data!.CustodianId.Should().NotBe(transferee.Id);
+        waiting.Data.HasPendingFlow.Should().BeTrue();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var notes = await db.Notifications.AsNoTracking()
+                .Where(x => x.FlowId == flow.Data.Id)
+                .ToListAsync();
+            notes.Should().Contain(x => x.Type == "material_approved" && x.Body.Contains("待接收人确认"));
+            notes.Should().Contain(x => x.Type == "material_receipt_pending");
+            notes.Should().NotContain(x => x.Type == "material_transferred");
+        }
+
+        Auth(await LoginToken(transferee.EmployeeNo, "TestPass123"));
+        var confirmed = await Post<ApiResult<MaterialFlowDto>>(
+            $"/api/material-flows/{flow.Data.Id}/confirm-receipt", new { });
+        confirmed.Data!.Status.Should().Be("approved");
+
+        await Login();
         var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
         after!.Data!.CustodianId.Should().Be(transferee.Id);
         after.Data.HasPendingFlow.Should().BeFalse();
@@ -251,6 +300,8 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             record.FlowId == flowId && record.Action == "approve")).Should().BeFalse();
         (await db.Notifications.AsNoTracking().AnyAsync(notification =>
             notification.FlowId == flowId && notification.Type == "material_approved")).Should().BeFalse();
+        (await db.Notifications.AsNoTracking().AnyAsync(notification =>
+            notification.FlowId == flowId && notification.Type == "material_receipt_pending")).Should().BeFalse();
     }
 
     [Fact]
@@ -363,7 +414,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
             var supervisorApproved = await Post<ApiResult<MaterialFlowDto>>(
                 $"/api/material-flows/{flow.Data.Id}/approve",
                 new MaterialApprovalRequest { Opinion = "主管正常通过" });
-            supervisorApproved.Data!.Status.Should().Be("approved");
+            supervisorApproved.Data!.Status.Should().Be("receiving");
         }
         finally
         {
@@ -583,7 +634,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         var approved = await Post<ApiResult<MaterialFlowDto>>(
             $"/api/material-flows/{flow.Data.Id}/approve",
             new MaterialApprovalRequest { Opinion = "指定人员审批通过" });
-        approved.Data!.Status.Should().Be("approved");
+        approved.Data!.Status.Should().Be("receiving");
     }
 
     [Fact]
@@ -750,6 +801,331 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         body!.Code.Should().Be(4013, "已通过的流转单不应允许驳回");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Transferee_who_cannot_see_project_cannot_be_initiated(bool approvalEnabled)
+    {
+        await Login();
+        await SetApprovalSwitch(approvalEnabled);
+        var outside = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = $"看不见项目{Guid.NewGuid():N}"[..24]
+        });
+        var transferee = await CreateUser(
+            $"nv{Guid.NewGuid():N}"[..12],
+            "看不见项目的接收人",
+            departmentId: outside.Data!.Id);
+        var project = await CreateProject(
+            $"接收人不可见项目-{(approvalEnabled ? "on" : "off")}-{Guid.NewGuid():N}");
+        var material = await CreateMaterial(
+            project.Id,
+            "接收人不可见样品",
+            await UserDepartmentId(1),
+            1);
+
+        var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "接收人看不见项目"
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        body!.Code.Should().Be(4031);
+        body.Message.Should().Be("接收人无权查看该项目");
+        var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
+        after!.Data!.CustodianId.Should().Be(1);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        (await db.MaterialFlows.CountAsync(x => x.MaterialId == material.Id)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Project_owner_without_department_fails_department_check()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var owner = await CreateUser($"ow{Guid.NewGuid():N}"[..12], "无部门负责人");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var user = await db.Users.AsTracking().SingleAsync(x => x.Id == owner.Id);
+            user.DepartmentId = null;
+            await db.SaveChangesAsync();
+        }
+
+        var project = await CreateProject("无部门负责人项目", owner.Id);
+        var material = await CreateMaterial(
+            project.Id,
+            "无部门负责人样品",
+            await UserDepartmentId(1),
+            1);
+        var response = await _client.PostAsJsonAsync("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = owner.Id,
+            Reason = "负责人没有部门"
+        });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body!.Code.Should().Be(4001);
+        body.Message.Should().Be("接收人必须属于有效部门");
+    }
+
+    [Fact]
+    public async Task Transferee_options_returns_visible_users_only()
+    {
+        await Login();
+        var adminDepartmentId = await AdminDepartmentId();
+        var token = $"TQ{Guid.NewGuid():N}"[..8];
+        var outside = await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
+        {
+            Name = $"候选隔离{Guid.NewGuid():N}"[..24]
+        });
+        var custodian = await CreateUser($"{token}00", "当前保管候选人", departmentId: adminDepartmentId);
+        var named = await CreateUser($"{token}01", $"候选姓名{token}", departmentId: adminDepartmentId);
+        for (var index = 2; index <= 22; index++)
+        {
+            await CreateUser($"{token}{index:00}", $"候选接收人{index:00}", departmentId: adminDepartmentId);
+        }
+
+        var hidden = await CreateUser($"{token}98", "看不见项目的候选人", departmentId: outside.Data!.Id);
+        var project = await CreateProject("接收人候选项目");
+        var material = await CreateMaterial(
+            project.Id,
+            "接收人候选样品",
+            custodian.DepartmentId,
+            custodian.Id);
+
+        var listed = await _client.GetFromJsonAsync<ApiResult<List<TransfereeOptionDto>>>(
+            $"/api/material-flows/transferee-options?materialId={material.Id}&keyword={token}");
+        var byName = await _client.GetFromJsonAsync<ApiResult<List<TransfereeOptionDto>>>(
+            $"/api/material-flows/transferee-options?materialId={material.Id}&keyword={Uri.EscapeDataString(named.Name)}");
+        var self = await _client.GetFromJsonAsync<ApiResult<List<TransfereeOptionDto>>>(
+            $"/api/material-flows/transferee-options?materialId={material.Id}&keyword=1001");
+
+        listed!.Data.Should().HaveCount(20);
+        listed.Data.Select(x => x.EmployeeNo).Should().Equal(
+            Enumerable.Range(1, 20).Select(index => $"{token}{index:00}"));
+        listed.Data.Should().OnlyContain(x =>
+            x.DepartmentName == named.DepartmentName && !string.IsNullOrWhiteSpace(x.DepartmentName));
+        listed.Data.Should().NotContain(x => x.Id == custodian.Id || x.Id == hidden.Id);
+        listed.Data.Should().ContainSingle(x =>
+            x.Id == named.Id && x.EmployeeNo == named.EmployeeNo && x.Name == named.Name);
+        byName!.Data.Should().ContainSingle(x => x.Id == named.Id);
+        self!.Data.Should().NotContain(x => x.EmployeeNo == "1001");
+    }
+
+    [Fact]
+    public async Task Non_transferee_cannot_confirm_receipt()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var project = await CreateProject("非接收人确认项目");
+        var transferee = await CreateUser($"nt{Guid.NewGuid():N}"[..12], "真正的接收人");
+        var material = await CreateMaterial(project.Id, "非接收人确认样品");
+        var originalCustodian = material.CustodianId;
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "只允许接收人确认"
+        });
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/material-flows/{flow.Data!.Id}/confirm-receipt", new { });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        body!.Code.Should().Be(4031);
+        body.Message.Should().Be("只有接收人本人可以确认接收");
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var saved = await db.MaterialFlows.AsNoTracking().SingleAsync(x => x.Id == flow.Data.Id);
+        saved.Status.Should().Be("receiving");
+        saved.ActiveScopeKey.Should().Be($"material:{material.Id}");
+        var savedMaterial = await db.TestMaterials.AsNoTracking().SingleAsync(x => x.Id == material.Id);
+        savedMaterial.CustodianId.Should().Be(originalCustodian);
+    }
+
+    [Fact]
+    public async Task Receiving_flow_can_be_withdrawn_without_changing_custodian()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var project = await CreateProject("待接收撤回项目");
+        var transferee = await CreateUser($"wd{Guid.NewGuid():N}"[..12], "待接收撤回接收人");
+        var material = await CreateMaterial(project.Id, "待接收撤回样品");
+        var originalCustodian = material.CustodianId;
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "发起后撤回"
+        });
+        flow.Data!.Status.Should().Be("receiving");
+        flow.Data.CanWithdraw.Should().BeTrue();
+
+        var withdrawn = await Post<ApiResult<MaterialFlowDto>>(
+            $"/api/material-flows/{flow.Data.Id}/withdraw", new { });
+        withdrawn.Data!.Status.Should().Be("withdrawn");
+        withdrawn.Data.CanWithdraw.Should().BeFalse();
+
+        var after = await _client.GetFromJsonAsync<ApiResult<TestMaterialDto>>($"/api/test-materials/{material.Id}");
+        after!.Data!.CustodianId.Should().Be(originalCustodian);
+        after.Data.HasPendingFlow.Should().BeFalse();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var saved = await db.MaterialFlows.AsNoTracking().SingleAsync(x => x.Id == flow.Data.Id);
+            saved.ActiveScopeKey.Should().BeNull();
+            (await db.MaterialFlowRecords.AsNoTracking().AnyAsync(x =>
+                x.FlowId == flow.Data.Id && x.Action == "withdraw")).Should().BeTrue();
+        }
+
+        var replacement = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "撤回后再次发起"
+        });
+        replacement.Data!.Status.Should().Be("receiving");
+    }
+
+    [Fact]
+    public async Task Receiving_flow_blocks_landing_follow_up()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var project = await CreateProject("待接收阻止落地项目");
+        var transferee = await CreateUser($"ld{Guid.NewGuid():N}"[..12], "阻止落地接收人");
+        var material = await CreateMaterial(project.Id, "阻止落地样品");
+        await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "待接收期间不能落地"
+        });
+        uint rowVersion;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            rowVersion = await db.TestProjects.AsNoTracking()
+                .Where(x => x.Id == project.Id)
+                .Select(x => x.RowVersion)
+                .SingleAsync();
+        }
+
+        var response = await _client.PutAsJsonAsync($"/api/test-projects/{project.Id}/progress",
+            new UpdateTestProjectProgressRequest { ProgressCode = "landing", RowVersion = rowVersion });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<TestProjectDto>>();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        body!.Code.Should().Be(4092);
+        body.Message.Should().Be("项目存在进行中的料件流转，请先处理完再进入落地跟进或结案");
+        using var verify = _factory.Services.CreateScope();
+        var saved = await verify.ServiceProvider.GetRequiredService<AppDbContext>().TestProjects
+            .AsNoTracking().SingleAsync(x => x.Id == project.Id);
+        saved.ProgressCode.Should().Be("testing");
+    }
+
+    [Fact]
+    public async Task Confirm_receipt_rejects_when_transferee_can_no_longer_see_project()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var transferee = await CreateUser($"hv{Guid.NewGuid():N}"[..12], "后来看不见的接收人");
+        var project = await CreateProject($"确认时不可见-{Guid.NewGuid():N}");
+        var material = await CreateMaterial(project.Id, "确认时不可见样品", await UserDepartmentId(1), 1);
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "确认前失去可见性"
+        });
+        flow.Data!.Status.Should().Be("receiving");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var outside = new Department
+            {
+                Code = $"OS{Guid.NewGuid():N}"[..12],
+                Name = $"确认后外部部门{Guid.NewGuid():N}"[..24],
+                IsActive = true
+            };
+            db.Departments.Add(outside);
+            await db.SaveChangesAsync();
+            var user = await db.Users.AsTracking().SingleAsync(x => x.Id == transferee.Id);
+            user.DepartmentId = outside.Id;
+            await db.SaveChangesAsync();
+        }
+
+        Auth(await LoginToken(transferee.EmployeeNo, "TestPass123"));
+        var response = await _client.PostAsJsonAsync(
+            $"/api/material-flows/{flow.Data.Id}/confirm-receipt", new { });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        body!.Code.Should().Be(4091);
+        body.Message.Should().Be("您已不能查看该项目，无法确认接收。请联系申请人撤回后重新发起。");
+        using var verify = _factory.Services.CreateScope();
+        var savedDb = verify.ServiceProvider.GetRequiredService<AppDbContext>();
+        var savedFlow = await savedDb.MaterialFlows.AsNoTracking().SingleAsync(x => x.Id == flow.Data.Id);
+        savedFlow.Status.Should().Be("receiving");
+        savedFlow.ActiveScopeKey.Should().Be($"material:{material.Id}");
+        var savedMaterial = await savedDb.TestMaterials.AsNoTracking().SingleAsync(x => x.Id == material.Id);
+        savedMaterial.CustodianId.Should().Be(1);
+        savedMaterial.DepartmentId.Should().Be(await UserDepartmentId(1));
+    }
+
+    [Fact]
+    public async Task Confirm_receipt_rolls_back_when_notification_write_fails()
+    {
+        await Login();
+        await SetApprovalSwitch(false);
+        var project = await CreateProject("确认通知事务项目");
+        var transferee = await CreateUser($"cf{Guid.NewGuid():N}"[..12], "确认事务接收人");
+        var material = await CreateMaterial(project.Id, "确认通知事务料件");
+        var originalCustodianId = material.CustodianId;
+        var started = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        {
+            MaterialId = material.Id,
+            TransfereeId = transferee.Id,
+            Reason = "确认通知失败应回滚"
+        });
+        var flowId = started.Data!.Id;
+        var transfereeToken = await LoginToken(transferee.EmployeeNo, "TestPass123");
+
+        using var failingFactory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<INotificationService>();
+                services.AddScoped<INotificationService, FailingNotificationService>();
+            }));
+        using var failingClient = failingFactory.CreateClient();
+        failingClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", transfereeToken);
+
+        var response = await failingClient.PostAsJsonAsync(
+            $"/api/material-flows/{flowId}/confirm-receipt", new { });
+        var body = await response.Content.ReadFromJsonAsync<ApiResult<MaterialFlowDto>>();
+
+        body!.Code.Should().Be(500);
+        using var verifyScope = _factory.Services.CreateScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var savedFlow = await db.MaterialFlows.AsNoTracking().SingleAsync(item => item.Id == flowId);
+        savedFlow.Status.Should().Be("receiving");
+        savedFlow.ActiveScopeKey.Should().Be($"material:{material.Id}");
+        var savedMaterial = await db.TestMaterials.AsNoTracking().SingleAsync(item => item.Id == material.Id);
+        savedMaterial.CustodianId.Should().Be(originalCustodianId);
+        (await db.MaterialFlowRecords.AsNoTracking().AnyAsync(record =>
+            record.FlowId == flowId && record.Action == "confirm_receipt")).Should().BeFalse();
+        (await db.Notifications.AsNoTracking().AnyAsync(notification =>
+            notification.FlowId == flowId && notification.Type == "material_received")).Should().BeFalse();
+    }
+
     // ===== 辅助方法 =====
     private async Task SetApprovalSwitch(bool enabled)
     {
@@ -799,10 +1175,7 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
         string roleCode = "employee",
         int? departmentId = null)
     {
-        departmentId ??= (await Post<ApiResult<DepartmentNodeDto>>("/api/departments", new CreateDepartmentRequest
-        {
-            Name = $"接收部门{Guid.NewGuid():N}"[..24]
-        })).Data!.Id;
+        departmentId ??= await AdminDepartmentId();
         return (await Post<ApiResult<UserDto>>("/api/users", new CreateUserRequest
         {
             EmployeeNo = employeeNo,
@@ -840,6 +1213,40 @@ public class MaterialFlowApiTests : IClassFixture<TestWebAppFactory>
   </bpmn:process>
 </bpmn:definitions>
 """;
+
+    private async Task<int?> UserDepartmentId(int userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Users.AsNoTracking()
+            .Where(x => x.Id == userId)
+            .Select(x => x.DepartmentId)
+            .SingleAsync();
+    }
+
+    private async Task<int> AdminDepartmentId()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var admin = await db.Users.AsTracking().SingleAsync(x => x.EmployeeNo == "1001");
+        if (admin.DepartmentId is int departmentId &&
+            await db.Departments.AnyAsync(x => x.Id == departmentId && x.IsActive))
+        {
+            return departmentId;
+        }
+
+        var department = new Department
+        {
+            Code = $"AD{Guid.NewGuid():N}"[..12],
+            Name = "管理员所属部门",
+            IsActive = true
+        };
+        db.Departments.Add(department);
+        await db.SaveChangesAsync();
+        admin.DepartmentId = department.Id;
+        await db.SaveChangesAsync();
+        return department.Id;
+    }
 
     private async Task<RoleDto> Role(string code)
     {

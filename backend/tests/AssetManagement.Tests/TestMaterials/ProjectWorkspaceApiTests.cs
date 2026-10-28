@@ -172,6 +172,7 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
         var created = await CreateAsync(client, projectId, draft);
 
         await SetProgressAsync(projectId, "landing");
+        var versionBeforeRead = await ProjectVersionAsync(projectId);
         var followup = await client.PostAsJsonAsync(
             $"/api/test-projects/{projectId}/followups",
             new { Content = "不应落地跟进" });
@@ -180,9 +181,18 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
             "/api/test-projects?deleteStatus=all");
         listed!.Data.Should().Contain(x =>
             x.Id == projectId &&
-            x.ProgressCode == "testing" &&
+            x.ProgressCode == "landing" &&
+            x.RowVersion == versionBeforeRead &&
             x.TestingIncomplete &&
             !x.CanWriteFollowUp);
+        (await ProjectVersionAsync(projectId)).Should().Be(versionBeforeRead);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var stored = await db.TestProjects.AsNoTracking().SingleAsync(x => x.Id == projectId);
+            stored.ProgressCode.Should().Be("landing");
+            stored.RowVersion.Should().Be(versionBeforeRead);
+        }
         (await WorkspaceAsync(client, projectId)).CanManage.Should().BeTrue();
 
         var returned = await client.PutAsJsonAsync($"/api/test-projects/{projectId}/progress", new
@@ -230,33 +240,112 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
     public async Task Duplicate_sequences_and_multiple_current_stages_are_rejected()
     {
         var (client, projectId, _) = await SetupAsync();
-        var current = Draft("当前测试", 1);
+        var current = Draft("当前测试", 2);
         current.Status = "in_progress";
         current.StartDate = BusinessClock.Today;
         await CreateAsync(client, projectId, current);
-        var duplicate = await client.PostAsJsonAsync($"{Root(projectId)}/stages", Draft("重复序号", 1));
+        var duplicate = await client.PostAsJsonAsync($"{Root(projectId)}/stages", Draft("重复序号", 2));
         duplicate.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        current.Sequence = 2;
-        current.Status = "blocked";
-        var second = await client.PostAsJsonAsync($"{Root(projectId)}/stages", current);
+        var earlier = Draft("更早的当前阶段", 1);
+        earlier.Status = "blocked";
+        earlier.StartDate = BusinessClock.Today;
+        var second = await client.PostAsJsonAsync($"{Root(projectId)}/stages", earlier);
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await second.Content.ReadFromJsonAsync<ApiResult<object>>())!.Message
+            .Should().Be("请先填写当前阶段的结束日期");
         (await WorkspaceAsync(client, projectId)).Stages.Should().ContainSingle();
     }
 
-    [Theory]
-    [InlineData("completed", true, true)]
-    [InlineData("in_progress", false, false)]
-    [InlineData("invalid", false, false)]
-    public async Task Invalid_status_or_missing_completion_evidence_does_not_save(string status, bool hasStart, bool hasEnd)
+    [Fact]
+    public async Task Later_stage_with_start_date_requires_previous_open_stage_to_be_closed_first()
     {
         var (client, projectId, _) = await SetupAsync();
-        var request = Draft("不完整测试", 1);
-        request.Status = status;
-        request.StartDate = hasStart ? BusinessClock.Today : null;
-        request.EndDate = hasEnd ? BusinessClock.Today : null;
-        var response = await client.PostAsJsonAsync($"{Root(projectId)}/stages", request);
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var first = Draft("环境试验", 1);
+        first.StartDate = BusinessClock.Today.AddDays(-5);
+        first.TestContent = "温升记录";
+        first.TestResult = "符合要求";
+        var created = await CreateAsync(client, projectId, first);
+
+        var second = Draft("耐久试验", 2);
+        second.StartDate = BusinessClock.Today.AddDays(-1);
+        var blocked = await client.PostAsJsonAsync($"{Root(projectId)}/stages", second);
+        blocked.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await blocked.Content.ReadFromJsonAsync<ApiResult<object>>())!.Message
+            .Should().Be("请先结束第1阶段「环境试验」");
+        (await WorkspaceAsync(client, projectId)).Stages.Should().ContainSingle();
+
+        var close = Draft(created.Name, created.Sequence);
+        close.StartDate = created.StartDate;
+        close.EndDate = BusinessClock.Today.AddDays(-2);
+        close.TestContent = first.TestContent;
+        close.TestResult = first.TestResult;
+        close.RowVersion = created.RowVersion;
+        (await client.PutAsJsonAsync($"{Root(projectId)}/stages/{created.Id}", close))
+            .EnsureSuccessStatusCode();
+
+        var saved = await CreateAsync(client, projectId, second);
+        saved.Sequence.Should().Be(2);
+        saved.StartDate.Should().Be(second.StartDate);
+        saved.Status.Should().Be("in_progress");
+        var stages = (await WorkspaceAsync(client, projectId)).Stages.OrderBy(x => x.Sequence).ToList();
+        stages.Should().HaveCount(2);
+        stages[0].EndDate.Should().Be(close.EndDate);
+        stages[0].Status.Should().Be("completed");
+        stages[1].Id.Should().Be(saved.Id);
+    }
+
+    [Fact]
+    public async Task End_date_without_start_or_evidence_does_not_save()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        var missingStart = Draft("只有结束日期", 1);
+        missingStart.Status = "completed";
+        missingStart.EndDate = BusinessClock.Today;
+        missingStart.TestContent = "测试内容";
+        missingStart.TestResult = "测试结果";
+        (await client.PostAsJsonAsync($"{Root(projectId)}/stages", missingStart))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var missingEvidence = Draft("缺少内容", 1);
+        missingEvidence.Status = "completed";
+        missingEvidence.StartDate = BusinessClock.Today;
+        missingEvidence.EndDate = BusinessClock.Today;
+        (await client.PostAsJsonAsync($"{Root(projectId)}/stages", missingEvidence))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await WorkspaceAsync(client, projectId)).Stages.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("in_progress")]
+    [InlineData("invalid")]
+    [InlineData("blocked")]
+    public async Task Status_without_dates_is_ignored_and_saved_as_planned(string status)
+    {
+        var (client, projectId, _) = await SetupAsync();
+        var request = Draft("忽略传入状态", 1);
+        request.Status = status;
+        var response = await client.PostAsJsonAsync($"{Root(projectId)}/stages", request);
+        response.EnsureSuccessStatusCode();
+        (await response.Content.ReadFromJsonAsync<ApiResult<ProjectTestStageDto>>())!.Data!.Status
+            .Should().Be("planned");
+    }
+
+    [Fact]
+    public async Task Stage_status_is_derived_from_dates_and_incoming_status_is_ignored()
+    {
+        var (client, projectId, _) = await SetupAsync();
+        var finished = Draft("按日期完成", 2);
+        finished.Status = "blocked";
+        finished.StartDate = BusinessClock.Today.AddDays(-1);
+        finished.EndDate = BusinessClock.Today;
+        finished.TestContent = "测试内容";
+        finished.TestResult = "测试结果";
+        (await CreateAsync(client, projectId, finished)).Status.Should().Be("completed");
+
+        var current = Draft("按日期进行中", 1);
+        current.Status = "planned";
+        current.StartDate = BusinessClock.Today;
+        (await CreateAsync(client, projectId, current)).Status.Should().Be("in_progress");
     }
 
     [Fact]
@@ -343,6 +432,69 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await owner.GetAsync($"{Root(ownedProjectId)}/documents/{document.Id}/download"))
             .EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task Same_department_viewer_without_export_can_download_including_deleted_project()
+    {
+        var (owner, projectId, ownerId) = await SetupAsync();
+        var stage = await CreateAsync(owner, projectId, Draft("同部门下载阶段", 1));
+        using var form = PdfForm(stage.Id, "同部门报告.pdf");
+        var uploaded = await owner.PostAsync($"{Root(projectId)}/documents", form);
+        uploaded.EnsureSuccessStatusCode();
+        var document = (await uploaded.Content.ReadFromJsonAsync<ApiResult<ProjectReportDocumentDto>>())!.Data!;
+
+        string viewerNo;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var department = new Department
+            {
+                Code = $"DL-{Guid.NewGuid():N}"[..12],
+                Name = "同部门下载",
+                IsActive = true
+            };
+            db.Departments.Add(department);
+            await db.SaveChangesAsync();
+            var ownerUser = await db.Users.AsTracking().SingleAsync(x => x.Id == ownerId);
+            ownerUser.DepartmentId = department.Id;
+            var employeeRole = await db.Roles.SingleAsync(x => x.Code == "employee");
+            viewerNo = $"VW-{Guid.NewGuid():N}"[..20];
+            var viewerUser = new User
+            {
+                EmployeeNo = viewerNo,
+                Name = "同部门查看人",
+                DepartmentId = department.Id,
+                IsActive = true,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("123456")
+            };
+            db.Users.Add(viewerUser);
+            await db.SaveChangesAsync();
+            db.UserRoles.Add(new UserRole { UserId = viewerUser.Id, RoleId = employeeRole.Id });
+            await db.SaveChangesAsync();
+        }
+
+        var viewer = await LoginAsync(viewerNo);
+        var download = await viewer.GetAsync($"{Root(projectId)}/documents/{document.Id}/download");
+        download.EnsureSuccessStatusCode();
+        (await download.Content.ReadAsByteArrayAsync()).Should().Equal(PdfBytes);
+        (await viewer.GetAsync($"{Root(projectId)}/report")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await viewer.GetAsync($"{Root(projectId)}/package")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var project = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == projectId);
+            project.IsDeleted = true;
+            await db.SaveChangesAsync();
+        }
+
+        (await WorkspaceAsync(viewer, projectId)).CanExport.Should().BeFalse();
+        var afterDelete = await viewer.GetAsync($"{Root(projectId)}/documents/{document.Id}/download");
+        afterDelete.EnsureSuccessStatusCode();
+        (await afterDelete.Content.ReadAsByteArrayAsync()).Should().Equal(PdfBytes);
+        (await viewer.GetAsync($"{Root(projectId)}/report")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await viewer.GetAsync($"{Root(projectId)}/package")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -624,6 +776,17 @@ public class ProjectWorkspaceApiTests : IClassFixture<TestWebAppFactory>
         db.TestProjects.Add(project);
         await db.SaveChangesAsync();
         return (client, project.Id, owner.Id);
+    }
+
+    private async Task<HttpClient> LoginAsync(string employeeNo)
+    {
+        var client = _factory.CreateClient();
+        var login = await client.PostAsJsonAsync(
+            "/api/auth/login", new LoginRequest { EmployeeNo = employeeNo, Password = "123456" });
+        login.EnsureSuccessStatusCode();
+        var token = (await login.Content.ReadFromJsonAsync<ApiResult<LoginResponse>>())!.Data!.Token;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return client;
     }
 
     private async Task<HttpClient> EmployeeClientAsync()

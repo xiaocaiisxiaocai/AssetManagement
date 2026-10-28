@@ -118,6 +118,9 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var active = (await Post<ApiResult<TestMaterialDto>>(
             "/api/test-materials",
             new SaveTestMaterialRequest { Name = "落地后不可修改的料件", ProjectId = project.Id })).Data!;
+        var closedMaterial = (await Post<ApiResult<TestMaterialDto>>(
+            "/api/test-materials",
+            new SaveTestMaterialRequest { Name = "结案后仍可退回的料件", ProjectId = project.Id })).Data!;
         var deleted = (await Post<ApiResult<TestMaterialDto>>(
             "/api/test-materials",
             new SaveTestMaterialRequest { Name = "落地后不可恢复的料件", ProjectId = project.Id })).Data!;
@@ -134,10 +137,26 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         var deleteResponse = await _client.DeleteAsync($"/api/test-materials/{active.Id}");
         var returnResponse = await _client.PostAsJsonAsync($"/api/test-materials/{active.Id}/return", new { });
         var restoreResponse = await _client.PostAsync($"/api/test-materials/{deleted.Id}/restore", null);
+        var returned = await returnResponse.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
 
         deleteResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        returnResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        returnResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        returned!.Data!.Status.Should().Be(MaterialStatus.ReturnedToVendor);
         restoreResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var entity = await db.TestProjects.AsTracking().SingleAsync(x => x.Id == project.Id);
+            entity.ProgressCode = "closed";
+            entity.ClosedDate = DateTime.UtcNow.Date;
+            await db.SaveChangesAsync();
+        }
+
+        var closedReturn = await _client.PostAsJsonAsync($"/api/test-materials/{closedMaterial.Id}/return", new { });
+        var closedBody = await closedReturn.Content.ReadFromJsonAsync<ApiResult<TestMaterialDto>>();
+        closedReturn.StatusCode.Should().Be(HttpStatusCode.OK);
+        closedBody!.Data!.Status.Should().Be(MaterialStatus.ReturnedToVendor);
     }
 
     [Fact]
@@ -446,6 +465,7 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         {
             var project = await CreateProject("待审批退回项目");
             var transferee = await CreateUserInDb($"tf{Guid.NewGuid():N}"[..12], "待审批接收人", withDepartment: true);
+            await PlaceUserInAdminDepartmentAsync(transferee.Id);
             var created = await Post<ApiResult<TestMaterialDto>>("/api/test-materials", new SaveTestMaterialRequest
             {
                 Name = "待审批退回样品",
@@ -995,12 +1015,16 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
             ProjectId = project.Id
         });
         var transferee = await CreateUserInDb($"tf{Guid.NewGuid():N}"[..12], "流转接收人", withDepartment: true);
-        await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
+        await PlaceUserInAdminDepartmentAsync(transferee.Id);
+        var flow = await Post<ApiResult<MaterialFlowDto>>("/api/material-flows", new InitiateTransferRequest
         {
             MaterialId = material.Data!.Id,
             TransfereeId = transferee.Id,
             Reason = "保留历史"
         });
+        await Login(transferee.EmployeeNo);
+        await Post<ApiResult<MaterialFlowDto>>($"/api/material-flows/{flow.Data!.Id}/confirm-receipt", new { });
+        await Login();
         await _client.DeleteAsync($"/api/test-materials/{material.Data.Id}");
 
         var purged = await _client.DeleteAsync($"/api/test-materials/{material.Data.Id}/purge");
@@ -1648,6 +1672,30 @@ public class TestMaterialApiTests : IClassFixture<TestWebAppFactory>
         db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = managerRole.Id });
         await db.SaveChangesAsync();
         return user;
+    }
+
+    private async Task PlaceUserInAdminDepartmentAsync(int userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var admin = await db.Users.AsTracking().SingleAsync(x => x.EmployeeNo == "1001");
+        if (admin.DepartmentId is not int departmentId ||
+            !await db.Departments.AnyAsync(x => x.Id == departmentId && x.IsActive))
+        {
+            var department = new Department
+            {
+                Code = $"AD{Guid.NewGuid():N}"[..12],
+                Name = "管理员所属部门",
+                IsActive = true
+            };
+            db.Departments.Add(department);
+            await db.SaveChangesAsync();
+            admin.DepartmentId = department.Id;
+        }
+
+        var user = await db.Users.AsTracking().SingleAsync(x => x.Id == userId);
+        user.DepartmentId = admin.DepartmentId;
+        await db.SaveChangesAsync();
     }
 
     private async Task<User> CreateUserInDb(string employeeNo, string name, bool withDepartment = false)

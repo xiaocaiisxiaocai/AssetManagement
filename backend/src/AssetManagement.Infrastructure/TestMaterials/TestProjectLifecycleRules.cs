@@ -22,10 +22,13 @@ internal static class TestProjectLifecycleRules
         !closedDate.HasValue && Equals(progressCode, Testing);
 
     /// <summary>
-    /// 未完成，或已完成但没有结束日期的阶段，都不能进入落地跟进。
+    /// 没有结束日期，或测试内容、测试结果为空的阶段，都不能进入落地跟进。
+    /// 阶段状态由日期推导，不参与这个判断。
     /// </summary>
-    public static bool StageBlocksLanding(string? status, DateTime? endDate) =>
-        !Equals(status, "completed") || !endDate.HasValue;
+    public static bool StageBlocksLanding(DateTime? endDate, string? testContent, string? testResult) =>
+        !endDate.HasValue ||
+        string.IsNullOrWhiteSpace(testContent) ||
+        string.IsNullOrWhiteSpace(testResult);
 
     public static bool IsInitialProjectProgressAllowed(string? progressCode) =>
         Equals(progressCode, Planning) || Equals(progressCode, Testing);

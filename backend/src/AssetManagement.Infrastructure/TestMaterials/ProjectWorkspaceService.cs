@@ -73,9 +73,23 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         if (await _db.ProjectTestStages.AnyAsync(x => x.ProjectId == projectId && !x.IsDeleted &&
                 x.Id != (stageId ?? 0) && x.Sequence == request.Sequence))
             throw new BizException(4094, "该阶段序号已存在，请使用其他序号");
-        if (IsCurrent(request.Status) && await _db.ProjectTestStages.AnyAsync(x => x.ProjectId == projectId &&
-                !x.IsDeleted && x.Id != (stageId ?? 0) && (x.Status == "in_progress" || x.Status == "blocked")))
-            throw new BizException(4092, "项目已有当前阶段，请先完成或调整该阶段的状态");
+        if (request.StartDate.HasValue)
+        {
+            var previous = await _db.ProjectTestStages
+                .Where(x => x.ProjectId == projectId && !x.IsDeleted &&
+                    x.Id != (stageId ?? 0) &&
+                    x.Sequence < request.Sequence &&
+                    x.StartDate != null && x.EndDate == null)
+                .OrderByDescending(x => x.Sequence)
+                .Select(x => new { x.Sequence, x.Name })
+                .FirstOrDefaultAsync();
+            if (previous != null)
+                throw new BizException(4092, $"请先结束第{previous.Sequence}阶段「{previous.Name}」");
+        }
+        if (IsCurrentStage(request.StartDate, request.EndDate) && await _db.ProjectTestStages.AnyAsync(x =>
+                x.ProjectId == projectId && !x.IsDeleted && x.Id != (stageId ?? 0) &&
+                x.StartDate != null && x.EndDate == null))
+            throw new BizException(4092, "请先填写当前阶段的结束日期");
 
         stage.Sequence = request.Sequence;
         stage.Name = request.Name.Trim();
@@ -84,7 +98,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         stage.TestResult = Optional(request.TestResult);
         stage.StartDate = request.StartDate?.Date;
         stage.EndDate = request.EndDate?.Date;
-        stage.Status = request.Status;
+        stage.Status = DeriveStageStatus(stage.StartDate, stage.EndDate);
         stage.RowVersion++;
         stage.UpdatedAt = DateTime.UtcNow;
         await SaveChangesAsync();
@@ -150,8 +164,6 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     {
         var project = await LoadProjectAsync(projectId);
         await _accessScope.EnsureCanViewAsync(project, userId);
-        if (!await _accessScope.CanExecuteAsync(project, userId, "project:export", true))
-            throw new BizException(4031, "只有项目负责人或拥有项目导出权限的用户可以导出报告");
         var document = await _db.ProjectReportDocuments.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == documentId && x.ProjectId == projectId && !x.IsDeleted)
             ?? throw new BizException(4046, "报告不存在或已删除");
@@ -278,7 +290,7 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
                 .Where(x => materialIds.Contains(x.MaterialId)).OrderBy(x => x.ApplyTime).Take(10001)
                 .Select(x => new MaterialFlowDto
                 {
-                    Id = x.Id, FlowNo = x.FlowNo, MaterialName = x.MaterialName,
+                    Id = x.Id, FlowNo = x.FlowNo, ProjectId = project.Id, MaterialName = x.MaterialName,
                     MaterialNo = x.MaterialNo, Applicant = x.Applicant, Transferee = x.Transferee,
                     Reason = x.Reason, ApplyTime = DateTime.SpecifyKind(x.ApplyTime, DateTimeKind.Utc),
                     Status = x.Status, Deadline = DateTime.SpecifyKind(x.Deadline, DateTimeKind.Utc),
@@ -340,7 +352,9 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         return await _db.ProjectTestStages.AnyAsync(x =>
             x.ProjectId == project.Id &&
             !x.IsDeleted &&
-            (x.Status != "completed" || x.EndDate == null));
+            (x.EndDate == null ||
+             x.TestContent == null || x.TestContent.Trim() == "" ||
+             x.TestResult == null || x.TestResult.Trim() == ""));
     }
 
     private async Task CheckStageAsync(int projectId, int? stageId)
@@ -356,8 +370,6 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
         if (request.Sequence is < 1 or > 999) throw new BizException(4001, "阶段序号必须为 1–999");
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 100)
             throw new BizException(4001, "请填写阶段名称，最多 100 个字符");
-        if (request.Status is not ("planned" or "in_progress" or "completed" or "blocked"))
-            throw new BizException(4001, "阶段状态无效");
         if (request.Objective?.Length > 2000 ||
             request.TestContent?.Length > 8000 || request.TestResult?.Length > 8000)
             throw new BizException(4001, "阶段目标最多 2000 字，测试内容/结果最多 8000 字");
@@ -367,16 +379,14 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
             ((request.StartDate.HasValue && request.StartDate.Value.Date < projectStartDate.Value.Date) ||
              (request.EndDate.HasValue && request.EndDate.Value.Date < projectStartDate.Value.Date)))
             throw new BizException(4001, "测试阶段日期不能早于项目开始日期");
-        if (IsCurrent(request.Status) && !request.StartDate.HasValue)
-            throw new BizException(4001, "进行中或受阻的阶段必须填写开始日期");
-        if (request.Status == "completed")
+        if (request.EndDate.HasValue)
         {
-            if (!request.StartDate.HasValue || !request.EndDate.HasValue ||
+            if (!request.StartDate.HasValue ||
                 string.IsNullOrWhiteSpace(request.TestContent) ||
                 string.IsNullOrWhiteSpace(request.TestResult))
-                throw new BizException(4001, "完成阶段前请填写起止日期、测试内容和测试结果");
+                throw new BizException(4001, "填写结束日期前请同时填写开始日期、测试内容和测试结果");
             if (request.EndDate.Value.Date > BusinessClock.Today)
-                throw new BizException(4001, "已完成阶段的结束日期不能晚于今天");
+                throw new BizException(4001, "结束日期不能晚于今天");
         }
     }
 
@@ -384,11 +394,24 @@ public class ProjectWorkspaceService : IProjectWorkspaceService
     {
         try { await _db.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { throw new BizException(4090, "阶段已被更新，请刷新后重试"); }
-        catch (DbUpdateException ex) when (ex.InnerException is MySqlException { Number: 1062 })
-        { throw new BizException(4094, "阶段序号重复或项目已有当前阶段，请刷新后重试"); }
+        catch (DbUpdateException ex) when (ex.InnerException is MySqlException { Number: 1062 } mysql)
+        {
+            if (mysql.Message.Contains("ActiveSequence", StringComparison.OrdinalIgnoreCase))
+                throw new BizException(4094, "该阶段序号已存在，请使用其他序号");
+            throw new BizException(4092, "请先填写当前阶段的结束日期");
+        }
     }
 
-    private static bool IsCurrent(string status) => status is "in_progress" or "blocked";
+    internal static string DeriveStageStatus(DateTime? startDate, DateTime? endDate)
+    {
+        if (endDate.HasValue) return "completed";
+        if (startDate.HasValue) return "in_progress";
+        return "planned";
+    }
+
+    private static bool IsCurrentStage(DateTime? startDate, DateTime? endDate) =>
+        startDate.HasValue && !endDate.HasValue;
+
     private static string? Optional(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
 
     private static ProjectTestStageDto StageDto(ProjectTestStage x) => new()

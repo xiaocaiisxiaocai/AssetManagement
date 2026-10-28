@@ -4,6 +4,7 @@ using AssetManagement.Application.Files;
 using AssetManagement.Application.TestMaterials;
 using AssetManagement.Domain.Entities;
 using AssetManagement.Domain.Services;
+using AssetManagement.Domain.Workflow;
 using AssetManagement.Infrastructure.Common;
 using AssetManagement.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
@@ -78,6 +79,7 @@ public class TestMaterialService : ITestMaterialService
                 FlowNo = x.FlowNo,
                 BizType = x.BizType,
                 MaterialId = x.MaterialId,
+                ProjectId = entity.ProjectId,
                 MaterialNo = x.MaterialNo,
                 MaterialName = x.MaterialName,
                 Applicant = x.Applicant,
@@ -205,7 +207,7 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4095, "料件所属项目不能修改");
         EnsureMaterialProjectOpen(project);
         await EnsureCanWriteMaterial(project, "material:edit");
-        if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
+        if (await HasInProgressFlowAsync(id))
             throw new BizException(4092, "该料件有进行中的流转,不能编辑");
         var name = request.Name.Trim();
         if (string.IsNullOrWhiteSpace(name))
@@ -254,7 +256,7 @@ public class TestMaterialService : ITestMaterialService
         await EnsureCanDisposeMaterialAsync(m, "material:delete");
         EnsureMaterialProjectOpen(project);
         EnsureInUse(m, "已退回厂商的料件不能删除");
-        if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
+        if (await HasInProgressFlowAsync(id))
             throw new BizException(4092, "该料件有进行中的流转,不能删除");
         m.IsDeleted = true;
         m.DeletedAt = DateTime.UtcNow;
@@ -350,8 +352,9 @@ public class TestMaterialService : ITestMaterialService
             ?? throw new BizException(4048, "测试料件不存在");
         if (m.IsDeleted) throw new BizException(4048, "测试料件不存在");
         await EnsureCanDisposeMaterialAsync(m, "material:return");
-        EnsureMaterialProjectOpen(project);
-        if (await _db.MaterialFlows.AnyAsync(x => x.MaterialId == id && x.Status == "pending"))
+        if (project.IsDeleted)
+            throw new BizException(4094, "料件所属项目已删除，请先恢复项目");
+        if (await HasInProgressFlowAsync(id))
             throw new BizException(4092, "该料件有进行中的流转,不能退回厂商");
         if (m.Status == MaterialStatus.ReturnedToVendor)
             throw new BizException(4099, "料件已退回厂商,无需重复操作");
@@ -609,6 +612,11 @@ public class TestMaterialService : ITestMaterialService
             throw new BizException(4092, "项目已进入落地跟进或已结案，料件已锁定");
     }
 
+    private Task<bool> HasInProgressFlowAsync(int materialId) =>
+        _db.MaterialFlows.AnyAsync(x =>
+            x.MaterialId == materialId &&
+            (x.Status == FlowStatus.Pending || x.Status == FlowStatus.Receiving));
+
     private int? CurrentUserId()
     {
         var value = _http.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -664,7 +672,8 @@ public class TestMaterialService : ITestMaterialService
         var depts = await _db.Departments.Where(x => deptIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
         var custodians = await _db.Users.Where(x => custodianIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
         var pendingMaterialIds = await _db.MaterialFlows
-            .Where(x => x.Status == "pending" && ids.Contains(x.MaterialId))
+            .Where(x => (x.Status == FlowStatus.Pending || x.Status == FlowStatus.Receiving) &&
+                        ids.Contains(x.MaterialId))
             .Select(x => x.MaterialId).Distinct().ToListAsync();
         var pendingSet = pendingMaterialIds.ToHashSet();
 
