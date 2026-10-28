@@ -93,3 +93,11 @@ export function ratioAt(pxSizes: readonly number[], index: number) {
 export function toPercent(ratio: number) {
   return `${Math.round(ratio * 10_000) / 100}%`;
 }
+
+/** 收起料件清单时，面板比区块边框盒多出的底部间距。 */
+export const COLLAPSED_PANEL_GAP = 5;
+
+/** 收起后面板高度等于区块自然高度加上底部间距。 */
+export function collapsedSectionPanelSize(sectionHeight: number) {
+  return Math.ceil(sectionHeight) + COLLAPSED_PANEL_GAP;
+}

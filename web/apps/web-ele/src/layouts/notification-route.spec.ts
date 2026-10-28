@@ -21,13 +21,22 @@ describe('resolveNotificationRoute', () => {
     });
   });
 
-  it.each(['material_transferred', 'material_approved', 'material_rejected'])(
-    'routes %s to the existing material-flow workbench',
-    (type) => {
-      expect(resolveNotificationRoute(type, 18)).toEqual({
-        path: '/approval/mine',
-        query: { flowId: '18', source: 'material' },
-      });
-    },
-  );
+  it.each([
+    'material_received',
+    'material_approved',
+    'material_rejected',
+    'material_transferred',
+  ])('routes %s to my applications', (type) => {
+    expect(resolveNotificationRoute(type, 18)).toEqual({
+      path: '/approval/mine',
+      query: { flowId: '18', source: 'material' },
+    });
+  });
+
+  it('opens the project workspace on the receiving tab for a pending receipt', () => {
+    expect(resolveNotificationRoute('material_receipt_pending', 18)).toEqual({
+      path: '/material/projects',
+      query: { flowId: '18', source: 'material', intent: 'receive' },
+    });
+  });
 });

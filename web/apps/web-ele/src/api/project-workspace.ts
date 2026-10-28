@@ -56,7 +56,6 @@ export interface SaveProjectStagePayload {
   rowVersion: number;
   sequence: number;
   startDate?: null | string;
-  status: ProjectStageStatus;
   testContent?: null | string;
   testResult?: null | string;
 }

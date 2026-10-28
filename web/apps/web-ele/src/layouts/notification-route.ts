@@ -28,6 +28,25 @@ export function resolveNotificationRoute(type: string, flowId?: number) {
     return { path: '/asset/list' };
   }
 
+  if (type === 'material_receipt_pending') {
+    return {
+      path: '/material/projects',
+      query: {
+        ...(flowId ? { flowId: String(flowId) } : {}),
+        source: 'material',
+        intent: 'receive',
+      },
+    };
+  }
+
+  if (
+    type === 'material_received' ||
+    type === 'material_approved' ||
+    type === 'material_rejected'
+  ) {
+    return { path: '/approval/mine', query };
+  }
+
   if (type.startsWith('material_')) {
     return { path: '/approval/mine', query };
   }

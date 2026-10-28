@@ -30,6 +30,8 @@ const {
   handledFlowTotal,
   isCurrentProjectReadOnly,
   isCurrentUserSupervisor,
+  confirmReceipt,
+  flowInitialTab,
   loadProjectFlows,
   loadProjectMaterials,
   materialActionAccess,
@@ -47,6 +49,7 @@ const {
   onMaterialRowCommand,
   onMyFlowPageSizeChange,
   onPendingFlowPageSizeChange,
+  onReceivingFlowPageSizeChange,
   openCreateMaterial,
   openEditMaterial,
   openMaterialDetail,
@@ -56,6 +59,10 @@ const {
   pendingFlows,
   pendingFlowTotal,
   processingFlowIds,
+  receivingFlowLoading,
+  receivingFlowQueryModel,
+  receivingFlows,
+  receivingFlowTotal,
   rejectFlow,
   releaseFlow,
   resetMaterialQuery,
@@ -72,6 +79,7 @@ const {
     v-model:material-query="materialQueryModel"
     v-model:my-query="myFlowQueryModel"
     v-model:pending-query="pendingFlowQueryModel"
+    v-model:receiving-query="receivingFlowQueryModel"
     v-model:visible="followupDrawerVisible"
     :can-create="canWriteCurrentProjectMaterial"
     :can-edit="canEditCurrentProjectMaterial"
@@ -80,6 +88,7 @@ const {
     :current-project="currentProject"
     :current-user-id="currentUserId"
     :editing-followup-id="editingFollowupId"
+    :flow-initial-tab="flowInitialTab"
     :followup-loading="followupLoading"
     :followup-saving="followupSaving"
     :followups="followups"
@@ -101,8 +110,12 @@ const {
     :pending-loading="pendingFlowLoading"
     :processing-flow-ids="processingFlowIds"
     :read-only="isCurrentProjectReadOnly"
+    :receiving-count="receivingFlowTotal"
+    :receiving-flows="receivingFlows"
+    :receiving-loading="receivingFlowLoading"
     @approve="approveFlow"
     @command="onMaterialRowCommand"
+    @confirm="confirmReceipt"
     @create="openCreateMaterial"
     @detail="openMaterialDetail"
     @edit="openEditMaterial"
@@ -116,6 +129,7 @@ const {
     @my-page-size-change="onMyFlowPageSizeChange"
     @pending-page-size-change="onPendingFlowPageSizeChange"
     @progress="openProgress"
+    @receiving-page-size-change="onReceivingFlowPageSizeChange"
     @reject="rejectFlow"
     @release="releaseFlow"
     @reset="resetMaterialQuery"

@@ -45,6 +45,7 @@ const flowStatusMeta: Record<
 > = {
   approved: { label: '已通过', tag: 'success' },
   pending: { label: '审批中', tag: 'warning' },
+  receiving: { label: '待接收', tag: 'warning' },
   rejected: { label: '已驳回', tag: 'info' },
   withdrawn: { label: '已撤回', tag: 'info' },
 };

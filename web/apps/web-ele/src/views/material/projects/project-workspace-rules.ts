@@ -18,7 +18,7 @@ export function canReleaseMaterialFlow(flow: MaterialFlowItem) {
 
 export function canWithdrawMaterialFlow(flow: MaterialFlowItem) {
   return (
-    flow.status === 'pending' &&
+    (flow.status === 'pending' || flow.status === 'receiving') &&
     flow.canWithdraw === true &&
     flow.canReleaseStuck !== true
   );

@@ -4,15 +4,19 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 
 import {
   approveFlowApi,
+  confirmReceiptApi,
   listHandledFlowsPageApi,
   listMyFlowsPageApi,
   listPendingFlowsPageApi,
+  listReceivingFlowsPageApi,
   rejectFlowApi,
   releaseMaterialFlowApi,
   withdrawMaterialFlowApi,
 } from '#/api/material';
 import { runHandled } from '#/utils/handled-promise';
 import { formatWorkflowNode } from '#/utils/workflow-action-nodes';
+
+export type ProjectFlowListKind = 'handled' | 'mine' | 'pending' | 'receiving';
 
 export function bindProjectFlowActions(
   page: Record<string, any>,
@@ -30,19 +34,24 @@ export function bindProjectFlowActions(
     pendingFlowRequestGuard,
     handledFlowRequestGuard,
     myFlowRequestGuard,
+    receivingFlowRequestGuard,
     workflowNodeSelector,
     pendingFlowLoading,
     handledFlowLoading,
     myFlowLoading,
+    receivingFlowLoading,
     pendingFlows,
     handledFlows,
     myFlows,
+    receivingFlows,
     pendingFlowTotal,
     handledFlowTotal,
     myFlowTotal,
+    receivingFlowTotal,
     pendingFlowQuery,
     myFlowQuery,
     handledFlowQuery,
+    receivingFlowQuery,
   } = page;
   const processingFlowIds = page.processingFlowIds as { value: number[] };
 
@@ -58,9 +67,7 @@ export function bindProjectFlowActions(
     );
   }
 
-  type ProjectFlowListKind = 'handled' | 'mine' | 'pending';
-
-  /** 待我审批、我已处理按账号审批权限展示；项目阶段只决定能否在工作台内处理。 */
+  /** 待我审批、我已处理按账号审批权限展示；待我接收与我的发起所有人可见。 */
   function canViewApprovalLists() {
     return materialActionAccess.value?.canApprove === true;
   }
@@ -93,6 +100,16 @@ export function bindProjectFlowActions(
         total: myFlowTotal,
       };
     }
+    if (kind === 'receiving') {
+      return {
+        flows: receivingFlows,
+        loading: receivingFlowLoading,
+        loadPage: listReceivingFlowsPageApi,
+        query: receivingFlowQuery,
+        requestGuard: receivingFlowRequestGuard,
+        total: receivingFlowTotal,
+      };
+    }
     return {
       flows: pendingFlows,
       loading: pendingFlowLoading,
@@ -107,7 +124,9 @@ export function bindProjectFlowActions(
     projectId: number,
     kind: ProjectFlowListKind,
   ) {
-    if (kind !== 'mine' && !canViewApprovalLists()) return;
+    if ((kind === 'pending' || kind === 'handled') && !canViewApprovalLists()) {
+      return;
+    }
     const { flows, loading, loadPage, query, requestGuard, total } =
       flowListState(kind);
     loading.value = true;
@@ -146,8 +165,8 @@ export function bindProjectFlowActions(
       return;
     }
     const kinds: ProjectFlowListKind[] = canViewApprovalLists()
-      ? ['pending', 'handled', 'mine']
-      : ['mine'];
+      ? ['pending', 'receiving', 'handled', 'mine']
+      : ['receiving', 'mine'];
     await Promise.all(
       kinds.map((item) => loadProjectFlowList(projectId, item)),
     );
@@ -262,14 +281,40 @@ export function bindProjectFlowActions(
     runHandled(loadProjectFlows(undefined, 'mine'));
   }
 
+  function onReceivingFlowPageSizeChange() {
+    receivingFlowQuery.page = 1;
+    runHandled(loadProjectFlows(undefined, 'receiving'));
+  }
+
+  async function confirmReceipt(row: MaterialFlowItem) {
+    if (row.status !== 'receiving') return;
+    if (!beginFlowProcessing(row.id)) return;
+    try {
+      await ElMessageBox.confirm(
+        `确认接收料件「${row.materialName}」？`,
+        '确认接收',
+        { type: 'warning' },
+      );
+      await confirmReceiptApi(row.id);
+      ElMessage.success('已确认接收');
+      await Promise.all([loadProjectFlows(), loadProjectMaterials()]);
+    } catch {
+      // 错误已由 request.ts 拦截器统一弹出
+    } finally {
+      endFlowProcessing(row.id);
+    }
+  }
+
   return {
     loadProjectFlows,
     approveFlow,
     rejectFlow,
     releaseFlow,
     withdrawFlow,
+    confirmReceipt,
     onPendingFlowPageSizeChange,
     onHandledFlowPageSizeChange,
     onMyFlowPageSizeChange,
+    onReceivingFlowPageSizeChange,
   };
 }

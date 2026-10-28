@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import type { ProjectFlowListKind } from './project-flow-actions';
 import type { DeleteStatus } from './project-workspace-types';
 
 import type {
@@ -20,17 +21,19 @@ import {
 } from 'element-plus';
 
 import {
+  collapsedSectionPanelSize,
   ratioAt,
   readWorkspaceLayout,
   toPercent,
   writeWorkspaceLayout,
 } from './project-workspace-layout';
 import {
-  startWorkspacePrint,
-  stopWorkspacePrint,
-  workspacePrinting,
-  workspacePrintTitle,
-} from './project-workspace-print';
+  buildWorkspaceReportHtml,
+  loadWorkspaceReportData,
+  printWorkspaceReport,
+  stopWorkspaceReport,
+  workspaceReportTitle,
+} from './project-workspace-report';
 import ProjectFlowsTab from './ProjectFlowsTab.vue';
 import ProjectFollowupsTab from './ProjectFollowupsTab.vue';
 import ProjectMaterialsTab from './ProjectMaterialsTab.vue';
@@ -54,6 +57,7 @@ const props = defineProps<{
   currentProject: null | TestProjectItem;
   currentUserId: number;
   editingFollowupId: null | number;
+  flowInitialTab?: ProjectFlowListKind;
   followupLoading: boolean;
   followups: TestProjectFollowup[];
   followupSaving: boolean;
@@ -75,15 +79,19 @@ const props = defineProps<{
   pendingLoading: boolean;
   processingFlowIds: number[];
   readOnly: boolean;
+  receivingCount: number;
+  receivingFlows: MaterialFlowItem[];
+  receivingLoading: boolean;
 }>();
 
 const emit = defineEmits<{
   approve: [flow: MaterialFlowItem];
   command: [command: number | string, material: MaterialItem];
+  confirm: [flow: MaterialFlowItem];
   create: [];
   detail: [material: MaterialItem];
   edit: [material: MaterialItem];
-  flowPageChange: [kind: 'handled' | 'mine' | 'pending'];
+  flowPageChange: [kind: ProjectFlowListKind];
   followupCancelEdit: [];
   followupEdit: [followup: TestProjectFollowup];
   followupSave: [];
@@ -93,6 +101,7 @@ const emit = defineEmits<{
   myPageSizeChange: [];
   pendingPageSizeChange: [];
   progress: [project: TestProjectItem];
+  receivingPageSizeChange: [];
   reject: [flow: MaterialFlowItem];
   release: [flow: MaterialFlowItem];
   reset: [];
@@ -122,6 +131,10 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
   'pendingQuery',
   { required: true },
 );
+const receivingQuery = defineModel<{ page: number; pageSize: number }>(
+  'receivingQuery',
+  { required: true },
+);
 
 const currentProjectCodeText = computed(
   () => props.currentProject?.code || '未设置编号',
@@ -139,11 +152,9 @@ const currentProjectProgressText = computed(
     '未设置进度',
 );
 
-/** 收起后只保留标题行：上下内边距 20 + 标题行 28 + 边框 2 + 与下一块的间距 5。 */
-const MATERIALS_COLLAPSED_SIZE = 55;
-
 const layout = readWorkspaceLayout();
 const materialsCollapsed = ref(false);
+const collapsedSectionHeight = ref(0);
 const materialsSize = ref<number | string>(toPercent(layout.materials));
 const testingSize = ref<number | string>(toPercent(layout.testing));
 const flowsSize = ref<number | string>(toPercent(layout.flows));
@@ -153,8 +164,14 @@ const bottomPanelClass = computed(() =>
 );
 
 const materialsPanelSize = computed(() =>
-  materialsCollapsed.value ? MATERIALS_COLLAPSED_SIZE : materialsSize.value,
+  materialsCollapsed.value && collapsedSectionHeight.value > 0
+    ? collapsedSectionPanelSize(collapsedSectionHeight.value)
+    : materialsSize.value,
 );
+
+function onCollapsedSectionHeight(height: number) {
+  collapsedSectionHeight.value = height;
+}
 
 function onMaterialsSizeUpdate(size: number | string) {
   if (!materialsCollapsed.value) materialsSize.value = size;
@@ -175,24 +192,32 @@ function onBottomResizeEnd(_index: number, pxSizes: number[]) {
   writeWorkspaceLayout(layout);
 }
 
-function printWorkspace(event: MouseEvent) {
+const exportingReport = ref(false);
+
+async function exportReport() {
   const project = props.currentProject;
-  if (!project || workspacePrinting.value) return;
-  const target = event.currentTarget;
-  if (!(target instanceof HTMLElement)) return;
-  const drawer = target.closest('.el-drawer');
-  if (!(drawer instanceof HTMLElement)) return;
-  startWorkspacePrint({
-    drawer,
-    title: workspacePrintTitle(project.name, project.code, new Date()),
-  });
+  if (!project || exportingReport.value) return;
+  exportingReport.value = true;
+  try {
+    const data = await loadWorkspaceReportData(project);
+    // 取数期间关闭了抽屉或切换了项目，则不再弹出打印。
+    if (!visible.value || props.currentProject?.id !== project.id) return;
+    printWorkspaceReport(
+      buildWorkspaceReportHtml(data),
+      workspaceReportTitle(project.name, project.code, data.generatedAt),
+    );
+  } catch {
+    // 错误已由 request.ts 拦截器统一弹出
+  } finally {
+    exportingReport.value = false;
+  }
 }
 
 watch(visible, (open) => {
-  if (!open) stopWorkspacePrint();
+  if (!open) stopWorkspaceReport();
 });
 onBeforeUnmount(() => {
-  stopWorkspacePrint();
+  stopWorkspaceReport();
 });
 </script>
 
@@ -203,7 +228,6 @@ onBeforeUnmount(() => {
     :close-on-press-escape="!followupSaving"
     :show-close="!followupSaving"
     class="project-workspace-drawer"
-    modal-class="project-workspace-overlay"
     size="88%"
   >
     <template #header>
@@ -226,9 +250,9 @@ onBeforeUnmount(() => {
         </div>
         <div class="workspace-project-heading-actions">
           <ElButton
-            :disabled="workspacePrinting"
+            :loading="exportingReport"
             size="small"
-            @click="printWorkspace"
+            @click="exportReport"
           >
             导出页面
           </ElButton>
@@ -268,6 +292,7 @@ onBeforeUnmount(() => {
             :page-size-options="materialPageSizeOptions"
             :project-owner-id="currentProject.ownerId"
             :total="materialTotal"
+            @collapsed-height="onCollapsedSectionHeight"
             @command="(command, row) => emit('command', command, row)"
             @create="emit('create')"
             @detail="emit('detail', $event)"
@@ -310,11 +335,13 @@ onBeforeUnmount(() => {
                 v-model:handled-query="handledQuery"
                 v-model:my-query="myQuery"
                 v-model:pending-query="pendingQuery"
+                v-model:receiving-query="receivingQuery"
                 :can-handle="materialAccess.canApprove && !readOnly"
                 :can-view-approvals="canViewApprovals"
                 :handled-count="handledCount"
                 :handled-flows="handledFlows"
                 :handled-loading="handledLoading"
+                :initial-tab="flowInitialTab"
                 :my-count="myCount"
                 :my-flows="myFlows"
                 :my-loading="myLoading"
@@ -324,11 +351,16 @@ onBeforeUnmount(() => {
                 :pending-loading="pendingLoading"
                 :processing-flow-ids="processingFlowIds"
                 :read-only="readOnly"
+                :receiving-count="receivingCount"
+                :receiving-flows="receivingFlows"
+                :receiving-loading="receivingLoading"
                 @approve="emit('approve', $event)"
+                @confirm="emit('confirm', $event)"
                 @handled-page-size-change="emit('handledPageSizeChange')"
                 @my-page-size-change="emit('myPageSizeChange')"
                 @page-change="emit('flowPageChange', $event)"
                 @pending-page-size-change="emit('pendingPageSizeChange')"
+                @receiving-page-size-change="emit('receivingPageSizeChange')"
                 @reject="emit('reject', $event)"
                 @release="emit('release', $event)"
                 @withdraw="emit('withdraw', $event)"
@@ -360,4 +392,3 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped src="./ProjectWorkspaceDrawer.css"></style>
-<style src="./project-workspace-print.css"></style>

@@ -1,3 +1,5 @@
+import type { ProjectFlowListKind } from './project-flow-actions';
+
 import type {
   SaveTestProjectFollowupPayload,
   TestProjectFollowup,
@@ -17,7 +19,7 @@ export function bindProjectFollowupActions(
   deps: {
     loadProjectFlows: (
       projectId?: number,
-      kind?: 'handled' | 'mine' | 'pending',
+      kind?: ProjectFlowListKind,
     ) => Promise<void>;
     loadProjectMaterials: (projectId?: number) => Promise<void>;
     resetMaterialQuery: () => void;
@@ -39,19 +41,27 @@ export function bindProjectFollowupActions(
     pendingFlowRequestGuard,
     handledFlowRequestGuard,
     myFlowRequestGuard,
+    receivingFlowRequestGuard,
     pendingFlows,
     handledFlows,
     myFlows,
+    receivingFlows,
     pendingFlowTotal,
     handledFlowTotal,
     myFlowTotal,
+    receivingFlowTotal,
     pendingFlowQuery,
     myFlowQuery,
     handledFlowQuery,
+    receivingFlowQuery,
+    flowInitialTab,
     loadData,
   } = page;
 
-  async function openFollowups(row: TestProjectItem) {
+  async function openFollowups(
+    row: TestProjectItem,
+    options?: { flowTab?: ProjectFlowListKind },
+  ) {
     if (followupSaving.value) {
       ElMessage.warning('跟进正在保存，请稍候');
       return;
@@ -62,18 +72,23 @@ export function bindProjectFollowupActions(
     pendingFlowRequestGuard.invalidate();
     handledFlowRequestGuard.invalidate();
     myFlowRequestGuard.invalidate();
+    receivingFlowRequestGuard.invalidate();
+    flowInitialTab.value = options?.flowTab;
     currentProject.value = row;
     materials.value = [];
     materialTotal.value = 0;
     pendingFlows.value = [];
     handledFlows.value = [];
     myFlows.value = [];
+    receivingFlows.value = [];
     pendingFlowTotal.value = 0;
     handledFlowTotal.value = 0;
     myFlowTotal.value = 0;
+    receivingFlowTotal.value = 0;
     pendingFlowQuery.page = 1;
     handledFlowQuery.page = 1;
     myFlowQuery.page = 1;
+    receivingFlowQuery.page = 1;
     deps.resetMaterialQuery();
     followups.value = [];
     editingFollowupId.value = null;

@@ -1,5 +1,6 @@
 import { reactive, ref } from 'vue';
 
+import { ElMessageBox } from 'element-plus';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createLatestRequestGuard } from '#/utils/latest-request';
@@ -7,9 +8,11 @@ import { createLatestRequestGuard } from '#/utils/latest-request';
 import { bindProjectFlowActions } from './project-flow-actions';
 
 const mocks = vi.hoisted(() => ({
+  confirm: vi.fn(),
   handled: vi.fn(),
   mine: vi.fn(),
   pending: vi.fn(),
+  receiving: vi.fn(),
 }));
 
 vi.mock('element-plus', () => ({
@@ -19,9 +22,11 @@ vi.mock('element-plus', () => ({
 
 vi.mock('#/api/material', () => ({
   approveFlowApi: vi.fn(),
+  confirmReceiptApi: mocks.confirm,
   listHandledFlowsPageApi: mocks.handled,
   listMyFlowsPageApi: mocks.mine,
   listPendingFlowsPageApi: mocks.pending,
+  listReceivingFlowsPageApi: mocks.receiving,
   rejectFlowApi: vi.fn(),
   releaseMaterialFlowApi: vi.fn(),
   withdrawMaterialFlowApi: vi.fn(),
@@ -48,6 +53,11 @@ function setup(canApprove: boolean, canHandle = canApprove) {
     myFlowRequestGuard: createLatestRequestGuard(),
     myFlows: ref([]),
     myFlowTotal: ref(0),
+    receivingFlowLoading: ref(false),
+    receivingFlowQuery: reactive({ page: 1, pageSize: 10 }),
+    receivingFlowRequestGuard: createLatestRequestGuard(),
+    receivingFlows: ref([]),
+    receivingFlowTotal: ref(0),
     pendingFlowLoading: ref(false),
     pendingFlowQuery: reactive({ page: 1, pageSize: 10 }),
     pendingFlowRequestGuard: createLatestRequestGuard(),
@@ -56,21 +66,24 @@ function setup(canApprove: boolean, canHandle = canApprove) {
     processingFlowIds: ref<number[]>([]),
     workflowNodeSelector: ref({ selectNode }),
   };
+  const loadProjectMaterials = vi.fn(async () => {});
   const actions = bindProjectFlowActions(page as any, {
-    loadProjectMaterials: vi.fn(async () => {}),
+    loadProjectMaterials,
   });
-  return { actions, selectNode };
+  return { actions, loadProjectMaterials, selectNode };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.confirm.mockResolvedValue({});
   mocks.handled.mockResolvedValue(emptyPage);
   mocks.mine.mockResolvedValue(emptyPage);
   mocks.pending.mockResolvedValue(emptyPage);
+  mocks.receiving.mockResolvedValue(emptyPage);
 });
 
 describe('项目流转列表加载', () => {
-  it('有审批权限且未指定列表时同时加载三类记录', async () => {
+  it('有审批权限且未指定列表时同时加载四类记录', async () => {
     const { actions } = setup(true);
 
     await actions.loadProjectFlows();
@@ -78,17 +91,20 @@ describe('项目流转列表加载', () => {
     const query = { page: 1, pageSize: 10, projectId: 7 };
     expect(mocks.pending).toHaveBeenCalledOnce();
     expect(mocks.pending).toHaveBeenCalledWith(query);
+    expect(mocks.receiving).toHaveBeenCalledOnce();
+    expect(mocks.receiving).toHaveBeenCalledWith(query);
     expect(mocks.handled).toHaveBeenCalledOnce();
     expect(mocks.handled).toHaveBeenCalledWith(query);
     expect(mocks.mine).toHaveBeenCalledOnce();
     expect(mocks.mine).toHaveBeenCalledWith(query);
   });
 
-  it('没有审批权限且未指定列表时只加载我的发起', async () => {
+  it('没有审批权限且未指定列表时加载待我接收和我的发起', async () => {
     const { actions } = setup(false);
 
     await actions.loadProjectFlows();
 
+    expect(mocks.receiving).toHaveBeenCalledOnce();
     expect(mocks.mine).toHaveBeenCalledOnce();
     expect(mocks.pending).not.toHaveBeenCalled();
     expect(mocks.handled).not.toHaveBeenCalled();
@@ -100,6 +116,7 @@ describe('项目流转列表加载', () => {
     await actions.loadProjectFlows();
 
     expect(mocks.pending).toHaveBeenCalledOnce();
+    expect(mocks.receiving).toHaveBeenCalledOnce();
     expect(mocks.handled).toHaveBeenCalledOnce();
     expect(mocks.mine).toHaveBeenCalledOnce();
   });
@@ -121,6 +138,23 @@ describe('项目流转列表加载', () => {
 
     expect(mocks.handled).toHaveBeenCalledOnce();
     expect(mocks.pending).not.toHaveBeenCalled();
+    expect(mocks.receiving).not.toHaveBeenCalled();
     expect(mocks.mine).not.toHaveBeenCalled();
+  });
+
+  it('确认接收后刷新流转和料件', async () => {
+    const { actions, loadProjectMaterials } = setup(false);
+    const row = {
+      id: 8,
+      materialName: '样件',
+      status: 'receiving',
+    } as any;
+
+    await actions.confirmReceipt(row);
+
+    expect(ElMessageBox.confirm).toHaveBeenCalled();
+    expect(mocks.confirm).toHaveBeenCalledWith(8);
+    expect(mocks.receiving).toHaveBeenCalled();
+    expect(loadProjectMaterials).toHaveBeenCalled();
   });
 });

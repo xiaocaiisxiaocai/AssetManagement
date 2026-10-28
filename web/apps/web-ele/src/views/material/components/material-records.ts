@@ -1,6 +1,7 @@
 const materialRecordActionLabels: Record<string, string> = {
   approve: '审批通过',
-  direct_transfer: '直接转移',
+  confirm_receipt: '确认接收',
+  direct_transfer: '发起转移',
   reject: '驳回',
   release: '终止并重新发起',
   return_to_vendor: '退回厂商',

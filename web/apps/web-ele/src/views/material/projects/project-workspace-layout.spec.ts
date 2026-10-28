@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  collapsedSectionPanelSize,
   DEFAULT_WORKSPACE_LAYOUT,
   ratioAt,
   readWorkspaceLayout,
@@ -56,5 +57,10 @@ describe('项目工作台布局记忆', () => {
     expect(ratioAt([0, 0], 0)).toBeUndefined();
     expect(ratioAt([100], 3)).toBeUndefined();
     expect(toPercent(0.2468)).toBe('24.68%');
+  });
+
+  it('收起后面板等于区块高度加底部间距', () => {
+    expect(collapsedSectionPanelSize(50)).toBe(55);
+    expect(collapsedSectionPanelSize(72.2)).toBe(78);
   });
 });

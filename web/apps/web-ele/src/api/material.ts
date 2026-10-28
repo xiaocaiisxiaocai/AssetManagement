@@ -90,6 +90,8 @@ export interface MaterialFlowItem {
   id: number;
   flowNo: string;
   materialId: number;
+  /** 料件所属测试项目，供通知打开工作台。 */
+  projectId: number;
   materialNo: string;
   materialName: string;
   applicant: string;
@@ -168,6 +170,13 @@ export const returnMaterialApi = (id: number) =>
     requestClient.post<ApiResult<MaterialItem>>(`/test-materials/${id}/return`),
   );
 
+export interface TransfereeOption {
+  departmentName?: null | string;
+  employeeNo: string;
+  id: number;
+  name: string;
+}
+
 export const initiateTransferApi = (data: {
   materialId: number;
   reason?: string;
@@ -175,6 +184,22 @@ export const initiateTransferApi = (data: {
 }) =>
   unwrap(
     requestClient.post<ApiResult<MaterialFlowItem>>('/material-flows', data),
+  );
+
+export const listTransfereeOptionsApi = (
+  materialId: number,
+  keyword?: string,
+) =>
+  unwrap(
+    requestClient.get<ApiResult<TransfereeOption[]>>(
+      '/material-flows/transferee-options',
+      {
+        params: {
+          keyword: keyword?.trim() || undefined,
+          materialId,
+        },
+      },
+    ),
   );
 
 export const listPendingFlowsApi = (projectId?: number) =>
@@ -218,6 +243,19 @@ export const listMyFlowsPageApi = (params: MaterialFlowPageQuery) =>
     ),
   );
 
+export const listReceivingFlowsPageApi = (params: MaterialFlowPageQuery) =>
+  unwrap(
+    requestClient.get<ApiResult<PagedResult<MaterialFlowItem>>>(
+      '/material-flows/receiving-page',
+      { params },
+    ),
+  );
+
+export const getMaterialFlowApi = (id: number) =>
+  unwrap(
+    requestClient.get<ApiResult<MaterialFlowItem>>(`/material-flows/${id}`),
+  );
+
 export const approveFlowApi = (id: number, opinion?: string, nodeId?: string) =>
   unwrap(
     requestClient.post<ApiResult<MaterialFlowItem>>(
@@ -238,6 +276,14 @@ export const withdrawMaterialFlowApi = (id: number) =>
   unwrap(
     requestClient.post<ApiResult<MaterialFlowItem>>(
       `/material-flows/${id}/withdraw`,
+      {},
+    ),
+  );
+
+export const confirmReceiptApi = (id: number) =>
+  unwrap(
+    requestClient.post<ApiResult<MaterialFlowItem>>(
+      `/material-flows/${id}/confirm-receipt`,
       {},
     ),
   );

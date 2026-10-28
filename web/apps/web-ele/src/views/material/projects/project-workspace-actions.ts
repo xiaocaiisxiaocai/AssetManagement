@@ -1,4 +1,7 @@
-import { bindProjectFlowActions } from './project-flow-actions';
+import {
+  bindProjectFlowActions,
+  type ProjectFlowListKind,
+} from './project-flow-actions';
 import { bindProjectFollowupActions } from './project-followup-actions';
 import { bindProjectMaterialCommandActions } from './project-material-command-actions';
 import { bindProjectMaterialQueryActions } from './project-material-query-actions';
@@ -8,7 +11,7 @@ export function bindProjectWorkspaceActions(page: Record<string, any>) {
   const lateDeps = {} as {
     loadProjectFlows: (
       projectId?: number,
-      kind?: 'handled' | 'mine' | 'pending',
+      kind?: ProjectFlowListKind,
     ) => Promise<void>;
     loadProjectMaterials: (projectId?: number) => Promise<void>;
     resetMaterialQuery: () => void;

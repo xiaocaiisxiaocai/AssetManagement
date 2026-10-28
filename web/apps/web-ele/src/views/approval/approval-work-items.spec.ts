@@ -54,6 +54,7 @@ const materialFlow: MaterialFlowItem = {
   flowNo: 'MF-001',
   id: 2,
   materialId: 3,
+  projectId: 9,
   materialName: '测试料件',
   materialNo: 'M-001',
   reason: '转给接收人验证',
@@ -203,6 +204,16 @@ describe('审批工作项适配', () => {
     expect(canWithdrawApproval({ ...applicant, status: 'approved' })).toBe(
       false,
     );
+    expect(canWithdrawApproval({ ...applicant, status: 'receiving' })).toBe(
+      true,
+    );
+    expect(
+      canWithdrawApproval({
+        ...normalizeAssetApproval(assetFlow),
+        canWithdraw: true,
+        status: 'receiving',
+      }),
+    ).toBe(false);
     expect(
       normalizeAssetApproval({ ...assetFlow, canReleaseStuck: true })
         .canReleaseStuck,

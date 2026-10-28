@@ -1,11 +1,13 @@
 import type { OptionKind } from './project-workspace-types';
 
 import { computed, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { useUserStore } from '@vben/stores';
 
 import { flattenActiveDepartments } from '#/utils/department-options';
+import { runHandled } from '#/utils/handled-promise';
 import {
   createPageSizeOptions,
   getDefaultPageSize,
@@ -17,10 +19,13 @@ import {
 
 import { bindProjectCatalogActions } from './project-catalog-actions';
 import { createProjectPageState } from './project-page-state';
+import { bindProjectReceiptNavigation } from './project-receipt-navigation';
 import { bindProjectWorkspaceActions } from './project-workspace-actions';
 import { isSupportedProjectProgress } from './project-workspace-rules';
 
 export function useProjectPage() {
+  const route = useRoute();
+  const router = useRouter();
   const { hasAccessByCodes } = useAccess();
   const userStore = useUserStore();
   const state = createProjectPageState();
@@ -48,16 +53,18 @@ export function useProjectPage() {
       ),
   );
   const currentMaterialActionAccess = computed(() => {
-    if (!isTestingProjectOpen.value || isCurrentProjectReadOnly.value) {
-      return Object.fromEntries(
-        Object.keys(materialActionAccess.value).map((key) => [key, false]),
-      ) as typeof materialActionAccess.value;
-    }
     const access = { ...materialActionAccess.value };
     if (isCurrentProjectOwner.value) {
       access.canDelete = true;
       access.canRestore = true;
       access.canReturn = true;
+    }
+    if (!isTestingProjectOpen.value || isCurrentProjectReadOnly.value) {
+      const locked = Object.fromEntries(
+        Object.keys(access).map((key) => [key, false]),
+      ) as typeof access;
+      locked.canReturn = !isCurrentProjectReadOnly.value && access.canReturn;
+      return locked;
     }
     return access;
   });
@@ -148,6 +155,10 @@ export function useProjectPage() {
     isCurrentProjectReadOnly,
     materialActionAccess,
   });
+  const receiptNavigation = bindProjectReceiptNavigation(
+    { ...state, route, router },
+    { openFollowups: workspace.openFollowups },
+  );
 
   onMounted(async () => {
     const defaultPageSize = await getDefaultPageSize();
@@ -156,12 +167,21 @@ export function useProjectPage() {
     state.pendingFlowQuery.pageSize = defaultPageSize;
     state.handledFlowQuery.pageSize = defaultPageSize;
     state.myFlowQuery.pageSize = defaultPageSize;
+    state.receivingFlowQuery.pageSize = defaultPageSize;
     state.pageSizeOptions.value = createPageSizeOptions(defaultPageSize);
     state.materialPageSizeOptions.value =
       createPageSizeOptions(defaultPageSize);
     state.flowPageSizeOptions.value = createPageSizeOptions(defaultPageSize);
     await Promise.all([catalog.loadOptions(), catalog.loadData()]);
+    await receiptNavigation.openReceiptNotification();
   });
+
+  watch(
+    () => route.query.flowId,
+    () => {
+      runHandled(receiptNavigation.openReceiptNotification());
+    },
+  );
 
   watch(state.followupDrawerVisible, (opened) => {
     if (opened) return;
@@ -171,11 +191,13 @@ export function useProjectPage() {
     state.pendingFlowRequestGuard.invalidate();
     state.handledFlowRequestGuard.invalidate();
     state.myFlowRequestGuard.invalidate();
+    state.receivingFlowRequestGuard.invalidate();
     state.followupLoading.value = false;
     state.materialLoading.value = false;
     state.pendingFlowLoading.value = false;
     state.handledFlowLoading.value = false;
     state.myFlowLoading.value = false;
+    state.receivingFlowLoading.value = false;
   });
 
   watch(state.materialDetailVisible, (opened) => {

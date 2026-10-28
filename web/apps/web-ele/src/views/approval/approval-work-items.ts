@@ -134,9 +134,11 @@ function sortApprovalWorkItems(items: ApprovalWorkItem[]) {
 }
 
 export function canWithdrawApproval(
-  item: Pick<ApprovalWorkItem, 'canWithdraw' | 'status'>,
+  item: Pick<ApprovalWorkItem, 'canWithdraw' | 'source' | 'status'>,
 ) {
-  return item.status === 'pending' && item.canWithdraw;
+  if (!item.canWithdraw) return false;
+  if (item.status === 'pending') return true;
+  return item.source === 'material' && item.status === 'receiving';
 }
 
 export function findApprovalWorkItemIndex(

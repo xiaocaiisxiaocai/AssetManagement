@@ -85,7 +85,7 @@ function onFileChange(event: Event) {
     <div class="stage-report-actions">
       <ElButton
         v-if="canManage"
-        :aria-label="'上传' + scopeName + '报告'"
+        :aria-label="`上传${scopeName}报告`"
         :disabled="writeBusy"
         :loading="uploading"
         link
@@ -155,7 +155,7 @@ function onFileChange(event: Event) {
     </div>
     <input
       ref="fileInput"
-      :aria-label="'选择' + scopeName + '报告文件'"
+      :aria-label="`选择${scopeName}报告文件`"
       accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg"
       class="report-native-file"
       type="file"

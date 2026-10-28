@@ -187,11 +187,11 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 - **`TestProject`**(测评项目):`Name`(必填)、`Code`、`ProjectTypeCode`(项目类型,取自选项字典)、`ProgressCode`(进度状态,取自选项字典)、`OwnerId`(负责人)、`StartDate`/`PlannedFinishDate`/`ClosedDate`(开始/计划完成/结案)、`TestStatus`、`FollowUpIntervalDays`(跟进周期天数,默认 14)、软删除字段。**已从早期薄分组实体扩展为完整项目生命周期实体**。
 - **`TestProjectOption`**(项目选项字典):`Kind`(分组,如项目类型 `project_type`/进度状态 `project_progress`)、`Code`/`Label`/`Sort`/`IsActive`。为项目类型、进度等下拉提供可维护字典项。
 - **`TestProjectFollowup`**(项目跟进记录):`ProjectId`、`DueDate`(跟进到期日)、`Content`、`FilledById`/`FilledAt`。按 `FollowUpIntervalDays` 周期性跟进。
-- **`ProjectTestStage` / `ProjectReportDocument`**：项目测试阶段台账与阶段/项目报告归档。项目跟进工作台为单页。桌面视口（宽于 1100px 且高于 600px）下抽屉保持一屏：料件清单、测试阶段与报告、底部行（流转审批 Tab | 落地跟进）用 `ElSplitter` 分隔，可拖拽调整高度与宽度，占比按浏览器记住（`project-workspace-layout.ts`），内容在区块内滚动；更小视口改为固定高度分隔容器加整页滚动，打印时展开全部内容。负责人/管理员维护测试目标、内容、结果、结论、起止日期及状态。同一项目最多一个当前阶段。前端已移除阶段/整项目 Word 报告与包含原附件的 ZIP 资料包导出入口（后端接口保留）；工作台提供「导出页面」，通过浏览器打印另存为 PDF。详细口径见 `docs/项目测试阶段与报告.md`。
-- **`TestMaterial`**(测试料件):`MaterialNo`(自动生成 `TM-YYYYMMDD-XXX`)、`Name`(必填)、`ProjectId`(必填,外键到 `TestProject`)、`VendorName`(厂商)、`Model`/`Brand`/`Quantity`、`DepartmentId`/`CustodianId`(可选)、`LocationName`(用户手工填写的存放位置文本)、`ReceivedDate`(接收日期)、`Status`(0=在用、1=已退回厂商)、`Images`(JSON 数组,复用 `FileStorageService`)、`Remark`、软删除字段、`HasPendingFlow`(计算属性,标识有待审批流转)。
+- **`ProjectTestStage` / `ProjectReportDocument`**：项目测试阶段台账与阶段/项目报告归档。项目跟进工作台为单页。桌面视口（宽于 1100px 且高于 600px）下抽屉保持一屏：料件清单、测试阶段与报告、底部行（流转审批 Tab | 落地跟进）用 `ElSplitter` 分隔，可拖拽调整高度与宽度，占比按浏览器记住（`project-workspace-layout.ts`），内容在区块内滚动；更小视口改为固定高度分隔容器加整页滚动。负责人/管理员维护测试目标、内容、结果、结论和起止日期。阶段状态由日期写入，请求中的状态会被忽略：有结束日期为已完成，有开始且无结束为当前阶段，都没有为未开始，不再使用受阻。同一项目最多一个当前阶段（有开始且没有结束）。测试阶段按序号依次推进、不重叠。保存有开始日期的阶段时，若序号更小的阶段已开始且未结束，前端先让用户确认结束其中序号最大的那个：默认结束日期为本阶段开始日期的前一天，并限制在上一阶段开始日期至今天；上一阶段缺少测试内容或测试结果，或开始日期晚于今天时不保存。确认后先写入上一阶段结束日期，再保存本阶段。后端保存时兜底，仍有未结束的上一阶段则拒绝并提示先结束该阶段。历史数据里已被标成落地跟进但阶段尚未完成或缺少结束日期的项目，由迁移 `20261027130000_RevertIncompleteLandingProjects` 一次性改回测试中，查询不再改数据；已有跟进记录保留，补齐前仍不能填写落地跟进。报告附件下载只校验项目查看权限，已删除项目在仍可查看时也可下载；Word 与 ZIP 导出仍要 `project:export`。前端已移除阶段/整项目 Word 报告与包含原附件的 ZIP 资料包导出入口（后端接口保留）；工作台「导出页面」按接口数据生成专用打印报告（项目信息、料件清单、测试阶段与报告附件、全部料件流转记录、落地跟进），在隐藏 iframe 中调用浏览器打印并另存为 PDF，不打印工作台画面、屏幕不变化（`project-workspace-report.ts`）。详细口径见 `docs/项目测试阶段与报告.md`。
+- **`TestMaterial`**(测试料件):`MaterialNo`(自动生成 `TM-YYYYMMDD-XXX`)、`Name`(必填)、`ProjectId`(必填,外键到 `TestProject`)、`VendorName`(厂商)、`Model`/`Brand`/`Quantity`、`DepartmentId`/`CustodianId`(可选)、`LocationName`(用户手工填写的存放位置文本)、`ReceivedDate`(接收日期)、`Status`(0=在用、1=已退回厂商)、`Images`(JSON 数组,复用 `FileStorageService`)、`Remark`、软删除字段、`HasPendingFlow`(计算属性,标识有进行中的流转,含审批中或待接收)。
 - **`TestMaterialRecord`**(料件生命周期操作记录):`MaterialId`、`Action`(当前含 `return_to_vendor`)、`OperatorUserId`/`Operator`、`Comment`、`OperatedAt`;独立于人员流转审批单，确保退回厂商等动作可追溯。
-- **`MaterialFlow`**(流转记录):`FlowNo`(流转单号 `MF-YYYYMMDD-XXX`)、`MaterialId`、`ApplicantId`/`TransfereeId`(受让人)、`Reason`、`Status`(pending/approved/rejected)、`DirectTransfer`(布尔,标识绕过审批直接转移)、`BpmnTokens`(BPMN 引擎状态,JSON)、`CurrentNodeIds`(活跃节点列表,JSON)。
-- **`MaterialFlowRecord`**(流转操作记录):`FlowId`、`Action`(start/approve/reject/direct_transfer)、`Operator`(操作人名)、`Comment`、`OperatedAt`。
+- **`MaterialFlow`**(流转记录):`FlowNo`(流转单号 `MF-YYYYMMDD-XXX`)、`MaterialId`、`ApplicantId`/`TransfereeId`(接收人)、`Reason`、`Status`(pending/receiving/approved/rejected/withdrawn)、`DirectTransfer`(布尔,标识审批关闭后进入待接收)、`BpmnTokens`(BPMN 引擎状态,JSON)、`CurrentNodeIds`(活跃节点列表,JSON)。接收人必须能查看该项目。保管人与归属部门要等接收人确认后才改变。
+- **`MaterialFlowRecord`**(流转操作记录):`FlowId`、`Action`(start/approve/reject/direct_transfer/confirm_receipt/withdraw)、`Operator`(操作人名)、`Comment`、`OperatedAt`。审批关闭时的发起记录仍是 `direct_transfer`。
 
 #### 编号生成器
 
@@ -200,11 +200,12 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 #### 服务与接口
 
 - **`TestProjectService`**:项目 CRUD + 软删除三态(active/all/deleted)+ 撤销/彻底删除(删除项目前检查下辖料件);项目负责人可通过专用进展接口维护`ProgressCode`/`ClosedDate`/`TestStatus`,但不能修改编号、负责人、计划日期等基础信息;**`ClosedDate` 一旦存在，项目基础信息与进展均锁定**;项目**选项字典**(`TestProjectOption`)增删改查;项目**跟进记录**(`TestProjectFollowup`)增删改查，跟进日期不得晚于当天;`ExportAsync` 导出筛选项目及对应料件的双工作表 Excel;**统计**(`GetStatsAsync` → `TestProjectStatsDto`:总数/结案/进行中/落地 + 类型分布 `typeDist` + 月度统计 `monthlyStat`,供总览仪表盘)。
-- **`TestMaterialService`**:CRUD + 软删除三态 + 详情(合并展示流转操作 `MaterialFlowRecords` 与生命周期操作 `TestMaterialRecords`)+ 退回厂商(`ReturnToVendorAsync`,在同一事务内置 `Status=1` 并记录操作人/时间)。`CreateAsync` 自动生成 `MaterialNo`。
+- **`TestMaterialService`**:CRUD + 软删除三态 + 详情(合并展示流转操作 `MaterialFlowRecords` 与生命周期操作 `TestMaterialRecords`)+ 退回厂商(`ReturnToVendorAsync`,在同一事务内置 `Status=1` 并记录操作人/时间)。项目未删除时退回不看进度；新增、编辑、删除、恢复和流转在落地跟进或结案后仍锁定。进行中的流转(审批中或待接收)不能退回。`CreateAsync` 自动生成 `MaterialNo`。
 - **`MaterialFlowService`**:
-  - `InitiateTransferAsync`:发起流转;若全局开关 `material.transfer.approval.enabled=false`(默认),直接转移(`DirectTransfer=true`,立刻改 `CustodianId`);否则创建 pending 流转并启动 BPMN 引擎(`material_transfer` 工作流模板)。
-  - `ApproveAsync`/`RejectAsync`:审批;通过时触发 `BizEffectApplier.ApplyMaterialTransfer`,改 `CustodianId` 并记录操作。
-  - `PendingAsync`/`MineAsync`:待我审批列表 / 我的发起列表。
+  - `InitiateTransferAsync`:发起流转。接收人必须能查看该项目，且部门有效。若全局开关 `material.transfer.approval.enabled=false`(默认),进入 `receiving`(`DirectTransfer=true`,不改保管人);否则创建 pending 流转并启动 BPMN 引擎(`material_transfer` 工作流模板)。审批全部完成后也进入 `receiving`,仍不改保管人。
+  - `ApproveAsync`/`RejectAsync`:审批。全部通过时改为待接收；驳回结束流程。确认前不调用 `ApplyMaterialTransfer`。
+  - `ConfirmReceiptAsync`:仅接收人本人可确认。再次核对项目可见、项目未删除且可流转、接收人部门有效后,才改保管人与归属部门并记 `confirm_receipt`。
+  - `PendingAsync`/`MineAsync`/`ReceivingPageAsync`:待我审批 / 我的发起 / 待我接收。确认与待我接收清单只要求登录,授权按 `TransfereeId` 判断。
 - **控制器**:`TestProjectController`(`api/test-projects`,含 `GET stats` 统计、`GET export` 项目与关联料件导出、`options` 选项字典 CRUD、`{id}/followups` 跟进 CRUD)、`TestMaterialController`、`MaterialFlowController`。
 
 #### 权限码与菜单
@@ -216,7 +217,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 
 普通员工默认拥有 `project:create`，可以创建新产品新技术项目但没有删除/彻底删除项目权限；同时拥有 `file:upload` 与 `file:view`,用于测试料件新增/编辑时上传并预览照片。已有数据库通过一次性增量种子补齐这些增量权限;补齐完成后仍保留管理员后续调整角色授权的能力。
 
-菜单结构:一级入口界面名 **"新产品新技术"**(根菜单 `Name=Material`、`Path=/material`、`Component=BasicLayout`、图标 `lucide:flask-conical`)→ 两个子页面:**项目总览**(`/material/home` → `/material/home/index`)、**测试项目**(`/material/projects` → `/material/projects/index`),二者均以 `project:view` 控权。`DbSeeder.SeedTestMaterialModule`(幂等增量种子)确保权限/菜单/工作流模板/系统参数(`material.transfer.approval.enabled`,默认 `false`)齐全。**旧的 `/material/list`、`/material/transfers` 独立路由已废弃**,料件清单、测试阶段与报告、流转审批和落地跟进现为「测试项目」页项目跟进工作台的单页四块。桌面宽于 1100px 且高于 760px 时抽屉保持一屏，流转审批与落地跟进并排，超出内容在区块内滚动；更小视口整页滚动，打印展开全部内容。
+菜单结构:一级入口界面名 **"新产品新技术"**(根菜单 `Name=Material`、`Path=/material`、`Component=BasicLayout`、图标 `lucide:flask-conical`)→ 两个子页面:**项目总览**(`/material/home` → `/material/home/index`)、**测试项目**(`/material/projects` → `/material/projects/index`),二者均以 `project:view` 控权。`DbSeeder.SeedTestMaterialModule`(幂等增量种子)确保权限/菜单/工作流模板/系统参数(`material.transfer.approval.enabled`,默认 `false`)齐全。**旧的 `/material/list`、`/material/transfers` 独立路由已废弃**,料件清单、测试阶段与报告、流转审批和落地跟进现为「测试项目」页项目跟进工作台的单页四块。桌面宽于 1100px 且高于 600px 时抽屉保持一屏，流转审批与落地跟进并排，超出内容在区块内滚动；更小视口整页滚动。流转卡片含待我审批、待我接收、我已处理、我的发起。
 
 #### 前端页面
 
@@ -325,10 +326,12 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
 | `approval_approved` | 资产审批流程全部通过 | 申请人 |
 | `approval_rejected` | 资产审批被驳回 | 申请人 |
 | `return_confirmed` | 资产确认归还入库 | 借用人 |
-| `material_transferred` | 料件直接转移完成（无审批模式） | 接收人 |
+| `material_transferred` | 已停止发送。仅保留本次上线前的历史通知，新流转不再投递 | — |
 | `material_approval_pending` | 料件流转审批发起 / 进入下一审批节点 | 待审批节点的审批人 |
-| `material_approved` | 料件流转审批全部通过 | 申请人 |
+| `material_approved` | 料件流转审批全部通过并进入待接收。审批关闭的直接流转不发 | 申请人 |
 | `material_rejected` | 料件流转审批被驳回 | 申请人 |
+| `material_receipt_pending` | 流转进入待接收 | 接收人 |
+| `material_received` | 接收人确认接收 | 申请人 |
 | `approval_reminder` | 资产流程等待超过 1 天（每日早 9 点催办） | 审批人 |
 | `material_approval_reminder` | 料件流转等待超过 1 天（每日早 9 点催办） | 审批人 |
 
@@ -382,7 +385,7 @@ DDD 四层,依赖方向 Api → Infrastructure → Application → Domain:
   - `views/approval/` — 审批流程(`pending` 待我审批、`mine` 我的申请、`confirm-return` 确认入库)
   - `views/report/` — 报表(`summary` 汇总、`borrow` 借用明细、`overdue` 逾期)
   - `views/admin/` — 基础数据与系统管理(`departments` 部门、`users` 用户、`roles` 角色、`categories` 资产分类、`settings` 系统参数、`audit` 审计日志、`workflows` 工作流设计器、`backups` 数据库备份)
-  - `views/material/` — 新产品新技术/测试料件(`home` 项目总览仪表盘、`projects` 测试项目单页工作台（桌面紧凑一屏：料件清单、测试阶段与报告、并排的流转审批与落地跟进，区块间可拖拽分隔，区块内滚动，打印展开全部）、`components` 共享对话框与校验规则)
+  - `views/material/` — 新产品新技术/测试料件(`home` 项目总览仪表盘、`projects` 测试项目单页工作台（桌面紧凑一屏：料件清单、测试阶段与报告、并排的流转审批与落地跟进，区块间可拖拽分隔，区块内滚动；「导出页面」生成专用打印报告）、`components` 共享对话框与校验规则)
   - `views/dashboard/`、`views/demos/`、`views/_core/` — vue-vben-admin 上游模板自带目录,业务不涉及,**新功能不在此实现**
 - 复用上游 `@vben/*`、`@core/*` 包的能力(布局、请求客户端、preferences、stores),不要重复造轮子;改动 `web/packages/` 下的核心包会影响所有 app,需谨慎。
 - 提交前跑 `pnpm -F @vben/web-ele run typecheck`;monorepo 根有 `pnpm check`(circular/dep/type/cspell)。

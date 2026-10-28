@@ -3,17 +3,23 @@ import { describe, expect, it } from 'vitest';
 import { getWorkflowProgressEmptyText } from './workflow-progress-empty-text';
 
 describe('审批流转空状态文案', () => {
-  it('区分自动通过和直接转移', () => {
+  it('区分自动通过、待接收和已确认的直接转移', () => {
     expect(getWorkflowProgressEmptyText({ status: 'approved' })).toBe(
       '无需人工审批，申请已自动通过',
     );
+    expect(
+      getWorkflowProgressEmptyText({
+        source: 'material',
+        status: 'receiving',
+      }),
+    ).toBe('待接收人确认，保管人尚未变更');
     expect(
       getWorkflowProgressEmptyText({
         directTransfer: true,
         source: 'material',
         status: 'approved',
       }),
-    ).toBe('已直接转移，无需审批');
+    ).toBe('接收人已确认，无需审批');
   });
 
   it('为撤回和驳回申请保留明确状态', () => {

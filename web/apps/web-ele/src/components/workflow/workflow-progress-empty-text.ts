@@ -9,9 +9,12 @@ export function getWorkflowProgressEmptyText({
   source,
   status,
 }: WorkflowProgressEmptyState) {
+  if (status === 'receiving') {
+    return '待接收人确认，保管人尚未变更';
+  }
   if (status === 'approved') {
     if (source === 'material' && directTransfer) {
-      return '已直接转移，无需审批';
+      return '接收人已确认，无需审批';
     }
     return '无需人工审批，申请已自动通过';
   }

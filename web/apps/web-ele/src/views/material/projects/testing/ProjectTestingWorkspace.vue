@@ -1,8 +1,5 @@
 <script lang="ts" setup>
-import type {
-  ProjectStageDto,
-  ProjectStageStatus,
-} from '#/api/project-workspace';
+import type { ProjectStageDto } from '#/api/project-workspace';
 import type { TableColumnOption } from '#/components/table/column-visibility';
 
 import { computed } from 'vue';
@@ -27,6 +24,7 @@ import {
   stageBlocksLanding,
 } from './project-testing-rules';
 import ProjectReportDocuments from './ProjectReportDocuments.vue';
+import ProjectStageCloseDialog from './ProjectStageCloseDialog.vue';
 import ProjectStageDialog from './ProjectStageDialog.vue';
 import { useProjectTestingWorkspace } from './use-project-testing-workspace';
 
@@ -41,7 +39,6 @@ const props = defineProps<{
 
 const {
   canCreateStage,
-  canExport,
   canManage,
   deletingDocumentId,
   deletingStageId,
@@ -51,10 +48,13 @@ const {
   loadError,
   loading,
   loadWorkspace,
+  cancelPreviousStageClose,
   openCreateStage,
   openEditStage,
+  previousStageClose,
   removeDocument,
   removeStage,
+  confirmPreviousStageClose,
   saveStage,
   savingStage,
   stageDialogVisible,
@@ -66,6 +66,13 @@ const {
   writeBusy,
 } = useProjectTestingWorkspace(props);
 
+const previousCloseVisible = computed({
+  get: () => previousStageClose.value !== null,
+  set(open: boolean) {
+    if (!open) cancelPreviousStageClose();
+  },
+});
+
 const orderedStages = computed(() =>
   [...(workspace.value?.stages ?? [])].sort(
     (left, right) => left.sequence - right.sequence,
@@ -73,13 +80,11 @@ const orderedStages = computed(() =>
 );
 const currentStage = computed(
   () =>
-    orderedStages.value.find(
-      (stage) => stage.status === 'in_progress' || stage.status === 'blocked',
-    ) ?? null,
+    orderedStages.value.find((stage) => stage.startDate && !stage.endDate) ??
+    null,
 );
 const completedCount = computed(
-  () =>
-    orderedStages.value.filter((stage) => stage.status === 'completed').length,
+  () => orderedStages.value.filter((stage) => Boolean(stage.endDate)).length,
 );
 const projectClosed = computed(() =>
   isProjectClosed(props.projectProgressCode, props.projectClosedDate),
@@ -101,20 +106,6 @@ const finalStageId = computed(() => {
   return orderedStages.value[orderedStages.value.length - 1]?.id ?? null;
 });
 
-const statusMap: Record<
-  ProjectStageStatus,
-  { label: string; type: 'danger' | 'info' | 'success' | 'warning' }
-> = {
-  blocked: { label: '受阻', type: 'danger' },
-  completed: { label: '已完成', type: 'success' },
-  in_progress: { label: '进行中', type: 'warning' },
-  planned: { label: '计划中', type: 'info' },
-};
-
-function statusMeta(status: ProjectStageStatus) {
-  return statusMap[status] ?? statusMap.planned;
-}
-
 function displayText(value?: null | string) {
   return value?.trim() || '—';
 }
@@ -131,7 +122,6 @@ const stageColumns: TableColumnOption[] = [
   { key: 'content', label: '测试内容' },
   { key: 'result', label: '测试结果' },
   { key: 'dates', label: '起止日期' },
-  { key: 'status', label: '状态' },
   { key: 'report', label: '报告附件' },
   { key: 'actions', label: '操作', locked: true },
 ];
@@ -169,13 +159,6 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
                   ? '已结案'
                   : '落地跟进'
               }}
-            </ElTag>
-            <ElTag
-              v-else-if="currentStage"
-              :type="statusMap[currentStage.status].type"
-              size="small"
-            >
-              {{ statusMap[currentStage.status].label }}
             </ElTag>
           </div>
           <div class="testing-summary-item">
@@ -310,18 +293,6 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
               <template #default="{ row }">{{ dateRange(row) }}</template>
             </ElTableColumn>
             <ElTableColumn
-              v-if="visibleColumn('status')"
-              align="center"
-              label="状态"
-              width="96"
-            >
-              <template #default="{ row }">
-                <ElTag :type="statusMeta(row.status).type" size="small">
-                  {{ statusMeta(row.status).label }}
-                </ElTag>
-              </template>
-            </ElTableColumn>
-            <ElTableColumn
               v-if="visibleColumn('report')"
               align="center"
               fixed="right"
@@ -331,7 +302,7 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
               <template #default="{ row }">
                 <ProjectReportDocuments
                   :key="row.id"
-                  :can-download="canExport"
+                  :can-download="true"
                   :can-manage="canManage"
                   :deleting-document-id="deletingDocumentId"
                   :documents="workspace.documents"
@@ -404,6 +375,16 @@ const { hiddenKeys, resetColumns, setColumnVisible, visibleColumn } =
       :editing="Boolean(editingStage)"
       :saving="savingStage"
       @save="saveStage"
+    />
+    <ProjectStageCloseDialog
+      v-if="previousStageClose"
+      v-model:end-date="previousStageClose.endDate"
+      v-model:visible="previousCloseVisible"
+      :max-date="previousStageClose.maxDate"
+      :min-date="previousStageClose.minDate"
+      :name="previousStageClose.stage.name"
+      :sequence="previousStageClose.stage.sequence"
+      @confirm="confirmPreviousStageClose"
     />
   </template>
 </template>

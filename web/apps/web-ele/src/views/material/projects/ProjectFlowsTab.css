@@ -7,9 +7,11 @@
 .flow-tabs {
   --el-tabs-header-height: 28px;
 
-  flex: none;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 28px;
   margin: 0;
+  overflow: hidden;
 }
 
 .flow-tabs :deep(.el-tabs__header) {
@@ -144,83 +146,6 @@
     .el-scrollbar__wrap
 ) {
   overflow: auto !important;
-}
-
-:global(
-  html.project-workspace-printing
-    .project-workspace-drawer
-    .workspace-flow-body
-    .flow-pane
-),
-:global(
-  html.project-workspace-printing
-    .project-workspace-drawer
-    .workspace-flow-body
-    .flow-table-panel
-),
-:global(
-  html.project-workspace-printing
-    .project-workspace-drawer
-    .workspace-flow-body
-    .flow-fill-table
-) {
-  flex: none !important;
-  height: auto !important;
-  min-height: 0 !important;
-  max-height: none !important;
-  overflow: visible !important;
-}
-
-:global(
-  html.project-workspace-printing
-    .project-workspace-drawer
-    .workspace-flow-body
-    .flow-fill-table
-    .el-table
-),
-:global(
-  html.project-workspace-printing
-    .project-workspace-drawer
-    .workspace-flow-body
-    .flow-fill-table
-    .el-table
-    .el-table__inner-wrapper
-),
-:global(
-  html.project-workspace-printing
-    .project-workspace-drawer
-    .workspace-flow-body
-    .flow-fill-table
-    .el-table
-    .el-table__body-wrapper
-),
-:global(
-  html.project-workspace-printing
-    .project-workspace-drawer
-    .workspace-flow-body
-    .flow-fill-table
-    .el-table
-    .el-scrollbar
-),
-:global(
-  html.project-workspace-printing
-    .project-workspace-drawer
-    .workspace-flow-body
-    .flow-fill-table
-    .el-table
-    .el-scrollbar__wrap
-),
-:global(
-  html.project-workspace-printing
-    .project-workspace-drawer
-    .workspace-flow-body
-    .flow-fill-table
-    .el-table
-    .el-scrollbar__view
-) {
-  height: auto !important;
-  max-height: none !important;
-  overflow: visible !important;
 }
 
 .table-bottom-pager {

@@ -12,10 +12,7 @@
 
 .stage-form-grid {
   display: grid;
-  grid-template-columns: minmax(140px, 0.34fr) minmax(260px, 1fr) minmax(
-      160px,
-      0.42fr
-    );
+  grid-template-columns: minmax(140px, 0.4fr) minmax(260px, 1fr);
   gap: 0 14px;
 }
 

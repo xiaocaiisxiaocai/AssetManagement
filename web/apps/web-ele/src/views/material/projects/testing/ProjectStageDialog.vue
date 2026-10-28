@@ -9,8 +9,6 @@ import {
   ElFormItem,
   ElInput,
   ElInputNumber,
-  ElOption,
-  ElSelect,
 } from 'element-plus';
 
 import { businessDateText } from '#/utils/business-date';
@@ -27,9 +25,7 @@ const visible = defineModel<boolean>('visible', { required: true });
 const form = defineModel<ProjectStageFormState>('form', { required: true });
 
 function disableFutureEnd(date: Date) {
-  return (
-    form.value.status === 'completed' && localToday(date) > businessDateText()
-  );
+  return localToday(date) > businessDateText();
 }
 </script>
 
@@ -66,23 +62,8 @@ function disableFutureEnd(date: Date) {
             show-word-limit
           />
         </ElFormItem>
-        <ElFormItem label="阶段状态" required>
-          <ElSelect v-model="form.status" placeholder="请选择状态">
-            <ElOption label="计划中" value="planned" />
-            <ElOption label="进行中" value="in_progress" />
-            <ElOption label="已完成" value="completed" />
-            <ElOption label="受阻" value="blocked" />
-          </ElSelect>
-        </ElFormItem>
         <div class="stage-date-grid">
-          <ElFormItem
-            :required="
-              form.status === 'in_progress' ||
-              form.status === 'blocked' ||
-              form.status === 'completed'
-            "
-            label="开始日期"
-          >
+          <ElFormItem :required="Boolean(form.endDate)" label="开始日期">
             <ElDatePicker
               v-model="form.startDate"
               placeholder="选择日期"
@@ -91,7 +72,7 @@ function disableFutureEnd(date: Date) {
               value-format="YYYY-MM-DD"
             />
           </ElFormItem>
-          <ElFormItem :required="form.status === 'completed'" label="结束日期">
+          <ElFormItem label="结束日期">
             <ElDatePicker
               v-model="form.endDate"
               :disabled-date="disableFutureEnd"
@@ -114,7 +95,7 @@ function disableFutureEnd(date: Date) {
           type="textarea"
         />
       </ElFormItem>
-      <ElFormItem :required="form.status === 'completed'" label="测试内容">
+      <ElFormItem :required="Boolean(form.endDate)" label="测试内容">
         <ElInput
           v-model="form.testContent"
           :maxlength="8000"
@@ -125,7 +106,7 @@ function disableFutureEnd(date: Date) {
           type="textarea"
         />
       </ElFormItem>
-      <ElFormItem :required="form.status === 'completed'" label="测试结果">
+      <ElFormItem :required="Boolean(form.endDate)" label="测试结果">
         <ElInput
           v-model="form.testResult"
           :maxlength="8000"

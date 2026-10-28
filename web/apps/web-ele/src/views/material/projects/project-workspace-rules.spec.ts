@@ -89,6 +89,13 @@ describe('测试项目工作台规则', () => {
         canWithdraw: true,
       }),
     ).toBe(false);
+    expect(
+      canWithdrawMaterialFlow({
+        ...flow,
+        canWithdraw: true,
+        status: 'receiving',
+      }),
+    ).toBe(true);
     expect(canReleaseMaterialFlow(flow)).toBe(false);
     expect(
       canReleaseMaterialFlow({

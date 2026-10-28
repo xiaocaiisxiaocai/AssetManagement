@@ -28,6 +28,11 @@
   border-radius: 8px;
 }
 
+.workspace-section.is-collapsed {
+  flex: none;
+  height: auto;
+}
+
 .workspace-section.is-collapsed .workspace-section-heading {
   margin-bottom: 0;
 }

@@ -1,13 +1,16 @@
 <script lang="ts" setup>
+import type { ProjectFlowListKind } from './project-flow-actions';
+
 import type { MaterialFlowItem } from '#/api/material';
 
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import { ElTabPane, ElTabs } from 'element-plus';
 
 import ProjectHandledFlowsPane from './ProjectHandledFlowsPane.vue';
 import ProjectMyFlowsPane from './ProjectMyFlowsPane.vue';
 import ProjectPendingFlowsPane from './ProjectPendingFlowsPane.vue';
+import ProjectReceivingFlowsPane from './ProjectReceivingFlowsPane.vue';
 
 const props = defineProps<{
   /** 项目处于可操作阶段时才能在工作台内通过、驳回。 */
@@ -17,6 +20,8 @@ const props = defineProps<{
   handledCount: number;
   handledFlows: MaterialFlowItem[];
   handledLoading: boolean;
+  /** 打开工作台时定位的页签；换项目会随 key 重新挂载。 */
+  initialTab?: ProjectFlowListKind;
   myCount: number;
   myFlows: MaterialFlowItem[];
   myLoading: boolean;
@@ -26,14 +31,19 @@ const props = defineProps<{
   pendingLoading: boolean;
   processingFlowIds: number[];
   readOnly: boolean;
+  receivingCount: number;
+  receivingFlows: MaterialFlowItem[];
+  receivingLoading: boolean;
 }>();
 
 const emit = defineEmits<{
   approve: [flow: MaterialFlowItem];
+  confirm: [flow: MaterialFlowItem];
   handledPageSizeChange: [];
   myPageSizeChange: [];
-  pageChange: [kind: 'handled' | 'mine' | 'pending'];
+  pageChange: [kind: ProjectFlowListKind];
   pendingPageSizeChange: [];
+  receivingPageSizeChange: [];
   reject: [flow: MaterialFlowItem];
   release: [flow: MaterialFlowItem];
   withdraw: [flow: MaterialFlowItem];
@@ -49,17 +59,40 @@ const pendingQuery = defineModel<{ page: number; pageSize: number }>(
   'pendingQuery',
   { required: true },
 );
-const activeTab = ref<'handled' | 'mine' | 'pending'>(
-  props.canViewApprovals ? 'pending' : 'mine',
+const receivingQuery = defineModel<{ page: number; pageSize: number }>(
+  'receivingQuery',
+  { required: true },
+);
+
+function defaultTab(): ProjectFlowListKind {
+  return props.canViewApprovals ? 'pending' : 'receiving';
+}
+
+function tabAvailable(tab: ProjectFlowListKind) {
+  if (tab === 'pending' || tab === 'handled') return props.canViewApprovals;
+  return true;
+}
+
+const activeTab = ref<ProjectFlowListKind>(
+  props.initialTab && tabAvailable(props.initialTab)
+    ? props.initialTab
+    : defaultTab(),
 );
 const currentTab = computed({
-  get(): 'handled' | 'mine' | 'pending' {
-    return props.canViewApprovals ? activeTab.value : 'mine';
+  get(): ProjectFlowListKind {
+    return tabAvailable(activeTab.value) ? activeTab.value : defaultTab();
   },
-  set(value: 'handled' | 'mine' | 'pending') {
+  set(value: ProjectFlowListKind) {
     activeTab.value = value;
   },
 });
+
+watch(
+  () => props.initialTab,
+  (tab) => {
+    if (tab && tabAvailable(tab)) activeTab.value = tab;
+  },
+);
 </script>
 
 <template>
@@ -75,6 +108,17 @@ const currentTab = computed({
               class="section-count"
             >
               {{ pendingCount }}
+            </span>
+          </template>
+        </ElTabPane>
+        <ElTabPane name="receiving">
+          <template #label>
+            待我接收
+            <span
+              :class="{ 'is-warning': receivingCount > 0 }"
+              class="section-count"
+            >
+              {{ receivingCount }}
             </span>
           </template>
         </ElTabPane>
@@ -111,6 +155,18 @@ const currentTab = computed({
         @pending-page-size-change="emit('pendingPageSizeChange')"
         @reject="emit('reject', $event)"
         @release="emit('release', $event)"
+      />
+      <ProjectReceivingFlowsPane
+        v-else-if="currentTab === 'receiving'"
+        v-model:receiving-query="receivingQuery"
+        :page-size-options="pageSizeOptions"
+        :processing-flow-ids="processingFlowIds"
+        :receiving-count="receivingCount"
+        :receiving-flows="receivingFlows"
+        :receiving-loading="receivingLoading"
+        @confirm="emit('confirm', $event)"
+        @page-change="emit('pageChange', 'receiving')"
+        @receiving-page-size-change="emit('receivingPageSizeChange')"
       />
       <ProjectHandledFlowsPane
         v-else-if="currentTab === 'handled'"

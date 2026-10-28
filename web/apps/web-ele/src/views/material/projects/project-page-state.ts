@@ -1,4 +1,5 @@
 import type { ProjectFilter } from './project-filter';
+import type { ProjectFlowListKind } from './project-flow-actions';
 import type {
   DeleteStatus,
   OptionKind,
@@ -111,6 +112,8 @@ export function createProjectPageState() {
   const pendingFlowRequestGuard = createLatestRequestGuard();
   const handledFlowRequestGuard = createLatestRequestGuard();
   const myFlowRequestGuard = createLatestRequestGuard();
+  const receivingFlowRequestGuard = createLatestRequestGuard();
+  const flowInitialTab = ref<ProjectFlowListKind | undefined>();
   const materialDetailRequestGuard = createLatestRequestGuard();
   const transferVisible = ref(false);
   const workflowNodeSelector = ref<InstanceType<
@@ -129,13 +132,16 @@ export function createProjectPageState() {
   const pendingFlowLoading = ref(false);
   const handledFlowLoading = ref(false);
   const myFlowLoading = ref(false);
+  const receivingFlowLoading = ref(false);
   const pendingFlows = ref<MaterialFlowItem[]>([]);
   const handledFlows = ref<MaterialFlowItem[]>([]);
   const myFlows = ref<MaterialFlowItem[]>([]);
+  const receivingFlows = ref<MaterialFlowItem[]>([]);
   const processingFlowIds = ref<number[]>([]);
   const pendingFlowTotal = ref(0);
   const handledFlowTotal = ref(0);
   const myFlowTotal = ref(0);
+  const receivingFlowTotal = ref(0);
   const pendingFlowQuery = reactive({
     page: 1,
     pageSize: 10,
@@ -145,6 +151,10 @@ export function createProjectPageState() {
     pageSize: 10,
   });
   const handledFlowQuery = reactive({
+    page: 1,
+    pageSize: 10,
+  });
+  const receivingFlowQuery = reactive({
     page: 1,
     pageSize: 10,
   });
@@ -207,6 +217,8 @@ export function createProjectPageState() {
     pendingFlowRequestGuard,
     handledFlowRequestGuard,
     myFlowRequestGuard,
+    receivingFlowRequestGuard,
+    flowInitialTab,
     materialDetailRequestGuard,
     transferVisible,
     workflowNodeSelector,
@@ -217,19 +229,24 @@ export function createProjectPageState() {
     pendingFlowLoading,
     handledFlowLoading,
     myFlowLoading,
+    receivingFlowLoading,
     pendingFlows,
     handledFlows,
     myFlows,
+    receivingFlows,
     processingFlowIds,
     pendingFlowTotal,
     handledFlowTotal,
     myFlowTotal,
+    receivingFlowTotal,
     pendingFlowQuery,
     myFlowQuery,
     handledFlowQuery,
+    receivingFlowQuery,
     pendingFlowQueryModel: reactiveObjectModel(pendingFlowQuery),
     handledFlowQueryModel: reactiveObjectModel(handledFlowQuery),
     myFlowQueryModel: reactiveObjectModel(myFlowQuery),
+    receivingFlowQueryModel: reactiveObjectModel(receivingFlowQuery),
     flowPageSizeOptions,
   };
 }

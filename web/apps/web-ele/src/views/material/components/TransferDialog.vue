@@ -1,10 +1,7 @@
 <script lang="ts" setup>
-import type { MaterialItem } from '#/api/material';
-import type { UserOptionDto } from '#/api/user';
+import type { MaterialItem, TransfereeOption } from '#/api/material';
 
-import { computed, reactive, ref, watch } from 'vue';
-
-import { useUserStore } from '@vben/stores';
+import { reactive, ref, watch } from 'vue';
 
 import {
   ElButton,
@@ -17,45 +14,51 @@ import {
   ElSelect,
 } from 'element-plus';
 
-import { initiateTransferApi } from '#/api/material';
-import { selectableTransferees } from '#/utils/user-options';
+import { initiateTransferApi, listTransfereeOptionsApi } from '#/api/material';
 
 const props = defineProps<{
   material: MaterialItem | null;
-  searchUsers?: (
-    keyword: string,
-    keepIds?: Array<null | number | undefined>,
-  ) => Promise<void>;
-  userOptionsLoading?: boolean;
-  users: UserOptionDto[];
 }>();
 const emit = defineEmits<{ done: [] }>();
 const visible = defineModel<boolean>('visible', { default: false });
 
-const userStore = useUserStore();
 const saving = ref(false);
+const optionsLoading = ref(false);
+const transfereeOptions = ref<TransfereeOption[]>([]);
 let submitSequence = 0;
-const transfereeOptions = computed(() =>
-  selectableTransferees(props.users, [
-    Number(userStore.userInfo?.userId || 0),
-    props.material?.custodianId,
-  ]),
-);
+let searchSequence = 0;
 
 const form = reactive({
   reason: '',
   transfereeId: undefined as number | undefined,
 });
 
-function searchTransferees(keyword: string) {
-  return props.searchUsers?.(keyword, [form.transfereeId]);
+async function searchTransferees(keyword: string) {
+  const materialId = props.material?.id;
+  if (!materialId) return;
+  const sequence = ++searchSequence;
+  optionsLoading.value = true;
+  try {
+    const items = await listTransfereeOptionsApi(materialId, keyword);
+    if (sequence !== searchSequence || props.material?.id !== materialId) {
+      return;
+    }
+    transfereeOptions.value = items;
+  } catch {
+    if (sequence === searchSequence) transfereeOptions.value = [];
+  } finally {
+    if (sequence === searchSequence) optionsLoading.value = false;
+  }
 }
 
 watch(visible, (opened) => {
   if (opened) {
     submitSequence++;
+    searchSequence++;
     form.transfereeId = undefined;
     form.reason = '';
+    transfereeOptions.value = [];
+    void searchTransferees('');
   }
 });
 
@@ -124,7 +127,7 @@ async function submit() {
       <ElFormItem label="受让人">
         <ElSelect
           v-model="form.transfereeId"
-          :loading="userOptionsLoading"
+          :loading="optionsLoading"
           :remote-method="searchTransferees"
           filterable
           placeholder="选择受让人"

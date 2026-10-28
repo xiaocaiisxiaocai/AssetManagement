@@ -48,9 +48,6 @@ const {
   <TransferDialog
     v-model:visible="transferVisible"
     :material="transferMaterial"
-    :search-users="searchUsers"
-    :user-options-loading="userOptionsLoading"
-    :users="users"
     @done="afterMaterialChanged"
   />
 

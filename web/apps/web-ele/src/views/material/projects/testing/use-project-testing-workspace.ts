@@ -18,16 +18,28 @@ import {
   updateProjectStageApi,
   uploadProjectDocumentApi,
 } from '#/api/project-workspace';
+import { businessDateText } from '#/utils/business-date';
 import { downloadBlob } from '#/utils/download';
 
 import {
   createEmptyStageForm,
+  dateOnly,
+  defaultPreviousStageEndDate,
+  findPreviousOpenStage,
   isProjectTesting,
   stageBlocksLanding,
   stageToForm,
+  validatePreviousStageClose,
   validateProjectStageForm,
 } from './project-testing-rules';
 import { createWorkspaceRequestCoordinator } from './workspace-request-coordinator';
+
+export interface PreviousStageCloseState {
+  endDate: string;
+  maxDate: string;
+  minDate: string;
+  stage: ProjectStageDto;
+}
 
 export interface ProjectTestingWorkspaceProps {
   enabled: boolean;
@@ -55,6 +67,8 @@ export function useProjectTestingWorkspace(
 ) {
   const requestCoordinator = createWorkspaceRequestCoordinator();
   let operationGeneration = 0;
+  let resolvePreviousStageClose: ((endDate: null | string) => void) | null =
+    null;
   const workspace = ref<null | ProjectWorkspaceDto>(null);
   const loading = ref(false);
   const loadError = ref('');
@@ -67,6 +81,7 @@ export function useProjectTestingWorkspace(
   const deletingDocumentId = ref<null | number>(null);
   const downloadingKey = ref('');
   const stageForm = reactive(createEmptyStageForm());
+  const previousStageClose = ref<null | PreviousStageCloseState>(null);
 
   const canManage = computed(() => workspace.value?.canManage === true);
   const canCreateStage = computed(
@@ -78,7 +93,6 @@ export function useProjectTestingWorkspace(
             stageBlocksLanding(stage),
           ))),
   );
-  const canExport = computed(() => workspace.value?.canExport === true);
   const writeBusy = computed(
     () =>
       savingStage.value ||
@@ -95,7 +109,67 @@ export function useProjectTestingWorkspace(
     );
   }
 
+  function settlePreviousStageClose(endDate: null | string) {
+    const resolve = resolvePreviousStageClose;
+    resolvePreviousStageClose = null;
+    previousStageClose.value = null;
+    resolve?.(endDate);
+  }
+
+  function confirmPreviousStageClose() {
+    const pending = previousStageClose.value;
+    if (!pending) return;
+    if (
+      !pending.endDate ||
+      pending.endDate < pending.minDate ||
+      pending.endDate > pending.maxDate
+    ) {
+      ElMessage.warning(
+        pending.endDate
+          ? '结束日期须在上一阶段开始日期与今天之间'
+          : '请选择上一阶段的结束日期',
+      );
+      return;
+    }
+    settlePreviousStageClose(pending.endDate);
+  }
+
+  function cancelPreviousStageClose() {
+    if (!resolvePreviousStageClose && !previousStageClose.value) return;
+    settlePreviousStageClose(null);
+  }
+
+  function requestPreviousStageClose(
+    stage: ProjectStageDto,
+    defaultEndDate: string,
+    today: string,
+  ) {
+    previousStageClose.value = {
+      endDate: defaultEndDate,
+      maxDate: today,
+      minDate: dateOnly(stage.startDate),
+      stage,
+    };
+    return new Promise<null | string>((resolve) => {
+      resolvePreviousStageClose = resolve;
+    });
+  }
+
+  function previousStagePayload(stage: ProjectStageDto, endDate: string) {
+    return {
+      endDate,
+      name: stage.name,
+      objective: stage.objective ?? null,
+      rowVersion: stage.rowVersion,
+      sequence: stage.sequence,
+      startDate: dateOnly(stage.startDate) || null,
+      testContent: stage.testContent ?? null,
+      testResult: stage.testResult ?? null,
+    };
+  }
+
   function resetViewState() {
+    cancelPreviousStageClose();
     workspace.value = null;
     loading.value = false;
     loadError.value = '';
@@ -162,18 +236,14 @@ export function useProjectTestingWorkspace(
       rowVersion: stageForm.rowVersion,
       sequence: stageForm.sequence ?? 0,
       startDate: stageForm.startDate || null,
-      status: stageForm.status,
       testContent: optionalText(stageForm.testContent),
       testResult: optionalText(stageForm.testResult),
     };
   }
 
   async function saveStage() {
-    if (
-      (!editingStage.value ? !canCreateStage.value : !canManage.value) ||
-      writeBusy.value
-    )
-      return;
+    const canSave = editingStage.value ? canManage.value : canCreateStage.value;
+    if (!canSave || writeBusy.value) return;
     const validationError = validateProjectStageForm(stageForm);
     if (validationError) {
       ElMessage.warning(validationError);
@@ -184,8 +254,57 @@ export function useProjectTestingWorkspace(
     const currentEditingStage = editingStage.value;
     if (currentEditingStage && currentEditingStage.projectId !== projectId)
       return;
+    if (!isCurrentOperation(projectId, generation)) return;
+    const previousStage = stageForm.startDate
+      ? findPreviousOpenStage(
+          workspace.value?.stages ?? [],
+          stageForm.sequence,
+          currentEditingStage?.id,
+        )
+      : null;
+    let pendingClose: {
+      defaultEndDate: string;
+      stage: ProjectStageDto;
+      today: string;
+    } | null = null;
+    if (previousStage) {
+      const today = businessDateText();
+      const blocker = validatePreviousStageClose(previousStage, today);
+      if (blocker) {
+        ElMessage.warning(blocker);
+        return;
+      }
+      const defaultEndDate = defaultPreviousStageEndDate(
+        dateOnly(previousStage.startDate),
+        stageForm.startDate,
+        today,
+      );
+      if (!defaultEndDate) {
+        ElMessage.warning(
+          `第${previousStage.sequence}阶段「${previousStage.name}」的开始日期晚于今天，无法结束`,
+        );
+        return;
+      }
+      pendingClose = { defaultEndDate, stage: previousStage, today };
+    }
     savingStage.value = true;
+    let closedPrevious = false;
     try {
+      if (pendingClose) {
+        const closeEndDate = await requestPreviousStageClose(
+          pendingClose.stage,
+          pendingClose.defaultEndDate,
+          pendingClose.today,
+        );
+        if (!isCurrentOperation(projectId, generation) || !closeEndDate) return;
+        await updateProjectStageApi(
+          projectId,
+          pendingClose.stage.id,
+          previousStagePayload(pendingClose.stage, closeEndDate),
+        );
+        closedPrevious = true;
+        if (!isCurrentOperation(projectId, generation)) return;
+      }
       await (currentEditingStage
         ? updateProjectStageApi(
             projectId,
@@ -198,7 +317,10 @@ export function useProjectTestingWorkspace(
       stageDialogVisible.value = false;
       await loadWorkspace();
     } catch {
-      // 请求拦截器负责展示后端错误；保留弹窗和完整草稿供修正或重试。
+      // 结束上一阶段失败则中止。本阶段保存失败时上一阶段已经结束，刷新工作台并保留当前输入。
+      if (closedPrevious && isCurrentOperation(projectId, generation)) {
+        await loadWorkspace();
+      }
     } finally {
       if (isCurrentOperation(projectId, generation)) {
         savingStage.value = false;
@@ -334,7 +456,6 @@ export function useProjectTestingWorkspace(
   }
 
   function downloadDocument(document: ProjectDocumentDto) {
-    if (!canExport.value) return;
     const projectId = props.projectId;
     if (document.projectId !== projectId) return;
     return runDownload(
@@ -373,8 +494,9 @@ export function useProjectTestingWorkspace(
 
   return {
     canCreateStage,
-    canExport,
+    cancelPreviousStageClose,
     canManage,
+    confirmPreviousStageClose,
     deletingDocumentId,
     deletingStageId,
     downloadDocument,
@@ -385,6 +507,7 @@ export function useProjectTestingWorkspace(
     loadWorkspace,
     openCreateStage,
     openEditStage,
+    previousStageClose,
     removeDocument,
     removeStage,
     saveStage,

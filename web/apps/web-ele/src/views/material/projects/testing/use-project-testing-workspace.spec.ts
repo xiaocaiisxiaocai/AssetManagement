@@ -8,6 +8,8 @@ import { defineComponent, h, reactive } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { businessDateText } from '#/utils/business-date';
+
 import { useProjectTestingWorkspace } from './use-project-testing-workspace';
 
 const mocks = vi.hoisted(() => ({
@@ -17,12 +19,14 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   remove: vi.fn(),
   success: vi.fn(),
+  update: vi.fn(),
+  warning: vi.fn(),
 }));
 vi.mock('@vben/access', () => ({
   useAccess: () => ({ hasAccessByCodes: () => false }),
 }));
 vi.mock('element-plus', () => ({
-  ElMessage: { success: mocks.success, warning: vi.fn() },
+  ElMessage: { success: mocks.success, warning: mocks.warning },
   ElMessageBox: { confirm: mocks.confirm },
 }));
 vi.mock('#/utils/download', () => ({ downloadBlob: mocks.download }));
@@ -32,7 +36,7 @@ vi.mock('#/api/project-workspace', () => ({
   deleteProjectStageApi: mocks.remove,
   downloadProjectDocumentApi: vi.fn(),
   getProjectWorkspaceApi: mocks.get,
-  updateProjectStageApi: vi.fn(),
+  updateProjectStageApi: mocks.update,
   uploadProjectDocumentApi: vi.fn(),
 }));
 
@@ -76,8 +80,20 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.get.mockImplementation(async (id: number) => workspace(id));
   mocks.create.mockResolvedValue({ id: 1 });
+  mocks.update.mockResolvedValue({ id: 7, rowVersion: 4 });
   mocks.confirm.mockResolvedValue('confirm');
 });
+
+function shiftDate(value: string, days: number) {
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  const nextMonth = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const nextDay = String(date.getUTCDate()).padStart(2, '0');
+  return `${date.getUTCFullYear()}-${nextMonth}-${nextDay}`;
+}
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
 
 describe('项目测试工作台交互', () => {
@@ -161,5 +177,137 @@ describe('项目测试工作台交互', () => {
     await deletion;
     expect(mocks.remove).not.toHaveBeenCalled();
     expect(state.workspace.value?.projectId).toBe(2);
+  });
+
+  it('确认后先结束上一阶段，再新增本阶段', async () => {
+    const today = businessDateText();
+    const previousStart = shiftDate(today, -10);
+    const currentStart = shiftDate(today, -3);
+    mocks.get.mockImplementation(async (id: number) => ({
+      ...workspace(id),
+      stages: [
+        {
+          endDate: null,
+          id: 7,
+          name: '第一阶段',
+          objective: '目标',
+          projectId: id,
+          rowVersion: 3,
+          sequence: 1,
+          startDate: previousStart,
+          status: 'in_progress',
+          testContent: '已填写内容',
+          testResult: '已填写结果',
+          updatedAt: '2026-10-01T00:00:00Z',
+        } satisfies ProjectStageDto,
+      ],
+    }));
+    const { state } = setup();
+    await flushPromises();
+    state.openCreateStage();
+    state.stageForm.name = '第二阶段';
+    state.stageForm.startDate = currentStart;
+    const save = state.saveStage();
+    await flushPromises();
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(state.previousStageClose.value?.endDate).toBe(
+      shiftDate(currentStart, -1),
+    );
+    state.confirmPreviousStageClose();
+    await save;
+    expect(mocks.update).toHaveBeenCalledWith(1, 7, {
+      endDate: shiftDate(currentStart, -1),
+      name: '第一阶段',
+      objective: '目标',
+      rowVersion: 3,
+      sequence: 1,
+      startDate: previousStart,
+      testContent: '已填写内容',
+      testResult: '已填写结果',
+    });
+    expect(mocks.update.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.create.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(mocks.create).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        name: '第二阶段',
+        startDate: currentStart,
+      }),
+    );
+    expect(state.stageDialogVisible.value).toBe(false);
+  });
+
+  it('取消结束上一阶段时不调用接口并保留输入', async () => {
+    const today = businessDateText();
+    mocks.get.mockImplementation(async (id: number) => ({
+      ...workspace(id),
+      stages: [
+        {
+          endDate: null,
+          id: 7,
+          name: '第一阶段',
+          projectId: id,
+          rowVersion: 3,
+          sequence: 1,
+          startDate: shiftDate(today, -10),
+          status: 'in_progress',
+          testContent: '已填写内容',
+          testResult: '已填写结果',
+          updatedAt: '2026-10-01T00:00:00Z',
+        } satisfies ProjectStageDto,
+      ],
+    }));
+    const { state } = setup();
+    await flushPromises();
+    state.openCreateStage();
+    state.stageForm.name = '第二阶段';
+    state.stageForm.startDate = shiftDate(today, -3);
+    const save = state.saveStage();
+    await flushPromises();
+    state.cancelPreviousStageClose();
+    await save;
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(state.stageDialogVisible.value).toBe(true);
+    expect(state.stageForm.name).toBe('第二阶段');
+    expect(state.savingStage.value).toBe(false);
+  });
+
+  it('上一阶段缺少测试结果时提示且不调用接口', async () => {
+    const today = businessDateText();
+    mocks.get.mockImplementation(async (id: number) => ({
+      ...workspace(id),
+      stages: [
+        {
+          endDate: null,
+          id: 7,
+          name: '第一阶段',
+          projectId: id,
+          rowVersion: 3,
+          sequence: 1,
+          startDate: shiftDate(today, -10),
+          status: 'in_progress',
+          testContent: '已填写内容',
+          testResult: '',
+          updatedAt: '2026-10-01T00:00:00Z',
+        } satisfies ProjectStageDto,
+      ],
+    }));
+    const { state } = setup();
+    await flushPromises();
+    state.openCreateStage();
+    state.stageForm.name = '第二阶段';
+    state.stageForm.startDate = shiftDate(today, -3);
+    await state.saveStage();
+    expect(mocks.warning).toHaveBeenCalledWith(
+      '第1阶段「第一阶段」尚未填写测试内容或测试结果，请先补齐',
+    );
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(state.stageDialogVisible.value).toBe(true);
+    expect(state.stageForm.name).toBe('第二阶段');
+    expect(state.previousStageClose.value).toBeNull();
   });
 });

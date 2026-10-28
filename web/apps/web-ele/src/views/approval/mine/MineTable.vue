@@ -54,6 +54,7 @@ const bizTypeOptions = [
 ];
 const statusOptions = [
   { label: '审批中', value: 'pending' },
+  { label: '待接收', value: 'receiving' },
   { label: '已通过', value: 'approved' },
   { label: '已驳回', value: 'rejected' },
   { label: '已撤回', value: 'withdrawn' },
@@ -64,6 +65,7 @@ function statusText(status: string) {
     {
       approved: '已通过',
       pending: '审批中',
+      receiving: '待接收',
       rejected: '已驳回',
       withdrawn: '已撤回',
     }[status] ?? status

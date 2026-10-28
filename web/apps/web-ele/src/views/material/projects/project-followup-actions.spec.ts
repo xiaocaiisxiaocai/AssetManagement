@@ -54,6 +54,7 @@ function setup() {
     materialRequestGuard: createLatestRequestGuard(),
     materials: ref([]),
     materialTotal: ref(0),
+    flowInitialTab: ref<string | undefined>(),
     myFlowQuery: reactive({ page: 1, pageSize: 10 }),
     myFlowRequestGuard: createLatestRequestGuard(),
     myFlows: ref([]),
@@ -62,6 +63,10 @@ function setup() {
     pendingFlowRequestGuard: createLatestRequestGuard(),
     pendingFlows: ref([]),
     pendingFlowTotal: ref(0),
+    receivingFlowQuery: reactive({ page: 3, pageSize: 10 }),
+    receivingFlowRequestGuard: createLatestRequestGuard(),
+    receivingFlows: ref([{ id: 1 }]),
+    receivingFlowTotal: ref(6),
   };
   const deps = {
     loadProjectFlows: vi.fn(async () => {}),
@@ -117,12 +122,19 @@ describe('打开项目跟进', () => {
     page.pendingFlowTotal.value = 4;
     page.handledFlowTotal.value = 2;
     page.myFlowTotal.value = 1;
+    const receivingGeneration = page.receivingFlowRequestGuard.next();
 
     await actions.openFollowups({ id: 9 } as any);
 
     expect(page.pendingFlowTotal.value).toBe(0);
     expect(page.handledFlowTotal.value).toBe(0);
     expect(page.myFlowTotal.value).toBe(0);
+    expect(page.receivingFlowTotal.value).toBe(0);
+    expect(page.receivingFlows.value).toEqual([]);
+    expect(page.receivingFlowQuery.page).toBe(1);
+    expect(page.receivingFlowRequestGuard.isLatest(receivingGeneration)).toBe(
+      false,
+    );
     expect(deps.loadProjectFlows).toHaveBeenCalledWith(9);
   });
 });

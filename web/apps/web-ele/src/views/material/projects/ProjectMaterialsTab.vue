@@ -5,8 +5,9 @@ import type { MaterialItem, MaterialStatus } from '#/api/material';
 import type { TableColumnOption } from '#/components/table/column-visibility';
 import type { HeaderFilterValue } from '#/components/table/header-multi-filter';
 
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 
+import { useResizeObserver } from '@vueuse/core';
 import {
   ElButton,
   ElEmpty,
@@ -51,6 +52,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  collapsedHeight: [height: number];
   command: [command: number | string, material: MaterialItem];
   create: [];
   detail: [material: MaterialItem];
@@ -70,6 +72,22 @@ const query = defineModel<{
 }>('query', { required: true });
 const materialsCollapsed = defineModel<boolean>('collapsed', {
   default: false,
+});
+const sectionRef = ref<HTMLElement | null>(null);
+let reportedCollapsedHeight = 0;
+
+function reportCollapsedHeight() {
+  if (!materialsCollapsed.value || !sectionRef.value) return;
+  const next = Math.ceil(sectionRef.value.getBoundingClientRect().height);
+  if (next <= 0 || next === reportedCollapsedHeight) return;
+  reportedCollapsedHeight = next;
+  emit('collapsedHeight', next);
+}
+
+useResizeObserver(sectionRef, reportCollapsedHeight, { box: 'border-box' });
+watch(materialsCollapsed, (collapsed) => {
+  if (!collapsed) return;
+  void nextTick(reportCollapsedHeight);
 });
 
 const statusOptions: Array<{
@@ -155,6 +173,7 @@ const materialEmptyText = computed(() => {
 
 <template>
   <section
+    ref="sectionRef"
     :class="{ 'is-collapsed': materialsCollapsed }"
     aria-label="项目料件清单"
     class="workspace-section workspace-materials-section"
